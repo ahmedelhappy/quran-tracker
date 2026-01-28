@@ -14,13 +14,16 @@ app.get('/', (req, res) => {
   res.json({ message: 'Quran Tracker API is running!' });
 });
 
+// API Routes
+app.use('/api/auth', require('./routes/authRoutes.js'));
+
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('MongoDB Error:', err));
+  .then(() => console.log('✅ MongoDB Connected'))
+  .catch(err => console.log('❌ MongoDB Error:', err));
 
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
