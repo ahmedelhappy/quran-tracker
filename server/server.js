@@ -15,7 +15,8 @@ app.get('/', (req, res) => {
 });
 
 // API Routes
-app.use('/api/auth', require('./routes/authRoutes.js'));
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/progress', require('./routes/progressRoutes'));
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
