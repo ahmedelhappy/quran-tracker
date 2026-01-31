@@ -1,11 +1,35 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Onboarding from './pages/Onboarding';
+
+// Wrapper to check onboarding status
+const DashboardWrapper = () => {
+  const { user } = useAuth();
+  
+  // If user hasn't completed onboarding, redirect to onboarding
+  if (user && !user.onboardingComplete) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  return <Dashboard />;
+};
+
+const OnboardingWrapper = () => {
+  const { user } = useAuth();
+  
+  // If user already completed onboarding, redirect to dashboard
+  if (user && user.onboardingComplete) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <Onboarding />;
+};
 
 function App() {
   return (
@@ -21,7 +45,15 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <Dashboard />
+                <DashboardWrapper />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <OnboardingWrapper />
               </ProtectedRoute>
             }
           />

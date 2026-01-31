@@ -14,11 +14,20 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-
+// Auth API functions
 export const authAPI = {
   register: (data) => API.post('/auth/register', data),
   login: (data) => API.post('/auth/login', data),
   getMe: () => API.get('/auth/me'),
+};
+
+// Progress API functions
+export const progressAPI = {
+  completeOnboarding: (data) => API.post('/progress/onboarding', data),
+  getTodayTasks: () => API.get('/progress/today'),
+  markComplete: (data) => API.post('/progress/complete', data),
+  getAllProgress: () => API.get('/progress/all'),
+  getJuzProgress: () => API.get('/progress/juz'),
 };
 
 export default API;
