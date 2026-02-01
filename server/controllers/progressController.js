@@ -2,6 +2,19 @@ const UserProgress = require('../models/UserProgress');
 const QuranMetadata = require('../models/QuranMetadata');
 const User = require('../models/User');
 
+// Helper function to get date string (YYYY-MM-DD) for consistent comparison
+const getDateString = (date) => {
+  const d = new Date(date);
+  return d.toISOString().split('T')[0]; // Returns "2024-01-15" format
+};
+
+// Helper function to get today's date at midnight UTC
+const getTodayMidnight = () => {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return today;
+};
+
 // @desc    Complete onboarding - save initial progress
 // @route   POST /api/progress/onboarding
 // @access  Private
@@ -10,8 +23,8 @@ exports.completeOnboarding = async (req, res) => {
     const userId = req.user._id;
     const { memorizedPages, dailyNewPages } = req.body;
 
-    // Validate dailyNewPages
-    const dailyGoal = Math.min(Math.max(dailyNewPages || 1, 1), 10);
+    // Validate dailyNewPages (allow 0.5 to 10)
+    const dailyGoal = Math.min(Math.max(dailyNewPages || 1, 0.5), 10);
 
     // Update user settings
     await User.findByIdAndUpdate(userId, {
@@ -21,16 +34,21 @@ exports.completeOnboarding = async (req, res) => {
 
     // If user has memorized pages, create progress records
     if (memorizedPages && memorizedPages.length > 0) {
-      const today = new Date();
-      
+      // Set lastReviewedDate to yesterday so pages show up for review today
+      const yesterday = new Date();
+      yesterday.setUTCHours(0, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const today = getTodayMidnight();
+
       // Create progress records for memorized pages
       const progressRecords = memorizedPages.map(pageNumber => ({
         userId,
         pageNumber,
         status: 'memorized',
         memorizedDate: today,
-        lastReviewedDate: today,
-        reviewCount: 1
+        lastReviewedDate: yesterday, // Set to yesterday so they appear in review
+        reviewCount: 0 // They haven't actually reviewed yet
       }));
 
       // Use bulkWrite to insert/update efficiently
@@ -72,49 +90,66 @@ exports.getTodayTasks = async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
+    // Get today's date string for comparison
+    const todayString = getDateString(new Date());
+
     // Get all memorized pages for this user
     const memorizedPages = await UserProgress.find({
       userId,
       status: 'memorized'
-    }).sort({ lastReviewedDate: 1 });
+    }).sort({ lastReviewedDate: 1 }); // Oldest reviewed first
 
-    // Find the next page to memorize (first non-memorized page)
+    // Find the next page(s) to memorize
     const memorizedPageNumbers = memorizedPages.map(p => p.pageNumber);
-    let nextNewPage = null;
+    const newPages = [];
+    const dailyNewPages = user.dailyNewPages || 1;
+
+    // Calculate pages to show based on daily goal
+    // For 0.5 pages: show 1 page every other day (simplified: always show 1)
+    // For 1+ pages: show that many pages
+    const pagesToMemorize = dailyNewPages < 1 ? 1 : Math.floor(dailyNewPages);
 
     for (let page = 1; page <= 604; page++) {
       if (!memorizedPageNumbers.includes(page)) {
-        nextNewPage = page;
-        break;
+        newPages.push(page);
+        if (newPages.length >= pagesToMemorize) break;
       }
     }
 
-    // Get metadata for the new page
-    let newPageData = null;
-    if (nextNewPage) {
-      const metadata = await QuranMetadata.findOne({ pageNumber: nextNewPage });
-      newPageData = {
-        pageNumber: nextNewPage,
-        juzNumber: metadata?.juzNumber,
-        surahName: metadata?.surahName,
-        surahNameArabic: metadata?.surahNameArabic
-      };
-    }
+    // Get metadata for new pages
+    const newPagesData = await Promise.all(
+      newPages.map(async (pageNum) => {
+        const metadata = await QuranMetadata.findOne({ pageNumber: pageNum });
+        return {
+          pageNumber: pageNum,
+          juzNumber: metadata?.juzNumber || 1,
+          surahName: metadata?.surahName || 'Unknown',
+          surahNameArabic: metadata?.surahNameArabic || ''
+        };
+      })
+    );
 
-    // Get 3 oldest reviewed pages for review (simple fixed review)
-    const reviewPages = memorizedPages.slice(0, 3);
-    
+    // Get pages for review (not reviewed today, oldest first)
+    const reviewPages = memorizedPages.filter(p => {
+      // If never reviewed, include it
+      if (!p.lastReviewedDate) return true;
+      
+      // Compare date strings to avoid timezone issues
+      const lastReviewString = getDateString(p.lastReviewedDate);
+      return lastReviewString !== todayString; // Not reviewed today
+    }).slice(0, 3); // Max 3 review pages per day
+
     // Get metadata for review pages
     const reviewPagesData = await Promise.all(
       reviewPages.map(async (progress) => {
         const metadata = await QuranMetadata.findOne({ pageNumber: progress.pageNumber });
         return {
           pageNumber: progress.pageNumber,
-          juzNumber: metadata?.juzNumber,
-          surahName: metadata?.surahName,
-          surahNameArabic: metadata?.surahNameArabic,
+          juzNumber: metadata?.juzNumber || 1,
+          surahName: metadata?.surahName || 'Unknown',
+          surahNameArabic: metadata?.surahNameArabic || '',
           lastReviewedDate: progress.lastReviewedDate,
-          reviewCount: progress.reviewCount
+          reviewCount: progress.reviewCount || 0
         };
       })
     );
@@ -124,17 +159,23 @@ exports.getTodayTasks = async (req, res) => {
     const totalPages = 604;
     const percentage = ((totalMemorized / totalPages) * 100).toFixed(1);
 
+    // Check if all tasks for today are done
+    const allNewPagesDone = newPagesData.length === 0;
+    const allReviewsDone = reviewPagesData.length === 0;
+    const todayComplete = totalMemorized > 0 && allNewPagesDone && allReviewsDone;
+
     res.status(200).json({
       success: true,
       data: {
-        newPage: newPageData,
+        newPages: newPagesData,
         reviewPages: reviewPagesData,
         stats: {
           totalMemorized,
           totalPages,
           percentage: parseFloat(percentage),
-          currentStreak: user.currentStreak,
-          dailyNewPages: user.dailyNewPages
+          currentStreak: user.currentStreak || 0,
+          dailyNewPages: user.dailyNewPages || 1,
+          todayComplete
         }
       }
     });
@@ -164,8 +205,8 @@ exports.markPageComplete = async (req, res) => {
       });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use current timestamp for accurate tracking
+    const now = new Date();
 
     if (type === 'new') {
       // Mark as newly memorized
@@ -174,53 +215,62 @@ exports.markPageComplete = async (req, res) => {
         {
           $set: {
             status: 'memorized',
-            memorizedDate: today,
-            lastReviewedDate: today
+            memorizedDate: now,
+            lastReviewedDate: now
           },
           $inc: { reviewCount: 1 }
         },
         { upsert: true, new: true }
       );
     } else if (type === 'review') {
-      // Update review date
-      await UserProgress.findOneAndUpdate(
-        { userId, pageNumber },
+      // Update review date and count
+      const result = await UserProgress.findOneAndUpdate(
+        { userId, pageNumber, status: 'memorized' },
         {
-          $set: { lastReviewedDate: today },
+          $set: { lastReviewedDate: now },
           $inc: { reviewCount: 1 }
-        }
+        },
+        { new: true }
       );
+
+      if (!result) {
+        return res.status(400).json({
+          success: false,
+          message: 'Page not found or not memorized yet'
+        });
+      }
     }
 
     // Update user's streak
     const user = await User.findById(userId);
-    const lastActive = user.lastActiveDate;
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    const todayString = getDateString(now);
+    const lastActiveString = user.lastActiveDate ? getDateString(user.lastActiveDate) : null;
 
-    let newStreak = user.currentStreak;
+    let newStreak = user.currentStreak || 0;
 
-    if (!lastActive) {
-      // First activity
+    if (!lastActiveString) {
+      // First activity ever
       newStreak = 1;
+    } else if (lastActiveString === todayString) {
+      // Already active today, keep current streak
+      newStreak = user.currentStreak || 1;
     } else {
-      const lastActiveDate = new Date(lastActive);
-      lastActiveDate.setHours(0, 0, 0, 0);
+      // Check if yesterday
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayString = getDateString(yesterday);
 
-      if (lastActiveDate.getTime() === yesterday.getTime()) {
-        // Consecutive day
-        newStreak = user.currentStreak + 1;
-      } else if (lastActiveDate.getTime() === today.getTime()) {
-        // Same day, keep streak
-        newStreak = user.currentStreak;
+      if (lastActiveString === yesterdayString) {
+        // Consecutive day - increment streak
+        newStreak = (user.currentStreak || 0) + 1;
       } else {
-        // Streak broken
+        // Streak broken - reset to 1
         newStreak = 1;
       }
     }
 
     await User.findByIdAndUpdate(userId, {
-      lastActiveDate: today,
+      lastActiveDate: now,
       currentStreak: newStreak
     });
 
