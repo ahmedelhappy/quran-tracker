@@ -5,14 +5,7 @@ const User = require('../models/User');
 // Helper function to get date string (YYYY-MM-DD) for consistent comparison
 const getDateString = (date) => {
   const d = new Date(date);
-  return d.toISOString().split('T')[0]; // Returns "2024-01-15" format
-};
-
-// Helper function to get today's date at midnight UTC
-const getTodayMidnight = () => {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  return today;
+  return d.toISOString().split('T')[0];
 };
 
 // @desc    Complete onboarding - save initial progress
@@ -39,16 +32,14 @@ exports.completeOnboarding = async (req, res) => {
       yesterday.setUTCHours(0, 0, 0, 0);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const today = getTodayMidnight();
-
-      // Create progress records for memorized pages
+      // Set memorizedDate to yesterday (not today) so they don't count against today's goal
       const progressRecords = memorizedPages.map(pageNumber => ({
         userId,
         pageNumber,
         status: 'memorized',
-        memorizedDate: today,
-        lastReviewedDate: yesterday, // Set to yesterday so they appear in review
-        reviewCount: 0 // They haven't actually reviewed yet
+        memorizedDate: yesterday,
+        lastReviewedDate: yesterday,
+        reviewCount: 0
       }));
 
       // Use bulkWrite to insert/update efficiently
@@ -90,29 +81,35 @@ exports.getTodayTasks = async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
-    // Get today's date string for comparison
     const todayString = getDateString(new Date());
 
     // Get all memorized pages for this user
-    const memorizedPages = await UserProgress.find({
+    const allMemorizedPages = await UserProgress.find({
       userId,
       status: 'memorized'
-    }).sort({ lastReviewedDate: 1 }); // Oldest reviewed first
+    }).sort({ lastReviewedDate: 1 });
 
-    // Find the next page(s) to memorize
-    const memorizedPageNumbers = memorizedPages.map(p => p.pageNumber);
-    const newPages = [];
+    const memorizedPageNumbers = allMemorizedPages.map(p => p.pageNumber);
+
+    // === NEW MEMORIZATION LOGIC ===
+    // Count how many pages were memorized TODAY
+    const pagesMemorizedToday = allMemorizedPages.filter(p => {
+      if (!p.memorizedDate) return false;
+      return getDateString(p.memorizedDate) === todayString;
+    });
+    const newPagesCompletedToday = pagesMemorizedToday.length;
+
+    // Calculate how many new pages to show
     const dailyNewPages = user.dailyNewPages || 1;
+    const targetNewPages = dailyNewPages < 1 ? 1 : Math.ceil(dailyNewPages);
+    const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
-    // Calculate pages to show based on daily goal
-    // For 0.5 pages: show 1 page every other day (simplified: always show 1)
-    // For 1+ pages: show that many pages
-    const pagesToMemorize = dailyNewPages < 1 ? 1 : Math.floor(dailyNewPages);
-
+    // Find next pages to memorize (only show remaining for today)
+    const newPages = [];
     for (let page = 1; page <= 604; page++) {
       if (!memorizedPageNumbers.includes(page)) {
         newPages.push(page);
-        if (newPages.length >= pagesToMemorize) break;
+        if (newPages.length >= remainingNewPages) break;
       }
     }
 
@@ -129,15 +126,23 @@ exports.getTodayTasks = async (req, res) => {
       })
     );
 
+    // === REVIEW LOGIC ===
+    // Get pages reviewed today
+    const pagesReviewedToday = allMemorizedPages.filter(p => {
+      if (!p.lastReviewedDate) return false;
+      return getDateString(p.lastReviewedDate) === todayString;
+    });
+    const reviewsCompletedToday = pagesReviewedToday.length;
+
+    // Daily review target is 3 pages
+    const dailyReviewTarget = 3;
+    const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
+
     // Get pages for review (not reviewed today, oldest first)
-    const reviewPages = memorizedPages.filter(p => {
-      // If never reviewed, include it
+    const reviewPages = allMemorizedPages.filter(p => {
       if (!p.lastReviewedDate) return true;
-      
-      // Compare date strings to avoid timezone issues
-      const lastReviewString = getDateString(p.lastReviewedDate);
-      return lastReviewString !== todayString; // Not reviewed today
-    }).slice(0, 3); // Max 3 review pages per day
+      return getDateString(p.lastReviewedDate) !== todayString;
+    }).slice(0, remainingReviews);
 
     // Get metadata for review pages
     const reviewPagesData = await Promise.all(
@@ -154,27 +159,84 @@ exports.getTodayTasks = async (req, res) => {
       })
     );
 
+    // === EXTRA PAGES (for "Want more?" section) ===
+    // Find next 3 pages after today's assigned new pages
+    const extraNewPages = [];
+    let foundCount = 0;
+    let skipCount = remainingNewPages; // Skip the ones already assigned
+    for (let page = 1; page <= 604; page++) {
+      if (!memorizedPageNumbers.includes(page)) {
+        if (skipCount > 0) {
+          skipCount--;
+          continue;
+        }
+        extraNewPages.push(page);
+        foundCount++;
+        if (foundCount >= 3) break;
+      }
+    }
+
+    // Get metadata for extra pages
+    const extraPagesData = await Promise.all(
+      extraNewPages.map(async (pageNum) => {
+        const metadata = await QuranMetadata.findOne({ pageNumber: pageNum });
+        return {
+          pageNumber: pageNum,
+          juzNumber: metadata?.juzNumber || 1,
+          surahName: metadata?.surahName || 'Unknown',
+          surahNameArabic: metadata?.surahNameArabic || ''
+        };
+      })
+    );
+
+    // Extra review pages (next 3 not assigned today)
+    const extraReviewPages = allMemorizedPages.filter(p => {
+      if (!p.lastReviewedDate) return true;
+      return getDateString(p.lastReviewedDate) !== todayString;
+    }).slice(remainingReviews, remainingReviews + 3);
+
+    const extraReviewData = await Promise.all(
+      extraReviewPages.map(async (progress) => {
+        const metadata = await QuranMetadata.findOne({ pageNumber: progress.pageNumber });
+        return {
+          pageNumber: progress.pageNumber,
+          juzNumber: metadata?.juzNumber || 1,
+          surahName: metadata?.surahName || 'Unknown',
+          surahNameArabic: metadata?.surahNameArabic || '',
+          reviewCount: progress.reviewCount || 0
+        };
+      })
+    );
+
     // Calculate stats
-    const totalMemorized = memorizedPages.length;
+    const totalMemorized = allMemorizedPages.length;
     const totalPages = 604;
     const percentage = ((totalMemorized / totalPages) * 100).toFixed(1);
 
-    // Check if all tasks for today are done
-    const allNewPagesDone = newPagesData.length === 0;
-    const allReviewsDone = reviewPagesData.length === 0;
-    const todayComplete = totalMemorized > 0 && allNewPagesDone && allReviewsDone;
+    // Check completion status
+    const newMemorizationComplete = remainingNewPages === 0 || totalMemorized === 604;
+    const reviewComplete = remainingReviews === 0 || allMemorizedPages.length === 0;
+    const todayComplete = newMemorizationComplete && reviewComplete && totalMemorized > 0;
 
     res.status(200).json({
       success: true,
       data: {
         newPages: newPagesData,
         reviewPages: reviewPagesData,
+        extraNewPages: extraPagesData,
+        extraReviewPages: extraReviewData,
         stats: {
           totalMemorized,
           totalPages,
           percentage: parseFloat(percentage),
           currentStreak: user.currentStreak || 0,
           dailyNewPages: user.dailyNewPages || 1,
+          newPagesCompletedToday,
+          reviewsCompletedToday,
+          targetNewPages,
+          dailyReviewTarget,
+          newMemorizationComplete,
+          reviewComplete,
           todayComplete
         }
       }
@@ -196,7 +258,7 @@ exports.getTodayTasks = async (req, res) => {
 exports.markPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pageNumber, type } = req.body; // type: 'new' or 'review'
+    const { pageNumber, type } = req.body;
 
     if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
       return res.status(400).json({
@@ -205,11 +267,9 @@ exports.markPageComplete = async (req, res) => {
       });
     }
 
-    // Use current timestamp for accurate tracking
     const now = new Date();
 
     if (type === 'new') {
-      // Mark as newly memorized
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
         {
@@ -223,7 +283,6 @@ exports.markPageComplete = async (req, res) => {
         { upsert: true, new: true }
       );
     } else if (type === 'review') {
-      // Update review date and count
       const result = await UserProgress.findOneAndUpdate(
         { userId, pageNumber, status: 'memorized' },
         {
@@ -249,22 +308,17 @@ exports.markPageComplete = async (req, res) => {
     let newStreak = user.currentStreak || 0;
 
     if (!lastActiveString) {
-      // First activity ever
       newStreak = 1;
     } else if (lastActiveString === todayString) {
-      // Already active today, keep current streak
       newStreak = user.currentStreak || 1;
     } else {
-      // Check if yesterday
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayString = getDateString(yesterday);
 
       if (lastActiveString === yesterdayString) {
-        // Consecutive day - increment streak
         newStreak = (user.currentStreak || 0) + 1;
       } else {
-        // Streak broken - reset to 1
         newStreak = 1;
       }
     }
@@ -332,14 +386,12 @@ exports.getJuzProgress = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    // Get all memorized pages
     const memorizedProgress = await UserProgress.find({
       userId,
       status: 'memorized'
     });
     const memorizedPages = memorizedProgress.map(p => p.pageNumber);
 
-    // Juz page ranges
     const juzRanges = [
       { juz: 1, start: 1, end: 21 },
       { juz: 2, start: 22, end: 41 },
@@ -373,7 +425,6 @@ exports.getJuzProgress = async (req, res) => {
       { juz: 30, start: 582, end: 604 },
     ];
 
-    // Calculate progress for each Juz
     const juzProgress = juzRanges.map(juz => {
       const totalPages = juz.end - juz.start + 1;
       const memorizedInJuz = memorizedPages.filter(

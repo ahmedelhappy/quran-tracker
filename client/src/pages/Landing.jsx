@@ -54,19 +54,22 @@ const Landing = () => {
           </div>
         </div>
 
-        {/* Hero Stats */}
-        <div className="grid grid-cols-3 gap-8 mt-16 max-w-2xl mx-auto">
-          <div className="text-center">
-            <div className="text-3xl md:text-4xl font-bold text-green-600">604</div>
-            <div className="text-gray-600 text-sm mt-1">Pages to Track</div>
+        {/* Benefits instead of stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-4xl mx-auto">
+          <div className="bg-white rounded-xl p-6 shadow-md text-center">
+            <div className="text-3xl mb-3">🎯</div>
+            <h3 className="font-bold text-gray-800 mb-2">Stay Consistent</h3>
+            <p className="text-gray-600 text-sm">Daily tasks and streak tracking keep you motivated</p>
           </div>
-          <div className="text-center">
-            <div className="text-3xl md:text-4xl font-bold text-green-600">30</div>
-            <div className="text-gray-600 text-sm mt-1">Juz Covered</div>
+          <div className="bg-white rounded-xl p-6 shadow-md text-center">
+            <div className="text-3xl mb-3">🧠</div>
+            <h3 className="font-bold text-gray-800 mb-2">Remember Forever</h3>
+            <p className="text-gray-600 text-sm">Smart review system based on proven science</p>
           </div>
-          <div className="text-center">
-            <div className="text-3xl md:text-4xl font-bold text-green-600">114</div>
-            <div className="text-gray-600 text-sm mt-1">Surahs</div>
+          <div className="bg-white rounded-xl p-6 shadow-md text-center">
+            <div className="text-3xl mb-3">📈</div>
+            <h3 className="font-bold text-gray-800 mb-2">Track Progress</h3>
+            <p className="text-gray-600 text-sm">Visual dashboard shows your journey clearly</p>
           </div>
         </div>
       </section>
@@ -85,72 +88,54 @@ const Landing = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Feature 1 */}
             <div className="bg-green-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">📋</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Personalized Plans
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Personalized Plans</h3>
               <p className="text-gray-600">
                 Set your daily memorization goal (½, 1, or 2 pages) and get a 
                 customized schedule that fits your pace and lifestyle.
               </p>
             </div>
 
-            {/* Feature 2 */}
             <div className="bg-blue-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">🔄</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Smart Review System
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Smart Review System</h3>
               <p className="text-gray-600">
                 Based on spaced repetition principles, our system schedules 
                 reviews at optimal intervals to combat the forgetting curve.
               </p>
             </div>
 
-            {/* Feature 3 */}
             <div className="bg-orange-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">🔥</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Streak Tracking
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Streak Tracking</h3>
               <p className="text-gray-600">
                 Build consistency with daily streaks. See your progress grow 
                 and stay motivated to maintain your memorization habit.
               </p>
             </div>
 
-            {/* Feature 4 */}
             <div className="bg-purple-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">📊</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Progress Dashboard
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Progress Dashboard</h3>
               <p className="text-gray-600">
                 Visual statistics showing pages memorized, completion percentage, 
                 and your journey progress at a glance.
               </p>
             </div>
 
-            {/* Feature 5 */}
             <div className="bg-yellow-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">🎯</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Daily Tasks
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Daily Tasks</h3>
               <p className="text-gray-600">
                 Clear daily objectives for new memorization and review pages. 
                 Never wonder what to work on next.
               </p>
             </div>
 
-            {/* Feature 6 */}
             <div className="bg-pink-50 rounded-xl p-6 hover:shadow-lg transition-shadow">
               <div className="text-4xl mb-4">🌐</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Access Anywhere
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Access Anywhere</h3>
               <p className="text-gray-600">
                 Web-based application works on any device - desktop, tablet, 
                 or mobile. No installation required.
@@ -167,46 +152,35 @@ const Landing = () => {
             <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
               How It Works
             </h2>
-            <p className="text-gray-600">
-              Get started in 3 simple steps
-            </p>
+            <p className="text-gray-600">Get started in 3 simple steps</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Step 1 */}
             <div className="text-center">
               <div className="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
                 1
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Create Account
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Create Account</h3>
               <p className="text-gray-600">
                 Sign up for free and tell us about your current memorization status.
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="text-center">
               <div className="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
                 2
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Set Your Goals
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Set Your Goals</h3>
               <p className="text-gray-600">
                 Choose your daily memorization pace and we'll create your personalized plan.
               </p>
             </div>
 
-            {/* Step 3 */}
             <div className="text-center">
               <div className="w-16 h-16 bg-green-600 text-white rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-4">
                 3
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">
-                Track Daily
-              </h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Track Daily</h3>
               <p className="text-gray-600">
                 Complete your daily tasks, mark progress, and watch your journey unfold.
               </p>
@@ -246,9 +220,7 @@ const Landing = () => {
 
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-bold text-gray-800 mb-2">
-                Is Quran Tracker free to use?
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-2">Is Quran Tracker free to use?</h3>
               <p className="text-gray-600">
                 Yes! Quran Tracker is completely free. We believe everyone should have 
                 access to tools that help them memorize the Quran.
@@ -256,9 +228,7 @@ const Landing = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-bold text-gray-800 mb-2">
-                Do I need to install an app?
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-2">Do I need to install an app?</h3>
               <p className="text-gray-600">
                 No installation needed. Quran Tracker is a web application that works 
                 in your browser on any device - computer, tablet, or phone.
@@ -266,19 +236,15 @@ const Landing = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-bold text-gray-800 mb-2">
-                What if I've already memorized some Quran?
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-2">What if I've already memorized some Quran?</h3>
               <p className="text-gray-600">
-                During onboarding, you can select which Juz you've already memorized. 
-                The system will start your journey from where you are.
+                During onboarding, you can select which Juz you've memorized, or enter 
+                specific page ranges. The system will start your journey from where you are.
               </p>
             </div>
 
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="font-bold text-gray-800 mb-2">
-                How does the review system work?
-              </h3>
+              <h3 className="font-bold text-gray-800 mb-2">How does the review system work?</h3>
               <p className="text-gray-600">
                 Based on spaced repetition, you'll review 3 pages daily from your memorized 
                 portions. This helps transfer knowledge to long-term memory.
@@ -292,7 +258,6 @@ const Landing = () => {
       <footer className="bg-gray-800 text-white py-12">
         <div className="max-w-6xl mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Brand */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-2xl">📖</span>
@@ -304,7 +269,6 @@ const Landing = () => {
               </p>
             </div>
 
-            {/* Quick Links */}
             <div>
               <h4 className="font-bold mb-4">Quick Links</h4>
               <ul className="space-y-2 text-gray-400">
@@ -326,7 +290,6 @@ const Landing = () => {
               </ul>
             </div>
 
-            {/* Project Info */}
             <div>
               <h4 className="font-bold mb-4">About</h4>
               <p className="text-gray-400">
