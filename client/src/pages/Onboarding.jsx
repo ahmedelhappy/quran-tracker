@@ -1,19 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { progressAPI } from '../services/api';
 
 const Onboarding = () => {
   const [step, setStep] = useState(1);
   const [selectedJuz, setSelectedJuz] = useState([]);
-  const [partialPages, setPartialPages] = useState({ start: '', end: '' });
-  const [hasPartialMemorization, setHasPartialMemorization] = useState(false);
+  const [pageRanges, setPageRanges] = useState([]);
   const [dailyPages, setDailyPages] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   // Juz page ranges
   const juzPageRanges = [
@@ -49,7 +46,7 @@ const Onboarding = () => {
     { juz: 30, start: 582, end: 604 },
   ];
 
-  // Get all memorized pages (from Juz + partial)
+  // Get all memorized pages (from Juz + all page ranges)
   const getMemorizedPages = () => {
     const pages = new Set();
 
@@ -63,16 +60,18 @@ const Onboarding = () => {
       }
     });
 
-    // Add partial pages if specified
-    if (hasPartialMemorization && partialPages.start && partialPages.end) {
-      const start = parseInt(partialPages.start);
-      const end = parseInt(partialPages.end);
-      if (start >= 1 && end <= 604 && start <= end) {
-        for (let page = start; page <= end; page++) {
-          pages.add(page);
+    // Add pages from all page ranges
+    pageRanges.forEach(range => {
+      if (range.start && range.end) {
+        const start = parseInt(range.start);
+        const end = parseInt(range.end);
+        if (start >= 1 && end <= 604 && start <= end) {
+          for (let page = start; page <= end; page++) {
+            pages.add(page);
+          }
         }
       }
-    }
+    });
 
     return Array.from(pages).sort((a, b) => a - b);
   };
@@ -85,24 +84,59 @@ const Onboarding = () => {
     );
   };
 
-  // Validate partial pages input
-  const validatePartialPages = () => {
-    if (!hasPartialMemorization) return true;
-    if (!partialPages.start && !partialPages.end) return true;
+  // Add a new page range
+  const addPageRange = () => {
+    setPageRanges([...pageRanges, { start: '', end: '', id: Date.now() }]);
+  };
+
+  // Update a page range
+  const updatePageRange = (id, field, value) => {
+    setPageRanges(pageRanges.map(range =>
+      range.id === id ? { ...range, [field]: value } : range
+    ));
+  };
+
+  // Remove a page range
+  const removePageRange = (id) => {
+    setPageRanges(pageRanges.filter(range => range.id !== id));
+  };
+
+  // Get Juz info for a page number
+  const getJuzForPage = (pageNum) => {
+    for (const juz of juzPageRanges) {
+      if (pageNum >= juz.start && pageNum <= juz.end) {
+        return juz.juz;
+      }
+    }
+    return null;
+  };
+
+  // Validate a single page range
+  const validateRange = (range) => {
+    if (!range.start && !range.end) return { valid: true, empty: true };
     
-    const start = parseInt(partialPages.start);
-    const end = parseInt(partialPages.end);
+    const start = parseInt(range.start);
+    const end = parseInt(range.end);
     
-    if (isNaN(start) || isNaN(end)) return false;
-    if (start < 1 || end > 604) return false;
-    if (start > end) return false;
+    if (isNaN(start) || isNaN(end)) return { valid: false, error: 'Enter valid numbers' };
+    if (start < 1 || end > 604) return { valid: false, error: 'Pages must be 1-604' };
+    if (start > end) return { valid: false, error: 'Start must be ≤ End' };
     
+    return { valid: true, empty: false };
+  };
+
+  // Validate all page ranges
+  const validateAllRanges = () => {
+    for (const range of pageRanges) {
+      const result = validateRange(range);
+      if (!result.valid) return false;
+    }
     return true;
   };
 
   const handleComplete = async () => {
-    if (!validatePartialPages()) {
-      setError('Please enter valid page numbers (1-604)');
+    if (!validateAllRanges()) {
+      setError('Please fix invalid page ranges');
       return;
     }
 
@@ -123,16 +157,6 @@ const Onboarding = () => {
       setError(err.response?.data?.message || 'Failed to complete onboarding');
       setIsLoading(false);
     }
-  };
-
-  // Get Juz info for a page number
-  const getJuzForPage = (pageNum) => {
-    for (const juz of juzPageRanges) {
-      if (pageNum >= juz.start && pageNum <= juz.end) {
-        return juz.juz;
-      }
-    }
-    return null;
   };
 
   const totalMemorizedPages = getMemorizedPages().length;
@@ -168,9 +192,9 @@ const Onboarding = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">
-            {error}
-            <button onClick={() => setError('')} className="ml-2 underline">Dismiss</button>
+          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm flex justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="underline">Dismiss</button>
           </div>
         )}
 
@@ -211,7 +235,7 @@ const Onboarding = () => {
               Which Juz have you <strong>fully memorized</strong>? Select all that apply.
               <br />
               <span className="text-sm text-gray-500">
-                (You can add partial memorization in the next step)
+                (You can add partial pages in the next step)
               </span>
             </p>
 
@@ -288,91 +312,118 @@ const Onboarding = () => {
           </div>
         )}
 
-        {/* Step 3: Partial Memorization */}
+        {/* Step 3: Partial Memorization (Multiple Ranges) */}
         {step === 3 && (
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-2">
               Partial Memorization
             </h2>
             <p className="text-gray-600 mb-6">
-              Have you memorized some pages that aren't part of a complete Juz?
+              Have you memorized pages that aren't part of a complete Juz?
+              You can add multiple page ranges.
             </p>
 
-            {/* Toggle for partial memorization */}
-            <div className="mb-6">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={hasPartialMemorization}
-                  onChange={(e) => setHasPartialMemorization(e.target.checked)}
-                  className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
-                />
-                <span className="text-gray-700">
-                  Yes, I have memorized specific pages
-                </span>
-              </label>
+            {/* Page Ranges List */}
+            <div className="space-y-4 mb-6">
+              {pageRanges.length === 0 ? (
+                <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
+                  No page ranges added yet
+                </div>
+              ) : (
+                pageRanges.map((range, index) => {
+                  const validation = validateRange(range);
+                  return (
+                    <div key={range.id} className="bg-blue-50 p-4 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-blue-800">Range {index + 1}</span>
+                        <button
+                          onClick={() => removePageRange(range.id)}
+                          className="text-red-500 hover:text-red-700 text-sm"
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-600 mb-1">From Page</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="604"
+                            value={range.start}
+                            onChange={(e) => updatePageRange(range.id, 'start', e.target.value)}
+                            placeholder="1"
+                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                              !validation.valid && !validation.empty ? 'border-red-400' : 'border-gray-300'
+                            }`}
+                          />
+                        </div>
+                        <span className="text-gray-500 mt-5">to</span>
+                        <div className="flex-1">
+                          <label className="block text-xs text-gray-600 mb-1">To Page</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="604"
+                            value={range.end}
+                            onChange={(e) => updatePageRange(range.id, 'end', e.target.value)}
+                            placeholder="10"
+                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                              !validation.valid && !validation.empty ? 'border-red-400' : 'border-gray-300'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Show validation error or Juz info */}
+                      {!validation.valid && !validation.empty && (
+                        <div className="mt-2 text-sm text-red-600">{validation.error}</div>
+                      )}
+                      {validation.valid && !validation.empty && range.start && range.end && (
+                        <div className="mt-2 text-sm text-blue-700">
+                          {parseInt(range.end) - parseInt(range.start) + 1} pages
+                          {getJuzForPage(parseInt(range.start)) && (
+                            <span>
+                              {' '}• Juz {getJuzForPage(parseInt(range.start))}
+                              {getJuzForPage(parseInt(range.end)) !== getJuzForPage(parseInt(range.start)) && 
+                                `-${getJuzForPage(parseInt(range.end))}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
 
-            {/* Partial pages input */}
-            {hasPartialMemorization && (
-              <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                <h3 className="font-medium text-blue-800 mb-3">
-                  Enter page range you've memorized:
-                </h3>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <label className="block text-sm text-gray-600 mb-1">From Page</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="604"
-                      value={partialPages.start}
-                      onChange={(e) => setPartialPages({ ...partialPages, start: e.target.value })}
-                      placeholder="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                  </div>
-                  <span className="text-gray-500 mt-6">to</span>
-                  <div className="flex-1">
-                    <label className="block text-sm text-gray-600 mb-1">To Page</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="604"
-                      value={partialPages.end}
-                      onChange={(e) => setPartialPages({ ...partialPages, end: e.target.value })}
-                      placeholder="10"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                  </div>
-                </div>
+            {/* Add Range Button */}
+            <button
+              onClick={addPageRange}
+              className="w-full py-3 border-2 border-dashed border-green-400 text-green-600 rounded-lg font-medium hover:bg-green-50 transition-colors mb-6"
+            >
+              + Add Page Range
+            </button>
 
-                {/* Show which Juz the pages belong to */}
-                {partialPages.start && partialPages.end && (
-                  <div className="mt-3 text-sm text-blue-700">
-                    Pages {partialPages.start}-{partialPages.end}
-                    {getJuzForPage(parseInt(partialPages.start)) && (
-                      <span>
-                        {' '}(Juz {getJuzForPage(parseInt(partialPages.start))}
-                        {getJuzForPage(parseInt(partialPages.end)) !== getJuzForPage(parseInt(partialPages.start)) && 
-                          ` - ${getJuzForPage(parseInt(partialPages.end))}`})
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                <p className="text-xs text-gray-500 mt-2">
-                  💡 Tip: Page numbers are from 1 to 604 (Madani Mushaf)
-                </p>
-              </div>
-            )}
+            {/* Info */}
+            <div className="bg-gray-50 p-3 rounded-lg mb-6 text-sm">
+              <p className="text-gray-600">
+                💡 <strong>Tip:</strong> Page numbers are from 1 to 604 (Madani Mushaf).
+                Add as many ranges as needed.
+              </p>
+            </div>
 
             {/* Summary */}
-            <div className="bg-gray-50 p-3 rounded-lg mb-6 text-sm">
+            <div className="bg-green-50 p-3 rounded-lg mb-6 text-sm">
               <span className="text-gray-600">Total pages to be marked as memorized: </span>
-              <span className="font-medium text-gray-800">
+              <span className="font-medium text-green-700">
                 {totalMemorizedPages} pages
               </span>
+              {selectedJuz.length > 0 && pageRanges.length > 0 && (
+                <span className="text-gray-500 ml-1">
+                  (from {selectedJuz.length} Juz + {pageRanges.filter(r => r.start && r.end).length} range{pageRanges.filter(r => r.start && r.end).length !== 1 ? 's' : ''})
+                </span>
+              )}
             </div>
 
             {/* Navigation */}
@@ -385,7 +436,8 @@ const Onboarding = () => {
               </button>
               <button
                 onClick={() => setStep(4)}
-                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                disabled={!validateAllRanges()}
+                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 Next →
               </button>
@@ -437,7 +489,7 @@ const Onboarding = () => {
               <h3 className="font-medium text-blue-800 mb-2">📚 Daily Review</h3>
               <p className="text-blue-700 text-sm">
                 In addition to new memorization, you'll review <strong>3 pages</strong> daily 
-                from your previously memorized portions. This helps strengthen your retention.
+                from your previously memorized portions. This helps strengthen retention.
               </p>
             </div>
 

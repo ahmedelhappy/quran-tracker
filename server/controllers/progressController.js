@@ -92,7 +92,7 @@ exports.getTodayTasks = async (req, res) => {
     const memorizedPageNumbers = allMemorizedPages.map(p => p.pageNumber);
 
     // === NEW MEMORIZATION LOGIC ===
-    // Count how many pages were memorized TODAY
+    // Count how many pages were memorized TODAY (these are NEW memorizations, not reviews)
     const pagesMemorizedToday = allMemorizedPages.filter(p => {
       if (!p.memorizedDate) return false;
       return getDateString(p.memorizedDate) === todayString;
@@ -127,19 +127,27 @@ exports.getTodayTasks = async (req, res) => {
     );
 
     // === REVIEW LOGIC ===
-    // Get pages reviewed today
-    const pagesReviewedToday = allMemorizedPages.filter(p => {
+    // Reviews are pages that were memorized BEFORE today and reviewed today
+    // We need to count reviews separately from new memorizations
+    
+    // Pages that qualify for review: memorized before today
+    const pagesForReview = allMemorizedPages.filter(p => {
+      if (!p.memorizedDate) return true; // Old data without memorizedDate
+      return getDateString(p.memorizedDate) !== todayString; // Not memorized today
+    });
+
+    // Count reviews completed today (pages memorized before today, but reviewed today)
+    const reviewsCompletedToday = pagesForReview.filter(p => {
       if (!p.lastReviewedDate) return false;
       return getDateString(p.lastReviewedDate) === todayString;
-    });
-    const reviewsCompletedToday = pagesReviewedToday.length;
+    }).length;
 
-    // Daily review target is 3 pages
+    // Daily review target
     const dailyReviewTarget = 3;
     const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
 
     // Get pages for review (not reviewed today, oldest first)
-    const reviewPages = allMemorizedPages.filter(p => {
+    const reviewPages = pagesForReview.filter(p => {
       if (!p.lastReviewedDate) return true;
       return getDateString(p.lastReviewedDate) !== todayString;
     }).slice(0, remainingReviews);
@@ -160,10 +168,10 @@ exports.getTodayTasks = async (req, res) => {
     );
 
     // === EXTRA PAGES (for "Want more?" section) ===
-    // Find next 3 pages after today's assigned new pages
+    // Extra new pages
     const extraNewPages = [];
     let foundCount = 0;
-    let skipCount = remainingNewPages; // Skip the ones already assigned
+    let skipCount = newPages.length;
     for (let page = 1; page <= 604; page++) {
       if (!memorizedPageNumbers.includes(page)) {
         if (skipCount > 0) {
@@ -176,7 +184,6 @@ exports.getTodayTasks = async (req, res) => {
       }
     }
 
-    // Get metadata for extra pages
     const extraPagesData = await Promise.all(
       extraNewPages.map(async (pageNum) => {
         const metadata = await QuranMetadata.findOne({ pageNumber: pageNum });
@@ -189,8 +196,8 @@ exports.getTodayTasks = async (req, res) => {
       })
     );
 
-    // Extra review pages (next 3 not assigned today)
-    const extraReviewPages = allMemorizedPages.filter(p => {
+    // Extra review pages
+    const extraReviewPages = pagesForReview.filter(p => {
       if (!p.lastReviewedDate) return true;
       return getDateString(p.lastReviewedDate) !== todayString;
     }).slice(remainingReviews, remainingReviews + 3);
@@ -215,7 +222,7 @@ exports.getTodayTasks = async (req, res) => {
 
     // Check completion status
     const newMemorizationComplete = remainingNewPages === 0 || totalMemorized === 604;
-    const reviewComplete = remainingReviews === 0 || allMemorizedPages.length === 0;
+    const reviewComplete = remainingReviews === 0 || pagesForReview.length === 0;
     const todayComplete = newMemorizationComplete && reviewComplete && totalMemorized > 0;
 
     res.status(200).json({
@@ -270,6 +277,8 @@ exports.markPageComplete = async (req, res) => {
     const now = new Date();
 
     if (type === 'new') {
+      // Mark as newly memorized
+      // Set memorizedDate to NOW so we know it was memorized today
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
         {
@@ -283,6 +292,7 @@ exports.markPageComplete = async (req, res) => {
         { upsert: true, new: true }
       );
     } else if (type === 'review') {
+      // Update review date only (don't change memorizedDate)
       const result = await UserProgress.findOneAndUpdate(
         { userId, pageNumber, status: 'memorized' },
         {
