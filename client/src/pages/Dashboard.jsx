@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { progressAPI } from '../services/api';
+import Navbar from '../components/Navbar';
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [todayData, setTodayData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -43,17 +44,15 @@ const Dashboard = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    window.location.href = '/login';
-  };
-
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-600 mt-4">Loading your tasks...</p>
+      <div>
+        <Navbar />
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-gray-600 mt-4">Loading your tasks...</p>
+          </div>
         </div>
       </div>
     );
@@ -69,7 +68,6 @@ const Dashboard = () => {
     return pages;
   };
 
-  // Page card component for reuse
   const PageCard = ({ page, type, isExtra = false }) => (
     <div className={`flex items-center justify-between ${type === 'new' ? 'bg-green-50' : 'bg-blue-50'} rounded-lg p-3`}>
       <div>
@@ -104,29 +102,8 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-800">📖 Quran Tracker</h1>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-orange-100 px-3 py-1 rounded-full">
-              <span className="text-orange-600">🔥</span>
-              <span className="font-medium text-orange-700">
-                {stats.currentStreak || 0} day streak
-              </span>
-            </div>
-            <span className="text-gray-600 hidden sm:inline">Welcome, {user?.name}!</span>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+      <Navbar />
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Error Message */}
         {error && (
@@ -138,17 +115,27 @@ const Dashboard = () => {
 
         {/* Welcome Card */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg p-6 mb-6 text-white">
-          <h2 className="text-2xl font-bold mb-2">
-            Assalamu Alaikum, {user?.name}! 👋
-          </h2>
-          <p className="opacity-90">
-            {totalMemorized === 0
-              ? "Ready to start your memorization journey?"
-              : `You've memorized ${totalMemorized} pages (${stats.percentage || 0}% of the Quran)`}
-          </p>
-          <p className="opacity-75 text-sm mt-1">
-            Daily goal: {formatDailyPages(stats.dailyNewPages)} new page{stats.dailyNewPages > 1 ? 's' : ''} + {stats.dailyReviewTarget || 3} review pages
-          </p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold mb-2">
+                Assalamu Alaikum, {user?.name}! 👋
+              </h2>
+              <p className="opacity-90">
+                {totalMemorized === 0
+                  ? "Ready to start your memorization journey?"
+                  : `You've memorized ${totalMemorized} pages (${stats.percentage || 0}% of the Quran)`}
+              </p>
+              <p className="opacity-75 text-sm mt-1">
+                Daily goal: {formatDailyPages(stats.dailyNewPages)} new page{stats.dailyNewPages > 1 ? 's' : ''} + {stats.dailyReviewTarget || 3} review pages
+              </p>
+            </div>
+            <div className="flex items-center gap-2 bg-white/20 px-3 py-2 rounded-full">
+              <span>🔥</span>
+              <span className="font-medium">
+                {stats.currentStreak || 0} day streak
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Today Complete Card */}
@@ -160,7 +147,7 @@ const Dashboard = () => {
               You've finished {stats.newPagesCompletedToday} new page{stats.newPagesCompletedToday !== 1 ? 's' : ''} and {stats.reviewsCompletedToday} review{stats.reviewsCompletedToday !== 1 ? 's' : ''} today!
             </p>
             <p className="opacity-75 text-sm">
-              Come back tomorrow to continue your journey, or practice more below.
+              Come back tomorrow, or practice more below.
             </p>
           </div>
         )}
@@ -190,7 +177,6 @@ const Dashboard = () => {
               </span>
             </div>
 
-            {/* Today's assigned new pages */}
             {todayData?.newPages && todayData.newPages.length > 0 ? (
               <div className="space-y-3 mb-4">
                 {todayData.newPages.map((page) => (
@@ -208,7 +194,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Want more? Section */}
             {!hasCompletedQuran && todayData?.extraNewPages?.length > 0 && (
               <div className="border-t pt-4">
                 <button
@@ -240,7 +225,6 @@ const Dashboard = () => {
               </span>
             </div>
 
-            {/* Today's assigned review pages */}
             {todayData?.reviewPages && todayData.reviewPages.length > 0 ? (
               <div className="space-y-3 mb-4">
                 {todayData.reviewPages.map((page) => (
@@ -258,7 +242,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Want more? Section */}
             {todayData?.extraReviewPages?.length > 0 && (
               <div className="border-t pt-4">
                 <button

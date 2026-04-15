@@ -8,27 +8,23 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Onboarding from './pages/Onboarding';
+import Settings from './pages/Settings';
+import Progress from './pages/Progress';
 
 // Wrapper to check onboarding status
 const DashboardWrapper = () => {
   const { user } = useAuth();
-  
-  // If user hasn't completed onboarding, redirect to onboarding
   if (user && !user.onboardingComplete) {
     return <Navigate to="/onboarding" replace />;
   }
-  
   return <Dashboard />;
 };
 
 const OnboardingWrapper = () => {
   const { user } = useAuth();
-  
-  // If user already completed onboarding, redirect to dashboard
   if (user && user.onboardingComplete) {
     return <Navigate to="/dashboard" replace />;
   }
-  
   return <Onboarding />;
 };
 
@@ -57,47 +53,35 @@ function App() {
       <Router>
         <Routes>
           {/* Public Routes */}
-          <Route 
-            path="/" 
-            element={
-              <PublicRoute>
-                <Landing />
-              </PublicRoute>
-            } 
+          <Route
+            path="/"
+            element={<PublicRoute><Landing /></PublicRoute>}
           />
-          <Route 
-            path="/login" 
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            } 
+          <Route
+            path="/login"
+            element={<PublicRoute><Login /></PublicRoute>}
           />
-          <Route 
-            path="/register" 
-            element={
-              <PublicRoute>
-                <Register />
-              </PublicRoute>
-            } 
+          <Route
+            path="/register"
+            element={<PublicRoute><Register /></PublicRoute>}
           />
 
           {/* Protected Routes */}
           <Route
             path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardWrapper />
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute><DashboardWrapper /></ProtectedRoute>}
           />
           <Route
             path="/onboarding"
-            element={
-              <ProtectedRoute>
-                <OnboardingWrapper />
-              </ProtectedRoute>
-            }
+            element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>}
+          />
+          <Route
+            path="/settings"
+            element={<ProtectedRoute><Settings /></ProtectedRoute>}
+          />
+          <Route
+            path="/progress"
+            element={<ProtectedRoute><Progress /></ProtectedRoute>}
           />
 
           {/* 404 - Redirect to home */}
