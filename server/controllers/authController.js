@@ -134,7 +134,8 @@ exports.getMe = async (req, res) => {
         onboardingComplete: user.onboardingComplete,
         dailyNewPages: user.dailyNewPages,
         currentStreak: user.currentStreak,
-        lastActiveDate: user.lastActiveDate
+        lastActiveDate: user.lastActiveDate,
+        createdAt: user.createdAt
       }
     });
 
@@ -143,6 +144,82 @@ exports.getMe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, dailyNewPages } = req.body;
+
+    // Build update object (only include fields that were sent)
+    const updateData = {};
+
+    if (name !== undefined) {
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Name cannot be empty'
+        });
+      }
+      if (name.length > 50) {
+        return res.status(400).json({
+          success: false,
+          message: 'Name cannot exceed 50 characters'
+        });
+      }
+      updateData.name = name.trim();
+    }
+
+    if (dailyNewPages !== undefined) {
+      const pages = parseFloat(dailyNewPages);
+      if (isNaN(pages) || pages < 0.5 || pages > 10) {
+        return res.status(400).json({
+          success: false,
+          message: 'Daily pages must be between 0.5 and 10'
+        });
+      }
+      updateData.dailyNewPages = pages;
+    }
+
+    // Update user
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        dailyNewPages: updatedUser.dailyNewPages,
+        onboardingComplete: updatedUser.onboardingComplete,
+        currentStreak: updatedUser.currentStreak,
+        createdAt: updatedUser.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('UpdateProfile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating profile',
       error: error.message
     });
   }
