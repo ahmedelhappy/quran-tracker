@@ -37,7 +37,6 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.getMe();
       setUser(response.data.data);
     } catch (err) {
-      // Token invalid or expired
       console.log(err);
       localStorage.removeItem('token');
       setUser(null);
@@ -54,7 +53,6 @@ export const AuthProvider = ({ children }) => {
       
       const { token, ...userData } = response.data.data;
       
-      // Save token and user
       localStorage.setItem('token', token);
       setUser(userData);
       
@@ -74,7 +72,6 @@ export const AuthProvider = ({ children }) => {
       
       const { token, ...userData } = response.data.data;
       
-      // Save token and user
       localStorage.setItem('token', token);
       setUser(userData);
       
@@ -92,6 +89,24 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  // Update user data in context (used after profile updates)
+  const updateUser = (updatedData) => {
+    setUser(prev => ({
+      ...prev,
+      ...updatedData
+    }));
+  };
+
+  // Refresh user data from server
+  const refreshUser = async () => {
+    try {
+      const response = await authAPI.getMe();
+      setUser(response.data.data);
+    } catch (err) {
+      console.log('Refresh user error:', err);
+    }
+  };
+
   // Clear error
   const clearError = () => setError(null);
 
@@ -103,6 +118,8 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
+    updateUser,
+    refreshUser,
     clearError,
     isAuthenticated: !!user,
   };
