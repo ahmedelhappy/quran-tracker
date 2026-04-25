@@ -2,10 +2,59 @@ const UserProgress = require('../models/UserProgress');
 const QuranMetadata = require('../models/QuranMetadata');
 const User = require('../models/User');
 
-// Helper function to get date string (YYYY-MM-DD) for consistent comparison
-const getDateString = (date) => {
-  const d = new Date(date);
-  return d.toISOString().split('T')[0];
+const getDateString = (date) => new Date(date).toISOString().split('T')[0];
+
+const MS_PER_DAY = 86400000;
+
+// Returns the number of daily review pages based on intensity and memorized count.
+// Non-Hafiz: capped at 40. Hafiz: fixed by intensity.
+const computeDailyReviewTarget = (totalMemorized, reviewIntensity) => {
+  if (totalMemorized === 0) return 0;
+  if (totalMemorized === 604) {
+    const hafizSchedule = { light: 40, standard: 60, strong: Math.ceil(604 / 7) };
+    return hafizSchedule[reviewIntensity] || hafizSchedule.standard;
+  }
+  if (totalMemorized < 3) return totalMemorized;
+
+  const cycleDays = { light: 14, standard: 10, strong: 7 }[reviewIntensity] || 10;
+  return Math.min(Math.ceil(totalMemorized / cycleDays), 40);
+};
+
+// Returns how many new pages are allocated for today based on planStartDate.
+// For 0.5/day: alternates 1, 0, 1, 0 … so the user gets 1 page every 2 days.
+// Missed days don't accumulate — each day only gets its own allocation.
+const computeTodayNewPageTarget = (dailyNewPages, planStartDate) => {
+  const start = new Date(planStartDate).getTime();
+  const daysPassed = Math.floor((Date.now() - start) / MS_PER_DAY);
+  const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
+  const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
+  return assignedToday - assignedYesterday; // always 0 or 1 for sane values
+};
+
+// Returns true if the streak should continue, accounting for off days in the gap.
+const isStreakContinued = (lastActiveDate, offDays) => {
+  if (!lastActiveDate) return false;
+
+  const lastUTC = new Date(lastActiveDate);
+  lastUTC.setUTCHours(0, 0, 0, 0);
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+
+  const daysDiff = Math.round((todayUTC - lastUTC) / MS_PER_DAY);
+  if (daysDiff <= 1) return true;
+
+  // All days between lastActive (exclusive) and today (exclusive) must be off days
+  for (let d = 1; d < daysDiff; d++) {
+    const checkDay = new Date(lastUTC.getTime() + d * MS_PER_DAY).getUTCDay();
+    if (!offDays.includes(checkDay)) return false;
+  }
+  return true;
+};
+
+// Fetches QuranMetadata for an array of page numbers in one query
+const getMetadataMap = async (pageNumbers) => {
+  const records = await QuranMetadata.find({ pageNumber: { $in: pageNumbers } });
+  return Object.fromEntries(records.map(r => [r.pageNumber, r]));
 };
 
 // @desc    Complete onboarding - save initial progress
@@ -16,37 +65,34 @@ exports.completeOnboarding = async (req, res) => {
     const userId = req.user._id;
     const { memorizedPages, dailyNewPages } = req.body;
 
-    // Validate dailyNewPages (allow 0.5 to 10)
-    const dailyGoal = Math.min(Math.max(dailyNewPages || 1, 0.5), 10);
+    const dailyGoal = Math.min(Math.max(parseFloat(dailyNewPages) || 1, 0.5), 10);
 
-    // Update user settings
     await User.findByIdAndUpdate(userId, {
       dailyNewPages: dailyGoal,
-      onboardingComplete: true
+      onboardingComplete: true,
+      planStartDate: new Date(),
     });
 
-    // If user has memorized pages, create progress records
     if (memorizedPages && memorizedPages.length > 0) {
-      // Set lastReviewedDate to yesterday so pages show up for review today
       const yesterday = new Date();
       yesterday.setUTCHours(0, 0, 0, 0);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const progressRecords = memorizedPages.map(pageNumber => ({
-        userId,
-        pageNumber,
-        status: 'memorized',
-        memorizedDate: yesterday,
-        lastReviewedDate: yesterday,
-        reviewCount: 0
-      }));
-
-      const bulkOps = progressRecords.map(record => ({
+      const bulkOps = memorizedPages.map(pageNumber => ({
         updateOne: {
-          filter: { userId: record.userId, pageNumber: record.pageNumber },
-          update: { $set: record },
-          upsert: true
-        }
+          filter: { userId, pageNumber },
+          update: {
+            $set: {
+              userId,
+              pageNumber,
+              status: 'memorized',
+              memorizedDate: yesterday,
+              lastReviewedDate: yesterday,
+              reviewCount: 0,
+            },
+          },
+          upsert: true,
+        },
       }));
 
       await UserProgress.bulkWrite(bulkOps);
@@ -57,21 +103,16 @@ exports.completeOnboarding = async (req, res) => {
       message: 'Onboarding completed successfully',
       data: {
         dailyNewPages: dailyGoal,
-        memorizedCount: memorizedPages?.length || 0
-      }
+        memorizedCount: memorizedPages?.length || 0,
+      },
     });
-
   } catch (error) {
     console.error('Onboarding error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error completing onboarding',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error completing onboarding', error: error.message });
   }
 };
 
-// @desc    Get today's tasks (new page + review pages)
+// @desc    Get today's tasks (new pages + review pages)
 // @route   GET /api/progress/today
 // @access  Private
 exports.getTodayTasks = async (req, res) => {
@@ -80,181 +121,155 @@ exports.getTodayTasks = async (req, res) => {
     const user = await User.findById(userId);
 
     const todayString = getDateString(new Date());
+    const offDays = user.offDays || [];
 
-    // Get all memorized pages for this user
-    const allMemorizedPages = await UserProgress.find({
-      userId,
-      status: 'memorized'
-    }).sort({ lastReviewedDate: 1 });
+    // --- OFF DAY ---
+    if (offDays.includes(new Date().getUTCDay())) {
+      const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+      return res.status(200).json({
+        success: true,
+        data: {
+          isOffDay: true,
+          isHafiz: totalMemorized === 604,
+          newPages: [], reviewPages: [], extraNewPages: [], extraReviewPages: [],
+          stats: {
+            totalMemorized, totalPages: 604,
+            percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
+            currentStreak: user.currentStreak || 0,
+            dailyNewPages: user.dailyNewPages || 1,
+            reviewIntensity: user.reviewIntensity || 'standard',
+            newPagesCompletedToday: 0, reviewsCompletedToday: 0,
+            targetNewPages: 0, dailyReviewTarget: 0,
+            newMemorizationComplete: true, reviewComplete: true,
+            todayComplete: true, isHafiz: totalMemorized === 604,
+          },
+        },
+      });
+    }
 
-    const memorizedPageNumbers = allMemorizedPages.map(p => p.pageNumber);
+    // --- LOAD ALL MEMORIZED PAGES ---
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
+      .sort({ lastReviewedDate: 1 });
 
-    // === NEW MEMORIZATION LOGIC ===
-    // Count how many pages were memorized TODAY
-    const pagesMemorizedToday = allMemorizedPages.filter(p => {
-      if (!p.memorizedDate) return false;
-      return getDateString(p.memorizedDate) === todayString;
-    });
-    const newPagesCompletedToday = pagesMemorizedToday.length;
+    const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+    const totalMemorized = allMemorizedPages.length;
+    const isHafiz = totalMemorized === 604;
 
-    // Calculate how many new pages to show
-    const dailyNewPages = user.dailyNewPages || 1;
-    const targetNewPages = dailyNewPages < 1 ? 1 : Math.ceil(dailyNewPages);
+    // --- REVIEW TARGET ---
+    const dailyReviewTarget = computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+
+    // --- NEW MEMORIZATION TARGET ---
+    let targetNewPages = 0;
+    if (!isHafiz) {
+      const planStart = user.planStartDate || user.createdAt;
+      targetNewPages = computeTodayNewPageTarget(user.dailyNewPages || 1, planStart);
+    }
+
+    // Pages memorized today
+    const newPagesCompletedToday = allMemorizedPages.filter(
+      p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+    ).length;
+
     const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
-    // Find next pages to memorize (only show remaining for today)
-    // FIX: Only enter loop if there are remaining pages to show
-    const newPages = [];
+    // Next unmemorized pages
+    const newPageNums = [];
     if (remainingNewPages > 0) {
       for (let page = 1; page <= 604; page++) {
-        if (!memorizedPageNumbers.includes(page)) {
-          newPages.push(page);
-          if (newPages.length >= remainingNewPages) break;
+        if (!memorizedPageNumbers.has(page)) {
+          newPageNums.push(page);
+          if (newPageNums.length >= remainingNewPages) break;
         }
       }
     }
 
-    // Get metadata for new pages
-    const newPagesData = await Promise.all(
-      newPages.map(async (pageNum) => {
-        const metadata = await QuranMetadata.findOne({ pageNumber: pageNum });
-        return {
-          pageNumber: pageNum,
-          juzNumber: metadata?.juzNumber || 1,
-          surahName: metadata?.surahName || 'Unknown',
-          surahNameArabic: metadata?.surahNameArabic || ''
-        };
-      })
-    );
-
-    // === REVIEW LOGIC ===
-    // Pages that qualify for review: memorized before today
-    const pagesForReview = allMemorizedPages.filter(p => {
-      if (!p.memorizedDate) return true;
-      return getDateString(p.memorizedDate) !== todayString;
-    });
-
-    // Count reviews completed today
-    const reviewsCompletedToday = pagesForReview.filter(p => {
-      if (!p.lastReviewedDate) return false;
-      return getDateString(p.lastReviewedDate) === todayString;
-    }).length;
-
-    // Daily review target
-    const dailyReviewTarget = 3;
-    const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
-
-    // Get pages for review (not reviewed today, oldest first)
-    // FIX: Only get pages if there are remaining reviews
-    let reviewPages = [];
-    if (remainingReviews > 0) {
-      reviewPages = pagesForReview.filter(p => {
-        if (!p.lastReviewedDate) return true;
-        return getDateString(p.lastReviewedDate) !== todayString;
-      }).slice(0, remainingReviews);
-    }
-
-    // Get metadata for review pages
-    const reviewPagesData = await Promise.all(
-      reviewPages.map(async (progress) => {
-        const metadata = await QuranMetadata.findOne({ pageNumber: progress.pageNumber });
-        return {
-          pageNumber: progress.pageNumber,
-          juzNumber: metadata?.juzNumber || 1,
-          surahName: metadata?.surahName || 'Unknown',
-          surahNameArabic: metadata?.surahNameArabic || '',
-          lastReviewedDate: progress.lastReviewedDate,
-          reviewCount: progress.reviewCount || 0
-        };
-      })
-    );
-
-    // === EXTRA PAGES (for "Want more?" section) ===
-    // Find pages that are NOT memorized yet (for extra new memorization)
-    const allUnmemorizedPages = [];
-    for (let page = 1; page <= 604; page++) {
-      if (!memorizedPageNumbers.includes(page)) {
-        allUnmemorizedPages.push(page);
+    // Extra unmemorized pages (for "Want more?" section)
+    const extraNewPageNums = [];
+    for (let page = 1; page <= 604 && extraNewPageNums.length < 3; page++) {
+      if (!memorizedPageNumbers.has(page) && !newPageNums.includes(page)) {
+        extraNewPageNums.push(page);
       }
     }
-    
-    // Skip the ones already shown in today's tasks, get next 3
-    const extraNewPages = allUnmemorizedPages.slice(newPages.length, newPages.length + 3);
 
-    const extraPagesData = await Promise.all(
-      extraNewPages.map(async (pageNum) => {
-        const metadata = await QuranMetadata.findOne({ pageNumber: pageNum });
-        return {
-          pageNumber: pageNum,
-          juzNumber: metadata?.juzNumber || 1,
-          surahName: metadata?.surahName || 'Unknown',
-          surahNameArabic: metadata?.surahNameArabic || ''
-        };
-      })
+    // --- REVIEW PAGES ---
+    const pagesForReview = allMemorizedPages.filter(
+      p => !p.memorizedDate || getDateString(p.memorizedDate) !== todayString
     );
 
-    // Extra review pages (pages not reviewed today, skip the ones already shown)
-    const allPagesNeedingReview = pagesForReview.filter(p => {
-      if (!p.lastReviewedDate) return true;
-      return getDateString(p.lastReviewedDate) !== todayString;
+    const reviewsCompletedToday = pagesForReview.filter(
+      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
+    ).length;
+
+    const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
+
+    const pendingReviews = pagesForReview.filter(
+      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
+    );
+
+    const reviewPages = pendingReviews.slice(0, remainingReviews);
+    const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
+
+    // --- METADATA (batched) ---
+    const allPageNumsNeeded = [
+      ...newPageNums, ...extraNewPageNums,
+      ...reviewPages.map(p => p.pageNumber),
+      ...extraReviewPages.map(p => p.pageNumber),
+    ];
+    const metaMap = await getMetadataMap(allPageNumsNeeded);
+
+    const toNewPageDto = (pageNum) => ({
+      pageNumber: pageNum,
+      juzNumber: metaMap[pageNum]?.juzNumber || 1,
+      surahName: metaMap[pageNum]?.surahName || 'Unknown',
+      surahNameArabic: metaMap[pageNum]?.surahNameArabic || '',
     });
-    
-    const extraReviewPages = allPagesNeedingReview.slice(reviewPages.length, reviewPages.length + 3);
 
-    const extraReviewData = await Promise.all(
-      extraReviewPages.map(async (progress) => {
-        const metadata = await QuranMetadata.findOne({ pageNumber: progress.pageNumber });
-        return {
-          pageNumber: progress.pageNumber,
-          juzNumber: metadata?.juzNumber || 1,
-          surahName: metadata?.surahName || 'Unknown',
-          surahNameArabic: metadata?.surahNameArabic || '',
-          reviewCount: progress.reviewCount || 0
-        };
-      })
-    );
+    const toReviewPageDto = (progress) => ({
+      pageNumber: progress.pageNumber,
+      juzNumber: metaMap[progress.pageNumber]?.juzNumber || 1,
+      surahName: metaMap[progress.pageNumber]?.surahName || 'Unknown',
+      surahNameArabic: metaMap[progress.pageNumber]?.surahNameArabic || '',
+      lastReviewedDate: progress.lastReviewedDate,
+      reviewCount: progress.reviewCount || 0,
+    });
 
-    // Calculate stats
-    const totalMemorized = allMemorizedPages.length;
-    const totalPages = 604;
-    const percentage = ((totalMemorized / totalPages) * 100).toFixed(1);
-
-    // Check completion status
-    const newMemorizationComplete = newPagesCompletedToday >= targetNewPages || totalMemorized === 604;
+    // --- STATS ---
+    const percentage = ((totalMemorized / 604) * 100).toFixed(1);
+    const newMemorizationComplete = isHafiz || newPagesCompletedToday >= targetNewPages;
     const reviewComplete = reviewsCompletedToday >= dailyReviewTarget || pagesForReview.length === 0;
-    const todayComplete = newMemorizationComplete && reviewComplete && totalMemorized > 0;
+    const todayComplete = totalMemorized > 0 && newMemorizationComplete && reviewComplete;
+
+    const activeDaysPerWeek = 7 - offDays.length;
+    const effectiveDailyPages = (user.dailyNewPages || 1) * (activeDaysPerWeek / 7);
+    const estimatedDays = !isHafiz && effectiveDailyPages > 0
+      ? Math.ceil((604 - totalMemorized) / effectiveDailyPages)
+      : 0;
 
     res.status(200).json({
       success: true,
       data: {
-        newPages: newPagesData,
-        reviewPages: reviewPagesData,
-        extraNewPages: extraPagesData,
-        extraReviewPages: extraReviewData,
+        isOffDay: false,
+        isHafiz,
+        newPages: newPageNums.map(toNewPageDto),
+        reviewPages: reviewPages.map(toReviewPageDto),
+        extraNewPages: extraNewPageNums.map(toNewPageDto),
+        extraReviewPages: extraReviewPages.map(toReviewPageDto),
         stats: {
-          totalMemorized,
-          totalPages,
+          totalMemorized, totalPages: 604,
           percentage: parseFloat(percentage),
           currentStreak: user.currentStreak || 0,
           dailyNewPages: user.dailyNewPages || 1,
-          newPagesCompletedToday,
-          reviewsCompletedToday,
-          targetNewPages,
-          dailyReviewTarget,
-          newMemorizationComplete,
-          reviewComplete,
-          todayComplete
-        }
-      }
+          reviewIntensity: user.reviewIntensity || 'standard',
+          newPagesCompletedToday, reviewsCompletedToday,
+          targetNewPages, dailyReviewTarget,
+          newMemorizationComplete, reviewComplete, todayComplete,
+          isHafiz, estimatedDays,
+        },
+      },
     });
-
   } catch (error) {
     console.error('GetTodayTasks error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching today\'s tasks',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Error fetching today's tasks", error: error.message });
   }
 };
 
@@ -267,10 +282,7 @@ exports.markPageComplete = async (req, res) => {
     const { pageNumber, type } = req.body;
 
     if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid page number'
-      });
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
     }
 
     const now = new Date();
@@ -278,79 +290,86 @@ exports.markPageComplete = async (req, res) => {
     if (type === 'new') {
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
-        {
-          $set: {
-            status: 'memorized',
-            memorizedDate: now,
-            lastReviewedDate: now
-          },
-          $inc: { reviewCount: 1 }
-        },
+        { $set: { status: 'memorized', memorizedDate: now, lastReviewedDate: now }, $inc: { reviewCount: 1 } },
         { upsert: true, new: true }
       );
     } else if (type === 'review') {
       const result = await UserProgress.findOneAndUpdate(
         { userId, pageNumber, status: 'memorized' },
-        {
-          $set: { lastReviewedDate: now },
-          $inc: { reviewCount: 1 }
-        },
+        { $set: { lastReviewedDate: now }, $inc: { reviewCount: 1 } },
         { new: true }
       );
-
       if (!result) {
-        return res.status(400).json({
-          success: false,
-          message: 'Page not found or not memorized yet'
-        });
+        return res.status(400).json({ success: false, message: 'Page not found or not memorized yet' });
       }
+    } else {
+      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
     }
 
-    // Update user's streak
+    // --- STREAK UPDATE ---
     const user = await User.findById(userId);
     const todayString = getDateString(now);
-    const lastActiveString = user.lastActiveDate ? getDateString(user.lastActiveDate) : null;
+    const offDays = user.offDays || [];
 
     let newStreak = user.currentStreak || 0;
-
-    if (!lastActiveString) {
+    if (!user.lastActiveDate) {
       newStreak = 1;
-    } else if (lastActiveString === todayString) {
+    } else if (getDateString(user.lastActiveDate) === todayString) {
       newStreak = user.currentStreak || 1;
+    } else if (isStreakContinued(user.lastActiveDate, offDays)) {
+      newStreak = (user.currentStreak || 0) + 1;
     } else {
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayString = getDateString(yesterday);
-
-      if (lastActiveString === yesterdayString) {
-        newStreak = (user.currentStreak || 0) + 1;
-      } else {
-        newStreak = 1;
-      }
+      newStreak = 1;
     }
 
-    await User.findByIdAndUpdate(userId, {
-      lastActiveDate: now,
-      currentStreak: newStreak
-    });
+    await User.findByIdAndUpdate(userId, { lastActiveDate: now, currentStreak: newStreak });
 
     res.status(200).json({
       success: true,
       message: `Page ${pageNumber} marked as ${type === 'new' ? 'memorized' : 'reviewed'}`,
-      data: {
-        pageNumber,
-        type,
-        newStreak
-      }
+      data: { pageNumber, type, newStreak },
     });
-
   } catch (error) {
     console.error('MarkPageComplete error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error marking page complete',
-      error: error.message
+    res.status(500).json({ success: false, message: 'Error marking page complete', error: error.message });
+  }
+};
+
+// @desc    Get estimated completion time based on remaining pages
+// @route   GET /api/progress/estimate
+// @access  Private
+exports.getEstimate = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const dailyPages = parseFloat(req.query.dailyPages) || user.dailyNewPages || 1;
+    if (isNaN(dailyPages) || dailyPages < 0.5 || dailyPages > 10) {
+      return res.status(400).json({ success: false, message: 'dailyPages must be between 0.5 and 10' });
+    }
+
+    const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+    const remainingPages = 604 - totalMemorized;
+
+    const offDays = user.offDays || [];
+    const activeDaysPerWeek = 7 - offDays.length;
+    const effectiveDailyPages = dailyPages * (activeDaysPerWeek / 7);
+
+    const estimatedDays = effectiveDailyPages > 0 ? Math.ceil(remainingPages / effectiveDailyPages) : null;
+    const estimatedMonths = estimatedDays ? Math.round(estimatedDays / 30) : null;
+    const estimatedYears = estimatedDays ? parseFloat((estimatedDays / 365).toFixed(1)) : null;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalMemorized, remainingPages,
+        dailyPages, activeDaysPerWeek,
+        estimatedDays, estimatedMonths, estimatedYears,
+      },
     });
+  } catch (error) {
+    console.error('GetEstimate error:', error);
+    res.status(500).json({ success: false, message: 'Error calculating estimate', error: error.message });
   }
 };
 
@@ -360,10 +379,7 @@ exports.markPageComplete = async (req, res) => {
 exports.getAllProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    const progress = await UserProgress.find({ userId, status: 'memorized' })
-      .sort({ pageNumber: 1 });
-
+    const progress = await UserProgress.find({ userId, status: 'memorized' }).sort({ pageNumber: 1 });
     const pageNumbers = progress.map(p => p.pageNumber);
 
     res.status(200).json({
@@ -371,17 +387,12 @@ exports.getAllProgress = async (req, res) => {
       data: {
         memorizedPages: pageNumbers,
         totalMemorized: pageNumbers.length,
-        percentage: ((pageNumbers.length / 604) * 100).toFixed(1)
-      }
+        percentage: ((pageNumbers.length / 604) * 100).toFixed(1),
+      },
     });
-
   } catch (error) {
     console.error('GetAllProgress error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching progress',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching progress', error: error.message });
   }
 };
 
@@ -391,23 +402,19 @@ exports.getAllProgress = async (req, res) => {
 exports.getJuzProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    const memorizedProgress = await UserProgress.find({
-      userId,
-      status: 'memorized'
-    });
-    const memorizedPages = memorizedProgress.map(p => p.pageNumber);
+    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' });
+    const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
 
     const juzRanges = [
-      { juz: 1, start: 1, end: 21 },
-      { juz: 2, start: 22, end: 41 },
-      { juz: 3, start: 42, end: 61 },
-      { juz: 4, start: 62, end: 81 },
-      { juz: 5, start: 82, end: 101 },
-      { juz: 6, start: 102, end: 121 },
-      { juz: 7, start: 122, end: 141 },
-      { juz: 8, start: 142, end: 161 },
-      { juz: 9, start: 162, end: 181 },
+      { juz: 1,  start: 1,   end: 21  },
+      { juz: 2,  start: 22,  end: 41  },
+      { juz: 3,  start: 42,  end: 61  },
+      { juz: 4,  start: 62,  end: 81  },
+      { juz: 5,  start: 82,  end: 101 },
+      { juz: 6,  start: 102, end: 121 },
+      { juz: 7,  start: 122, end: 141 },
+      { juz: 8,  start: 142, end: 161 },
+      { juz: 9,  start: 162, end: 181 },
       { juz: 10, start: 182, end: 201 },
       { juz: 11, start: 202, end: 221 },
       { juz: 12, start: 222, end: 241 },
@@ -431,34 +438,23 @@ exports.getJuzProgress = async (req, res) => {
       { juz: 30, start: 582, end: 604 },
     ];
 
-    const juzProgress = juzRanges.map(juz => {
-      const totalPages = juz.end - juz.start + 1;
-      const memorizedInJuz = memorizedPages.filter(
-        p => p >= juz.start && p <= juz.end
-      ).length;
-
+    const juzProgress = juzRanges.map(({ juz, start, end }) => {
+      const totalPages = end - start + 1;
+      let memorizedInJuz = 0;
+      for (let p = start; p <= end; p++) {
+        if (memorizedPages.has(p)) memorizedInJuz++;
+      }
       return {
-        juzNumber: juz.juz,
-        startPage: juz.start,
-        endPage: juz.end,
-        totalPages,
-        memorizedPages: memorizedInJuz,
+        juzNumber: juz, startPage: start, endPage: end,
+        totalPages, memorizedPages: memorizedInJuz,
         percentage: Math.round((memorizedInJuz / totalPages) * 100),
-        isComplete: memorizedInJuz === totalPages
+        isComplete: memorizedInJuz === totalPages,
       };
     });
 
-    res.status(200).json({
-      success: true,
-      data: juzProgress
-    });
-
+    res.status(200).json({ success: true, data: juzProgress });
   } catch (error) {
     console.error('GetJuzProgress error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching Juz progress',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error fetching Juz progress', error: error.message });
   }
 };
