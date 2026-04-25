@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiSettings, FiGlobe, FiMoon, FiMenu, FiX, FiLogOut } from 'react-icons/fi';
+import { FiSettings, FiGlobe, FiMoon, FiMenu, FiX, FiLogOut, FiUser } from 'react-icons/fi';
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -26,78 +26,86 @@ const Navbar = () => {
   const isActive = (to) => to && location.pathname === to;
 
   return (
-    <nav className="bg-white border-b border-gray-100 sticky top-0 z-40">
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <header className="bg-white fixed top-0 w-full z-50 border-b border-emerald-100/20 sacred-shadow">
+      <div className="max-w-[1280px] mx-auto px-6 py-4 flex items-center justify-between">
 
         {/* Logo */}
-        <Link to="/dashboard" className="flex items-center gap-2 font-bold text-[#1B4332] text-lg flex-shrink-0">
-          <span className="text-2xl leading-none">📖</span>
-          <span className="hidden sm:block">Quran Tracker</span>
-        </Link>
-
-        {/* Desktop centre links */}
-        <div className="hidden md:flex items-center">
-          {NAV_LINKS.map((link) =>
-            link.disabled ? (
-              <span key={link.label} className="px-4 py-2 text-sm text-gray-300 cursor-not-allowed select-none">
-                {link.label}
-              </span>
-            ) : (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors relative ${
-                  isActive(link.to)
-                    ? 'text-[#1B4332] bg-green-50'
-                    : 'text-[#4A4A4A] hover:text-[#1B4332] hover:bg-green-50'
-                }`}
-              >
-                {link.label}
-                {isActive(link.to) && (
-                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-[#1B4332] rounded-full" />
-                )}
-              </Link>
-            )
-          )}
+        <div className="flex items-center gap-8">
+          <Link to="/dashboard" className="text-2xl font-bold text-[#064e3b]">
+            Quran Tracker
+          </Link>
+          {/* Desktop nav */}
+          <nav className="hidden md:flex gap-6">
+            {NAV_LINKS.map((link) =>
+              link.disabled ? (
+                <span key={link.label} className="text-emerald-800/40 font-medium cursor-not-allowed select-none text-sm">
+                  {link.label}
+                </span>
+              ) : (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`text-sm font-medium pb-1 transition-colors duration-200 ${
+                    isActive(link.to)
+                      ? 'text-[#064e3b] font-semibold border-b-2 border-amber-500'
+                      : 'text-emerald-800/60 hover:text-amber-600'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              )
+            )}
+          </nav>
         </div>
 
         {/* Desktop right icons */}
-        <div className="hidden md:flex items-center gap-1">
-          <button title="Language (coming soon)" className="p-2 text-gray-400 hover:text-[#1B4332] hover:bg-green-50 rounded-lg transition-colors">
-            <FiGlobe className="w-4 h-4" />
+        <div className="hidden md:flex items-center gap-4">
+          <button title="Language" className="text-[#064e3b] hover:text-amber-600 transition-colors">
+            <FiGlobe className="w-5 h-5" />
           </button>
-          <button title="Dark mode (coming soon)" className="p-2 text-gray-400 hover:text-[#1B4332] hover:bg-green-50 rounded-lg transition-colors">
-            <FiMoon className="w-4 h-4" />
+          <button title="Dark mode" className="text-[#064e3b] hover:text-amber-600 transition-colors">
+            <FiMoon className="w-5 h-5" />
           </button>
           <Link
             to="/settings"
             title="Settings"
-            className={`p-2 rounded-lg transition-colors ${
-              isActive('/settings') ? 'text-[#1B4332] bg-green-50' : 'text-gray-400 hover:text-[#1B4332] hover:bg-green-50'
-            }`}
+            className={`transition-colors ${isActive('/settings') ? 'text-[#064e3b] border-b-2 border-amber-500 pb-1 font-semibold' : 'text-[#064e3b] hover:text-amber-600'}`}
           >
-            <FiSettings className="w-4 h-4" />
+            <FiSettings className="w-5 h-5" />
           </Link>
-          <div className="relative ml-2">
+
+          {/* Avatar with dropdown */}
+          <div className="relative">
             <button
               onClick={() => setAvatarOpen(!avatarOpen)}
-              className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold hover:bg-[#2D6A4F] transition-colors"
+              className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500 hover:opacity-90 transition-opacity"
             >
               {user?.name?.[0]?.toUpperCase() ?? 'U'}
             </button>
             {avatarOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setAvatarOpen(false)} />
-                <div className="absolute right-0 top-10 z-40 bg-white rounded-xl shadow-lg border border-gray-100 w-44 py-1 overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-gray-100">
-                    <p className="text-sm font-semibold text-[#1A1A1A] truncate">{user?.name}</p>
-                    <p className="text-xs text-[#4A4A4A] truncate">{user?.email}</p>
-                  </div>
+                <div className="absolute right-0 top-10 z-40 bg-white rounded-lg sacred-shadow border border-[#dce2f3] w-48 py-1 overflow-hidden">
+                  <Link
+                    to="/settings"
+                    onClick={() => setAvatarOpen(false)}
+                    className="px-4 py-2 text-[#404944] hover:bg-[#dce2f3]/50 hover:text-[#003527] transition-colors flex items-center gap-3 text-sm"
+                  >
+                    <FiUser className="w-4 h-4" /> Profile
+                  </Link>
+                  <Link
+                    to="/settings"
+                    onClick={() => setAvatarOpen(false)}
+                    className="px-4 py-2 text-[#404944] hover:bg-[#dce2f3]/50 hover:text-[#003527] transition-colors flex items-center gap-3 text-sm"
+                  >
+                    <FiSettings className="w-4 h-4" /> Settings
+                  </Link>
+                  <hr className="my-1 border-[#dce2f3]/50" />
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left px-4 py-2.5 text-sm text-[#E63946] font-medium hover:bg-red-50 flex items-center gap-2"
+                    className="w-full text-left px-4 py-2 text-[#ba1a1a] hover:bg-red-50 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiLogOut className="w-4 h-4" /> Sign out
+                    <FiLogOut className="w-4 h-4" /> Logout
                   </button>
                 </div>
               </>
@@ -107,61 +115,52 @@ const Navbar = () => {
 
         {/* Mobile hamburger */}
         <button
-          className="md:hidden p-2 text-[#1B4332] rounded-lg hover:bg-green-50"
+          className="md:hidden text-[#064e3b] hover:text-amber-600"
           onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
         >
-          {mobileOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
+          {mobileOpen ? <FiX className="w-6 h-6" /> : <FiMenu className="w-6 h-6" />}
         </button>
       </div>
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden bg-white border-t border-gray-100 px-6 py-4 flex flex-col gap-1">
+        <div className="md:hidden bg-white border-t border-[#dce2f3]/50 px-6 py-4 flex flex-col gap-1">
           {NAV_LINKS.map((link) =>
             link.disabled ? (
-              <span key={link.label} className="px-4 py-2.5 text-sm text-gray-300 rounded-lg">
-                {link.label}
-              </span>
+              <span key={link.label} className="px-4 py-2.5 text-sm text-emerald-800/40">{link.label}</span>
             ) : (
               <Link
                 key={link.to}
                 to={link.to}
                 onClick={() => setMobileOpen(false)}
                 className={`px-4 py-2.5 text-sm font-medium rounded-lg ${
-                  isActive(link.to) ? 'bg-green-50 text-[#1B4332]' : 'text-[#4A4A4A] hover:bg-gray-50'
+                  isActive(link.to) ? 'text-[#064e3b] bg-emerald-50' : 'text-emerald-800/60'
                 }`}
               >
                 {link.label}
               </Link>
             )
           )}
-          <Link
-            to="/settings"
-            onClick={() => setMobileOpen(false)}
-            className={`px-4 py-2.5 text-sm font-medium rounded-lg flex items-center gap-2 ${
-              isActive('/settings') ? 'bg-green-50 text-[#1B4332]' : 'text-[#4A4A4A] hover:bg-gray-50'
-            }`}
-          >
+          <Link to="/settings" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 rounded-lg flex items-center gap-2">
             <FiSettings className="w-4 h-4" /> Settings
           </Link>
-          <div className="border-t border-gray-100 mt-2 pt-3 flex items-center justify-between">
+          <div className="border-t border-[#dce2f3]/50 mt-2 pt-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold">
+              <div className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500">
                 {user?.name?.[0]?.toUpperCase() ?? 'U'}
               </div>
               <div>
-                <p className="text-sm font-medium text-[#1A1A1A]">{user?.name}</p>
-                <p className="text-xs text-[#4A4A4A]">{user?.email}</p>
+                <p className="text-sm font-medium text-[#151c27]">{user?.name}</p>
+                <p className="text-xs text-[#404944]">{user?.email}</p>
               </div>
             </div>
-            <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-[#E63946] font-medium">
+            <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5">
               <FiLogOut className="w-4 h-4" /> Sign out
             </button>
           </div>
         </div>
       )}
-    </nav>
+    </header>
   );
 };
 

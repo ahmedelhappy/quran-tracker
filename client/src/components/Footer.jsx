@@ -1,12 +1,14 @@
 const Footer = () => (
-  <footer className="bg-white border-t border-gray-100 py-6 mt-auto">
-    <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A]">
-      <span>© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.</span>
-      <div className="flex gap-5">
-        <a href="#" className="hover:text-[#1B4332] transition-colors">Privacy Policy</a>
-        <a href="#" className="hover:text-[#1B4332] transition-colors">Terms of Service</a>
-        <a href="#" className="hover:text-[#1B4332] transition-colors">Contact Support</a>
-      </div>
+  <footer className="bg-white border-t border-emerald-100/50 w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-4 mt-auto">
+    <p className="text-sm text-[#064e3b] opacity-80">
+      © 2025 Quran Tracker. Dedicated to the pursuit of Hifz.
+    </p>
+    <div className="flex flex-wrap justify-center gap-6">
+      {['Privacy Policy', 'Terms of Service', 'Contact Support', 'Donate'].map((l) => (
+        <a key={l} href="#" className="text-sm text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-all">
+          {l}
+        </a>
+      ))}
     </div>
   </footer>
 );

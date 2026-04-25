@@ -4,83 +4,98 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiRefreshCw, FiTarget, FiChevronDown, FiChevronUp, FiCheck } from 'react-icons/fi';
+import { FiBook, FiList } from 'react-icons/fi';
 
-// ── Daily quotes (rotated by day-of-year) ──────────────
+// ── Daily rotating quotes ────────────────────────────────
 const QUOTES = [
   { text: 'The best among you (Muslims) are those who learn the Qur\'an and teach it.', source: 'Sahih Al-Bukhari 5027' },
-  { text: 'Whoever recites a letter from the Book of Allah will receive one good deed, and that good deed is worth ten times its value.', source: 'Tirmidhi 2910' },
+  { text: 'Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.', source: 'Tirmidhi 2910' },
   { text: 'The Quran is a healing for what is in the hearts.', source: 'Quran 10:57' },
-  { text: 'Indeed, this Qur\'an guides to that which is most suitable and gives good tidings to the believers.', source: 'Quran 17:9' },
+  { text: 'Indeed, this Qur\'an guides to that which is most suitable.', source: 'Quran 17:9' },
   { text: 'And We have certainly made the Qur\'an easy for remembrance, so is there any who will remember?', source: 'Quran 54:17' },
-  { text: 'Those who recite the Book of Allah, establish prayer, and spend from what We have provided them secretly and publicly — they expect a transaction that will never fail.', source: 'Quran 35:29' },
   { text: 'Recite the Quran for it will come as an intercessor for its reciters on the Day of Resurrection.', source: 'Muslim 804' },
   { text: 'The one who is skilled in the Quran will be with the honourable, righteous scribes.', source: 'Bukhari & Muslim' },
-  { text: 'Read the Quran; for verily it will come on the Day of Resurrection as an intercessor for those who recite it.', source: 'Muslim 804' },
   { text: 'It will be said to the companion of the Quran: Recite and rise in status.', source: 'Abu Dawud 1464' },
-  { text: 'Envy is not permitted except in two cases: envy of a man whom Allah has given the Quran, and he recites it night and day.', source: 'Bukhari 5026' },
   { text: 'The heart that has no Quran in it is like a ruined house.', source: 'Tirmidhi' },
-  { text: 'The most superior among you is the one who learns the Quran and teaches it.', source: 'Bukhari 5027' },
-  { text: 'Adorn the Quran with your voices, for a beautiful voice increases the beauty of the Quran.', source: 'Darimi' },
   { text: 'Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.', source: 'Tabarani' },
-  { text: 'Whoever memorizes the Quran and acts according to it, Allah will reward him and honour him greatly.', source: 'Tirmidhi' },
+  { text: 'Adorn the Quran with your voices, for a beautiful voice increases the beauty of the Quran.', source: 'Darimi' },
+  { text: 'Whoever memorizes the Quran and acts according to it, Allah will reward him greatly.', source: 'Tirmidhi' },
+  { text: 'Connect verses conceptually. Understanding the flow creates stronger mental hooks for recall.', source: 'Scholar\'s advice' },
+  { text: 'Start after Fajr. The mind is clearest in the early hours before the distractions of the day begin.', source: 'Traditional Hifz wisdom' },
+  { text: 'Consistency over volume. Memorizing half a page perfectly is better than two pages poorly.', source: 'Traditional Hifz wisdom' },
+];
+
+const TIPS = [
+  'Connect verses conceptually. Don\'t just memorize sounds — try to understand the flow and logical progression.',
+  'Start after Fajr. Your mind is sharpest before the distractions of the day begin.',
+  'Recite aloud. Hearing your own voice reinforces neural pathways for retention.',
+  'Review before sleeping. The brain consolidates memory during sleep.',
+  'Write out verses by hand to engage multiple senses in memorization.',
 ];
 
 const dayOfYear = () => {
   const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 0);
-  return Math.floor((now - start) / 86400000);
+  return Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
 };
 
-const TIPS = [
-  'Memorize after Fajr. Your mind is sharpest before the distractions of the day begin.',
-  'Recite aloud — hearing your own voice reinforces neural pathways for retention.',
-  'Review before sleeping. The brain consolidates memory during sleep.',
-  'Break a page into smaller sections and perfect each before moving on.',
-  'Write out verses by hand to engage multiple senses in memorization.',
-];
+// ── Circular Juz progress ring ───────────────────────────
+const JuzRing = ({ pct = 0 }) => {
+  const v = Math.min(100, Math.max(0, parseFloat(pct) || 0));
+  return (
+    <div className="relative w-16 h-16 flex items-center justify-center">
+      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" fill="none" r="16" stroke="#dce2f3" strokeDasharray="100 100" strokeLinecap="round" strokeWidth="4" />
+        <circle cx="18" cy="18" fill="none" r="16" stroke="#fe932c" strokeDasharray={`${v} 100`} strokeLinecap="round" strokeWidth="4" />
+      </svg>
+      <span className="absolute text-[11px] font-bold text-[#003527]">{Math.round(v)}%</span>
+    </div>
+  );
+};
 
-// ── Achievement definitions ──────────────────────────────
-const getAchievements = (stats) => [
-  { name: '7 Day Streak',    icon: '🔥', earned: (stats?.currentStreak ?? 0) >= 7,  desc: '7 consecutive active days' },
-  { name: 'First Page',      icon: '📄', earned: (stats?.totalMemorized ?? 0) >= 1,  desc: 'Memorized your first page' },
-  { name: 'First Juz',       icon: '⭐', earned: (stats?.totalMemorized ?? 0) >= 20, desc: '20 pages memorized' },
-  { name: '30 Day Streak',   icon: '🌟', earned: (stats?.currentStreak ?? 0) >= 30,  desc: '30 consecutive days' },
-  { name: '5 Juz Milestone', icon: '📖', earned: (stats?.totalMemorized ?? 0) >= 100, desc: '100+ pages memorized' },
-  { name: 'Hafiz',           icon: '👑', earned: (stats?.totalMemorized ?? 0) === 604, desc: 'Complete Quran memorized' },
-];
+// ── Skeleton pulse ───────────────────────────────────────
+const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded bg-[#e7eefe] animate-pulse`} />;
 
-// ── Skeleton card ─────────────────────────────────────────
-const Skeleton = ({ h = 'h-6', w = 'w-full', rounded = 'rounded' }) => (
-  <div className={`${h} ${w} ${rounded} bg-gray-100 animate-pulse`} />
-);
-
-// ── Task card ─────────────────────────────────────────────
-const TaskCard = ({ page, type, onComplete, done }) => (
-  <div className={`bg-white rounded-xl border p-4 transition-all ${done ? 'border-green-200 bg-green-50' : 'border-gray-100'}`}>
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <span className={`text-xs font-semibold uppercase tracking-wide ${type === 'new' ? 'text-[#1B4332]' : 'text-blue-600'}`}>
-          {type === 'new' ? '📖 New Memorization' : '📘 Daily Review'}
-        </span>
-        <p className="text-xl font-bold text-[#1A1A1A] mt-1">Page {page.pageNumber}</p>
-        <p className="text-sm text-[#4A4A4A]">{page.surahName}</p>
+// ── Task card ────────────────────────────────────────────
+const TaskCard = ({ page, type, done, marking, onComplete }) => {
+  const isNew = type === 'new';
+  const accentColor = isNew ? '#004f35' : '#fe932c';
+  return (
+    <div
+      className={`bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] border-l-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-60' : ''}`}
+      style={{ borderLeftColor: accentColor }}
+    >
+      <div className="flex items-start gap-4">
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ background: `${accentColor}1a`, color: accentColor }}
+        >
+          {isNew ? <FiBook className="w-5 h-5" /> : <span className="text-sm font-bold">↺</span>}
+        </div>
+        <div>
+          <p className="text-lg font-medium text-[#003527]">Page {page.pageNumber}</p>
+          <p className="text-sm text-[#404944]">{page.surahName}</p>
+        </div>
       </div>
       {done ? (
-        <span className="flex items-center gap-1 text-green-600 text-sm font-semibold bg-green-100 px-3 py-1.5 rounded-lg">
-          <FiCheck className="w-4 h-4" /> Done
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] bg-[#004f35]/10 px-4 py-2 rounded-lg">
+          ✓ Done
         </span>
       ) : (
         <button
           onClick={() => onComplete(page.pageNumber, type)}
-          className="bg-[#1B4332] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#2D6A4F] transition-colors whitespace-nowrap"
+          disabled={marking}
+          className={`text-xs font-semibold uppercase tracking-wide px-4 py-2 rounded-lg transition-colors self-stretch sm:self-auto disabled:opacity-60 ${
+            isNew
+              ? 'bg-[#004f35] text-white hover:bg-[#003527]'
+              : 'bg-[#dce2f3] text-[#404944] hover:bg-[#d3daea] hover:text-[#003527] border border-[#bfc9c3]'
+          }`}
         >
-          ✓ Mark Complete
+          Mark as Complete
         </button>
       )}
     </div>
-  </div>
-);
+  );
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -89,12 +104,12 @@ export default function Dashboard() {
   const [juzData, setJuzData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [completedKeys, setCompletedKeys] = useState(new Set());
-  const [showExtra, setShowExtra] = useState(false);
-  const [showTip, setShowTip] = useState(true);
-  const [marking, setMarking] = useState(new Set());
+  const [markingKeys, setMarkingKeys] = useState(new Set());
+  const [tipOpen, setTipOpen] = useState(false);
 
-  const quote = QUOTES[dayOfYear() % QUOTES.length];
-  const tip = TIPS[dayOfYear() % TIPS.length];
+  const doy = dayOfYear();
+  const quote = QUOTES[doy % QUOTES.length];
+  const tip = TIPS[doy % TIPS.length];
 
   useEffect(() => {
     (async () => {
@@ -115,8 +130,8 @@ export default function Dashboard() {
 
   const markComplete = async (pageNumber, type) => {
     const key = `${type}-${pageNumber}`;
-    if (marking.has(key) || completedKeys.has(key)) return;
-    setMarking(prev => new Set(prev).add(key));
+    if (markingKeys.has(key) || completedKeys.has(key)) return;
+    setMarkingKeys(prev => new Set(prev).add(key));
     try {
       await progressAPI.markComplete({ pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
@@ -124,19 +139,21 @@ export default function Dashboard() {
     } catch {
       showToast('Failed to mark page. Try again.', 'error');
     } finally {
-      setMarking(prev => { const s = new Set(prev); s.delete(key); return s; });
+      setMarkingKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
     }
   };
 
   const stats = data?.stats;
-  const achievements = getAchievements(stats);
 
-  // Current working Juz (first with 0 < pct < 100, else first with pct > 0)
-  const activeJuz = juzData.find(j => j.percentage > 0 && j.percentage < 100)
-    || juzData.find(j => j.percentage > 0)
-    || juzData[0];
+  // Juz progress for ring card
+  const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || juzData.find(j => j.percentage > 0) || null;
+  const juzPct = activeJuz?.percentage ?? 0;
+  const totalJuz = stats ? (stats.totalMemorized / 20.13).toFixed(1) : '0';
 
-  // Missed day detection
+  // Pages to Hifz
+  const pagesToHifz = stats ? `${stats.totalMemorized} / 604` : '— / 604';
+
+  // Missed day
   const missedDay = (() => {
     if (!user?.lastActiveDate) return false;
     const last = new Date(user.lastActiveDate);
@@ -146,225 +163,222 @@ export default function Dashboard() {
     return Math.round((today - last) / 86400000) > 1;
   })();
 
-  // Pending counts (exclude already completed locally)
-  const newPending  = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
-  const revPending  = (data?.reviewPages ?? []).filter(p => !completedKeys.has(`review-${p.pageNumber}`));
-  const totalPending = newPending.length + revPending.length;
-  const allDone = data && !loading && totalPending === 0 && (stats?.todayComplete || completedKeys.size > 0);
+  const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
+  const revPending = (data?.reviewPages ?? []).filter(p => !completedKeys.has(`review-${p.pageNumber}`));
+  const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 && completedKeys.size > 0;
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] flex flex-col">
+    <div className="min-h-screen bg-[#FFFDF5] sacred-pattern flex flex-col">
       <Navbar />
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
+      <main className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
 
         {/* Missed day banner */}
         {missedDay && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-center gap-3">
-            <span className="text-lg">💛</span>
+            <span>💛</span>
             <p className="text-sm text-amber-800 font-medium">
-              You missed yesterday — no worries! Your plan has been adjusted and continues from where you left off.
+              You missed yesterday — no worries! Your plan continues from where you left off.
             </p>
           </div>
         )}
 
-        {/* Off day state */}
-        {data?.isOffDay && (
-          <div className="bg-[#1B4332] rounded-2xl p-8 text-center text-white">
-            <p className="text-4xl mb-3">🌿</p>
-            <h2 className="text-2xl font-bold mb-2">Today is your rest day</h2>
-            <p className="text-green-200">Enjoy your break. You can still review pages below if you'd like.</p>
-          </div>
-        )}
-
-        {/* Welcome banner */}
-        {!data?.isOffDay && (
-          <div className="bg-gradient-to-r from-[#1B4332] to-[#2D6A4F] rounded-2xl p-6 text-white">
-            <h2 className="text-xl font-bold mb-1">Assalamu Alaikum, {user?.name?.split(' ')[0]}! 👋</h2>
-            <p className="text-green-100 text-sm italic">"{quote.text}"</p>
-            <p className="text-green-300 text-xs mt-1">— {quote.source}</p>
-          </div>
-        )}
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {loading ? (
-            Array(4).fill(0).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
-                <Skeleton h="h-3" w="w-20" />
-                <Skeleton h="h-8" w="w-16" />
-                <Skeleton h="h-2" w="w-24" />
-              </div>
-            ))
-          ) : (
-            <>
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#4A4A4A] mb-1 flex items-center gap-1.5">
-                  <span>🔥</span> Current Streak
-                </p>
-                <p className="text-3xl font-extrabold text-[#1A1A1A]">{stats?.currentStreak ?? 0}</p>
-                <p className="text-xs text-[#4A4A4A] mt-0.5">days</p>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#4A4A4A] mb-1 flex items-center gap-1.5">
-                  <FiBook className="w-3.5 h-3.5" /> Total Memorized
-                </p>
-                <p className="text-3xl font-extrabold text-[#1A1A1A]">
-                  {((stats?.totalMemorized ?? 0) / 20).toFixed(1)}
-                </p>
-                <p className="text-xs text-[#4A4A4A] mt-0.5">Juz ({stats?.totalMemorized ?? 0} pages)</p>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#4A4A4A] mb-1 flex items-center gap-1.5">
-                  <FiRefreshCw className="w-3.5 h-3.5" />
-                  {activeJuz ? `Juz ${activeJuz.juzNumber} Progress` : 'Progress'}
-                </p>
-                <p className="text-3xl font-extrabold text-[#1A1A1A]">{activeJuz?.percentage ?? 0}%</p>
-                <div className="h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="h-full bg-[#40916C] rounded-full"
-                    style={{ width: `${activeJuz?.percentage ?? 0}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#4A4A4A] mb-1 flex items-center gap-1.5">
-                  <FiTarget className="w-3.5 h-3.5" /> Daily Review
-                </p>
-                <p className="text-3xl font-extrabold text-[#1A1A1A]">{stats?.dailyReviewTarget ?? 0}</p>
-                <p className="text-xs text-[#4A4A4A] mt-0.5">pages to review</p>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Today's tasks */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-[#1A1A1A]">Today's Tasks</h2>
-            {!loading && totalPending > 0 && (
-              <span className="bg-[#1B4332] text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-                {totalPending} pending
+        {/* ── Welcome & Stats Bento ─────────────────────────── */}
+        <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Welcome card — 2 cols */}
+          <div className="col-span-1 md:col-span-2 bg-white rounded-xl p-6 sacred-shadow flex flex-col justify-between border border-[#dce2f3] relative overflow-hidden">
+            {/* Decorative star */}
+            <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none text-[#064e3b]">
+              <svg fill="currentColor" height="200" viewBox="0 0 24 24" width="200">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-[32px] font-semibold text-[#003527] mb-2 leading-tight">
+                Assalamu Alaikum, {user?.name?.split(' ')[0]}
+              </h2>
+              <p className="text-[#404944]">Your journey of Hifz continues. You're doing great!</p>
+            </div>
+            <div className="mt-6 inline-flex items-center gap-2 bg-[#b0f0d6]/20 px-4 py-2 rounded-full text-[#064e3b] w-max">
+              <span className="text-[#fe932c]">🔥</span>
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {stats?.currentStreak ?? user?.currentStreak ?? 0} Days Streak
               </span>
+            </div>
+          </div>
+
+          {/* Stats 2×2 grid — 2 cols */}
+          <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">
+            {/* Daily Review */}
+            <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center">
+              {loading ? (
+                <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-16" /><Sk h="h-6" w="w-20" /></>
+              ) : (
+                <>
+                  <FiBook className="w-8 h-8 text-[#004f35] mb-2" />
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] mb-1">Daily Review</div>
+                  <div className="text-2xl font-semibold text-[#003527]">{stats?.dailyReviewTarget ?? 0} Pages</div>
+                </>
+              )}
+            </div>
+
+            {/* Juz Progress ring */}
+            <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center">
+              {loading ? (
+                <><Sk h="h-16" w="w-16" /><Sk h="h-3" w="w-16" /><Sk h="h-5" w="w-20" /></>
+              ) : (
+                <>
+                  <JuzRing pct={juzPct} />
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] mt-2 mb-1">Juz Progress</div>
+                  <div className="text-sm font-semibold text-[#003527]">{totalJuz} / 30</div>
+                </>
+              )}
+            </div>
+
+            {/* Pages to Hifz — spans 2 cols */}
+            <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center col-span-2">
+              {loading ? (
+                <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-24" /><Sk h="h-7" w="w-32" /></>
+              ) : (
+                <>
+                  <FiList className="w-8 h-8 text-[#fe932c] mb-2" />
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] mb-1">Pages to Hifz</div>
+                  <div className="text-2xl font-semibold text-[#003527]">{pagesToHifz}</div>
+                  <div className="text-[10px] text-[#404944]/70 uppercase tracking-widest font-bold mt-1">Remaining</div>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* ── Tasks Section ─────────────────────────────────── */}
+        <section className="flex flex-col gap-4">
+          <h3 className="text-2xl font-semibold text-[#003527] border-b border-[#dce2f3] pb-2">
+            Today's Tasks
+          </h3>
+
+          {loading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {Array(4).fill(0).map((_, i) => (
+                <div key={i} className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] space-y-2">
+                  <Sk h="h-5" w="w-24" /><Sk h="h-4" w="w-36" />
+                </div>
+              ))}
+            </div>
+          ) : data?.isOffDay ? (
+            /* Rest day */
+            <div className="bg-white rounded-xl p-12 sacred-shadow border border-[#dce2f3] flex flex-col items-center text-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
+                <span style={{ fontSize: 200 }}>🌿</span>
+              </div>
+              <div className="w-20 h-20 rounded-full bg-[#004f35]/10 flex items-center justify-center text-[#004f35] mb-6">
+                <span className="text-4xl">🌿</span>
+              </div>
+              <h2 className="text-4xl font-bold text-[#003527] mb-4 tracking-tight">Today is your rest day 🌿</h2>
+              <p className="text-lg text-[#404944] max-w-2xl mb-8 leading-relaxed">
+                The mind is a vessel; allowing it to rest expands its capacity to hold the words of Allah.
+                Enjoy your day of pause without guilt, for consistency is built on sustainable rhythms.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 z-10">
+                <button className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2">
+                  🧘 Start a 5-Min Reflection
+                </button>
+                <button className="bg-transparent border border-[#bfc9c3] text-[#404944] hover:bg-[#d3daea] hover:text-[#003527] text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide">
+                  Memorize Anyway
+                </button>
+              </div>
+            </div>
+          ) : allTasksDone ? (
+            <div className="bg-white rounded-xl p-10 sacred-shadow border border-[#dce2f3] flex flex-col items-center text-center">
+              <p className="text-4xl mb-3">🎉</p>
+              <h3 className="text-2xl font-semibold text-[#003527] mb-2">ما شاء الله! Tasks Complete!</h3>
+              <p className="text-[#404944]">Come back tomorrow for your next session.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* New Memorization column */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#004f35]" />
+                    <h4 className="text-lg font-semibold text-[#151c27]">New Memorization</h4>
+                  </div>
+                  <button className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
+                    Mark All
+                  </button>
+                </div>
+                {(data?.newPages ?? []).length === 0 ? (
+                  <p className="text-sm text-[#404944] py-4">No new memorization today.</p>
+                ) : (
+                  data.newPages.map(p => (
+                    <TaskCard
+                      key={`new-${p.pageNumber}`}
+                      page={p} type="new"
+                      done={completedKeys.has(`new-${p.pageNumber}`)}
+                      marking={markingKeys.has(`new-${p.pageNumber}`)}
+                      onComplete={markComplete}
+                    />
+                  ))
+                )}
+              </div>
+
+              {/* Review column */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
+                    <h4 className="text-lg font-semibold text-[#151c27]">Review</h4>
+                  </div>
+                  <button className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                    Mark All
+                  </button>
+                </div>
+                {(data?.reviewPages ?? []).length === 0 ? (
+                  <p className="text-sm text-[#404944] py-4">No review pages today.</p>
+                ) : (
+                  data.reviewPages.map(p => (
+                    <TaskCard
+                      key={`review-${p.pageNumber}`}
+                      page={p} type="review"
+                      done={completedKeys.has(`review-${p.pageNumber}`)}
+                      marking={markingKeys.has(`review-${p.pageNumber}`)}
+                      onComplete={markComplete}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ── Tip of the Day ───────────────────────────────── */}
+        <section>
+          <div className="bg-white rounded-xl sacred-shadow border border-[#dce2f3] overflow-hidden">
+            <button
+              onClick={() => setTipOpen(!tipOpen)}
+              className="w-full p-4 flex justify-between items-center bg-[#b0f0d6]/5 hover:bg-[#b0f0d6]/10 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-[#fe932c]">💡</span>
+                <span className="text-lg font-semibold text-[#003527]">Tip of the Day</span>
+              </div>
+              <span className={`text-[#707974] transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
+            </button>
+            {tipOpen && (
+              <div className="p-4 border-t border-[#dce2f3] text-[#404944] leading-relaxed bg-white">
+                "{tip}"
+              </div>
             )}
           </div>
+        </section>
 
-          {loading ? (
-            <div className="space-y-3">
-              {Array(3).fill(0).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
-                  <Skeleton h="h-3" w="w-24" />
-                  <Skeleton h="h-7" w="w-32" />
-                  <Skeleton h="h-3" w="w-40" />
-                </div>
-              ))}
-            </div>
-          ) : allDone && !data?.isOffDay ? (
-            <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-2xl p-8 text-center">
-              <p className="text-4xl mb-3">🎉</p>
-              <h3 className="text-xl font-bold text-[#1A1A1A] mb-1">ما شاء الله! You've completed today's tasks!</h3>
-              <p className="text-sm text-[#4A4A4A]">Come back tomorrow for your next session.</p>
-              <button
-                onClick={() => setShowExtra(!showExtra)}
-                className="mt-4 text-sm text-[#1B4332] font-semibold hover:underline flex items-center gap-1 mx-auto"
-              >
-                Want more practice? {showExtra ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {/* New pages */}
-              {data?.newPages?.map(p => (
-                <TaskCard
-                  key={`new-${p.pageNumber}`}
-                  page={p} type="new"
-                  done={completedKeys.has(`new-${p.pageNumber}`)}
-                  onComplete={markComplete}
-                />
-              ))}
-              {/* Review pages */}
-              {data?.reviewPages?.map(p => (
-                <TaskCard
-                  key={`review-${p.pageNumber}`}
-                  page={p} type="review"
-                  done={completedKeys.has(`review-${p.pageNumber}`)}
-                  onComplete={markComplete}
-                />
-              ))}
-              {/* Off day optional review */}
-              {data?.isOffDay && (data?.extraReviewPages?.length > 0) && (
-                <div className="mt-4">
-                  <p className="text-sm font-semibold text-[#4A4A4A] mb-3">Optional review (off day):</p>
-                  {data.extraReviewPages.map(p => (
-                    <TaskCard key={`review-${p.pageNumber}`} page={p} type="review" done={completedKeys.has(`review-${p.pageNumber}`)} onComplete={markComplete} />
-                  ))}
-                </div>
-              )}
-              {/* No tasks */}
-              {!data?.isOffDay && data?.newPages?.length === 0 && data?.reviewPages?.length === 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-                  <p className="text-[#4A4A4A] text-sm">No tasks for today. Start memorizing to generate your plan!</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Extra practice (expandable) */}
-          {(showExtra || allDone) && (data?.extraNewPages?.length > 0 || data?.extraReviewPages?.length > 0) && (
-            <div className="mt-4 space-y-3">
-              <p className="text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide">Extra Practice</p>
-              {data.extraNewPages?.map(p => (
-                <TaskCard key={`new-${p.pageNumber}`} page={p} type="new" done={completedKeys.has(`new-${p.pageNumber}`)} onComplete={markComplete} />
-              ))}
-              {data.extraReviewPages?.map(p => (
-                <TaskCard key={`review-${p.pageNumber}`} page={p} type="review" done={completedKeys.has(`review-${p.pageNumber}`)} onComplete={markComplete} />
-              ))}
-            </div>
-          )}
+        {/* Daily quote (below tip) */}
+        <div className="text-center pb-4">
+          <p className="text-[#404944] italic text-sm max-w-2xl mx-auto">
+            "{quote.text}"
+          </p>
+          <p className="text-[#707974] text-xs mt-1">— {quote.source}</p>
         </div>
-
-        {/* Achievements */}
-        <div>
-          <h2 className="text-lg font-bold text-[#1A1A1A] mb-4">Recent Achievements</h2>
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {achievements.map(({ name, icon, earned, desc }) => (
-              <div key={name} className="flex-shrink-0 flex flex-col items-center gap-2 w-20">
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${
-                  earned ? 'bg-[#1B4332]' : 'bg-gray-100'
-                }`}>
-                  {earned ? icon : '🔒'}
-                </div>
-                <p className={`text-xs text-center font-medium leading-tight ${earned ? 'text-[#1A1A1A]' : 'text-gray-400'}`}>
-                  {name}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Tip of the day */}
-        {showTip && (
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <span className="text-xl flex-shrink-0">💡</span>
-                <div>
-                  <p className="text-sm font-bold text-[#1A1A1A] mb-0.5">Tip of the Day</p>
-                  <p className="text-sm text-[#4A4A4A] leading-relaxed">{tip}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowTip(false)}
-                className="text-gray-300 hover:text-gray-500 flex-shrink-0 text-lg leading-none"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        )}
       </main>
 
       <Footer />

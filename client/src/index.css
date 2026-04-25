@@ -1,16 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Inter', sans-serif;
-  background-color: #FAF9F6;
-  color: #1A1A1A;
+  background-color: #f9f9ff;
+  color: #151c27;
 }
 
 .arabic {
-  font-family: 'Traditional Arabic', 'Scheherazade New', 'Amiri', serif;
+  font-family: 'Amiri', serif;
   direction: rtl;
-  line-height: 2;
+  line-height: 1.8;
+}
+
+/* Sacred geometric star pattern — used as page background texture */
+.sacred-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23064e3b' fill-opacity='0.04'%3E%3Cpath d='M29 5.834V0h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 10.66V16h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 5.834zM0 31v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H16v2h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H0zm60 0h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H44v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H60v2zM29 65.834V60h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 70.66V76h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 65.834z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.sacred-shadow {
+  box-shadow: 0 4px 20px rgba(6, 78, 59, 0.08);
 }

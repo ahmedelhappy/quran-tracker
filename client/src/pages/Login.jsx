@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import Footer from '../components/Footer';
 
 const Login = () => {
   const { login } = useAuth();
@@ -10,7 +11,6 @@ const Login = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
-  const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -26,94 +26,90 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo link */}
-        <div className="text-center mb-6">
-          <Link to="/" className="inline-flex items-center gap-2 text-[#1B4332] font-bold text-lg">
-            <span className="text-2xl">📖</span> Quran Tracker
-          </Link>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">✨</span>
+    <div className="min-h-screen bg-[#f9f9ff] sacred-pattern flex flex-col">
+      <main className="flex-grow flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          {/* Brand area — outside card */}
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#064e3b] text-white mb-3 sacred-shadow">
+              <span className="text-2xl">📖</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-[#1A1A1A]">Welcome Back</h1>
-            <p className="text-[#4A4A4A] text-sm mt-1">Continue your memorization journey</p>
+            <h1 className="text-2xl font-semibold text-[#064e3b] tracking-tight">Quran Tracker</h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="Enter your email"
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#40916C] focus:ring-1 focus:ring-[#40916C] transition-colors"
-                />
-              </div>
+          {/* Login card */}
+          <div className="bg-white rounded-xl p-8 sacred-shadow relative overflow-hidden">
+            {/* Top gradient accent */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
+
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-semibold text-[#151c27] mb-1">Welcome Back</h2>
+              <p className="text-[#404944]">Continue your hifz journey today.</p>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="Enter your password"
-                  required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#40916C] focus:ring-1 focus:ring-[#40916C] transition-colors"
-                />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#404944] mb-1" htmlFor="email">Email</label>
+                <div className="relative">
+                  <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944]" />
+                  <input
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="you@example.com"
+                    required
+                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] border-transparent rounded-lg text-sm text-[#151c27] focus:outline-none focus:border-[#064e3b] focus:ring-2 focus:ring-[#064e3b] transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#404944] mb-1" htmlFor="password">Password</label>
+                <div className="relative">
+                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944]" />
+                  <input
+                    id="password"
+                    type={showPw ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder="••••••••"
+                    required
+                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] border-transparent rounded-lg text-sm text-[#151c27] focus:outline-none focus:border-[#064e3b] focus:ring-2 focus:ring-[#064e3b] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(!showPw)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]"
+                  >
+                    {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
                 <button
-                  type="button"
-                  onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-[#064e3b] text-white py-3 rounded-lg font-medium hover:bg-[#004f35] transition-colors disabled:opacity-60"
                 >
-                  {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  {loading ? 'Signing in…' : 'Log In'}
                 </button>
               </div>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-[#404944]">
+                Don't have an account?{' '}
+                <Link to="/register" className="font-medium text-[#064e3b] hover:text-[#004f35] underline underline-offset-4 transition-colors">
+                  Sign up
+                </Link>
+              </p>
             </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                id="remember"
-                type="checkbox"
-                checked={remember}
-                onChange={e => setRemember(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 accent-[#1B4332] cursor-pointer"
-              />
-              <label htmlFor="remember" className="text-sm text-[#4A4A4A] cursor-pointer">
-                Remember me
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#1B4332] text-white py-3 rounded-lg font-semibold text-sm hover:bg-[#2D6A4F] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Signing in…' : 'Log In →'}
-            </button>
-          </form>
-
-          <p className="text-center text-sm text-[#4A4A4A] mt-6">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-[#1B4332] font-semibold hover:underline">Sign up</Link>
-          </p>
+          </div>
         </div>
-      </div>
+      </main>
+      <Footer />
     </div>
   );
 };

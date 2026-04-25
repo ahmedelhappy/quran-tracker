@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import Footer from '../components/Footer';
 
 const Register = () => {
   const { register } = useAuth();
@@ -17,123 +18,101 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password !== form.confirm) {
-      showToast('Passwords do not match', 'error');
-      return;
-    }
-    if (form.password.length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
-      return;
-    }
+    if (form.password !== form.confirm) { showToast('Passwords do not match', 'error'); return; }
+    if (form.password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
     setLoading(true);
     const result = await register(form.name.trim(), form.email, form.password);
     setLoading(false);
-    if (result.success) {
-      navigate('/onboarding');
-    } else {
-      showToast(result.message || 'Registration failed', 'error');
-    }
+    if (result.success) navigate('/onboarding');
+    else showToast(result.message || 'Registration failed', 'error');
   };
 
-  const Field = ({ label, icon: Icon, type, value, onChange, placeholder, rightEl }) => (
-    <div>
-      <label className="block text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide mb-1.5">
-        {label}
-      </label>
-      <div className="relative">
-        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type={type}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          required
-          className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#40916C] focus:ring-1 focus:ring-[#40916C] transition-colors"
-        />
-        {rightEl && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightEl}</div>
-        )}
-      </div>
-    </div>
-  );
+  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] border border-[#bfc9c3]/50 text-[#151c27] rounded-lg text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3]';
+  const labelCls = 'block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5';
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <Link to="/" className="inline-flex items-center gap-2 text-[#1B4332] font-bold text-lg">
-            <span className="text-2xl">📖</span> Quran Tracker
-          </Link>
-        </div>
+    <div className="min-h-screen bg-[#f9f9ff] flex flex-col relative">
+      {/* Ambient radial gradient */}
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_#e2e8f8_0%,_transparent_60%)] opacity-40" />
+      {/* Sacred pattern overlay */}
+      <div className="fixed inset-0 pointer-events-none sacred-pattern opacity-80" />
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">🌙</span>
+      <main className="flex-grow flex items-center justify-center p-6 relative z-10 py-12">
+        <div className="w-full max-w-[440px] bg-white rounded-[24px] sacred-shadow p-8 md:p-10 border border-[#bfc9c3]/20 relative overflow-hidden">
+          {/* Top gradient accent */}
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#064e3b] via-[#fe932c] to-[#064e3b] opacity-90" />
+
+          {/* Header */}
+          <div className="text-center mb-10 mt-2">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#f0f3ff] text-[#003527] mb-4">
+              <span className="text-xl">📖</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-[#1A1A1A]">Create Your Account</h1>
-            <p className="text-[#4A4A4A] text-sm mt-1">Begin your Hifz journey today</p>
+            <h1 className="text-2xl font-semibold text-[#151c27] mb-2 tracking-tight">Create Your Account</h1>
+            <p className="text-[#404944]">Begin your dedicated journey of Hifz.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Field
-              label="Full Name"
-              icon={FiUser}
-              type="text"
-              value={form.name}
-              onChange={set('name')}
-              placeholder="John Doe"
-            />
-            <Field
-              label="Email Address"
-              icon={FiMail}
-              type="email"
-              value={form.email}
-              onChange={set('email')}
-              placeholder="you@example.com"
-            />
-            <Field
-              label="Password"
-              icon={FiLock}
-              type={showPw ? 'text' : 'password'}
-              value={form.password}
-              onChange={set('password')}
-              placeholder="Min. 6 characters"
-              rightEl={
-                <button type="button" onClick={() => setShowPw(!showPw)} className="text-gray-400 hover:text-gray-600">
+            <div>
+              <label className={labelCls} htmlFor="fullName">Full Name</label>
+              <div className="relative group">
+                <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <input id="fullName" type="text" value={form.name} onChange={set('name')} placeholder="Enter your full name" required className={inputCls} />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls} htmlFor="email">Email Address</label>
+              <div className="relative group">
+                <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <input id="email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required className={inputCls} />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls} htmlFor="password">Password</label>
+              <div className="relative group">
+                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder="Create a strong password" required className={inputCls + ' pr-10'} />
+                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
                   {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
-              }
-            />
-            <Field
-              label="Confirm Password"
-              icon={FiLock}
-              type={showConfirm ? 'text' : 'password'}
-              value={form.confirm}
-              onChange={set('confirm')}
-              placeholder="Repeat your password"
-              rightEl={
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="text-gray-400 hover:text-gray-600">
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls} htmlFor="confirmPassword">Confirm Password</label>
+              <div className="relative group">
+                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder="Repeat your password" required className={inputCls + ' pr-10'} />
+                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
                   {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
-              }
-            />
+              </div>
+            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#1B4332] text-white py-3 rounded-lg font-semibold text-sm hover:bg-[#2D6A4F] transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-            >
-              {loading ? 'Creating account…' : 'Create Account'}
-            </button>
+            <div className="pt-4">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#003527] text-white font-medium rounded-lg py-3.5 px-6 hover:bg-[#064e3b] active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 shadow-[0_2px_8px_rgba(0,53,39,0.2)] disabled:opacity-60"
+              >
+                <span>{loading ? 'Creating account…' : 'Create Account'}</span>
+                {!loading && <span className="text-base">→</span>}
+              </button>
+            </div>
           </form>
 
-          <p className="text-center text-sm text-[#4A4A4A] mt-6">
-            Already have an account?{' '}
-            <Link to="/login" className="text-[#1B4332] font-semibold hover:underline">Log in</Link>
-          </p>
+          <div className="mt-8 text-center border-t border-[#bfc9c3]/20 pt-6">
+            <p className="text-[#404944]">
+              Already have an account?{' '}
+              <Link to="/login" className="text-[#003527] font-semibold hover:text-[#fe932c] underline underline-offset-4 decoration-[#003527]/30 transition-colors">
+                Log in
+              </Link>
+            </p>
+          </div>
         </div>
-      </div>
+      </main>
+      <Footer />
     </div>
   );
 };
