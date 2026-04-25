@@ -133,9 +133,11 @@ exports.getMe = async (req, res) => {
         email: user.email,
         onboardingComplete: user.onboardingComplete,
         dailyNewPages: user.dailyNewPages,
+        reviewIntensity: user.reviewIntensity,
+        offDays: user.offDays,
         currentStreak: user.currentStreak,
         lastActiveDate: user.lastActiveDate,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
       }
     });
 
@@ -187,6 +189,28 @@ exports.updateProfile = async (req, res) => {
       updateData.dailyNewPages = pages;
     }
 
+    const { reviewIntensity, offDays } = req.body;
+
+    if (reviewIntensity !== undefined) {
+      if (!['light', 'standard', 'strong'].includes(reviewIntensity)) {
+        return res.status(400).json({
+          success: false,
+          message: 'reviewIntensity must be "light", "standard", or "strong"'
+        });
+      }
+      updateData.reviewIntensity = reviewIntensity;
+    }
+
+    if (offDays !== undefined) {
+      if (!Array.isArray(offDays) || offDays.length > 2 || !offDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
+        return res.status(400).json({
+          success: false,
+          message: 'offDays must be an array of at most 2 integers (0=Sun through 6=Sat)'
+        });
+      }
+      updateData.offDays = offDays;
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -209,9 +233,11 @@ exports.updateProfile = async (req, res) => {
         name: updatedUser.name,
         email: updatedUser.email,
         dailyNewPages: updatedUser.dailyNewPages,
+        reviewIntensity: updatedUser.reviewIntensity,
+        offDays: updatedUser.offDays,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
-        createdAt: updatedUser.createdAt
+        createdAt: updatedUser.createdAt,
       }
     });
 
