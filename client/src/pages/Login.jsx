@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
+import Logo from '../components/Logo';
 
 const Login = () => {
   const { login } = useAuth();
@@ -30,11 +31,8 @@ const Login = () => {
       <main className="flex-grow flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           {/* Brand area — outside card */}
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#064e3b] text-white mb-3 sacred-shadow">
-              <span className="text-2xl">📖</span>
-            </div>
-            <h1 className="text-2xl font-semibold text-[#064e3b] tracking-tight">Quran Tracker</h1>
+          <div className="flex justify-center mb-6">
+            <Logo size="lg" />
           </div>
 
           {/* Login card */}

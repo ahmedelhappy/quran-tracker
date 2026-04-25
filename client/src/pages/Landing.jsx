@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown } from 'react-icons/fi';
+import Logo from '../components/Logo';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
   const r = (size - stroke) / 2;
@@ -28,34 +29,65 @@ const FAQ_ITEMS = [
   { q: 'What happens if I miss a day?', a: 'No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection.' },
 ];
 
-const LandingNavbar = () => (
-  <nav className="bg-white border-b border-gray-100 sticky top-0 z-40">
-    <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <div className="flex items-center gap-2 font-bold text-[#1B4332] text-lg">
-        <span className="text-2xl leading-none">📖</span>
-        <span>Quran Tracker</span>
+const LandingNavbar = ({ activeSection }) => {
+  const navLinks = [
+    { href: '#features', id: 'features', label: 'Features' },
+    { href: '#how-it-works', id: 'how-it-works', label: 'How It Works' },
+    { href: '#faq', id: 'faq', label: 'FAQ' },
+  ];
+  return (
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-40">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Logo size="md" />
+        <div className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4A4A4A]">
+          {navLinks.map(({ href, id, label }) => (
+            <a
+              key={id}
+              href={href}
+              className={`pb-0.5 transition-colors ${
+                activeSection === id
+                  ? 'text-[#1B4332] font-semibold border-b-2 border-[#40916C]'
+                  : 'hover:text-[#1B4332]'
+              }`}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] hover:text-[#1B4332] transition-colors">Login</Link>
+          <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
+            Get Started
+          </Link>
+        </div>
       </div>
-      <div className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4A4A4A]">
-        <a href="#features" className="hover:text-[#1B4332] transition-colors">Features</a>
-        <a href="#how-it-works" className="hover:text-[#1B4332] transition-colors">How It Works</a>
-        <a href="#faq" className="hover:text-[#1B4332] transition-colors">FAQ</a>
-      </div>
-      <div className="flex items-center gap-3">
-        <Link to="/login" className="text-sm font-medium text-[#4A4A4A] hover:text-[#1B4332] transition-colors">Login</Link>
-        <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
-          Get Started
-        </Link>
-      </div>
-    </div>
-  </nav>
-);
+    </nav>
+  );
+};
 
 const Landing = () => {
   const [openFaq, setOpenFaq] = useState(null);
+  const [activeSection, setActiveSection] = useState('');
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) setActiveSection(entry.target.id);
+        });
+      },
+      { rootMargin: '-20% 0px -70% 0px' }
+    );
+    ['features', 'how-it-works', 'faq'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FAF9F6]">
-      <LandingNavbar />
+      <LandingNavbar activeSection={activeSection} />
 
       {/* ── HERO ─────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-20">
@@ -199,23 +231,23 @@ const Landing = () => {
               </p>
             </div>
 
-            {/* 4 — Stay Motivated (dark card) */}
-            <div className="bg-[#1B4332] rounded-2xl p-6">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-4">
-                <FiZap className="w-5 h-5 text-white" />
+            {/* 4 — Stay Motivated (light green card) */}
+            <div className="bg-green-50 rounded-2xl p-6 border border-green-100">
+              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
+                <FiZap className="w-5 h-5 text-[#1B4332]" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">Stay Motivated</h3>
-              <p className="text-green-200 text-sm mb-4 leading-relaxed">
+              <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Stay Motivated</h3>
+              <p className="text-[#4A4A4A] text-sm mb-4 leading-relaxed">
                 Build consistent habits with daily streaks, achievements, and gentle reminders.
               </p>
               <div className="space-y-2">
-                <div className="bg-white/10 rounded-xl px-3 py-2 flex items-center gap-2">
+                <div className="bg-white rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100">
                   <span>🔥</span>
-                  <span className="text-white text-sm font-medium">14 Day Streak</span>
+                  <span className="text-[#1B4332] text-sm font-medium">14 Day Streak</span>
                 </div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 flex items-center gap-2">
+                <div className="bg-white rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100">
                   <span>⭐</span>
-                  <span className="text-white text-sm font-medium">Juz 30 Completed</span>
+                  <span className="text-[#1B4332] text-sm font-medium">Juz 30 Completed</span>
                 </div>
               </div>
             </div>

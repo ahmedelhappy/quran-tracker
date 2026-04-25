@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
+import Logo from '../components/Logo';
 
 const Register = () => {
   const { register } = useAuth();
@@ -44,8 +45,8 @@ const Register = () => {
 
           {/* Header */}
           <div className="text-center mb-10 mt-2">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#f0f3ff] text-[#003527] mb-4">
-              <span className="text-xl">📖</span>
+            <div className="flex justify-center mb-4">
+              <Logo size="md" />
             </div>
             <h1 className="text-2xl font-semibold text-[#151c27] mb-2 tracking-tight">Create Your Account</h1>
             <p className="text-[#404944]">Begin your dedicated journey of Hifz.</p>

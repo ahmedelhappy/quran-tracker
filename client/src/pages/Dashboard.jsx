@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList } from 'react-icons/fi';
+import { FiBook, FiList, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 
 // ── Daily rotating quotes ────────────────────────────────
 const QUOTES = [
@@ -18,11 +18,6 @@ const QUOTES = [
   { text: 'It will be said to the companion of the Quran: Recite and rise in status.', source: 'Abu Dawud 1464' },
   { text: 'The heart that has no Quran in it is like a ruined house.', source: 'Tirmidhi' },
   { text: 'Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.', source: 'Tabarani' },
-  { text: 'Adorn the Quran with your voices, for a beautiful voice increases the beauty of the Quran.', source: 'Darimi' },
-  { text: 'Whoever memorizes the Quran and acts according to it, Allah will reward him greatly.', source: 'Tirmidhi' },
-  { text: 'Connect verses conceptually. Understanding the flow creates stronger mental hooks for recall.', source: 'Scholar\'s advice' },
-  { text: 'Start after Fajr. The mind is clearest in the early hours before the distractions of the day begin.', source: 'Traditional Hifz wisdom' },
-  { text: 'Consistency over volume. Memorizing half a page perfectly is better than two pages poorly.', source: 'Traditional Hifz wisdom' },
 ];
 
 const TIPS = [
@@ -52,16 +47,15 @@ const JuzRing = ({ pct = 0 }) => {
   );
 };
 
-// ── Skeleton pulse ───────────────────────────────────────
 const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded bg-[#e7eefe] animate-pulse`} />;
 
 // ── Task card ────────────────────────────────────────────
-const TaskCard = ({ page, type, done, marking, onComplete }) => {
+const TaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
     <div
-      className={`bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] border-l-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-60' : ''}`}
+      className={`bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] border-l-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div className="flex items-start gap-4">
@@ -77,9 +71,17 @@ const TaskCard = ({ page, type, done, marking, onComplete }) => {
         </div>
       </div>
       {done ? (
-        <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] bg-[#004f35]/10 px-4 py-2 rounded-lg">
-          ✓ Done
-        </span>
+        <div className="flex items-center gap-2 self-stretch sm:self-auto">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] bg-[#004f35]/10 px-4 py-2 rounded-lg">
+            ✓ Done
+          </span>
+          <button
+            onClick={() => onUndo(page.pageNumber, type)}
+            className="text-xs text-[#707974] hover:text-[#003527] underline underline-offset-2 transition-colors"
+          >
+            Undo
+          </button>
+        </div>
       ) : (
         <button
           onClick={() => onComplete(page.pageNumber, type)}
@@ -90,7 +92,42 @@ const TaskCard = ({ page, type, done, marking, onComplete }) => {
               : 'bg-[#dce2f3] text-[#404944] hover:bg-[#d3daea] hover:text-[#003527] border border-[#bfc9c3]'
           }`}
         >
-          Mark as Complete
+          {marking ? '…' : 'Mark as Complete'}
+        </button>
+      )}
+    </div>
+  );
+};
+
+// ── Extra task card (for Want More section) ──────────────
+const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) => {
+  const isNew = type === 'new';
+  const accentColor = isNew ? '#004f35' : '#fe932c';
+  return (
+    <div
+      className={`bg-white rounded-xl p-3 border border-[#dce2f3] border-l-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
+      style={{ borderLeftColor: accentColor }}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${accentColor}1a`, color: accentColor }}>
+          {isNew ? <FiBook className="w-4 h-4" /> : <span className="text-xs font-bold">↺</span>}
+        </div>
+        <p className="text-sm font-medium text-[#003527]">Page {pageNumber}</p>
+      </div>
+      {done ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-[#004f35] bg-[#004f35]/10 px-3 py-1.5 rounded-lg">✓ Done</span>
+          <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] hover:text-[#003527] underline">Undo</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => onComplete(pageNumber, type)}
+          disabled={marking}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${
+            isNew ? 'bg-[#004f35] text-white hover:bg-[#003527]' : 'bg-[#dce2f3] text-[#404944] hover:bg-[#d3daea] border border-[#bfc9c3]'
+          }`}
+        >
+          {marking ? '…' : 'Mark Complete'}
         </button>
       )}
     </div>
@@ -106,6 +143,10 @@ export default function Dashboard() {
   const [completedKeys, setCompletedKeys] = useState(new Set());
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  const [showWantMore, setShowWantMore] = useState(false);
+  const [extraData, setExtraData] = useState(null);
+  const [loadingExtra, setLoadingExtra] = useState(false);
 
   const doy = dayOfYear();
   const quote = QUOTES[doy % QUOTES.length];
@@ -143,17 +184,59 @@ export default function Dashboard() {
     }
   };
 
-  const stats = data?.stats;
+  const undoComplete = (pageNumber, type) => {
+    const key = `${type}-${pageNumber}`;
+    setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+  };
 
-  // Juz progress for ring card
+  const markAllNew = () => {
+    newPending.forEach(p => markComplete(p.pageNumber, 'new'));
+  };
+  const markAllReview = () => {
+    revPending.forEach(p => markComplete(p.pageNumber, 'review'));
+  };
+
+  const loadExtraPages = async () => {
+    if (extraData || loadingExtra) return;
+    setLoadingExtra(true);
+    try {
+      const res = await progressAPI.getAllProgress();
+      const allData = res.data.data;
+      const memorizedSet = new Set(
+        Array.isArray(allData?.memorizedPages) ? allData.memorizedPages : []
+      );
+      const reviewedToday = new Set((data?.reviewPages ?? []).map(p => p.pageNumber));
+      const newToday = new Set((data?.newPages ?? []).map(p => p.pageNumber));
+
+      // Next 3 unmemoized pages after today's last new page
+      const lastNewPage = data?.newPages?.length > 0
+        ? Math.max(...data.newPages.map(p => p.pageNumber))
+        : 0;
+      const extraNew = [];
+      for (let p = lastNewPage + 1; p <= 604 && extraNew.length < 3; p++) {
+        if (!memorizedSet.has(p) && !newToday.has(p)) extraNew.push(p);
+      }
+
+      // Memorized pages not reviewed today
+      const extraReview = [...memorizedSet]
+        .sort((a, b) => a - b)
+        .filter(p => !reviewedToday.has(p) && !newToday.has(p))
+        .slice(0, 5);
+
+      setExtraData({ extraNew, extraReview });
+    } catch {
+      setExtraData({ extraNew: [], extraReview: [] });
+    } finally {
+      setLoadingExtra(false);
+    }
+  };
+
+  const stats = data?.stats;
   const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || juzData.find(j => j.percentage > 0) || null;
   const juzPct = activeJuz?.percentage ?? 0;
   const totalJuz = stats ? (stats.totalMemorized / 20.13).toFixed(1) : '0';
-
-  // Pages to Hifz
   const pagesToHifz = stats ? `${stats.totalMemorized} / 604` : '— / 604';
 
-  // Missed day
   const missedDay = (() => {
     if (!user?.lastActiveDate) return false;
     const last = new Date(user.lastActiveDate);
@@ -166,6 +249,9 @@ export default function Dashboard() {
   const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
   const revPending = (data?.reviewPages ?? []).filter(p => !completedKeys.has(`review-${p.pageNumber}`));
   const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 && completedKeys.size > 0;
+
+  const REVIEW_LIMIT = 3;
+  const hasMoreReviews = revPending.length > REVIEW_LIMIT;
 
   return (
     <div className="min-h-screen bg-[#FFFDF5] sacred-pattern flex flex-col">
@@ -185,9 +271,7 @@ export default function Dashboard() {
 
         {/* ── Welcome & Stats Bento ─────────────────────────── */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Welcome card — 2 cols */}
           <div className="col-span-1 md:col-span-2 bg-white rounded-xl p-6 sacred-shadow flex flex-col justify-between border border-[#dce2f3] relative overflow-hidden">
-            {/* Decorative star */}
             <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none text-[#064e3b]">
               <svg fill="currentColor" height="200" viewBox="0 0 24 24" width="200">
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
@@ -207,9 +291,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Stats 2×2 grid — 2 cols */}
           <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">
-            {/* Daily Review */}
             <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center">
               {loading ? (
                 <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-16" /><Sk h="h-6" w="w-20" /></>
@@ -222,7 +304,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Juz Progress ring */}
             <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center">
               {loading ? (
                 <><Sk h="h-16" w="w-16" /><Sk h="h-3" w="w-16" /><Sk h="h-5" w="w-20" /></>
@@ -235,7 +316,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Pages to Hifz — spans 2 cols */}
             <div className="bg-white rounded-xl p-4 sacred-shadow border border-[#dce2f3] flex flex-col justify-center items-center text-center col-span-2">
               {loading ? (
                 <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-24" /><Sk h="h-7" w="w-32" /></>
@@ -266,7 +346,6 @@ export default function Dashboard() {
               ))}
             </div>
           ) : data?.isOffDay ? (
-            /* Rest day */
             <div className="bg-white rounded-xl p-12 sacred-shadow border border-[#dce2f3] flex flex-col items-center text-center relative overflow-hidden">
               <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
                 <span style={{ fontSize: 200 }}>🌿</span>
@@ -289,10 +368,93 @@ export default function Dashboard() {
               </div>
             </div>
           ) : allTasksDone ? (
-            <div className="bg-white rounded-xl p-10 sacred-shadow border border-[#dce2f3] flex flex-col items-center text-center">
-              <p className="text-4xl mb-3">🎉</p>
-              <h3 className="text-2xl font-semibold text-[#003527] mb-2">ما شاء الله! Tasks Complete!</h3>
-              <p className="text-[#404944]">Come back tomorrow for your next session.</p>
+            <div className="flex flex-col gap-4">
+              <div className="bg-white rounded-xl p-10 sacred-shadow border border-[#dce2f3] flex flex-col items-center text-center">
+                <p className="text-4xl mb-3">🎉</p>
+                <h3 className="text-2xl font-semibold text-[#003527] mb-2">ما شاء الله! Tasks Complete!</h3>
+                <p className="text-[#404944]">Come back tomorrow for your next session.</p>
+              </div>
+
+              {/* Want more? expandable section */}
+              <div className="bg-white rounded-xl sacred-shadow border border-[#dce2f3] overflow-hidden">
+                <button
+                  onClick={() => {
+                    setShowWantMore(!showWantMore);
+                    if (!showWantMore) loadExtraPages();
+                  }}
+                  className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">✨</span>
+                    <span className="text-base font-semibold text-[#003527]">Want to do more today?</span>
+                  </div>
+                  {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974]" /> : <FiChevronDown className="w-4 h-4 text-[#707974]" />}
+                </button>
+
+                {showWantMore && (
+                  <div className="border-t border-[#dce2f3] p-4 space-y-6">
+                    {loadingExtra ? (
+                      <div className="space-y-2 py-2">
+                        <Sk h="h-12" /><Sk h="h-12" /><Sk h="h-12" />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Extra new memorization */}
+                        {extraData?.extraNew?.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="w-2 h-2 rounded-full bg-[#004f35]" />
+                              <h4 className="text-sm font-semibold text-[#151c27]">Memorize More</h4>
+                              <span className="text-xs text-[#707974]">— upcoming pages</span>
+                            </div>
+                            <div className="space-y-2">
+                              {extraData.extraNew.map(pageNum => (
+                                <ExtraTaskCard
+                                  key={`extra-new-${pageNum}`}
+                                  pageNumber={pageNum}
+                                  type="new"
+                                  done={completedKeys.has(`new-${pageNum}`)}
+                                  marking={markingKeys.has(`new-${pageNum}`)}
+                                  onComplete={markComplete}
+                                  onUndo={undoComplete}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Extra review */}
+                        {extraData?.extraReview?.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
+                              <h4 className="text-sm font-semibold text-[#151c27]">Review More</h4>
+                              <span className="text-xs text-[#707974]">— additional pages</span>
+                            </div>
+                            <div className="space-y-2">
+                              {extraData.extraReview.map(pageNum => (
+                                <ExtraTaskCard
+                                  key={`extra-review-${pageNum}`}
+                                  pageNumber={pageNum}
+                                  type="review"
+                                  done={completedKeys.has(`review-${pageNum}`)}
+                                  marking={markingKeys.has(`review-${pageNum}`)}
+                                  onComplete={markComplete}
+                                  onUndo={undoComplete}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
+                          <p className="text-sm text-[#707974] text-center py-4">No additional pages available.</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -303,9 +465,14 @@ export default function Dashboard() {
                     <span className="w-2 h-2 rounded-full bg-[#004f35]" />
                     <h4 className="text-lg font-semibold text-[#151c27]">New Memorization</h4>
                   </div>
-                  <button className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
-                    Mark All
-                  </button>
+                  {newPending.length > 0 && (
+                    <button
+                      onClick={markAllNew}
+                      className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors"
+                    >
+                      Mark All
+                    </button>
+                  )}
                 </div>
                 {(data?.newPages ?? []).length === 0 ? (
                   <p className="text-sm text-[#404944] py-4">No new memorization today.</p>
@@ -317,6 +484,7 @@ export default function Dashboard() {
                       done={completedKeys.has(`new-${p.pageNumber}`)}
                       marking={markingKeys.has(`new-${p.pageNumber}`)}
                       onComplete={markComplete}
+                      onUndo={undoComplete}
                     />
                   ))
                 )}
@@ -327,24 +495,70 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                    <h4 className="text-lg font-semibold text-[#151c27]">Review</h4>
+                    <h4 className="text-lg font-semibold text-[#151c27]">
+                      Review
+                      {(data?.reviewPages ?? []).length > 0 && (
+                        <span className="ml-2 text-xs font-normal text-[#707974]">
+                          {(data?.reviewPages ?? []).length} pages
+                        </span>
+                      )}
+                    </h4>
                   </div>
-                  <button className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                    Mark All
-                  </button>
+                  {revPending.length > 0 && (
+                    <button
+                      onClick={markAllReview}
+                      className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors"
+                    >
+                      Mark All
+                    </button>
+                  )}
                 </div>
                 {(data?.reviewPages ?? []).length === 0 ? (
                   <p className="text-sm text-[#404944] py-4">No review pages today.</p>
                 ) : (
-                  data.reviewPages.map(p => (
-                    <TaskCard
-                      key={`review-${p.pageNumber}`}
-                      page={p} type="review"
-                      done={completedKeys.has(`review-${p.pageNumber}`)}
-                      marking={markingKeys.has(`review-${p.pageNumber}`)}
-                      onComplete={markComplete}
-                    />
-                  ))
+                  <>
+                    {/* Always show first REVIEW_LIMIT items */}
+                    {revPending.slice(0, REVIEW_LIMIT).map(p => (
+                      <TaskCard
+                        key={`review-${p.pageNumber}`}
+                        page={p} type="review"
+                        done={completedKeys.has(`review-${p.pageNumber}`)}
+                        marking={markingKeys.has(`review-${p.pageNumber}`)}
+                        onComplete={markComplete}
+                        onUndo={undoComplete}
+                      />
+                    ))}
+
+                    {/* Toggle button when more exist */}
+                    {hasMoreReviews && (
+                      <button
+                        onClick={() => setShowAllReviews(!showAllReviews)}
+                        className="flex items-center justify-center gap-2 text-sm text-[#404944] hover:text-[#003527] py-2 border border-[#dce2f3] rounded-xl hover:bg-[#f9f9ff] transition-colors"
+                      >
+                        {showAllReviews ? (
+                          <><FiChevronUp className="w-4 h-4" /> Show less</>
+                        ) : (
+                          <><FiChevronDown className="w-4 h-4" /> Show all {revPending.length} review pages ({REVIEW_LIMIT} of {revPending.length} shown)</>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Remaining items in scrollable section when expanded */}
+                    {showAllReviews && hasMoreReviews && (
+                      <div className="max-h-[600px] overflow-y-auto space-y-3 pr-1">
+                        {revPending.slice(REVIEW_LIMIT).map(p => (
+                          <TaskCard
+                            key={`review-extra-${p.pageNumber}`}
+                            page={p} type="review"
+                            done={completedKeys.has(`review-${p.pageNumber}`)}
+                            marking={markingKeys.has(`review-${p.pageNumber}`)}
+                            onComplete={markComplete}
+                            onUndo={undoComplete}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -372,7 +586,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Daily quote (below tip) */}
+        {/* Daily quote */}
         <div className="text-center pb-4">
           <p className="text-[#404944] italic text-sm max-w-2xl mx-auto">
             "{quote.text}"

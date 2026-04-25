@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FiSettings, FiGlobe, FiMoon, FiMenu, FiX, FiLogOut, FiUser } from 'react-icons/fi';
+import Logo from './Logo';
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -31,8 +32,8 @@ const Navbar = () => {
 
         {/* Logo */}
         <div className="flex items-center gap-8">
-          <Link to="/dashboard" className="text-2xl font-bold text-[#064e3b]">
-            Quran Tracker
+          <Link to="/dashboard">
+            <Logo size="md" />
           </Link>
           {/* Desktop nav */}
           <nav className="hidden md:flex gap-6">
