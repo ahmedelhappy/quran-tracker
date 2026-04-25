@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
@@ -10,84 +11,59 @@ import Dashboard from './pages/Dashboard';
 import Onboarding from './pages/Onboarding';
 import Settings from './pages/Settings';
 import Progress from './pages/Progress';
+import Library from './pages/Library';
 
-// Wrapper to check onboarding status
+// Redirect to /onboarding if onboarding not complete
 const DashboardWrapper = () => {
   const { user } = useAuth();
-  if (user && !user.onboardingComplete) {
-    return <Navigate to="/onboarding" replace />;
-  }
+  if (user && !user.onboardingComplete) return <Navigate to="/onboarding" replace />;
   return <Dashboard />;
 };
 
+// Redirect to /dashboard if onboarding already complete
 const OnboardingWrapper = () => {
   const { user } = useAuth();
-  if (user && user.onboardingComplete) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (user && user.onboardingComplete) return <Navigate to="/dashboard" replace />;
   return <Onboarding />;
 };
 
-// Wrapper for public pages (redirect to dashboard if logged in)
+// Redirect authenticated users away from public pages
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#1B4332] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
-
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          {/* Public Routes */}
-          <Route
-            path="/"
-            element={<PublicRoute><Landing /></PublicRoute>}
-          />
-          <Route
-            path="/login"
-            element={<PublicRoute><Login /></PublicRoute>}
-          />
-          <Route
-            path="/register"
-            element={<PublicRoute><Register /></PublicRoute>}
-          />
+      <ToastProvider>
+        <Router>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
+            <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-          {/* Protected Routes */}
-          <Route
-            path="/dashboard"
-            element={<ProtectedRoute><DashboardWrapper /></ProtectedRoute>}
-          />
-          <Route
-            path="/onboarding"
-            element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>}
-          />
-          <Route
-            path="/settings"
-            element={<ProtectedRoute><Settings /></ProtectedRoute>}
-          />
-          <Route
-            path="/progress"
-            element={<ProtectedRoute><Progress /></ProtectedRoute>}
-          />
+            {/* Protected routes */}
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardWrapper /></ProtectedRoute>} />
+            <Route path="/onboarding" element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>} />
+            <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/progress"  element={<ProtectedRoute><Progress /></ProtectedRoute>} />
+            <Route path="/library"   element={<ProtectedRoute><Library /></ProtectedRoute>} />
 
-          {/* 404 - Redirect to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 }
