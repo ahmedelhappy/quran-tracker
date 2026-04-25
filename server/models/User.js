@@ -43,6 +43,23 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    planStartDate: {
+      type: Date,
+      default: null,
+    },
+    reviewIntensity: {
+      type: String,
+      enum: ['light', 'standard', 'strong'],
+      default: 'standard',
+    },
+    offDays: {
+      type: [Number],
+      default: [],
+      validate: {
+        validator: (days) => days.length <= 2 && days.every(d => d >= 0 && d <= 6),
+        message: 'offDays must contain at most 2 values, each between 0 (Sun) and 6 (Sat)',
+      },
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically
