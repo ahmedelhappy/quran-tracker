@@ -5,7 +5,8 @@ const {
   getTodayTasks,
   markPageComplete,
   getAllProgress,
-  getJuzProgress
+  getJuzProgress,
+  getEstimate,
 } = require('../controllers/progressController');
 const { protect } = require('../middleware/auth');
 
@@ -26,5 +27,8 @@ router.get('/all', getAllProgress);
 
 // Get Juz progress (for onboarding selection)
 router.get('/juz', getJuzProgress);
+
+// Estimated completion time (accepts ?dailyPages=X)
+router.get('/estimate', getEstimate);
 
 module.exports = router;
