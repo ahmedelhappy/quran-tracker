@@ -1,537 +1,437 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { progressAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
+import { progressAPI, authAPI } from '../services/api';
+import { FiPlus, FiX } from 'react-icons/fi';
 
-const Onboarding = () => {
+const JUZ_RANGES = [
+  {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
+  {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
+  {juz:7,start:122,end:141},{juz:8,start:142,end:161},{juz:9,start:162,end:181},
+  {juz:10,start:182,end:201},{juz:11,start:202,end:221},{juz:12,start:222,end:241},
+  {juz:13,start:242,end:261},{juz:14,start:262,end:281},{juz:15,start:282,end:301},
+  {juz:16,start:302,end:321},{juz:17,start:322,end:341},{juz:18,start:342,end:361},
+  {juz:19,start:362,end:381},{juz:20,start:382,end:401},{juz:21,start:402,end:421},
+  {juz:22,start:422,end:441},{juz:23,start:442,end:461},{juz:24,start:462,end:481},
+  {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
+  {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
+];
+
+const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_NAMES  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+const DAILY_OPTIONS = [
+  { value: 0.5, label: '0.5 Pages/Day', sub: 'Half a page' },
+  { value: 1,   label: '1 Page/Day',    sub: 'Recommended' },
+  { value: 2,   label: '2 Pages/Day',   sub: 'Ambitious' },
+  { value: 5,   label: '5 Pages/Day',   sub: 'Intensive' },
+];
+
+const INTENSITY_OPTIONS = [
+  { value: 'light',    label: 'Light',    desc: 'Gentle pace, fewer reviews daily. Best for tight schedules.' },
+  { value: 'standard', label: 'Standard', desc: 'Balanced retention. Recommended for steady progress.' },
+  { value: 'strong',   label: 'Strong',   desc: 'Rigorous volume. Ideal for dedicated focus periods.' },
+];
+
+function computeSelectedPages(mode, selectedJuz, pageRanges) {
+  const pages = new Set();
+  if (mode === 'juz') {
+    JUZ_RANGES.forEach(({ juz, start, end }) => {
+      if (selectedJuz.has(juz)) {
+        for (let p = start; p <= end; p++) pages.add(p);
+      }
+    });
+  } else {
+    pageRanges.forEach(({ start, end }) => {
+      const s = parseInt(start, 10), e = parseInt(end, 10);
+      if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e) {
+        for (let p = s; p <= e; p++) pages.add(p);
+      }
+    });
+  }
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
+const ProgressBar = ({ step }) => (
+  <div className="flex gap-1.5 mb-8">
+    {[1, 2, 3, 4].map((s) => (
+      <div
+        key={s}
+        className={`flex-1 h-1.5 rounded-full transition-colors duration-300 ${s <= step ? 'bg-[#1B4332]' : 'bg-gray-200'}`}
+      />
+    ))}
+  </div>
+);
+
+export default function Onboarding() {
+  const { refreshUser } = useAuth();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+
   const [step, setStep] = useState(1);
-  const [selectedJuz, setSelectedJuz] = useState([]);
-  const [pageRanges, setPageRanges] = useState([]);
+  const [mode, setMode] = useState('juz');
+  const [selectedJuz, setSelectedJuz] = useState(new Set());
+  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [dailyPages, setDailyPages] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [reviewIntensity, setReviewIntensity] = useState('standard');
+  const [offDays, setOffDays] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  const { user } = useAuth();
+  const selectedPages = computeSelectedPages(mode, selectedJuz, pageRanges);
+  const selectedCount = selectedPages.length;
 
-  // Juz page ranges
-  const juzPageRanges = [
-    { juz: 1, start: 1, end: 21 },
-    { juz: 2, start: 22, end: 41 },
-    { juz: 3, start: 42, end: 61 },
-    { juz: 4, start: 62, end: 81 },
-    { juz: 5, start: 82, end: 101 },
-    { juz: 6, start: 102, end: 121 },
-    { juz: 7, start: 122, end: 141 },
-    { juz: 8, start: 142, end: 161 },
-    { juz: 9, start: 162, end: 181 },
-    { juz: 10, start: 182, end: 201 },
-    { juz: 11, start: 202, end: 221 },
-    { juz: 12, start: 222, end: 241 },
-    { juz: 13, start: 242, end: 261 },
-    { juz: 14, start: 262, end: 281 },
-    { juz: 15, start: 282, end: 301 },
-    { juz: 16, start: 302, end: 321 },
-    { juz: 17, start: 322, end: 341 },
-    { juz: 18, start: 342, end: 361 },
-    { juz: 19, start: 362, end: 381 },
-    { juz: 20, start: 382, end: 401 },
-    { juz: 21, start: 402, end: 421 },
-    { juz: 22, start: 422, end: 441 },
-    { juz: 23, start: 442, end: 461 },
-    { juz: 24, start: 462, end: 481 },
-    { juz: 25, start: 482, end: 501 },
-    { juz: 26, start: 502, end: 521 },
-    { juz: 27, start: 522, end: 541 },
-    { juz: 28, start: 542, end: 561 },
-    { juz: 29, start: 562, end: 581 },
-    { juz: 30, start: 582, end: 604 },
-  ];
+  // Compute estimate client-side (pages not yet in DB during onboarding)
+  const activeDays = 7 - offDays.length;
+  const effectiveDaily = dailyPages * (activeDays / 7);
+  const remaining = 604 - selectedCount;
+  const estimatedDays = effectiveDaily > 0 ? Math.ceil(remaining / effectiveDaily) : null;
+  const estimatedMonths = estimatedDays ? Math.round(estimatedDays / 30) : null;
+  const estimatedYears = estimatedDays ? parseFloat((estimatedDays / 365).toFixed(1)) : null;
 
-  // Get all memorized pages (from Juz + all page ranges)
-  const getMemorizedPages = () => {
-    const pages = new Set();
-
-    // Add pages from selected Juz
-    selectedJuz.forEach(juzNum => {
-      const juz = juzPageRanges.find(j => j.juz === juzNum);
-      if (juz) {
-        for (let page = juz.start; page <= juz.end; page++) {
-          pages.add(page);
-        }
-      }
+  const toggleJuz = (n) => {
+    setSelectedJuz(prev => {
+      const next = new Set(prev);
+      next.has(n) ? next.delete(n) : next.add(n);
+      return next;
     });
-
-    // Add pages from all page ranges
-    pageRanges.forEach(range => {
-      if (range.start && range.end) {
-        const start = parseInt(range.start);
-        const end = parseInt(range.end);
-        if (start >= 1 && end <= 604 && start <= end) {
-          for (let page = start; page <= end; page++) {
-            pages.add(page);
-          }
-        }
-      }
-    });
-
-    return Array.from(pages).sort((a, b) => a - b);
   };
 
-  const toggleJuz = (juzNumber) => {
-    setSelectedJuz(prev =>
-      prev.includes(juzNumber)
-        ? prev.filter(j => j !== juzNumber)
-        : [...prev, juzNumber]
+  const toggleOffDay = (d) => {
+    setOffDays(prev =>
+      prev.includes(d) ? prev.filter(x => x !== d) : prev.length < 2 ? [...prev, d] : prev
     );
   };
 
-  // Add a new page range
-  const addPageRange = () => {
-    setPageRanges([...pageRanges, { start: '', end: '', id: Date.now() }]);
-  };
+  const addRange = () => setPageRanges(r => [...r, { start: '', end: '' }]);
+  const removeRange = (i) => setPageRanges(r => r.filter((_, idx) => idx !== i));
+  const updateRange = (i, key, val) =>
+    setPageRanges(r => r.map((item, idx) => idx === i ? { ...item, [key]: val } : item));
 
-  // Update a page range
-  const updatePageRange = (id, field, value) => {
-    setPageRanges(pageRanges.map(range =>
-      range.id === id ? { ...range, [field]: value } : range
-    ));
-  };
-
-  // Remove a page range
-  const removePageRange = (id) => {
-    setPageRanges(pageRanges.filter(range => range.id !== id));
-  };
-
-  // Get Juz info for a page number
-  const getJuzForPage = (pageNum) => {
-    for (const juz of juzPageRanges) {
-      if (pageNum >= juz.start && pageNum <= juz.end) {
-        return juz.juz;
-      }
-    }
-    return null;
-  };
-
-  // Validate a single page range
-  const validateRange = (range) => {
-    if (!range.start && !range.end) return { valid: true, empty: true };
-    
-    const start = parseInt(range.start);
-    const end = parseInt(range.end);
-    
-    if (isNaN(start) || isNaN(end)) return { valid: false, error: 'Enter valid numbers' };
-    if (start < 1 || end > 604) return { valid: false, error: 'Pages must be 1-604' };
-    if (start > end) return { valid: false, error: 'Start must be ≤ End' };
-    
-    return { valid: true, empty: false };
-  };
-
-  // Validate all page ranges
-  const validateAllRanges = () => {
-    for (const range of pageRanges) {
-      const result = validateRange(range);
-      if (!result.valid) return false;
-    }
-    return true;
-  };
-
-  const handleComplete = async () => {
-    if (!validateAllRanges()) {
-      setError('Please fix invalid page ranges');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
+  const handleSubmit = async () => {
+    setSubmitting(true);
     try {
-      const memorizedPages = getMemorizedPages();
-
-      await progressAPI.completeOnboarding({
-        memorizedPages,
-        dailyNewPages: dailyPages
-      });
-
-      window.location.href = '/dashboard';
-
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to complete onboarding');
-      setIsLoading(false);
+      await progressAPI.completeOnboarding({ memorizedPages: selectedPages, dailyNewPages: dailyPages });
+      await authAPI.updateProfile({ reviewIntensity, offDays });
+      await refreshUser();
+      navigate('/dashboard');
+    } catch {
+      showToast('Something went wrong. Please try again.', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const totalMemorizedPages = getMemorizedPages().length;
-
-  return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">📖 Quran Tracker</h1>
-          <p className="text-gray-500 mt-2">Let's set up your memorization journey</p>
+  // ── STEP 1 ────────────────────────────────────────────
+  if (step === 1) return (
+    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 max-w-lg w-full p-8">
+        <ProgressBar step={1} />
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center mx-auto">
+            <span className="text-3xl">✨</span>
+          </div>
+          <h1 className="text-2xl font-extrabold text-[#1A1A1A]">Welcome to Your Hifz Journey! 🎉</h1>
+          <p className="text-[#4A4A4A] leading-relaxed">
+            Find tranquility in discipline. Let's set up a personalized memorization plan to build a lasting connection with the Quran.
+          </p>
+          <button
+            onClick={() => setStep(2)}
+            className="w-full bg-[#1B4332] text-white py-3 rounded-lg font-semibold hover:bg-[#2D6A4F] transition-colors mt-4"
+          >
+            Let's Begin →
+          </button>
         </div>
+      </div>
+    </div>
+  );
 
-        {/* Progress Indicator */}
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center gap-2">
-            {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step >= s ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-600'
+  // ── STEP 2 ────────────────────────────────────────────
+  if (step === 2) return (
+    <div className="min-h-screen bg-[#FAF9F6] p-6">
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <span className="font-bold text-[#1B4332] flex items-center gap-2 text-lg"><span>📖</span> Quran Tracker</span>
+          <span className="text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide">Step 2 of 4</span>
+        </div>
+        <ProgressBar step={2} />
+
+        {/* Section A — Already memorized */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+          <h2 className="text-lg font-bold text-[#1A1A1A] mb-1">What have you already memorized?</h2>
+          <p className="text-sm text-[#4A4A4A] mb-5">Select the portions you have completely memorized to establish your baseline.</p>
+
+          {/* Tab toggle */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-5 w-fit">
+            {['juz', 'range'].map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  mode === m ? 'bg-white text-[#1B4332] shadow-sm' : 'text-[#4A4A4A] hover:text-[#1B4332]'
+                }`}
+              >
+                {m === 'juz' ? 'By Juz' : 'By Surah / Range'}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'juz' ? (
+            <div className="grid grid-cols-10 gap-1.5">
+              {JUZ_RANGES.map(({ juz }) => (
+                <button
+                  key={juz}
+                  onClick={() => toggleJuz(juz)}
+                  className={`aspect-square rounded-lg text-sm font-semibold transition-colors ${
+                    selectedJuz.has(juz)
+                      ? 'bg-[#1B4332] text-white'
+                      : 'bg-gray-100 text-[#4A4A4A] hover:bg-green-50 hover:text-[#1B4332]'
                   }`}
                 >
-                  {s}
+                  {juz}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pageRanges.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="number" min="1" max="604"
+                    value={r.start}
+                    onChange={e => updateRange(i, 'start', e.target.value)}
+                    placeholder="Start page"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#40916C]"
+                  />
+                  <span className="text-[#4A4A4A] text-sm">to</span>
+                  <input
+                    type="number" min="1" max="604"
+                    value={r.end}
+                    onChange={e => updateRange(i, 'end', e.target.value)}
+                    placeholder="End page"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#40916C]"
+                  />
+                  {pageRanges.length > 1 && (
+                    <button onClick={() => removeRange(i)} className="text-gray-400 hover:text-[#E63946]">
+                      <FiX className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                {s < 4 && (
-                  <div className={`w-8 h-1 ${step > s ? 'bg-green-600' : 'bg-gray-300'}`} />
+              ))}
+              <button onClick={addRange} className="flex items-center gap-1.5 text-sm text-[#1B4332] font-medium hover:underline mt-1">
+                <FiPlus className="w-4 h-4" /> Add another range
+              </button>
+            </div>
+          )}
+
+          {selectedCount > 0 && (
+            <p className="text-xs text-[#40916C] font-medium mt-3">{selectedCount} pages selected</p>
+          )}
+        </div>
+
+        {/* Section B — Daily goal */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+          <h2 className="text-lg font-bold text-[#1A1A1A] mb-1">Set your daily goal</h2>
+          <p className="text-sm text-[#4A4A4A] mb-5">Consistency is the key to Hifz. Choose a pace you can maintain comfortably every day.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {DAILY_OPTIONS.map(({ value, label, sub }) => (
+              <button
+                key={value}
+                onClick={() => setDailyPages(value)}
+                className={`rounded-xl p-4 text-center border-2 transition-colors ${
+                  dailyPages === value
+                    ? 'border-[#1B4332] bg-green-50'
+                    : 'border-gray-100 hover:border-green-200'
+                }`}
+              >
+                <p className={`text-sm font-bold ${dailyPages === value ? 'text-[#1B4332]' : 'text-[#1A1A1A]'}`}>{label}</p>
+                <p className="text-xs text-[#4A4A4A] mt-0.5">{sub}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Estimate banner */}
+        {estimatedYears && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 flex items-start gap-3">
+            <span className="text-xl flex-shrink-0">⭐</span>
+            <div>
+              <p className="text-sm font-bold text-amber-800">Estimated Completion</p>
+              <p className="text-sm text-amber-700 mt-0.5">
+                At {dailyPages} page{dailyPages !== 1 ? 's' : ''}/day, you will complete the memorization of the Quran in approximately{' '}
+                <strong>{estimatedYears} year{estimatedYears !== 1 ? 's' : ''}</strong>
+                {estimatedMonths && estimatedMonths < 24 ? ` (${estimatedMonths} months)` : ''}.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between">
+          <button onClick={() => setStep(1)} className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-[#4A4A4A] hover:bg-gray-50">← Back</button>
+          <button onClick={() => setStep(3)} className="bg-[#1B4332] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#2D6A4F] transition-colors">Continue →</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── STEP 3 ────────────────────────────────────────────
+  if (step === 3) return (
+    <div className="min-h-screen bg-[#FAF9F6] p-6">
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <span className="font-bold text-[#1B4332] flex items-center gap-2 text-lg"><span>📖</span> Quran Tracker</span>
+          <span className="text-xs font-semibold text-[#4A4A4A] uppercase tracking-wide">Step 3 of 4</span>
+        </div>
+        <ProgressBar step={3} />
+
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-extrabold text-[#1A1A1A] mb-2">Customize Your Experience</h2>
+          <p className="text-[#4A4A4A] text-sm">Set a sustainable rhythm for your memorization journey. You can always adjust this later.</p>
+        </div>
+
+        {/* Review Intensity */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-4">
+          <h3 className="font-bold text-[#1A1A1A] mb-1 flex items-center gap-2">
+            <span>🔍</span> Review Intensity
+          </h3>
+          <p className="text-xs text-[#4A4A4A] mb-4">How many pages per day do you want to review?</p>
+          <div className="grid grid-cols-3 gap-3">
+            {INTENSITY_OPTIONS.map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => setReviewIntensity(value)}
+                className={`rounded-xl p-4 text-left border-2 transition-colors relative ${
+                  reviewIntensity === value
+                    ? 'border-[#1B4332] bg-green-50'
+                    : 'border-gray-100 hover:border-green-200'
+                }`}
+              >
+                {reviewIntensity === value && (
+                  <span className="absolute top-2 right-2 text-[#1B4332] text-xs">✓</span>
                 )}
+                <p className={`text-sm font-bold mb-1 ${reviewIntensity === value ? 'text-[#1B4332]' : 'text-[#1A1A1A]'}`}>{label}</p>
+                <p className="text-xs text-[#4A4A4A] leading-relaxed">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Rest Days */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+          <h3 className="font-bold text-[#1A1A1A] mb-1 flex items-center gap-2">
+            <span>📅</span> Rest Days
+          </h3>
+          <p className="text-xs text-[#4A4A4A] mb-4">
+            Select up to 2 days where no new memorization goals will be scheduled.
+          </p>
+          <div className="flex gap-2 justify-center">
+            {DAY_LABELS.map((label, i) => (
+              <button
+                key={i}
+                onClick={() => toggleOffDay(i)}
+                className={`w-10 h-10 rounded-full text-sm font-semibold transition-colors ${
+                  offDays.includes(i)
+                    ? 'bg-[#1B4332] text-white'
+                    : 'bg-gray-100 text-[#4A4A4A] hover:bg-green-50 hover:text-[#1B4332]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {offDays.length === 2 && (
+            <p className="text-xs text-amber-600 text-center mt-2">Maximum 2 rest days selected</p>
+          )}
+        </div>
+
+        <div className="flex justify-between">
+          <button onClick={() => setStep(2)} className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-[#4A4A4A] hover:bg-gray-50">← Back</button>
+          <button onClick={() => setStep(4)} className="bg-[#1B4332] text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-[#2D6A4F] transition-colors">Generate My Plan →</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── STEP 4 ────────────────────────────────────────────
+  const approxJuzMemorized = Math.round(selectedCount / 20.13);
+  const offDayLabel = offDays.length > 0 ? offDays.map(d => DAY_NAMES[d]).join(', ') : 'None';
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] p-6">
+      <div className="max-w-2xl mx-auto">
+        <ProgressBar step={4} />
+
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-amber-50 border-2 border-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⭐</span>
+          </div>
+          <h1 className="text-2xl font-extrabold text-[#1A1A1A]">Your Plan is Ready! ✨</h1>
+          <p className="text-sm text-[#4A4A4A] mt-2 max-w-md mx-auto">
+            Based on your current progress and goals, we've structured a personalized path to help you achieve consistent memorization.
+          </p>
+        </div>
+
+        {/* Summary top row */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-[#1B4332] rounded-2xl p-5 text-white">
+            <p className="text-xs font-semibold uppercase tracking-wide text-green-300 mb-1">Estimated Completion</p>
+            <p className="text-3xl font-extrabold">{estimatedMonths ?? '—'}</p>
+            <p className="text-sm text-green-200">{estimatedMonths ? 'Months' : 'Already a Hafiz!'}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#4A4A4A] mb-1">Target Goal</p>
+            <p className="text-2xl font-extrabold text-[#1A1A1A]">Entire</p>
+            <p className="text-sm text-[#4A4A4A]">Quran (604 pages)</p>
+          </div>
+        </div>
+
+        {/* Summary bottom row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Already Memorized', value: `${approxJuzMemorized} Juz` },
+            { label: 'Daily New',         value: `${dailyPages} Page${dailyPages !== 1 ? 's' : ''}` },
+            { label: 'Review Intensity',  value: reviewIntensity.charAt(0).toUpperCase() + reviewIntensity.slice(1) },
+            { label: 'Off Days',          value: offDayLabel },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+              <p className="text-xs text-[#4A4A4A] mb-1">{label}</p>
+              <p className="text-sm font-bold text-[#1B4332]">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Tips */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-6">
+          <h3 className="font-bold text-[#1A1A1A] mb-4">Tips for Success</h3>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              { icon: '🌅', title: 'Start After Fajr', desc: 'The mind is clearest in the early hours.' },
+              { icon: '📏', title: 'Consistency over Volume', desc: 'Memorizing half a page perfectly is better than two pages with poor retention.' },
+              { icon: '🎧', title: 'Listen Frequently', desc: 'Play the verses you are currently memorizing repeatedly during your commute.' },
+              { icon: '🌙', title: 'Revise Before Sleep', desc: 'Briefly read over what you memorized that day before bed.' },
+            ].map(({ icon, title, desc }) => (
+              <div key={title} className="flex gap-3 p-3 bg-[#FAF9F6] rounded-xl">
+                <span className="text-xl flex-shrink-0">{icon}</span>
+                <div>
+                  <p className="text-sm font-semibold text-[#1A1A1A]">{title}</p>
+                  <p className="text-xs text-[#4A4A4A] mt-0.5 leading-relaxed">{desc}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm flex justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError('')} className="underline">Dismiss</button>
-          </div>
-        )}
-
-        {/* Step 1: Welcome */}
-        {step === 1 && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">
-              Welcome, {user?.name}! 👋
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Bismillah! We'll help you create a personalized Quran memorization plan.
-              This will only take a minute.
-            </p>
-            <div className="bg-green-50 p-4 rounded-lg mb-6">
-              <h3 className="font-medium text-green-800 mb-2">What we'll set up:</h3>
-              <ul className="text-green-700 text-sm space-y-1">
-                <li>✓ Your current memorization progress (complete Juz)</li>
-                <li>✓ Any partial memorization (specific page ranges)</li>
-                <li>✓ Your daily memorization goal</li>
-              </ul>
-            </div>
-            <button
-              onClick={() => setStep(2)}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
-            >
-              Let's Get Started →
-            </button>
-          </div>
-        )}
-
-        {/* Step 2: Select Complete Juz */}
-        {step === 2 && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              Select Complete Juz
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Which Juz have you <strong>fully memorized</strong>? Select all that apply.
-              <br />
-              <span className="text-sm text-gray-500">
-                (You can add partial pages in the next step)
-              </span>
-            </p>
-
-            {/* Quick Select Buttons */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                onClick={() => setSelectedJuz([])}
-                className="px-3 py-1 text-sm rounded-lg bg-gray-200 hover:bg-gray-300 transition-colors"
-              >
-                Clear All
-              </button>
-              <button
-                onClick={() => setSelectedJuz([30])}
-                className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-              >
-                Only Juz 30
-              </button>
-              <button
-                onClick={() => setSelectedJuz([29, 30])}
-                className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-              >
-                Juz 29-30
-              </button>
-              <button
-                onClick={() => setSelectedJuz([28, 29, 30])}
-                className="px-3 py-1 text-sm rounded-lg bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-              >
-                Juz 28-30
-              </button>
-            </div>
-
-            {/* Juz Grid */}
-            <div className="grid grid-cols-5 gap-2 mb-6">
-              {juzPageRanges.map((juz) => (
-                <button
-                  key={juz.juz}
-                  onClick={() => toggleJuz(juz.juz)}
-                  className={`p-3 rounded-lg text-sm font-medium transition-colors ${
-                    selectedJuz.includes(juz.juz)
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {juz.juz}
-                </button>
-              ))}
-            </div>
-
-            {/* Selection Summary */}
-            <div className="bg-gray-50 p-3 rounded-lg mb-6 text-sm">
-              <span className="text-gray-600">Selected complete Juz: </span>
-              <span className="font-medium text-gray-800">
-                {selectedJuz.length === 0
-                  ? 'None'
-                  : `${selectedJuz.length} Juz (${selectedJuz.sort((a, b) => a - b).join(', ')})`}
-              </span>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Partial Memorization (Multiple Ranges) */}
-        {step === 3 && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              Partial Memorization
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Have you memorized pages that aren't part of a complete Juz?
-              You can add multiple page ranges.
-            </p>
-
-            {/* Page Ranges List */}
-            <div className="space-y-4 mb-6">
-              {pageRanges.length === 0 ? (
-                <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
-                  No page ranges added yet
-                </div>
-              ) : (
-                pageRanges.map((range, index) => {
-                  const validation = validateRange(range);
-                  return (
-                    <div key={range.id} className="bg-blue-50 p-4 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-blue-800">Range {index + 1}</span>
-                        <button
-                          onClick={() => removePageRange(range.id)}
-                          className="text-red-500 hover:text-red-700 text-sm"
-                        >
-                          ✕ Remove
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">From Page</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="604"
-                            value={range.start}
-                            onChange={(e) => updatePageRange(range.id, 'start', e.target.value)}
-                            placeholder="1"
-                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                              !validation.valid && !validation.empty ? 'border-red-400' : 'border-gray-300'
-                            }`}
-                          />
-                        </div>
-                        <span className="text-gray-500 mt-5">to</span>
-                        <div className="flex-1">
-                          <label className="block text-xs text-gray-600 mb-1">To Page</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="604"
-                            value={range.end}
-                            onChange={(e) => updatePageRange(range.id, 'end', e.target.value)}
-                            placeholder="10"
-                            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                              !validation.valid && !validation.empty ? 'border-red-400' : 'border-gray-300'
-                            }`}
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Show validation error or Juz info */}
-                      {!validation.valid && !validation.empty && (
-                        <div className="mt-2 text-sm text-red-600">{validation.error}</div>
-                      )}
-                      {validation.valid && !validation.empty && range.start && range.end && (
-                        <div className="mt-2 text-sm text-blue-700">
-                          {parseInt(range.end) - parseInt(range.start) + 1} pages
-                          {getJuzForPage(parseInt(range.start)) && (
-                            <span>
-                              {' '}• Juz {getJuzForPage(parseInt(range.start))}
-                              {getJuzForPage(parseInt(range.end)) !== getJuzForPage(parseInt(range.start)) && 
-                                `-${getJuzForPage(parseInt(range.end))}`}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Add Range Button */}
-            <button
-              onClick={addPageRange}
-              className="w-full py-3 border-2 border-dashed border-green-400 text-green-600 rounded-lg font-medium hover:bg-green-50 transition-colors mb-6"
-            >
-              + Add Page Range
-            </button>
-
-            {/* Info */}
-            <div className="bg-gray-50 p-3 rounded-lg mb-6 text-sm">
-              <p className="text-gray-600">
-                💡 <strong>Tip:</strong> Page numbers are from 1 to 604 (Madani Mushaf).
-                Add as many ranges as needed.
-              </p>
-            </div>
-
-            {/* Summary */}
-            <div className="bg-green-50 p-3 rounded-lg mb-6 text-sm">
-              <span className="text-gray-600">Total pages to be marked as memorized: </span>
-              <span className="font-medium text-green-700">
-                {totalMemorizedPages} pages
-              </span>
-              {selectedJuz.length > 0 && pageRanges.length > 0 && (
-                <span className="text-gray-500 ml-1">
-                  (from {selectedJuz.length} Juz + {pageRanges.filter(r => r.start && r.end).length} range{pageRanges.filter(r => r.start && r.end).length !== 1 ? 's' : ''})
-                </span>
-              )}
-            </div>
-
-            {/* Navigation */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={() => setStep(4)}
-                disabled={!validateAllRanges()}
-                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Daily Goal */}
-        {step === 4 && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              Set Your Daily Goal
-            </h2>
-            <p className="text-gray-600 mb-6">
-              How many new pages would you like to memorize each day?
-            </p>
-
-            {/* Goal Options */}
-            <div className="space-y-3 mb-6">
-              {[
-                { value: 0.5, label: 'Light', desc: '½ page per day — Great for busy schedules', time: '~3.5 years' },
-                { value: 1, label: 'Moderate', desc: '1 page per day — Balanced approach', time: '~2 years' },
-                { value: 2, label: 'Intensive', desc: '2 pages per day — For dedicated learners', time: '~1 year' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => setDailyPages(option.value)}
-                  className={`w-full p-4 rounded-lg text-left transition-colors ${
-                    dailyPages === option.value
-                      ? 'bg-green-100 border-2 border-green-600'
-                      : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-medium text-gray-800">{option.label}</div>
-                      <div className="text-sm text-gray-600">{option.desc}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">
-                      {option.time}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* Daily Review Info */}
-            <div className="bg-blue-50 p-4 rounded-lg mb-6">
-              <h3 className="font-medium text-blue-800 mb-2">📚 Daily Review</h3>
-              <p className="text-blue-700 text-sm">
-                In addition to new memorization, you'll review <strong>3 pages</strong> daily 
-                from your previously memorized portions. This helps strengthen retention.
-              </p>
-            </div>
-
-            {/* Final Summary */}
-            <div className="bg-green-50 p-4 rounded-lg mb-6">
-              <h3 className="font-medium text-green-800 mb-2">📋 Your Plan Summary</h3>
-              <ul className="text-green-700 text-sm space-y-1">
-                <li>• Already memorized: <strong>{totalMemorizedPages} pages</strong></li>
-                <li>• Daily new memorization: <strong>{dailyPages === 0.5 ? '½' : dailyPages} page{dailyPages > 1 ? 's' : ''}</strong></li>
-                <li>• Daily review: <strong>3 pages</strong></li>
-                <li>• Remaining to memorize: <strong>{604 - totalMemorizedPages} pages</strong></li>
-              </ul>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(3)}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-300 transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleComplete}
-                disabled={isLoading}
-                className="flex-1 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-green-400 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Saving...
-                  </span>
-                ) : (
-                  'Start My Journey 🚀'
-                )}
-              </button>
-            </div>
-          </div>
-        )}
+        <div className="flex justify-between items-center">
+          <button onClick={() => setStep(3)} className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-[#4A4A4A] hover:bg-gray-50">← Back</button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="bg-[#1B4332] text-white px-8 py-3 rounded-lg font-semibold hover:bg-[#2D6A4F] transition-colors disabled:opacity-60"
+          >
+            {submitting ? 'Saving…' : 'Start Memorizing →'}
+          </button>
+        </div>
       </div>
     </div>
   );
-};
-
-export default Onboarding;
+}
