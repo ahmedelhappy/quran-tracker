@@ -1,223 +1,250 @@
 import { useState, useEffect } from 'react';
 import { progressAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-const Progress = () => {
-  const [juzData, setJuzData] = useState([]);
-  const [allProgress, setAllProgress] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchProgress();
-  }, []);
-
-  const fetchProgress = async () => {
-    try {
-      setIsLoading(true);
-      const [juzRes, allRes] = await Promise.all([
-        progressAPI.getJuzProgress(),
-        progressAPI.getAllProgress()
-      ]);
-      setJuzData(juzRes.data.data);
-      setAllProgress(allRes.data.data);
-    } catch (err) {
-      console.error('Fetch error:', err);
-      setError('Failed to load progress data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Get color based on percentage
-  const getProgressColor = (percentage) => {
-    if (percentage === 100) return 'bg-green-500';
-    if (percentage >= 75) return 'bg-green-400';
-    if (percentage >= 50) return 'bg-yellow-400';
-    if (percentage >= 25) return 'bg-orange-400';
-    if (percentage > 0) return 'bg-orange-300';
-    return 'bg-gray-200';
-  };
-
-  const getTextColor = (percentage) => {
-    if (percentage >= 50) return 'text-white';
-    if (percentage > 0) return 'text-white';
-    return 'text-gray-500';
-  };
-
-  const getBorderColor = (percentage) => {
-    if (percentage === 100) return 'border-green-600';
-    if (percentage > 0) return 'border-yellow-500';
-    return 'border-gray-300';
-  };
-
-  if (isLoading) {
-    return (
-      <div>
-        <Navbar />
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="text-gray-600 mt-4">Loading progress...</p>
-          </div>
-        </div>
-      </div>
-    );
+// ── Mock heatmap data (last 6 months) ────────────────────
+const generateHeatmap = () => {
+  const cells = [];
+  const today = new Date();
+  for (let i = 182; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    cells.push({ date: d.toISOString().split('T')[0], level: Math.random() < 0.4 ? 0 : Math.floor(Math.random() * 4) + 1 });
   }
-
-  const totalMemorized = allProgress?.totalMemorized || 0;
-  const percentage = allProgress?.percentage || 0;
-  const completedJuz = juzData.filter(j => j.isComplete).length;
-  const inProgressJuz = juzData.filter(j => j.percentage > 0 && !j.isComplete).length;
-
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <Navbar />
-
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">📈 Memorization Progress</h2>
-
-        {error && (
-          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Overall Progress Card */}
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg p-6 mb-6 text-white">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div>
-              <h3 className="text-xl font-bold mb-1">Overall Progress</h3>
-              <p className="opacity-90">
-                {totalMemorized} of 604 pages memorized
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="text-5xl font-bold">{percentage}%</div>
-              <div className="text-sm opacity-75">Complete</div>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mt-4">
-            <div className="w-full bg-green-700 rounded-full h-4">
-              <div
-                className="bg-white rounded-full h-4 transition-all duration-500"
-                style={{ width: `${Math.max(percentage, 1)}%` }}
-              ></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-3xl font-bold text-green-600">{completedJuz}</div>
-            <div className="text-gray-600 text-sm">Juz Complete</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-3xl font-bold text-yellow-600">{inProgressJuz}</div>
-            <div className="text-gray-600 text-sm">Juz In Progress</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-3xl font-bold text-gray-400">
-              {30 - completedJuz - inProgressJuz}
-            </div>
-            <div className="text-gray-600 text-sm">Juz Not Started</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <div className="text-3xl font-bold text-purple-600">
-              {604 - totalMemorized}
-            </div>
-            <div className="text-gray-600 text-sm">Pages Remaining</div>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex flex-wrap gap-4 justify-center text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-green-500"></div>
-              <span className="text-gray-600">Complete (100%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-yellow-400"></div>
-              <span className="text-gray-600">In Progress (1-99%)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-gray-200"></div>
-              <span className="text-gray-600">Not Started (0%)</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Juz Grid */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Juz Overview</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {juzData.map((juz) => (
-              <div
-                key={juz.juzNumber}
-                className={`border-2 rounded-lg p-3 text-center transition-all hover:shadow-md ${getBorderColor(juz.percentage)}`}
-              >
-                <div className="text-xs text-gray-500 mb-1">Juz</div>
-                <div className="text-2xl font-bold text-gray-800 mb-2">
-                  {juz.juzNumber}
-                </div>
-
-                {/* Mini Progress Bar */}
-                <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                  <div
-                    className={`${getProgressColor(juz.percentage)} rounded-full h-2 transition-all`}
-                    style={{ width: `${juz.percentage}%` }}
-                  ></div>
-                </div>
-
-                <div className="text-sm font-medium text-gray-700">
-                  {juz.percentage}%
-                </div>
-                <div className="text-xs text-gray-500">
-                  {juz.memorizedPages}/{juz.totalPages} pages
-                </div>
-
-                {juz.isComplete && (
-                  <div className="text-green-500 text-sm mt-1">✅</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Detailed Juz List */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-4">Detailed Breakdown</h3>
-          <div className="space-y-3">
-            {juzData.map((juz) => (
-              <div key={juz.juzNumber} className="flex items-center gap-4">
-                <div className="w-16 text-sm font-medium text-gray-700">
-                  Juz {juz.juzNumber}
-                </div>
-                <div className="flex-1">
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className={`${getProgressColor(juz.percentage)} rounded-full h-3 transition-all`}
-                      style={{ width: `${juz.percentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="w-20 text-right text-sm text-gray-600">
-                  {juz.memorizedPages}/{juz.totalPages}
-                </div>
-                <div className="w-12 text-right text-sm font-medium text-gray-700">
-                  {juz.percentage}%
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </main>
-    </div>
-  );
+  return cells;
 };
 
-export default Progress;
+// ── Mock chart data ───────────────────────────────────────
+const generateChartData = (totalMemorized) => {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const now = new Date();
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+    const ratio = (i + 1) / 6;
+    return { month: months[d.getMonth()], pages: Math.round(totalMemorized * ratio * (0.85 + Math.random() * 0.15)) };
+  });
+};
+
+const HEATMAP = generateHeatmap();
+const HEAT_COLORS = ['bg-gray-100', 'bg-green-100', 'bg-green-300', 'bg-[#40916C]', 'bg-[#1B4332]'];
+
+const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
+  <div className={`${h} ${w} ${rounded} bg-gray-100 animate-pulse`} />
+);
+
+export default function Progress() {
+  const { user } = useAuth();
+  const [juzData, setJuzData] = useState([]);
+  const [overallStats, setOverallStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [juzRes, allRes] = await Promise.all([
+          progressAPI.getJuzProgress(),
+          progressAPI.getAllProgress(),
+        ]);
+        setJuzData(juzRes.data.data);
+        setOverallStats(allRes.data.data);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const totalMemorized = overallStats?.totalMemorized ?? 0;
+  const percentage = overallStats?.percentage ?? '0.0';
+  const chartData = generateChartData(totalMemorized);
+
+  const completedJuz = juzData.filter(j => j.isComplete).length;
+  const inProgressJuz = juzData.filter(j => j.memorizedPages > 0 && !j.isComplete).length;
+  const pendingJuz = juzData.filter(j => j.memorizedPages === 0).length;
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] flex flex-col">
+      <Navbar />
+
+      {/* Header bar */}
+      <div className="bg-[#1B4332] text-white py-10 px-6">
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-3xl font-extrabold mb-1">Progress & Statistics</h1>
+          <p className="text-green-300 text-sm">Track your spiritual journey and memorization milestones.</p>
+        </div>
+      </div>
+
+      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
+
+        {/* Top row */}
+        <div className="grid md:grid-cols-2 gap-5">
+          {/* Overall completion */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <h2 className="text-sm font-bold text-[#4A4A4A] uppercase tracking-wide mb-4">Overall Completion</h2>
+            {loading ? (
+              <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
+            ) : (
+              <>
+                <p className="text-sm text-[#4A4A4A] mb-1">Total Quran Memorized</p>
+                <div className="flex items-end gap-3 mb-3">
+                  <span className="text-5xl font-extrabold text-[#1A1A1A]">{percentage}%</span>
+                  <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
+                    {totalMemorized} pages
+                  </span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${percentage}%`,
+                      background: 'linear-gradient(90deg, #40916C, #1B4332)',
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-[#4A4A4A] mt-2">{604 - totalMemorized} pages remaining</p>
+              </>
+            )}
+          </div>
+
+          {/* Activity heatmap */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
+            <h2 className="text-sm font-bold text-[#4A4A4A] uppercase tracking-wide mb-4">Activity Streak</h2>
+            <div className="flex flex-wrap gap-0.5 mb-3">
+              {HEATMAP.map((cell, i) => (
+                <div
+                  key={i}
+                  title={`${cell.date}: ${cell.level > 0 ? `${cell.level} tasks` : 'No activity'}`}
+                  className={`w-2.5 h-2.5 rounded-sm ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
+                />
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
+              <span>Less</span>
+              {HEAT_COLORS.map((c, i) => (
+                <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
+              ))}
+              <span>More</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Last 6 months · mock data</p>
+          </div>
+        </div>
+
+        {/* Juz status grid */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <h2 className="text-lg font-bold text-[#1A1A1A]">Juz Status</h2>
+            <div className="flex items-center gap-4 text-xs font-medium">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 inline-block" /> Pending</span>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-10 gap-2">
+              {Array(30).fill(0).map((_, i) => <Skeleton key={i} h="h-14" rounded="rounded-lg" />)}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-6">
+                {juzData.map(j => (
+                  <div
+                    key={j.juzNumber}
+                    title={`Juz ${j.juzNumber}: ${j.memorizedPages}/${j.totalPages} pages (${j.percentage}%)`}
+                    className={`rounded-lg p-2 text-center cursor-default transition-all hover:scale-105 ${
+                      j.isComplete
+                        ? 'bg-[#1B4332] text-white'
+                        : j.memorizedPages > 0
+                        ? 'bg-amber-100 border-2 border-amber-400'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
+                    <p className={`text-lg font-bold leading-none ${j.isComplete ? 'text-white' : j.memorizedPages > 0 ? 'text-amber-800' : ''}`}>
+                      {j.juzNumber}
+                    </p>
+                    <p className={`text-xs mt-1 ${j.isComplete ? 'text-green-200' : j.memorizedPages > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                      {j.percentage}%
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Summary counts */}
+              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100">
+                {[
+                  { label: 'Completed', count: completedJuz, color: 'text-[#1B4332]' },
+                  { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600' },
+                  { label: 'Pending', count: pendingJuz, color: 'text-gray-400' },
+                ].map(({ label, count, color }) => (
+                  <div key={label} className="text-center">
+                    <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
+                    <p className="text-xs text-[#4A4A4A]">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Memorization chart */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold text-[#1A1A1A]">Pages Memorized Over Time</h2>
+            <span className="text-xs text-gray-400">mock data</span>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
+              <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
+              <Tooltip
+                contentStyle={{ border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
+                formatter={(v) => [`${v} pages`, 'Memorized']}
+              />
+              <Line
+                type="monotone"
+                dataKey="pages"
+                stroke="#1B4332"
+                strokeWidth={2.5}
+                dot={{ fill: '#1B4332', r: 3 }}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Juz detail list */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <h2 className="text-lg font-bold text-[#1A1A1A] mb-4">Detailed Breakdown</h2>
+          {loading ? (
+            <div className="space-y-3">{Array(5).fill(0).map((_, i) => <Skeleton key={i} h="h-10" />)}</div>
+          ) : (
+            <div className="space-y-3">
+              {juzData.map(j => (
+                <div key={j.juzNumber} className="flex items-center gap-4">
+                  <span className="text-sm font-semibold text-[#4A4A4A] w-14 flex-shrink-0">Juz {j.juzNumber}</span>
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${j.percentage}%`,
+                        background: j.isComplete ? '#1B4332' : j.memorizedPages > 0 ? '#F59E0B' : 'transparent',
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs text-[#4A4A4A] w-20 text-right flex-shrink-0">
+                    {j.memorizedPages}/{j.totalPages} pages
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
