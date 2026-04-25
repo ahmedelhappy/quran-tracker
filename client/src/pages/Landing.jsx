@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiPlay, FiCalendar, FiBrain, FiTrendingUp, FiZap, FiChevronDown } from 'react-icons/fi';
+import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown } from 'react-icons/fi';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
   const r = (size - stroke) / 2;
@@ -171,7 +171,7 @@ const Landing = () => {
             {/* 2 — Smart Review */}
             <div className="bg-[#FAF9F6] rounded-2xl p-6 border border-gray-100">
               <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <FiBrain className="w-5 h-5 text-[#1B4332]" />
+                <FiActivity className="w-5 h-5 text-[#1B4332]" />
               </div>
               <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Smart Review</h3>
               <p className="text-[#4A4A4A] text-sm mb-4 leading-relaxed">
