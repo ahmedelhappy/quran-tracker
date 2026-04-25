@@ -1,119 +1,142 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { FiSettings, FiGlobe, FiMoon, FiMenu, FiX, FiLogOut } from 'react-icons/fi';
+
+const NAV_LINKS = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/progress',  label: 'Progress' },
+  { to: null,         label: 'Quran Library', disabled: true },
+];
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    navigate('/');
+    setMobileOpen(false);
   };
 
-  const navLinks = [
-    { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { path: '/progress', label: 'Progress', icon: '📈' },
-    { path: '/settings', label: 'Settings', icon: '⚙️' },
-  ];
-
-  const isActive = (path) => location.pathname === path;
+  const isActive = (to) => to && location.pathname === to;
 
   return (
-    <nav className="bg-white shadow-sm sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <span className="text-2xl">📖</span>
-            <span className="text-xl font-bold text-gray-800 hidden sm:inline">
-              Quran Tracker
-            </span>
-          </Link>
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-40">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
+        {/* Logo */}
+        <Link to="/dashboard" className="flex items-center gap-2 font-bold text-[#1B4332] text-lg flex-shrink-0">
+          <span className="text-2xl leading-none">📖</span>
+          <span className="hidden sm:block">Quran Tracker</span>
+        </Link>
+
+        {/* Desktop centre links */}
+        <div className="hidden md:flex items-center">
+          {NAV_LINKS.map((link) =>
+            link.disabled ? (
+              <span key={link.label} className="px-4 py-2 text-sm text-gray-300 cursor-not-allowed select-none">
+                {link.label}
+              </span>
+            ) : (
               <Link
-                key={link.path}
-                to={link.path}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive(link.path)
-                    ? 'bg-green-100 text-green-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                key={link.to}
+                to={link.to}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors relative ${
+                  isActive(link.to)
+                    ? 'text-[#1B4332] bg-green-50'
+                    : 'text-[#4A4A4A] hover:text-[#1B4332] hover:bg-green-50'
                 }`}
               >
-                <span className="mr-1">{link.icon}</span>
                 {link.label}
+                {isActive(link.to) && (
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-[#1B4332] rounded-full" />
+                )}
               </Link>
-            ))}
-          </div>
-
-          {/* Right Section */}
-          <div className="hidden md:flex items-center gap-4">
-            <span className="text-gray-600 text-sm">
-              Welcome, {user?.name}!
-            </span>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-          >
-            {mobileMenuOpen ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
-          </button>
+            )
+          )}
         </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden pb-4 border-t">
-            <div className="pt-3 space-y-1">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    isActive(link.path)
-                      ? 'bg-green-100 text-green-700'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <span className="mr-2">{link.icon}</span>
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-            <div className="mt-3 px-4 pt-3 border-t">
-              <p className="text-gray-600 text-sm mb-3">
-                Signed in as {user?.name}
-              </p>
-              <button
-                onClick={handleLogout}
-                className="w-full bg-red-500 text-white py-2 rounded-lg text-sm hover:bg-red-600 transition-colors"
-              >
-                Logout
-              </button>
-            </div>
+        {/* Desktop right icons */}
+        <div className="hidden md:flex items-center gap-1">
+          <button title="Language (coming soon)" className="p-2 text-gray-400 hover:text-[#1B4332] hover:bg-green-50 rounded-lg transition-colors">
+            <FiGlobe className="w-4 h-4" />
+          </button>
+          <button title="Dark mode (coming soon)" className="p-2 text-gray-400 hover:text-[#1B4332] hover:bg-green-50 rounded-lg transition-colors">
+            <FiMoon className="w-4 h-4" />
+          </button>
+          <Link
+            to="/settings"
+            title="Settings"
+            className={`p-2 rounded-lg transition-colors ${
+              isActive('/settings') ? 'text-[#1B4332] bg-green-50' : 'text-gray-400 hover:text-[#1B4332] hover:bg-green-50'
+            }`}
+          >
+            <FiSettings className="w-4 h-4" />
+          </Link>
+          <div className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold ml-2">
+            {user?.name?.[0]?.toUpperCase() ?? 'U'}
           </div>
-        )}
+        </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className="md:hidden p-2 text-[#1B4332] rounded-lg hover:bg-green-50"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label="Toggle menu"
+        >
+          {mobileOpen ? <FiX className="w-5 h-5" /> : <FiMenu className="w-5 h-5" />}
+        </button>
       </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="md:hidden bg-white border-t border-gray-100 px-6 py-4 flex flex-col gap-1">
+          {NAV_LINKS.map((link) =>
+            link.disabled ? (
+              <span key={link.label} className="px-4 py-2.5 text-sm text-gray-300 rounded-lg">
+                {link.label}
+              </span>
+            ) : (
+              <Link
+                key={link.to}
+                to={link.to}
+                onClick={() => setMobileOpen(false)}
+                className={`px-4 py-2.5 text-sm font-medium rounded-lg ${
+                  isActive(link.to) ? 'bg-green-50 text-[#1B4332]' : 'text-[#4A4A4A] hover:bg-gray-50'
+                }`}
+              >
+                {link.label}
+              </Link>
+            )
+          )}
+          <Link
+            to="/settings"
+            onClick={() => setMobileOpen(false)}
+            className={`px-4 py-2.5 text-sm font-medium rounded-lg flex items-center gap-2 ${
+              isActive('/settings') ? 'bg-green-50 text-[#1B4332]' : 'text-[#4A4A4A] hover:bg-gray-50'
+            }`}
+          >
+            <FiSettings className="w-4 h-4" /> Settings
+          </Link>
+          <div className="border-t border-gray-100 mt-2 pt-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold">
+                {user?.name?.[0]?.toUpperCase() ?? 'U'}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[#1A1A1A]">{user?.name}</p>
+                <p className="text-xs text-[#4A4A4A]">{user?.email}</p>
+              </div>
+            </div>
+            <button onClick={handleLogout} className="flex items-center gap-1.5 text-sm text-[#E63946] font-medium">
+              <FiLogOut className="w-4 h-4" /> Sign out
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 };
