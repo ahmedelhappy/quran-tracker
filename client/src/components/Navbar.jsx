@@ -14,11 +14,13 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
     navigate('/');
     setMobileOpen(false);
+    setAvatarOpen(false);
   };
 
   const isActive = (to) => to && location.pathname === to;
@@ -76,8 +78,30 @@ const Navbar = () => {
           >
             <FiSettings className="w-4 h-4" />
           </Link>
-          <div className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold ml-2">
-            {user?.name?.[0]?.toUpperCase() ?? 'U'}
+          <div className="relative ml-2">
+            <button
+              onClick={() => setAvatarOpen(!avatarOpen)}
+              className="w-8 h-8 rounded-full bg-[#1B4332] text-white flex items-center justify-center text-sm font-bold hover:bg-[#2D6A4F] transition-colors"
+            >
+              {user?.name?.[0]?.toUpperCase() ?? 'U'}
+            </button>
+            {avatarOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setAvatarOpen(false)} />
+                <div className="absolute right-0 top-10 z-40 bg-white rounded-xl shadow-lg border border-gray-100 w-44 py-1 overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100">
+                    <p className="text-sm font-semibold text-[#1A1A1A] truncate">{user?.name}</p>
+                    <p className="text-xs text-[#4A4A4A] truncate">{user?.email}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left px-4 py-2.5 text-sm text-[#E63946] font-medium hover:bg-red-50 flex items-center gap-2"
+                  >
+                    <FiLogOut className="w-4 h-4" /> Sign out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
