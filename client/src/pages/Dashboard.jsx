@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList, FiChevronDown, FiChevronUp, FiCalendar } from 'react-icons/fi';
+import { FiBook, FiList, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 
 // ── Daily rotating quotes ────────────────────────────────
 const QUOTES = [
@@ -152,25 +152,26 @@ const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) 
 const WeekDayRow = ({ day }) => {
   if (day.isOffDay) {
     return (
-      <div className="flex items-center justify-between py-3 border-b border-[#dce2f3] dark:border-gray-700 last:border-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-[#dce2f3] dark:border-gray-700">
         <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{formatDate(day.date)}</span>
-        <span className="text-sm text-[#707974] dark:text-gray-500 flex items-center gap-1">Rest Day 🌿</span>
+        <span className="text-sm text-[#707974] dark:text-gray-500">Rest Day 🌿</span>
       </div>
     );
   }
   return (
-    <div className="flex items-center justify-between py-3 border-b border-[#dce2f3] dark:border-gray-700 last:border-0">
-      <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{formatDate(day.date)}</span>
-      <div className="flex items-center gap-3 text-xs">
+    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-[#dce2f3] dark:border-gray-700">
+      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100 mb-2">{formatDate(day.date)}</p>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         {day.newPagesCount > 0 ? (
-          <span className="text-[#004f35] dark:text-emerald-400 font-medium">
-            New: {day.newPageInfo ? `Page ${day.newPageInfo.pageNumber}` : `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
+          <span className="flex items-center gap-1 text-[#004f35] dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
+            📖 New: {day.newPageInfo ? `Page ${day.newPageInfo.pageNumber}` : `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
           </span>
         ) : (
-          <span className="text-[#707974] dark:text-gray-500">No new page</span>
+          <span className="text-[#707974] dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg">No new page</span>
         )}
-        <span className="text-[#bfc9c3] dark:text-gray-600">|</span>
-        <span className="text-[#904d00] dark:text-amber-400 font-medium">Review: {day.reviewPagesCount} pages</span>
+        <span className="flex items-center gap-1 text-[#904d00] dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-lg border border-amber-100 dark:border-amber-800/30">
+          📘 Review: {day.reviewPagesCount}
+        </span>
       </div>
     </div>
   );
@@ -594,7 +595,6 @@ export default function Dashboard() {
               className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <FiCalendar className="w-5 h-5 text-[#064e3b] dark:text-emerald-400" />
                 <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">📅 This Week's Plan</span>
               </div>
               {weekOpen ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
@@ -603,11 +603,11 @@ export default function Dashboard() {
             {weekOpen && (
               <div className="border-t border-[#dce2f3] dark:border-gray-700 px-4 py-3">
                 {weekLoading ? (
-                  <div className="space-y-3 py-2">
-                    {Array(6).fill(0).map((_, i) => <Sk key={i} h="h-10" />)}
+                  <div className="space-y-2 py-2">
+                    {Array(6).fill(0).map((_, i) => <Sk key={i} h="h-14" />)}
                   </div>
                 ) : weekData ? (
-                  <div>
+                  <div className="space-y-2">
                     {weekData.map((day, i) => <WeekDayRow key={i} day={day} />)}
                   </div>
                 ) : (

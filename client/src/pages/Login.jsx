@@ -44,27 +44,27 @@ const Login = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 mb-1" htmlFor="email">Email</label>
+                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="email">Email</label>
                 <div className="relative">
                   <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
                   <input
                     id="email" type="email" value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                     placeholder="you@example.com" required
-                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
+                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 mb-1" htmlFor="password">Password</label>
+                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="password">Password</label>
                 <div className="relative">
                   <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
                   <input
                     id="password" type={showPw ? 'text' : 'password'} value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     placeholder="••••••••" required
-                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
+                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
                   <button type="button" onClick={() => setShowPw(!showPw)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944]">

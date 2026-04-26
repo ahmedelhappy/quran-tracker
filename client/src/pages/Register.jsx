@@ -28,8 +28,8 @@ const Register = () => {
     else showToast(result.message || 'Registration failed', 'error');
   };
 
-  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-gray-200 rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
-  const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5';
+  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
+  const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-200 uppercase tracking-wider mb-1.5';
 
   return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 flex flex-col relative">

@@ -211,7 +211,9 @@ exports.getTodayTasks = async (req, res) => {
     threeDaysAgoStart.setDate(threeDaysAgoStart.getDate() - 3);
 
     const regularReviewNums = new Set(reviewPages.map(p => p.pageNumber));
-    const recentReviewPages = allMemorizedPages.filter(p => {
+
+    // Gather candidates: memorized within last 3 days, not today, not already in regular review, not done today
+    const recentCandidates = allMemorizedPages.filter(p => {
       if (!p.memorizedDate) return false;
       if (getDateString(p.memorizedDate) === todayString) return false;
       if (new Date(p.memorizedDate) < threeDaysAgoStart) return false;
@@ -219,6 +221,26 @@ exports.getTodayTasks = async (req, res) => {
       if (p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString) return false;
       return true;
     });
+
+    // Group by memorizedDate to detect bulk onboarding imports.
+    // If more pages share a date than the max daily limit (10), it was a bulk import —
+    // in that case only surface the last 3 pages by page number (the memorization frontier).
+    const BULK_THRESHOLD = 10;
+    const dateGroupsMap = {};
+    for (const p of recentCandidates) {
+      const d = getDateString(p.memorizedDate);
+      if (!dateGroupsMap[d]) dateGroupsMap[d] = [];
+      dateGroupsMap[d].push(p);
+    }
+    const recentReviewPages = [];
+    for (const pages of Object.values(dateGroupsMap)) {
+      if (pages.length > BULK_THRESHOLD) {
+        const sorted = [...pages].sort((a, b) => b.pageNumber - a.pageNumber);
+        recentReviewPages.push(...sorted.slice(0, 3));
+      } else {
+        recentReviewPages.push(...pages);
+      }
+    }
 
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
     let continuationPageNum = null;

@@ -46,8 +46,8 @@ const LandingNavbar = ({ activeSection }) => {
               href={href}
               className={`pb-0.5 transition-colors ${
                 activeSection === id
-                  ? 'text-[#1B4332] font-semibold border-b-2 border-[#40916C]'
-                  : 'hover:text-[#1B4332]'
+                  ? 'text-[#1B4332] dark:text-emerald-400 font-semibold border-b-2 border-[#40916C] dark:border-emerald-500'
+                  : 'hover:text-[#1B4332] dark:hover:text-emerald-400'
               }`}
             >
               {label}
@@ -55,7 +55,7 @@ const LandingNavbar = ({ activeSection }) => {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] hover:text-[#1B4332] transition-colors">Login</Link>
+          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">Login</Link>
           <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
             Get Started
           </Link>
@@ -113,7 +113,7 @@ const Landing = () => {
               </Link>
               <a
                 href="#how-it-works"
-                className="bg-white border border-gray-200 text-[#1A1A1A] px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1A1A1A] dark:text-gray-200 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
               >
                 <span className="w-6 h-6 rounded-full bg-[#1B4332] flex items-center justify-center flex-shrink-0">
                   <FiPlay className="w-3 h-3 text-white ml-0.5" />
@@ -133,8 +133,8 @@ const Landing = () => {
                   </div>
                 ))}
               </div>
-              <span className="text-sm text-[#4A4A4A]">
-                Joined by <span className="font-semibold text-[#1B4332]">10,000+</span> students globally
+              <span className="text-sm text-[#4A4A4A] dark:text-gray-300">
+                Joined by <span className="font-semibold text-[#1B4332] dark:text-emerald-400">10,000+</span> students globally
               </span>
             </div>
           </div>
@@ -182,72 +182,72 @@ const Landing = () => {
           </div>
           <div className="grid md:grid-cols-2 gap-5">
             {/* 1 — Personalized Plans */}
-            <div className="bg-[#FAF9F6] rounded-2xl p-6 border border-gray-100">
-              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <FiCalendar className="w-5 h-5 text-[#1B4332]" />
+            <div className="bg-[#FAF9F6] dark:bg-gray-700/40 rounded-2xl p-6 border border-gray-100 dark:border-gray-600">
+              <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
+                <FiCalendar className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Personalized Plans</h3>
-              <p className="text-[#4A4A4A] text-sm mb-4 leading-relaxed">
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Personalized Plans</h3>
+              <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Set your pace based on your schedule. Whether it's half a page or 5 pages a day.
               </p>
               <div className="flex gap-2">
                 {['Today', 'Tomorrow', 'Day 3'].map((d) => (
-                  <div key={d} className="flex-1 bg-white rounded-lg p-2.5 text-center border border-gray-100">
-                    <p className="text-xs text-[#4A4A4A] mb-0.5">{d}</p>
-                    <p className="text-xs font-semibold text-[#1B4332]">5 Ayahs</p>
+                  <div key={d} className="flex-1 bg-white dark:bg-gray-700 rounded-lg p-2.5 text-center border border-gray-100 dark:border-gray-600">
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-0.5">{d}</p>
+                    <p className="text-xs font-semibold text-[#1B4332] dark:text-emerald-400">5 Ayahs</p>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* 2 — Smart Review */}
-            <div className="bg-[#FAF9F6] rounded-2xl p-6 border border-gray-100">
-              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <FiActivity className="w-5 h-5 text-[#1B4332]" />
+            <div className="bg-[#FAF9F6] dark:bg-gray-700/40 rounded-2xl p-6 border border-gray-100 dark:border-gray-600">
+              <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
+                <FiActivity className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Smart Review</h3>
-              <p className="text-[#4A4A4A] text-sm mb-4 leading-relaxed">
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Smart Review</h3>
+              <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Spaced repetition algorithms ensure you review right before you forget.
               </p>
-              <div className="bg-white rounded-xl p-3 border border-gray-100">
+              <div className="bg-white dark:bg-gray-700 rounded-xl p-3 border border-gray-100 dark:border-gray-600">
                 <div className="flex justify-between text-xs mb-2">
-                  <span className="text-[#4A4A4A]">Retention Strength</span>
-                  <span className="font-semibold text-[#1B4332]">92%</span>
+                  <span className="text-[#4A4A4A] dark:text-gray-300">Retention Strength</span>
+                  <span className="font-semibold text-[#1B4332] dark:text-emerald-400">92%</span>
                 </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-gray-100 dark:bg-gray-600 rounded-full overflow-hidden">
                   <div className="h-full bg-[#40916C] rounded-full" style={{ width: '92%' }} />
                 </div>
               </div>
             </div>
 
             {/* 3 — Track Progress */}
-            <div className="bg-[#FAF9F6] rounded-2xl p-6 border border-gray-100">
-              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <FiTrendingUp className="w-5 h-5 text-[#1B4332]" />
+            <div className="bg-[#FAF9F6] dark:bg-gray-700/40 rounded-2xl p-6 border border-gray-100 dark:border-gray-600">
+              <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
+                <FiTrendingUp className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Track Progress</h3>
-              <p className="text-[#4A4A4A] text-sm leading-relaxed">
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Track Progress</h3>
+              <p className="text-[#4A4A4A] dark:text-gray-300 text-sm leading-relaxed">
                 Visualize your journey through all 30 Juz. See exactly how much you've accomplished and how far you have to go.
               </p>
             </div>
 
             {/* 4 — Stay Motivated (light green card) */}
-            <div className="bg-green-50 rounded-2xl p-6 border border-green-100">
-              <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                <FiZap className="w-5 h-5 text-[#1B4332]" />
+            <div className="bg-green-50 dark:bg-emerald-900/20 rounded-2xl p-6 border border-green-100 dark:border-emerald-800/30">
+              <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
+                <FiZap className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] mb-2">Stay Motivated</h3>
-              <p className="text-[#4A4A4A] text-sm mb-4 leading-relaxed">
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Stay Motivated</h3>
+              <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Build consistent habits with daily streaks, achievements, and gentle reminders.
               </p>
               <div className="space-y-2">
-                <div className="bg-white rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100">
+                <div className="bg-white dark:bg-gray-700 rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100 dark:border-gray-600">
                   <span>🔥</span>
-                  <span className="text-[#1B4332] text-sm font-medium">14 Day Streak</span>
+                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">14 Day Streak</span>
                 </div>
-                <div className="bg-white rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100">
+                <div className="bg-white dark:bg-gray-700 rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100 dark:border-gray-600">
                   <span>⭐</span>
-                  <span className="text-[#1B4332] text-sm font-medium">Juz 30 Completed</span>
+                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">Juz 30 Completed</span>
                 </div>
               </div>
             </div>
@@ -276,8 +276,8 @@ const Landing = () => {
       {/* ── HOW IT WORKS ─────────────────────────────────── */}
       <section id="how-it-works" className="py-20 max-w-6xl mx-auto px-6">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-extrabold text-[#1A1A1A] mb-3">How It Works</h2>
-          <p className="text-[#4A4A4A]">Get started in minutes and build a lasting Hifz habit</p>
+          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">How It Works</h2>
+          <p className="text-[#4A4A4A] dark:text-gray-400">Get started in minutes and build a lasting Hifz habit</p>
         </div>
         <div className="grid md:grid-cols-3 gap-10">
           {[
@@ -286,11 +286,11 @@ const Landing = () => {
             { step: '03', title: 'Track & Stay Consistent', desc: 'Check off tasks, maintain your streak, and watch your progress grow across all 30 Juz.' },
           ].map(({ step, title, desc }) => (
             <div key={step} className="text-center">
-              <div className="w-14 h-14 bg-green-50 text-[#1B4332] rounded-2xl flex items-center justify-center text-xl font-extrabold mx-auto mb-4">
+              <div className="w-14 h-14 bg-green-50 dark:bg-emerald-900/30 text-[#1B4332] dark:text-emerald-400 rounded-2xl flex items-center justify-center text-xl font-extrabold mx-auto mb-4">
                 {step}
               </div>
-              <h3 className="font-bold text-[#1A1A1A] text-lg mb-2">{title}</h3>
-              <p className="text-[#4A4A4A] text-sm leading-relaxed">{desc}</p>
+              <h3 className="font-bold text-[#1A1A1A] dark:text-gray-100 text-lg mb-2">{title}</h3>
+              <p className="text-[#4A4A4A] dark:text-gray-300 text-sm leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
