@@ -36,10 +36,10 @@ const LandingNavbar = ({ activeSection }) => {
     { href: '#faq', id: 'faq', label: 'FAQ' },
   ];
   return (
-    <nav className="bg-white border-b border-gray-100 sticky top-0 z-40">
+    <nav className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo size="md" />
-        <div className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4A4A4A]">
+        <div className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4A4A4A] dark:text-gray-400">
           {navLinks.map(({ href, id, label }) => (
             <a
               key={id}
@@ -86,7 +86,7 @@ const Landing = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6]">
+    <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900">
       <LandingNavbar activeSection={activeSection} />
 
       {/* ── HERO ─────────────────────────────────────────── */}
@@ -97,11 +97,11 @@ const Landing = () => {
             <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-amber-200">
               ✨ Spiritual Productivity Reimagined
             </span>
-            <h1 className="text-4xl lg:text-5xl font-extrabold text-[#1A1A1A] leading-tight">
+            <h1 className="text-4xl lg:text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100 leading-tight">
               Your Journey to Memorize the Quran{' '}
-              <span className="text-[#1B4332]">Starts Here</span>
+              <span className="text-[#1B4332] dark:text-emerald-400">Starts Here</span>
             </h1>
-            <p className="text-[#4A4A4A] text-lg leading-relaxed">
+            <p className="text-[#4A4A4A] dark:text-gray-400 text-lg leading-relaxed">
               Transform your Hifz goals into daily habits. A serene, disciplined tracker that brings focus and peace to your memorization journey.
             </p>
             <div className="flex flex-wrap gap-3">
@@ -172,11 +172,11 @@ const Landing = () => {
       </section>
 
       {/* ── FEATURES ─────────────────────────────────────── */}
-      <section id="features" className="bg-white py-20">
+      <section id="features" className="bg-white dark:bg-gray-800 py-20">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-extrabold text-[#1A1A1A] mb-3">Designed for Deep Focus</h2>
-            <p className="text-[#4A4A4A] text-lg max-w-xl mx-auto">
+            <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">Designed for Deep Focus</h2>
+            <p className="text-[#4A4A4A] dark:text-gray-400 text-lg max-w-xl mx-auto">
               Everything you need to memorize, review, and retain the Quran
             </p>
           </div>
@@ -297,24 +297,24 @@ const Landing = () => {
       </section>
 
       {/* ── FAQ ───────────────────────────────────────────── */}
-      <section id="faq" className="bg-white py-20">
+      <section id="faq" className="bg-white dark:bg-gray-800 py-20">
         <div className="max-w-2xl mx-auto px-6">
-          <h2 className="text-3xl font-extrabold text-[#1A1A1A] text-center mb-10">Frequently Asked Questions</h2>
+          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 text-center mb-10">Frequently Asked Questions</h2>
           <div className="space-y-3">
             {FAQ_ITEMS.map(({ q, a }, i) => (
-              <div key={i} className="border border-gray-100 rounded-xl overflow-hidden">
+              <div key={i} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden dark:bg-gray-700/30">
                 <button
                   className="w-full px-5 py-4 flex items-center justify-between text-left gap-4"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 >
-                  <span className="font-medium text-[#1A1A1A] text-sm">{q}</span>
+                  <span className="font-medium text-[#1A1A1A] dark:text-gray-200 text-sm">{q}</span>
                   <FiChevronDown
                     className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`}
                   />
                 </button>
                 {openFaq === i && (
                   <div className="px-5 pb-4">
-                    <p className="text-sm text-[#4A4A4A] leading-relaxed">{a}</p>
+                    <p className="text-sm text-[#4A4A4A] dark:text-gray-400 leading-relaxed">{a}</p>
                   </div>
                 )}
               </div>
@@ -324,8 +324,8 @@ const Landing = () => {
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────── */}
-      <footer className="bg-[#FAF9F6] border-t border-gray-100 py-6">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A]">
+      <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A] dark:text-gray-400">
           <span>© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.</span>
           <div className="flex gap-5">
             <a href="#" className="hover:text-[#1B4332] transition-colors">Privacy Policy</a>

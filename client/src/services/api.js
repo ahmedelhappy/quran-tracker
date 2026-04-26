@@ -34,6 +34,7 @@ export const progressAPI = {
   getAllProgress: () => API.get('/progress/all'),
   getJuzProgress: () => API.get('/progress/juz'),
   getEstimate: (dailyPages) => API.get(`/progress/estimate${dailyPages != null ? `?dailyPages=${dailyPages}` : ''}`),
+  getWeekPlan: () => API.get('/progress/week'),
 };
 
 export default API;

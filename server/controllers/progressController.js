@@ -5,9 +5,9 @@ const User = require('../models/User');
 const getDateString = (date) => new Date(date).toISOString().split('T')[0];
 
 const MS_PER_DAY = 86400000;
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // Returns the number of daily review pages based on intensity and memorized count.
-// Non-Hafiz: capped at 40. Hafiz: fixed by intensity.
 const computeDailyReviewTarget = (totalMemorized, reviewIntensity) => {
   if (totalMemorized === 0) return 0;
   if (totalMemorized === 604) {
@@ -15,35 +15,29 @@ const computeDailyReviewTarget = (totalMemorized, reviewIntensity) => {
     return hafizSchedule[reviewIntensity] || hafizSchedule.standard;
   }
   if (totalMemorized < 3) return totalMemorized;
-
   const cycleDays = { light: 14, standard: 10, strong: 7 }[reviewIntensity] || 10;
   return Math.min(Math.ceil(totalMemorized / cycleDays), 40);
 };
 
-// Returns how many new pages are allocated for today based on planStartDate.
-// For 0.5/day: alternates 1, 0, 1, 0 … so the user gets 1 page every 2 days.
-// Missed days don't accumulate — each day only gets its own allocation.
-const computeTodayNewPageTarget = (dailyNewPages, planStartDate) => {
+// Returns how many new pages are allocated for a given date based on planStartDate.
+const computeNewPageTargetForDate = (dailyNewPages, planStartDate, targetDate) => {
   const start = new Date(planStartDate).getTime();
-  const daysPassed = Math.floor((Date.now() - start) / MS_PER_DAY);
+  const target = new Date(targetDate).getTime();
+  const daysPassed = Math.floor((target - start) / MS_PER_DAY);
   const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
   const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
-  return assignedToday - assignedYesterday; // always 0 or 1 for sane values
+  return Math.max(0, assignedToday - assignedYesterday);
 };
 
 // Returns true if the streak should continue, accounting for off days in the gap.
 const isStreakContinued = (lastActiveDate, offDays) => {
   if (!lastActiveDate) return false;
-
   const lastUTC = new Date(lastActiveDate);
   lastUTC.setUTCHours(0, 0, 0, 0);
   const todayUTC = new Date();
   todayUTC.setUTCHours(0, 0, 0, 0);
-
   const daysDiff = Math.round((todayUTC - lastUTC) / MS_PER_DAY);
   if (daysDiff <= 1) return true;
-
-  // All days between lastActive (exclusive) and today (exclusive) must be off days
   for (let d = 1; d < daysDiff; d++) {
     const checkDay = new Date(lastUTC.getTime() + d * MS_PER_DAY).getUTCDay();
     if (!offDays.includes(checkDay)) return false;
@@ -53,6 +47,7 @@ const isStreakContinued = (lastActiveDate, offDays) => {
 
 // Fetches QuranMetadata for an array of page numbers in one query
 const getMetadataMap = async (pageNumbers) => {
+  if (!pageNumbers.length) return {};
   const records = await QuranMetadata.find({ pageNumber: { $in: pageNumbers } });
   return Object.fromEntries(records.map(r => [r.pageNumber, r]));
 };
@@ -132,6 +127,7 @@ exports.getTodayTasks = async (req, res) => {
           isOffDay: true,
           isHafiz: totalMemorized === 604,
           newPages: [], reviewPages: [], extraNewPages: [], extraReviewPages: [],
+          recentReviewPages: [], continuationPage: null,
           stats: {
             totalMemorized, totalPages: 604,
             percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
@@ -162,7 +158,7 @@ exports.getTodayTasks = async (req, res) => {
     let targetNewPages = 0;
     if (!isHafiz) {
       const planStart = user.planStartDate || user.createdAt;
-      targetNewPages = computeTodayNewPageTarget(user.dailyNewPages || 1, planStart);
+      targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
     }
 
     // Pages memorized today
@@ -209,11 +205,39 @@ exports.getTodayTasks = async (req, res) => {
     const reviewPages = pendingReviews.slice(0, remainingReviews);
     const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
 
+    // --- RECENT REVIEW PAGES (memorized in last 3 days, not today) ---
+    const threeDaysAgoStart = new Date();
+    threeDaysAgoStart.setUTCHours(0, 0, 0, 0);
+    threeDaysAgoStart.setDate(threeDaysAgoStart.getDate() - 3);
+
+    const regularReviewNums = new Set(reviewPages.map(p => p.pageNumber));
+    const recentReviewPages = allMemorizedPages.filter(p => {
+      if (!p.memorizedDate) return false;
+      if (getDateString(p.memorizedDate) === todayString) return false;
+      if (new Date(p.memorizedDate) < threeDaysAgoStart) return false;
+      if (regularReviewNums.has(p.pageNumber)) return false;
+      if (p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString) return false;
+      return true;
+    });
+
+    // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
+    let continuationPageNum = null;
+    if (targetNewPages === 0 && !isHafiz) {
+      const sortedByMemDate = [...allMemorizedPages]
+        .filter(p => p.memorizedDate && getDateString(p.memorizedDate) !== todayString)
+        .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate));
+      if (sortedByMemDate.length > 0) {
+        continuationPageNum = sortedByMemDate[0].pageNumber;
+      }
+    }
+
     // --- METADATA (batched) ---
     const allPageNumsNeeded = [
       ...newPageNums, ...extraNewPageNums,
       ...reviewPages.map(p => p.pageNumber),
       ...extraReviewPages.map(p => p.pageNumber),
+      ...recentReviewPages.map(p => p.pageNumber),
+      ...(continuationPageNum ? [continuationPageNum] : []),
     ];
     const metaMap = await getMetadataMap(allPageNumsNeeded);
 
@@ -254,6 +278,8 @@ exports.getTodayTasks = async (req, res) => {
         reviewPages: reviewPages.map(toReviewPageDto),
         extraNewPages: extraNewPageNums.map(toNewPageDto),
         extraReviewPages: extraReviewPages.map(toReviewPageDto),
+        recentReviewPages: recentReviewPages.map(toReviewPageDto),
+        continuationPage: continuationPageNum ? toNewPageDto(continuationPageNum) : null,
         stats: {
           totalMemorized, totalPages: 604,
           percentage: parseFloat(percentage),
@@ -410,6 +436,7 @@ exports.getEstimate = async (req, res) => {
     const effectiveDailyPages = dailyPages * (activeDaysPerWeek / 7);
 
     const estimatedDays = effectiveDailyPages > 0 ? Math.ceil(remainingPages / effectiveDailyPages) : null;
+    const estimatedWeeks = estimatedDays ? Math.round(estimatedDays / 7) : null;
     const estimatedMonths = estimatedDays ? Math.round(estimatedDays / 30) : null;
     const estimatedYears = estimatedDays ? parseFloat((estimatedDays / 365).toFixed(1)) : null;
 
@@ -418,12 +445,104 @@ exports.getEstimate = async (req, res) => {
       data: {
         totalMemorized, remainingPages,
         dailyPages, activeDaysPerWeek,
-        estimatedDays, estimatedMonths, estimatedYears,
+        estimatedDays, estimatedWeeks, estimatedMonths, estimatedYears,
       },
     });
   } catch (error) {
     console.error('GetEstimate error:', error);
     res.status(500).json({ success: false, message: 'Error calculating estimate', error: error.message });
+  }
+};
+
+// @desc    Get week plan preview (next 6 days)
+// @route   GET /api/progress/week
+// @access  Private
+exports.getWeekPlan = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' });
+    const totalMemorized = allMemorizedPages.length;
+    const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+    const isHafiz = totalMemorized === 604;
+
+    const offDays = user.offDays || [];
+    const planStart = user.planStartDate || user.createdAt;
+    const dailyNewPages = user.dailyNewPages || 1;
+    const reviewIntensity = user.reviewIntensity || 'standard';
+
+    // Build ordered list of unmemorized pages
+    const unmemorizedPages = [];
+    if (!isHafiz) {
+      for (let page = 1; page <= 604; page++) {
+        if (!memorizedPageNumbers.has(page)) unmemorizedPages.push(page);
+      }
+    }
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const plan = [];
+    let cumulativeNew = 0;
+    const pageNumsForMeta = [];
+
+    for (let i = 1; i <= 6; i++) {
+      const date = new Date(today);
+      date.setUTCDate(today.getUTCDate() + i);
+      const dayOfWeek = date.getUTCDay();
+
+      if (offDays.includes(dayOfWeek)) {
+        plan.push({
+          date: getDateString(date),
+          dayName: DAY_NAMES[dayOfWeek],
+          isOffDay: true,
+          newPagesCount: 0,
+          reviewPagesCount: 0,
+          newPage: null,
+        });
+        continue;
+      }
+
+      const newTarget = isHafiz ? 0 : computeNewPageTargetForDate(dailyNewPages, planStart, date);
+
+      let newPage = null;
+      if (newTarget > 0 && cumulativeNew < unmemorizedPages.length) {
+        newPage = unmemorizedPages[cumulativeNew];
+        pageNumsForMeta.push(newPage);
+      }
+
+      const projectedMemorized = Math.min(604, totalMemorized + cumulativeNew);
+      const reviewCount = computeDailyReviewTarget(projectedMemorized, reviewIntensity);
+
+      plan.push({
+        date: getDateString(date),
+        dayName: DAY_NAMES[dayOfWeek],
+        isOffDay: false,
+        newPagesCount: newTarget,
+        reviewPagesCount: reviewCount,
+        newPage,
+      });
+
+      cumulativeNew += newTarget;
+    }
+
+    // Fetch metadata for new pages in the plan
+    const metaMap = await getMetadataMap(pageNumsForMeta);
+
+    const enrichedPlan = plan.map(day => ({
+      ...day,
+      newPageInfo: day.newPage ? {
+        pageNumber: day.newPage,
+        juzNumber: metaMap[day.newPage]?.juzNumber || 1,
+        surahName: metaMap[day.newPage]?.surahName || 'Unknown',
+      } : null,
+    }));
+
+    res.status(200).json({ success: true, data: enrichedPlan });
+  } catch (error) {
+    console.error('GetWeekPlan error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching week plan', error: error.message });
   }
 };
 
@@ -464,14 +583,12 @@ exports.updateMemorized = async (req, res) => {
 
     const newPageSet = new Set(memorizedPages.map(Number).filter(n => n >= 1 && n <= 604));
 
-    // Remove pages that are no longer selected
     await UserProgress.deleteMany({
       userId,
       status: 'memorized',
       pageNumber: { $nin: Array.from(newPageSet) },
     });
 
-    // Upsert new pages without overwriting existing review history
     if (newPageSet.size > 0) {
       const yesterday = new Date();
       yesterday.setUTCHours(0, 0, 0, 0);

@@ -28,18 +28,16 @@ const Register = () => {
     else showToast(result.message || 'Registration failed', 'error');
   };
 
-  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] border border-[#bfc9c3]/50 text-[#151c27] rounded-lg text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3]';
-  const labelCls = 'block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5';
+  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-gray-200 rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
+  const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5';
 
   return (
-    <div className="min-h-screen bg-[#f9f9ff] flex flex-col relative">
-      {/* Ambient radial gradient */}
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_#e2e8f8_0%,_transparent_60%)] opacity-40" />
-      {/* Sacred pattern overlay */}
+    <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 flex flex-col relative">
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_#e2e8f8_0%,_transparent_60%)] dark:bg-none opacity-40" />
       <div className="fixed inset-0 pointer-events-none sacred-pattern opacity-80" />
 
       <main className="flex-grow flex items-center justify-center p-6 relative z-10 py-12">
-        <div className="w-full max-w-[440px] bg-white rounded-[24px] sacred-shadow p-8 md:p-10 border border-[#bfc9c3]/20 relative overflow-hidden">
+        <div className="w-full max-w-[440px] bg-white dark:bg-gray-800 rounded-[24px] sacred-shadow p-8 md:p-10 border border-[#bfc9c3]/20 dark:border-gray-700 relative overflow-hidden">
           {/* Top gradient accent */}
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#064e3b] via-[#fe932c] to-[#064e3b] opacity-90" />
 
@@ -48,8 +46,8 @@ const Register = () => {
             <div className="flex justify-center mb-4">
               <Logo size="md" />
             </div>
-            <h1 className="text-2xl font-semibold text-[#151c27] mb-2 tracking-tight">Create Your Account</h1>
-            <p className="text-[#404944]">Begin your dedicated journey of Hifz.</p>
+            <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2 tracking-tight">Create Your Account</h1>
+            <p className="text-[#404944] dark:text-gray-400">Begin your dedicated journey of Hifz.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -103,10 +101,10 @@ const Register = () => {
             </div>
           </form>
 
-          <div className="mt-8 text-center border-t border-[#bfc9c3]/20 pt-6">
-            <p className="text-[#404944]">
+          <div className="mt-8 text-center border-t border-[#bfc9c3]/20 dark:border-gray-700 pt-6">
+            <p className="text-[#404944] dark:text-gray-400">
               Already have an account?{' '}
-              <Link to="/login" className="text-[#003527] font-semibold hover:text-[#fe932c] underline underline-offset-4 decoration-[#003527]/30 transition-colors">
+              <Link to="/login" className="text-[#003527] dark:text-emerald-400 font-semibold hover:text-[#fe932c] underline underline-offset-4 decoration-[#003527]/30 transition-colors">
                 Log in
               </Link>
             </p>

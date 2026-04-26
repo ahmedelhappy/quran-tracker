@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Login - Quran Tracker</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Amiri:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#707974",
+                        "inverse-primary": "#95d3ba",
+                        "on-tertiary-fixed-variant": "#005137",
+                        "surface-bright": "#f9f9ff",
+                        "on-primary-fixed": "#002117",
+                        "secondary": "#904d00",
+                        "on-secondary-fixed": "#2f1500",
+                        "surface-container-highest": "#dce2f3",
+                        "on-surface-variant": "#404944",
+                        "background": "#f9f9ff",
+                        "secondary-fixed": "#ffdcc3",
+                        "surface-tint": "#2b6954",
+                        "primary": "#003527",
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#b0f0d6",
+                        "surface-container-high": "#e2e8f8",
+                        "secondary-fixed-dim": "#ffb77d",
+                        "on-surface": "#151c27",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed": "#85f8c4",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#004f35",
+                        "inverse-on-surface": "#ebf1ff",
+                        "primary-fixed-dim": "#95d3ba",
+                        "on-tertiary-container": "#51c695",
+                        "surface-container-low": "#f0f3ff",
+                        "on-tertiary-fixed": "#002114",
+                        "on-primary-container": "#80bea6",
+                        "on-secondary-container": "#663500",
+                        "inverse-surface": "#2a313d",
+                        "on-primary-fixed-variant": "#0b513d",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface": "#f9f9ff",
+                        "primary-container": "#064e3b",
+                        "on-background": "#151c27",
+                        "surface-variant": "#dce2f3",
+                        "on-secondary-fixed-variant": "#6e3900",
+                        "secondary-container": "#fe932c",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d3daea",
+                        "tertiary-fixed-dim": "#68dba9",
+                        "outline-variant": "#bfc9c3",
+                        "on-secondary": "#ffffff",
+                        "tertiary": "#003623",
+                        "surface-container": "#e7eefe",
+                        "on-error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "section-gap": "48px",
+                        "gutter": "16px",
+                        "container-padding": "24px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "24px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "arabic-display": ["Amiri"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "arabic-body": ["Amiri"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "arabic-display": ["42px", { "lineHeight": "1.8", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "arabic-body": ["28px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .sacred-pattern {
+            background-color: #f9f9ff;
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23064E3B' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col font-body-md text-body-md sacred-pattern">
+<!-- Suppressed Nav: Linear/Transactional Intent -->
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center p-container-padding">
+<div class="w-full max-w-md">
+<!-- Logo / Brand Area -->
+<div class="text-center mb-stack-lg">
+<div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-container text-on-primary-container mb-stack-sm shadow-[0_4px_20px_rgba(6,78,59,0.08)]">
+</div>
+<h1 class="font-headline-lg text-headline-lg text-primary-container tracking-tight">Quran Tracker</h1>
+</div>
+<!-- Login Card -->
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-[0_4px_20px_rgba(6,78,59,0.08)] relative overflow-hidden">
+<!-- Decorative Top Edge -->
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary-container via-tertiary-container to-primary-container"></div>
+<div class="text-center mb-stack-lg">
+<h2 class="font-headline-md text-headline-md text-on-surface mb-stack-sm">Welcome Back</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Continue your hifz journey today.</p>
+</div>
+<form action="#" class="space-y-stack-md" method="POST">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1" for="email">Email</label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+<span class="material-symbols-outlined text-lg">mail</span>
+</div>
+<input class="pl-10 block w-full bg-surface-container-low border-transparent focus:border-primary-container focus:ring-2 focus:ring-primary-container rounded-lg font-body-md text-body-md text-on-surface" id="email" name="email" placeholder="you@example.com" required="" type="email"/>
+</div>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1" for="password">Password</label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+<span class="material-symbols-outlined text-lg">lock</span>
+</div>
+<input class="pl-10 block w-full bg-surface-container-low border-transparent focus:border-primary-container focus:ring-2 focus:ring-primary-container rounded-lg font-body-md text-body-md text-on-surface" id="password" name="password" placeholder="••••••••" required="" type="password"/>
+</div>
+</div>
+<div class="pt-stack-sm">
+<button class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm font-body-md text-body-md font-medium text-on-primary bg-primary-container hover:bg-tertiary-container focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-container transition-colors duration-300" type="submit">
+                            Log In
+                        </button>
+</div>
+</form>
+<div class="mt-stack-lg text-center">
+<p class="font-body-md text-body-md text-on-surface-variant">
+                        Don't have an account? 
+                        <a class="font-medium text-primary-container hover:text-tertiary-container underline underline-offset-4 transition-colors" href="#">Sign up</a>
+</p>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Component from JSON -->
+<footer class="bg-white dark:bg-emerald-900 w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-4 mt-auto border-t border-emerald-100/50">
+<p class="font-['Inter'] text-sm leading-relaxed text-[#064E3B] dark:text-emerald-100 opacity-80 hover:opacity-100 transition-opacity">
+            © 2025 Quran Tracker. Dedicated to the pursuit of Hifz.
+        </p>
+<div class="flex gap-4">
+<a class="font-['Inter'] text-sm leading-relaxed text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Privacy Policy</a>
+<a class="font-['Inter'] text-sm leading-relaxed text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Terms of Service</a>
+<a class="font-['Inter'] text-sm leading-relaxed text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Contact Support</a>
+<a class="font-['Inter'] text-sm leading-relaxed text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Donate</a>
+</div>
+</footer>
+</body></html>

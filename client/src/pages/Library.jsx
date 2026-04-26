@@ -15,7 +15,7 @@ const Library = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] flex flex-col">
+    <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
       <main className="flex-1 flex items-center justify-center px-6 py-20">
@@ -25,10 +25,10 @@ const Library = () => {
             <span className="text-6xl">📚</span>
           </div>
 
-          <h1 className="text-3xl font-extrabold text-[#1A1A1A] mb-3">
+          <h1 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">
             Quran Library — Coming Soon! 📚
           </h1>
-          <p className="text-[#4A4A4A] leading-relaxed mb-8">
+          <p className="text-[#4A4A4A] dark:text-gray-400 leading-relaxed mb-8">
             We are crafting a serene, distraction-free environment for your studies.
             Access the Mushaf, Tafseer, and recitations — all in one place — coming soon.
           </p>

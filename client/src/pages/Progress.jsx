@@ -62,14 +62,14 @@ export default function Progress() {
   const pendingJuz = juzData.filter(j => j.memorizedPages === 0).length;
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] flex flex-col">
+    <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
       {/* Header bar — padded to clear fixed navbar */}
-      <div className="bg-[#1B4332] text-white pt-24 pb-10 px-6">
+      <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-1">Progress & Statistics</h1>
-          <p className="text-green-300 text-sm">Track your spiritual journey and memorization milestones.</p>
+          <p className="text-green-300 dark:text-gray-400 text-sm">Track your spiritual journey and memorization milestones.</p>
         </div>
       </div>
 
@@ -78,20 +78,20 @@ export default function Progress() {
         {/* Top row */}
         <div className="grid md:grid-cols-2 gap-5">
           {/* Overall completion */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
-            <h2 className="text-sm font-bold text-[#4A4A4A] uppercase tracking-wide mb-4">Overall Completion</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Overall Completion</h2>
             {loading ? (
               <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
             ) : (
               <>
-                <p className="text-sm text-[#4A4A4A] mb-1">Total Quran Memorized</p>
+                <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-1">Total Quran Memorized</p>
                 <div className="flex items-end gap-3 mb-3">
-                  <span className="text-5xl font-extrabold text-[#1A1A1A]">{percentage}%</span>
-                  <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
+                  <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
+                  <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
                     {totalMemorized} pages
                   </span>
                 </div>
-                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all"
                     style={{
@@ -100,14 +100,14 @@ export default function Progress() {
                     }}
                   />
                 </div>
-                <p className="text-xs text-[#4A4A4A] mt-2">{604 - totalMemorized} pages remaining</p>
+                <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{604 - totalMemorized} pages remaining</p>
               </>
             )}
           </div>
 
           {/* Activity heatmap */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
-            <h2 className="text-sm font-bold text-[#4A4A4A] uppercase tracking-wide mb-4">Activity Streak</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Activity Streak</h2>
             {loading ? (
               <div className="space-y-2">
                 <Skeleton h="h-16" />
@@ -146,13 +146,13 @@ export default function Progress() {
         </div>
 
         {/* Juz status grid */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="text-lg font-bold text-[#1A1A1A]">Juz Status</h2>
-            <div className="flex items-center gap-4 text-xs font-medium">
+            <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">Juz Status</h2>
+            <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 inline-block" /> Pending</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> Pending</span>
             </div>
           </div>
 
@@ -185,15 +185,15 @@ export default function Progress() {
                 ))}
               </div>
 
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100">
+              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 {[
-                  { label: 'Completed', count: completedJuz, color: 'text-[#1B4332]' },
-                  { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600' },
-                  { label: 'Pending', count: pendingJuz, color: 'text-gray-400' },
+                  { label: 'Completed', count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
+                  { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
+                  { label: 'Pending', count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
                 ].map(({ label, count, color }) => (
                   <div key={label} className="text-center">
                     <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
-                    <p className="text-xs text-[#4A4A4A]">{label}</p>
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400">{label}</p>
                   </div>
                 ))}
               </div>
@@ -202,8 +202,8 @@ export default function Progress() {
         </div>
 
         {/* Memorization chart */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-6">
-          <h2 className="text-lg font-bold text-[#1A1A1A] mb-5">Pages Memorized Over Time</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+          <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">Pages Memorized Over Time</h2>
           {loading ? (
             <Skeleton h="h-52" />
           ) : !hasActivity ? (

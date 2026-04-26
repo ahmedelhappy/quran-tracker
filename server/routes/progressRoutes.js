@@ -10,6 +10,7 @@ const {
   getAllProgress,
   getJuzProgress,
   getEstimate,
+  getWeekPlan,
 } = require('../controllers/progressController');
 const { protect } = require('../middleware/auth');
 
@@ -42,5 +43,8 @@ router.get('/juz', getJuzProgress);
 
 // Estimated completion time (accepts ?dailyPages=X)
 router.get('/estimate', getEstimate);
+
+// Week plan preview (next 6 days)
+router.get('/week', getWeekPlan);
 
 module.exports = router;

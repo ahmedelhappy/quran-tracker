@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Settings - Quran Tracker</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#707974",
+                        "inverse-primary": "#95d3ba",
+                        "on-tertiary-fixed-variant": "#005137",
+                        "surface-bright": "#f9f9ff",
+                        "on-primary-fixed": "#002117",
+                        "secondary": "#904d00",
+                        "on-secondary-fixed": "#2f1500",
+                        "surface-container-highest": "#dce2f3",
+                        "on-surface-variant": "#404944",
+                        "background": "#f9f9ff",
+                        "secondary-fixed": "#ffdcc3",
+                        "surface-tint": "#2b6954",
+                        "primary": "#003527",
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#b0f0d6",
+                        "surface-container-high": "#e2e8f8",
+                        "secondary-fixed-dim": "#ffb77d",
+                        "on-surface": "#151c27",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed": "#85f8c4",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#004f35",
+                        "inverse-on-surface": "#ebf1ff",
+                        "primary-fixed-dim": "#95d3ba",
+                        "on-tertiary-container": "#51c695",
+                        "surface-container-low": "#f0f3ff",
+                        "on-tertiary-fixed": "#002114",
+                        "on-primary-container": "#80bea6",
+                        "on-secondary-container": "#663500",
+                        "inverse-surface": "#2a313d",
+                        "on-primary-fixed-variant": "#0b513d",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface": "#f9f9ff",
+                        "primary-container": "#064e3b",
+                        "on-background": "#151c27",
+                        "surface-variant": "#dce2f3",
+                        "on-secondary-fixed-variant": "#6e3900",
+                        "secondary-container": "#fe932c",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d3daea",
+                        "tertiary-fixed-dim": "#68dba9",
+                        "outline-variant": "#bfc9c3",
+                        "on-secondary": "#ffffff",
+                        "tertiary": "#003623",
+                        "surface-container": "#e7eefe",
+                        "on-error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "section-gap": "48px",
+                        "gutter": "16px",
+                        "container-padding": "24px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "24px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "arabic-display": ["Amiri"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "arabic-body": ["Amiri"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "arabic-display": ["42px", { "lineHeight": "1.8", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "arabic-body": ["28px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .sacred-pattern {
+            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cpath d='M30 60L15 45H0V30L15 15H30V0L45 15H60V30L45 45H30V60ZM15 30L30 45L45 30L30 15L15 30Z' stroke='%23064E3B' stroke-width='1' stroke-opacity='0.06'/%3E%3C/g%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md sacred-pattern min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="font-['Inter'] tracking-tight docked full-width top-0 border-b tonal with 2px shadow-[0_4px_20px_rgba(6,78,59,0.08)] fixed top-0 w-full z-50 flex justify-between items-center px-6 py-4 max-w-[1280px] mx-auto bg-white dark:bg-surface-container-lowest border-emerald-100">
+<div class="flex items-center gap-4">
+<span class="text-2xl font-bold text-[#064E3B] dark:text-emerald-400">Quran Tracker</span>
+</div>
+<nav class="hidden md:flex gap-6">
+<a class="font-medium hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform text-emerald-800 dark:text-emerald-200" href="#">Dashboard</a>
+<a class="font-medium hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform text-emerald-800 dark:text-emerald-200" href="#">Progress</a>
+<a class="font-medium hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform text-emerald-800 dark:text-emerald-200" href="#">Quran Library</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="text-[#064E3B] dark:text-emerald-500 hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform hidden sm:block">
+<span class="material-symbols-outlined" data-icon="language">language</span>
+</button>
+<button class="text-[#064E3B] dark:text-emerald-500 hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform hidden sm:block">
+<span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span>
+</button>
+<button class="text-[#064E3B] dark:text-emerald-500 font-semibold border-b-2 border-amber-500 pb-1 hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="text-[#064E3B] dark:text-emerald-500 hover:text-amber-600 transition-colors duration-300 scale-95 active:scale-90 transition-transform ml-2">
+<img alt="User profile photo" class="w-8 h-8 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHejTnq2C-v64xGAMXKTsltABAgvTlSWzaxVN6fIx8KrrydhUmM0MmwMYoWCE2B3d0Ri-JeqW9MYTh3VZvgJ184LBxD1J8ZYx6ByS4j102QvgyhVvNwDOai0sT-CfH03JZfh776TBCvQf6D8bKhHH7rgG5D32RNkkymccbX8lLPT2oCN54igGXNt1wPnRlZRWG2nHWNZuaw_4bGkqKKq77ojAbMYGGyhsypt5RoPkDI9YeehclhlnveAzHfvYpeLTcquaNMMBk6p8"/>
+</button>
+</div>
+</header>
+<main class="flex-grow pt-[100px] pb-section-gap px-container-padding max-w-[1280px] w-full mx-auto">
+<div class="mb-section-gap">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-stack-sm">Settings</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Customize your hifz journey and app preferences.</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+<!-- Sidebar Navigation (Desktop) -->
+<div class="hidden lg:block lg:col-span-3">
+<nav class="flex flex-col gap-stack-sm sticky top-[120px]">
+<a class="px-4 py-3 rounded-lg bg-surface-container-high text-primary font-medium flex items-center gap-3" href="#memorization">
+<span class="material-symbols-outlined text-xl">menu_book</span>
+                        Memorization Plan
+                    </a>
+<a class="px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary font-medium flex items-center gap-3 transition-colors" href="#appearance">
+<span class="material-symbols-outlined text-xl">palette</span>
+                        Appearance
+                    </a>
+</nav>
+</div>
+<!-- Content Area -->
+<div class="col-span-1 lg:col-span-9 flex flex-col gap-section-gap">
+<!-- Memorization Plan Section -->
+<section class="bg-surface-lowest rounded-xl p-container-padding shadow-[0_4px_20px_rgba(6,78,59,0.08)]" id="memorization">
+<div class="flex items-center gap-3 mb-stack-lg border-b border-surface-variant pb-4">
+<span class="material-symbols-outlined text-primary text-2xl">menu_book</span>
+<h2 class="font-headline-md text-headline-md text-primary">Memorization Plan</h2>
+</div>
+<!-- Prior Memorization -->
+<div class="mb-stack-lg">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-stack-sm">
+<div>
+<label class="block font-headline-md text-body-lg text-on-surface mb-1">Prior Memorization</label>
+<p class="font-body-md text-body-md text-on-surface-variant">Update what you have already memorized before starting your plan.</p>
+</div>
+<button class="px-4 py-2 rounded-lg border border-outline-variant text-primary font-medium hover:bg-surface-container transition-colors flex items-center justify-center gap-2 shrink-0">
+<span class="material-symbols-outlined text-sm">edit</span>
+Edit Progress
+</button>
+</div>
+<div class="bg-surface rounded-xl p-4 border border-outline-variant">
+<p class="text-sm text-on-surface-variant mb-3">Currently tracking as completed:</p>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm font-medium">Juz 30</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm font-medium">Surah Al-Mulk</span>
+<span class="px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-sm font-medium">Surah Ya-Sin</span>
+</div>
+</div>
+</div>
+<hr class="border-t border-surface-variant my-stack-lg"/>
+<!-- Daily Target -->
+<div class="mb-stack-lg">
+<label class="block font-headline-md text-body-lg text-on-surface mb-stack-sm">Daily Target (Pages)</label>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">Select your preferred number of pages to memorize per day.</p>
+<div class="flex flex-wrap gap-stack-sm">
+<button class="px-6 py-3 rounded-xl border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors font-medium bg-surface">0.5</button>
+<button class="px-6 py-3 rounded-xl border-2 border-primary bg-primary text-on-primary font-medium shadow-sm">1</button>
+<button class="px-6 py-3 rounded-xl border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors font-medium bg-surface">2</button>
+<button class="px-6 py-3 rounded-xl border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary transition-colors font-medium bg-surface">5</button>
+</div>
+</div>
+<!-- Review Intensity -->
+<div class="mb-stack-lg">
+<label class="block font-headline-md text-body-lg text-on-surface mb-stack-sm">Review Intensity</label>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">How rigorously would you like to review past memorization?</p>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<label class="cursor-pointer">
+<input class="peer sr-only" name="intensity" type="radio" value="light"/>
+<div class="p-4 rounded-xl border border-outline-variant bg-surface peer-checked:border-secondary peer-checked:bg-surface-bright transition-all">
+<div class="flex justify-between items-center mb-2">
+<span class="font-medium text-on-surface">Light</span>
+<span class="material-symbols-outlined text-outline-variant peer-checked:text-secondary">radio_button_unchecked</span>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant">Focus mainly on new memorization. Less time spent on review.</p>
+</div>
+</label>
+<label class="cursor-pointer">
+<input checked="" class="peer sr-only" name="intensity" type="radio" value="standard"/>
+<div class="p-4 rounded-xl border-2 border-secondary bg-surface-bright transition-all shadow-sm">
+<div class="flex justify-between items-center mb-2">
+<span class="font-medium text-secondary">Standard</span>
+<span class="material-symbols-outlined text-secondary" data-weight="fill">radio_button_checked</span>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant">Balanced approach. Equal time on new and review.</p>
+</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer sr-only" name="intensity" type="radio" value="intensive"/>
+<div class="p-4 rounded-xl border border-outline-variant bg-surface peer-checked:border-secondary peer-checked:bg-surface-bright transition-all">
+<div class="flex justify-between items-center mb-2">
+<span class="font-medium text-on-surface">Intensive</span>
+<span class="material-symbols-outlined text-outline-variant peer-checked:text-secondary">radio_button_unchecked</span>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant">Heavy focus on solidifying past hifz before moving forward.</p>
+</div>
+</label>
+</div>
+</div>
+<!-- Rest Days -->
+<div>
+<label class="block font-headline-md text-body-lg text-on-surface mb-stack-sm">Rest Days</label>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">Select days you do not plan to memorize new portions.</p>
+<div class="flex flex-wrap gap-stack-md">
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Mon</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Tue</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Wed</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Thu</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input checked="" class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Fri</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Sat</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input checked="" class="w-5 h-5 rounded border-outline text-primary focus:ring-primary" type="checkbox"/>
+<span class="font-medium text-on-surface">Sun</span>
+</label>
+</div>
+</div>
+</section>
+<!-- Appearance Section -->
+<section class="bg-surface-lowest rounded-xl p-container-padding shadow-[0_4px_20px_rgba(6,78,59,0.08)]" id="appearance">
+<div class="flex items-center gap-3 mb-stack-lg border-b border-surface-variant pb-4">
+<span class="material-symbols-outlined text-primary text-2xl">palette</span>
+<h2 class="font-headline-md text-headline-md text-primary">Appearance</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-lg">
+<!-- Theme -->
+<div>
+<label class="block font-headline-md text-body-lg text-on-surface mb-stack-sm">Theme</label>
+<div class="bg-surface rounded-xl p-2 flex gap-1 border border-outline-variant">
+<button class="flex-1 py-2 px-4 rounded-lg bg-surface-bright shadow-sm border border-outline-variant font-medium text-primary flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">light_mode</span>
+                                    Light
+                                </button>
+<button class="flex-1 py-2 px-4 rounded-lg text-on-surface-variant hover:bg-surface-container font-medium flex items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-sm">dark_mode</span>
+                                    Dark
+                                </button>
+<button class="flex-1 py-2 px-4 rounded-lg text-on-surface-variant hover:bg-surface-container font-medium flex items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-sm">brightness_auto</span>
+                                    Auto
+                                </button>
+</div>
+</div>
+<!-- Language -->
+<div>
+<label class="block font-headline-md text-body-lg text-on-surface mb-stack-sm">Language</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface border border-outline-variant text-on-surface py-3 px-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-medium">
+<option value="en">English</option>
+<option value="ar">Arabic (العربية)</option>
+</select>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-on-surface-variant">
+<span class="material-symbols-outlined">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<div class="flex justify-end mt-stack-md">
+<button class="bg-primary text-on-primary font-label-sm text-label-sm px-6 py-3 rounded-xl hover:bg-primary-container transition-colors shadow-sm">Save Changes</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-white dark:bg-emerald-900 font-['Inter'] text-sm leading-relaxed full-width border-t border-emerald-50 border-t border-emerald-100/50 flat no shadows w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-4 mt-auto">
+<p class="text-[#064E3B] dark:text-emerald-100">© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.</p>
+<div class="flex flex-wrap justify-center gap-6">
+<a class="text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Privacy Policy</a>
+<a class="text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Terms of Service</a>
+<a class="text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Contact Support</a>
+<a class="text-emerald-700/70 hover:text-amber-500 underline underline-offset-4 opacity-80 hover:opacity-100 transition-opacity" href="#">Donate</a>
+</div>
+</footer>
+</body></html>

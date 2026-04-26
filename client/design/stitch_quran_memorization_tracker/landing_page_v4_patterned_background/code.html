@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quran Tracker - Your Journey to Memorizing the Quran Starts Here</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Amiri:wght@400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline": "#707974",
+                        "inverse-primary": "#95d3ba",
+                        "on-tertiary-fixed-variant": "#005137",
+                        "surface-bright": "#f9f9ff",
+                        "on-primary-fixed": "#002117",
+                        "secondary": "#904d00",
+                        "on-secondary-fixed": "#2f1500",
+                        "surface-container-highest": "#dce2f3",
+                        "on-surface-variant": "#404944",
+                        "background": "#FFFDF5", /* Adjusted to cream */
+                        "secondary-fixed": "#ffdcc3",
+                        "surface-tint": "#2b6954",
+                        "primary": "#064E3B", /* Adjusted to deep emerald */
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#b0f0d6",
+                        "surface-container-high": "#e2e8f8",
+                        "secondary-fixed-dim": "#ffb77d",
+                        "on-surface": "#151c27",
+                        "on-primary": "#ffffff",
+                        "tertiary-fixed": "#85f8c4",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#004f35",
+                        "inverse-on-surface": "#ebf1ff",
+                        "primary-fixed-dim": "#95d3ba",
+                        "on-tertiary-container": "#51c695",
+                        "surface-container-low": "#f0f3ff",
+                        "on-tertiary-fixed": "#002114",
+                        "on-primary-container": "#80bea6",
+                        "on-secondary-container": "#663500",
+                        "inverse-surface": "#2a313d",
+                        "on-primary-fixed-variant": "#0b513d",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "surface": "#ffffff",
+                        "primary-container": "#064e3b",
+                        "on-background": "#151c27",
+                        "surface-variant": "#dce2f3",
+                        "on-secondary-fixed-variant": "#6e3900",
+                        "secondary-container": "#fe932c",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d3daea",
+                        "tertiary-fixed-dim": "#68dba9",
+                        "outline-variant": "#bfc9c3",
+                        "on-secondary": "#ffffff",
+                        "tertiary": "#003623",
+                        "surface-container": "#e7eefe",
+                        "on-error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "card": "16px",
+                        "btn": "12px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "section-gap": "48px",
+                        "gutter": "16px",
+                        "container-padding": "24px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "24px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "arabic-display": ["Amiri"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "arabic-body": ["Amiri"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "arabic-display": ["42px", { "lineHeight": "1.8", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "arabic-body": ["28px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .sacred-shadow {
+            box-shadow: 0 4px 20px rgba(6, 78, 59, 0.08);
+        }
+        .sacred-pattern {
+            background-color: #FFFDF5;
+            background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23064E3B' fill-opacity='0.04' fill-rule='evenodd'%3E%3Cpath d='M40 0l3 37 37 3-37 3-3 37-3-37-37-3 37-3 3-37zm0 22l6 12 12 6-12 6-6 12-6-12-12-6 12-6 6-12z'/%3E%3C/g%3E%3C/svg%3E");
+            background-size: 80px 80px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md antialiased min-h-screen flex flex-col relative">
+<!-- Sacred Pattern Overlay -->
+<div class="absolute inset-0 sacred-pattern pointer-events-none z-[-1]"></div>
+<!-- TopAppBar Component -->
+<header class="fixed top-0 left-0 right-0 z-50 flex justify-between items-center px-container-padding py-4 max-w-[1280px] mx-auto bg-background/75 backdrop-blur-lg border-b border-primary/5 shadow-sm transition-all">
+<div class="text-primary font-headline-md text-headline-md tracking-tight">Quran Tracker</div>
+<nav class="hidden md:flex gap-stack-lg items-center"><a class="text-primary font-body-md text-body-md font-medium hover:text-secondary-container transition-colors duration-300" href="#features">Features</a>
+<a class="text-primary/60 font-body-md text-body-md font-medium hover:text-secondary-container transition-colors duration-300" href="#how-it-works">How It Works</a>
+<a class="text-primary/60 font-body-md text-body-md font-medium hover:text-secondary-container transition-colors duration-300" href="#faq">FAQ</a></nav>
+<div class="flex items-center gap-stack-md">
+<button class="text-primary font-body-md text-body-md font-medium hover:text-secondary-container transition-colors">
+        Login
+    </button>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-btn font-body-md text-body-md hover:bg-primary/90 transition-colors shadow-sm">
+        Get Started
+    </button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-grow pt-section-gap mt-[80px] pb-section-gap">
+<div class="max-w-[1280px] mx-auto px-container-padding">
+<!-- Hero Section -->
+<section class="flex flex-col md:flex-row items-center gap-section-gap py-section-gap">
+<div class="flex-1 flex flex-col gap-stack-lg">
+<h1 class="font-display-lg text-display-lg text-primary">
+                        Your Journey to Memorizing the Quran Starts Here
+                    </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                        A mindful approach to Hifz. Build lasting habits, track your progress, and stay connected to the Book of Allah with intuitive tools designed for spiritual productivity.
+                    </p>
+<div class="flex gap-stack-md pt-stack-sm">
+<button class="bg-primary text-on-primary px-6 py-3 rounded-btn font-body-md text-body-md hover:bg-primary/90 transition-colors shadow-lg">
+                            Start Tracking Free
+                        </button>
+<button class="bg-surface text-primary border border-outline-variant px-6 py-3 rounded-btn font-body-md text-body-md hover:bg-surface-variant transition-colors">
+                            Explore Features
+                        </button>
+</div>
+</div>
+<div class="flex-1 relative">
+<div class="absolute inset-0 bg-secondary-container/10 rounded-[32px] blur-2xl transform rotate-3"></div>
+<img alt="Person holding open Quran with soft lighting" class="rounded-[24px] shadow-2xl relative z-10 w-full h-auto object-cover aspect-[4/3]" data-alt="Person holding open Quran with soft warm lighting in a serene environment, hands resting on the pages" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANc-RbqrORmiw0AEsUACFSul0dbC_wdZTdeeOxLlgyrVBIRroIzI5wvLiAezw67zIYI589QFQgbsQbBRR5T-30D5gKPeopnlWTR5BB9Wf7yuvDz1AtL8i0TUXaGgA4Rfh4GN8F1cBhRg3-EbbB9cBdvac8gPm5Xq4Huo4zCX4FZYurjdFEKpvRxyM-AskGNWDy0VgjZy5ZCugzLPwHcK3P8XVK3swI-6AeHKjXtGfVIHnS3vQmkTBomk9YTRxkQ_qxPkjyzSfBGrw"/>
+</div>
+</section>
+<!-- Bento Grid Features -->
+<section class="py-section-gap">
+<div class="text-center mb-section-gap">
+<h2 class="font-headline-lg text-headline-lg text-primary mb-stack-sm">Tools for Quran Tracker</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Designed to keep you focused, organized, and motivated.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<!-- Feature 1: Personalized Plans (Large Card) -->
+<div class="md:col-span-2 bg-surface rounded-card p-stack-lg sacred-shadow flex flex-col md:flex-row gap-stack-lg items-center border border-surface-container-highest">
+<div class="flex-1 flex flex-col gap-stack-md">
+<div class="w-12 h-12 rounded-full bg-primary-container/10 flex items-center justify-center text-primary mb-2">
+<span class="material-symbols-outlined">route</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary">Personalized Plans</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Set your target, choose your pace, and let us build a daily schedule that adapts to your life. Never feel overwhelmed again.</p>
+</div>
+<div class="flex-1 w-full bg-surface-container-low rounded-xl p-4 border border-outline-variant/30">
+<div class="flex justify-between items-center mb-4">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Today's Target</span>
+<span class="font-label-sm text-label-sm text-secondary-container font-semibold">Surah Al-Mulk</span>
+</div>
+<div class="space-y-2">
+<div class="h-2 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[65%] rounded-full"></div>
+</div>
+<div class="flex justify-between text-[10px] text-outline">
+<span>Ayah 1-15</span>
+<span>65% Complete</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Feature 2: Smart Review -->
+<div class="bg-surface rounded-card p-stack-lg sacred-shadow flex flex-col gap-stack-md border border-surface-container-highest">
+<div class="w-12 h-12 rounded-full bg-secondary-container/10 flex items-center justify-center text-secondary-container mb-2">
+<span class="material-symbols-outlined">psychology</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary text-xl">Smart Review</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">Spaced repetition algorithms ensure you review weaker Surahs at the optimal time to move them to long-term memory.</p>
+</div>
+<!-- Feature 3: Track Progress -->
+<div class="bg-surface rounded-card p-stack-lg sacred-shadow flex flex-col gap-stack-md border border-surface-container-highest">
+<div class="w-12 h-12 rounded-full bg-primary-container/10 flex items-center justify-center text-primary mb-2">
+<span class="material-symbols-outlined">monitoring</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-primary text-xl">Track Progress</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">Visualize your journey through the Juz. Watch the rings fill up as you achieve your daily and weekly memorization goals.</p>
+</div>
+<!-- Feature 4: Stay Motivated (Span 2) -->
+<div class="md:col-span-2 bg-primary rounded-card p-stack-lg sacred-shadow flex flex-col gap-stack-md relative overflow-hidden text-on-primary">
+<div class="absolute -right-10 -bottom-10 opacity-10">
+<span class="material-symbols-outlined text-[200px]">local_fire_department</span>
+</div>
+<div class="relative z-10 w-full md:w-2/3 flex flex-col gap-stack-md">
+<div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-secondary-container mb-2 backdrop-blur-sm">
+<span class="material-symbols-outlined" data-weight="fill">workspace_premium</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-white">Stay Motivated</h3>
+<p class="font-body-md text-body-md text-white/80">Earn badges, maintain streaks, and join a community of huffaz. Celebrate small milestones on your journey to preserving the Book of Allah.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Call to Action -->
+<section class="py-section-gap text-center max-w-2xl mx-auto">
+<h2 class="font-arabic-display text-arabic-display text-primary mb-stack-md leading-relaxed text-center" dir="rtl">
+                    إِنَّا نَحْنُ نَزَّلْنَا الذِّكْرَ وَإِنَّا لَهُ لَحَافِظُونَ
+                </h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-lg italic">
+                    "Indeed, it is We who sent down the Qur'an and indeed, We will be its guardian." (15:9)
+                </p>
+<button class="bg-secondary-container text-on-secondary-container px-8 py-4 rounded-btn font-headline-md text-body-lg hover:bg-secondary-container/90 transition-colors shadow-lg">
+                    Begin Your Memorization Free
+                </button>
+</section>
+</div>
+</main>
+<!-- Footer Component -->
+<footer class="w-full py-12 px-8 flex flex-col justify-center items-center mt-auto bg-surface border-t border-surface-container-high">
+<p class="font-label-sm text-sm leading-relaxed text-primary text-center">
+            © 2025 Quran Tracker. Dedicated to the pursuit of Hifz.
+        </p>
+</footer>
+</body></html>
