@@ -20,11 +20,14 @@ export const authAPI = {
   login: (data) => API.post('/auth/login', data),
   getMe: () => API.get('/auth/me'),
   updateProfile: (data) => API.put('/auth/profile', data),
+  deleteAccount: () => API.delete('/auth/account'),
 };
 
 // Progress API functions
 export const progressAPI = {
   completeOnboarding: (data) => API.post('/progress/onboarding', data),
+  updateMemorized: (data) => API.put('/progress/memorized', data),
+  resetProgress: () => API.delete('/progress/reset'),
   getTodayTasks: () => API.get('/progress/today'),
   markComplete: (data) => API.post('/progress/complete', data),
   getAllProgress: () => API.get('/progress/all'),

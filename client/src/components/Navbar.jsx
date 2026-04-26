@@ -32,9 +32,7 @@ const Navbar = () => {
 
         {/* Logo */}
         <div className="flex items-center gap-8">
-          <Link to="/dashboard">
-            <Logo size="md" />
-          </Link>
+          <Logo size="md" />
           {/* Desktop nav */}
           <nav className="hidden md:flex gap-6">
             {NAV_LINKS.map((link) =>

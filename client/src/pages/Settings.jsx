@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus } from 'react-icons/fi';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -31,9 +32,49 @@ const JUZ_RANGES = [
   {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
 ];
 
+function computeSelectedPages(selectedJuz, pageRanges) {
+  const pages = new Set();
+  JUZ_RANGES.forEach(({ juz, start, end }) => {
+    if (selectedJuz.has(juz)) {
+      for (let p = start; p <= end; p++) pages.add(p);
+    }
+  });
+  pageRanges.forEach(({ start, end }) => {
+    const s = parseInt(start, 10), e = parseInt(end, 10);
+    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s < e)
+      for (let p = s; p <= e; p++) pages.add(p);
+  });
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
+function validateRanges(pageRanges) {
+  const errors = pageRanges.map(() => ({}));
+  const parsed = pageRanges.map(r => ({
+    start: parseInt(r.start, 10),
+    end: parseInt(r.end, 10),
+  }));
+  parsed.forEach((r, i) => {
+    if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
+      errors[i].start = 'Must be between 1 and 604';
+    if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
+      errors[i].end = 'Must be between 1 and 604';
+    if (!isNaN(r.start) && !isNaN(r.end) && r.start >= r.end)
+      errors[i].end = 'End page must be greater than start page';
+    parsed.forEach((other, j) => {
+      if (i === j) return;
+      if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
+          r.start < other.end && r.end > other.start)
+        errors[i].start = 'Ranges cannot overlap';
+    });
+  });
+  return errors;
+}
+
 // ── Edit Progress Modal ──────────────────────────────────
 function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
   const [selectedJuz, setSelectedJuz] = useState(new Set());
+  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
+  const [rangeErrors, setRangeErrors] = useState([{}]);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
 
@@ -43,6 +84,8 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
         currentJuzData.filter(j => j.isComplete).map(j => j.juzNumber)
       );
       setSelectedJuz(memorized);
+      setPageRanges([{ start: '', end: '' }]);
+      setRangeErrors([{}]);
     }
   }, [isOpen, currentJuzData]);
 
@@ -52,16 +95,27 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
     return next;
   });
 
+  const addRange = () => {
+    setPageRanges(r => [...r, { start: '', end: '' }]);
+    setRangeErrors(e => [...e, {}]);
+  };
+  const removeRange = (i) => {
+    setPageRanges(r => r.filter((_, idx) => idx !== i));
+    setRangeErrors(e => e.filter((_, idx) => idx !== i));
+  };
+  const updateRange = (i, key, val) => {
+    const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
+    setPageRanges(updated);
+    setRangeErrors(validateRanges(updated));
+  };
+
+  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
+  const selectedPages = computeSelectedPages(selectedJuz, pageRanges);
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      const pages = [];
-      JUZ_RANGES.forEach(({ juz, start, end }) => {
-        if (selectedJuz.has(juz)) {
-          for (let p = start; p <= end; p++) pages.push(p);
-        }
-      });
-      await progressAPI.completeOnboarding({ memorizedPages: pages });
+      await progressAPI.updateMemorized({ memorizedPages: selectedPages });
       showToast('Progress updated!', 'success');
       onSave();
       onClose();
@@ -85,26 +139,76 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
           </button>
         </div>
 
-        <div className="p-6">
-          <p className="text-sm text-[#404944] mb-4">Select the Juz you have completely memorized.</p>
-          <div className="grid grid-cols-5 gap-2 mb-6">
-            {JUZ_RANGES.map(({ juz }) => (
-              <button
-                key={juz}
-                onClick={() => toggleJuz(juz)}
-                className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
-                  selectedJuz.has(juz)
-                    ? 'bg-[#003527] text-white border-[#003527]'
-                    : 'bg-[#f9f9ff] border-[#bfc9c3] text-[#404944] hover:border-[#003527] hover:text-[#003527]'
-                }`}
-              >
-                {juz}
-              </button>
-            ))}
+        <div className="p-6 space-y-6">
+          {/* Juz grid */}
+          <div>
+            <p className="text-sm font-medium text-[#151c27] mb-3">Select by Juz (complete Juz only)</p>
+            <div className="grid grid-cols-5 gap-2">
+              {JUZ_RANGES.map(({ juz }) => (
+                <button
+                  key={juz}
+                  onClick={() => toggleJuz(juz)}
+                  className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
+                    selectedJuz.has(juz)
+                      ? 'bg-[#003527] text-white border-[#003527]'
+                      : 'bg-[#f9f9ff] border-[#bfc9c3] text-[#404944] hover:border-[#003527] hover:text-[#003527]'
+                  }`}
+                >
+                  {juz}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-[#707974] mt-2">
+              {selectedJuz.size > 0 ? `${selectedJuz.size} Juz selected` : 'No Juz selected'}
+            </p>
           </div>
-          <p className="text-xs text-[#707974] mb-4">
-            {selectedJuz.size > 0 ? `${selectedJuz.size} Juz selected` : 'No Juz selected'}
-          </p>
+
+          {/* Page ranges */}
+          <div className="border-t border-[#dce2f3] pt-4">
+            <p className="text-sm font-medium text-[#151c27] mb-3">
+              Add specific page ranges <span className="text-xs font-normal text-[#404944]">(optional)</span>
+            </p>
+            <div className="space-y-2">
+              {pageRanges.map((r, i) => (
+                <div key={i} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="1" max="604" value={r.start}
+                      onChange={e => updateRange(i, 'start', e.target.value)}
+                      placeholder="Start (1–604)"
+                      className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] focus:outline-none focus:ring-2 focus:ring-[#003527] ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3]'}`}
+                    />
+                    <span className="text-[#404944] text-sm flex-shrink-0">to</span>
+                    <input
+                      type="number" min="1" max="604" value={r.end}
+                      onChange={e => updateRange(i, 'end', e.target.value)}
+                      placeholder="End (1–604)"
+                      className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] focus:outline-none focus:ring-2 focus:ring-[#003527] ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3]'}`}
+                    />
+                    {pageRanges.length > 1 && (
+                      <button onClick={() => removeRange(i)} className="text-[#404944] hover:text-[#ba1a1a] flex-shrink-0">
+                        <FiX className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
+                    <p className="text-xs text-[#ba1a1a]">{rangeErrors[i]?.end || rangeErrors[i]?.start}</p>
+                  )}
+                </div>
+              ))}
+              <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] font-medium hover:underline mt-1">
+                <FiPlus className="w-3 h-3" /> Add another range
+              </button>
+            </div>
+          </div>
+
+          {selectedPages.length > 0 && (
+            <div className="bg-[#f0fdf4] rounded-lg px-4 py-2 border border-green-100">
+              <p className="text-xs text-[#004f35] font-medium">
+                Total: <strong>{selectedPages.length}</strong> pages selected
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-[#dce2f3] px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
@@ -113,7 +217,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || hasRangeErrors}
             className="px-5 py-2 text-sm font-medium bg-[#003527] text-white rounded-lg hover:bg-[#064e3b] transition-colors disabled:opacity-60 flex items-center gap-2"
           >
             {saving ? 'Saving…' : <><FiSave className="w-4 h-4" /> Save Progress</>}
@@ -125,10 +229,14 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
 }
 
 export default function Settings() {
-  const { user, updateUser, refreshUser } = useAuth();
+  const { user, updateUser, refreshUser, logout } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeSection, setActiveSection] = useState('profile');
+  const activeSection = searchParams.get('tab') || 'profile';
+  const setActiveSection = (tab) => setSearchParams({ tab }, { replace: true });
+
   const [memorizedJuz, setMemorizedJuz] = useState([]);
   const [editProgressOpen, setEditProgressOpen] = useState(false);
 
@@ -163,7 +271,7 @@ export default function Settings() {
 
   useEffect(() => {
     progressAPI.getJuzProgress()
-      .then(res => setMemorizedJuz(res.data.data.filter(j => j.isComplete)))
+      .then(res => setMemorizedJuz(res.data.data))
       .catch(() => {});
   }, []);
 
@@ -220,6 +328,36 @@ export default function Settings() {
   const handleSave = () => {
     if (activeSection === 'profile') saveProfile();
     else if (activeSection === 'memorization') savePlan();
+  };
+
+  const handleDiscard = () => {
+    if (activeSection === 'profile') {
+      setProfileName(user?.name ?? '');
+    } else if (activeSection === 'memorization') {
+      setDailyPages(user?.dailyNewPages ?? 1);
+      setIntensity(user?.reviewIntensity ?? 'standard');
+      setOffDays(user?.offDays ?? []);
+    }
+  };
+
+  const handleResetProgress = async () => {
+    try {
+      await progressAPI.resetProgress();
+      await refreshUser();
+      showToast('Progress reset. Starting fresh!', 'success');
+    } catch {
+      showToast('Failed to reset progress', 'error');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await authAPI.deleteAccount();
+      logout();
+      navigate('/');
+    } catch {
+      showToast('Failed to delete account', 'error');
+    }
   };
 
   const sidebarItems = [
@@ -281,52 +419,77 @@ export default function Settings() {
 
             {/* ── Profile ──────────────────────────────────── */}
             {activeSection === 'profile' && (
-              <section className="bg-white rounded-xl p-6 sacred-shadow">
-                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] pb-4">
-                  <FiUser className="w-6 h-6 text-[#003527]" />
-                  <h2 className="text-2xl font-semibold text-[#003527]">Profile</h2>
-                </div>
-
-                {/* Avatar */}
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-2xl font-bold flex-shrink-0 border-2 border-amber-400">
-                    {user?.name?.[0]?.toUpperCase() ?? 'U'}
+              <>
+                <section className="bg-white rounded-xl p-6 sacred-shadow">
+                  <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] pb-4">
+                    <FiUser className="w-6 h-6 text-[#003527]" />
+                    <h2 className="text-2xl font-semibold text-[#003527]">Profile</h2>
                   </div>
+
+                  {/* Avatar */}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-16 h-16 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-2xl font-bold flex-shrink-0 border-2 border-amber-400">
+                      {user?.name?.[0]?.toUpperCase() ?? 'U'}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[#151c27]">{user?.name}</p>
+                      <p className="text-xs text-[#707974]">{user?.email}</p>
+                      <p className="text-xs text-[#bfc9c3] mt-1">Avatar is generated from your initials</p>
+                    </div>
+                  </div>
+
+                  {/* Display name */}
+                  <div className="mb-6">
+                    <label className="block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5">
+                      Display Name
+                    </label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={e => setProfileName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full max-w-sm border border-[#bfc9c3] rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] text-[#151c27] focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Email (read-only) */}
                   <div>
-                    <p className="text-sm font-medium text-[#151c27]">{user?.name}</p>
-                    <p className="text-xs text-[#707974]">{user?.email}</p>
-                    <p className="text-xs text-[#bfc9c3] mt-1">Avatar is generated from your initials</p>
+                    <label className="block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={user?.email ?? ''}
+                      readOnly
+                      className="w-full max-w-sm border border-[#bfc9c3] rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] text-[#707974] cursor-not-allowed"
+                    />
+                    <p className="text-xs text-[#707974] mt-1">Email cannot be changed</p>
                   </div>
-                </div>
+                </section>
 
-                {/* Display name */}
-                <div className="mb-6">
-                  <label className="block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5">
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={profileName}
-                    onChange={e => setProfileName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full max-w-sm border border-[#bfc9c3] rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] text-[#151c27] focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent"
-                  />
-                </div>
-
-                {/* Email (read-only) */}
-                <div>
-                  <label className="block text-xs font-medium text-[#404944] uppercase tracking-wider mb-1.5">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={user?.email ?? ''}
-                    readOnly
-                    className="w-full max-w-sm border border-[#bfc9c3] rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] text-[#707974] cursor-not-allowed"
-                  />
-                  <p className="text-xs text-[#707974] mt-1">Email cannot be changed</p>
-                </div>
-              </section>
+                {/* Danger Zone — Profile tab only */}
+                <section className="bg-white rounded-xl p-6 sacred-shadow border-2 border-red-100">
+                  <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">Danger Zone</h2>
+                  <div className="flex items-center justify-between gap-4 py-3 border-b border-[#dce2f3]">
+                    <div>
+                      <p className="font-medium text-[#151c27]">Reset Progress</p>
+                      <p className="text-sm text-[#404944]">Clear all tracking history and start fresh. Your account and settings are kept.</p>
+                    </div>
+                    <button onClick={() => setResetModal(true)} className="flex-shrink-0 border-2 border-[#ba1a1a] text-[#ba1a1a] text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-50 transition-colors">
+                      Reset Data
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 pt-3">
+                    <div>
+                      <p className="font-medium text-[#151c27]">Delete Account</p>
+                      <p className="text-sm text-[#404944]">Permanently remove your account and all data. This cannot be undone.</p>
+                    </div>
+                    <button onClick={() => setDeleteModal(true)} className="flex-shrink-0 bg-[#ba1a1a] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors">
+                      Delete Account
+                    </button>
+                  </div>
+                </section>
+              </>
             )}
 
             {/* ── Memorization Plan ────────────────────────── */}
@@ -354,8 +517,8 @@ export default function Settings() {
                   <div className="bg-[#f9f9ff] rounded-xl p-4 border border-[#bfc9c3]">
                     <p className="text-sm text-[#404944] mb-3">Currently tracking as completed:</p>
                     <div className="flex flex-wrap gap-2">
-                      {memorizedJuz.length > 0 ? (
-                        memorizedJuz.map(j => (
+                      {memorizedJuz.filter(j => j.isComplete).length > 0 ? (
+                        memorizedJuz.filter(j => j.isComplete).map(j => (
                           <span key={j.juzNumber} className="px-3 py-1.5 bg-[#003527]/10 text-[#003527] rounded-lg text-sm font-medium">
                             Juz {j.juzNumber}
                           </span>
@@ -493,29 +656,6 @@ export default function Settings() {
               </section>
             )}
 
-            {/* Danger Zone — always shown */}
-            <section className="bg-white rounded-xl p-6 sacred-shadow border-2 border-red-100">
-              <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">Danger Zone</h2>
-              <div className="flex items-center justify-between gap-4 py-3 border-b border-[#dce2f3]">
-                <div>
-                  <p className="font-medium text-[#151c27]">Reset Progress</p>
-                  <p className="text-sm text-[#404944]">Clear all tracking history and start fresh.</p>
-                </div>
-                <button onClick={() => setResetModal(true)} className="flex-shrink-0 border-2 border-[#ba1a1a] text-[#ba1a1a] text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-50 transition-colors">
-                  Reset Data
-                </button>
-              </div>
-              <div className="flex items-center justify-between gap-4 pt-3">
-                <div>
-                  <p className="font-medium text-[#151c27]">Delete Account</p>
-                  <p className="text-sm text-[#404944]">Permanently remove your account and all data.</p>
-                </div>
-                <button onClick={() => setDeleteModal(true)} className="flex-shrink-0 bg-[#ba1a1a] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors">
-                  Delete Account
-                </button>
-              </div>
-            </section>
-
           </div>
         </div>
       </main>
@@ -524,13 +664,22 @@ export default function Settings() {
       {isDirty && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-[#dce2f3] shadow-lg px-6 py-3 flex items-center justify-between gap-4">
           <p className="text-sm text-[#404944]">You have unsaved changes.</p>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-[#003527] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#064e3b] transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
-          >
-            {saving ? 'Saving…' : <><FiSave className="w-4 h-4" /> Save Changes</>}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDiscard}
+              disabled={saving}
+              className="text-sm text-[#404944] border border-[#bfc9c3] px-4 py-2.5 rounded-xl hover:bg-[#f0f3ff] transition-colors disabled:opacity-60"
+            >
+              Discard
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-[#003527] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#064e3b] transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
+            >
+              {saving ? 'Saving…' : <><FiSave className="w-4 h-4" /> Save Changes</>}
+            </button>
+          </div>
         </div>
       )}
 
@@ -541,16 +690,30 @@ export default function Settings() {
         onClose={() => setEditProgressOpen(false)}
         onSave={() => {
           progressAPI.getJuzProgress()
-            .then(res => setMemorizedJuz(res.data.data.filter(j => j.isComplete)))
+            .then(res => setMemorizedJuz(res.data.data))
             .catch(() => {});
         }}
         currentJuzData={memorizedJuz}
       />
 
-      <ConfirmModal isOpen={resetModal} onClose={() => setResetModal(false)} onConfirm={() => showToast('Reset feature coming soon', 'info')}
-        title="Reset All Progress?" message="This will permanently delete all your memorization records. This cannot be undone." confirmText="Yes, Reset" isDanger />
-      <ConfirmModal isOpen={deleteModal} onClose={() => setDeleteModal(false)} onConfirm={() => showToast('Delete account feature coming soon', 'info')}
-        title="Delete Your Account?" message="This will permanently delete your account and all data. You cannot recover this." confirmText="Yes, Delete" isDanger />
+      <ConfirmModal
+        isOpen={resetModal}
+        onClose={() => setResetModal(false)}
+        onConfirm={handleResetProgress}
+        title="Reset All Progress?"
+        message="This will permanently delete all your memorization records and reset your streak to 0. Your account and settings will be kept. This cannot be undone."
+        confirmText="Yes, Reset"
+        isDanger
+      />
+      <ConfirmModal
+        isOpen={deleteModal}
+        onClose={() => setDeleteModal(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Your Account?"
+        message="This will permanently delete your account and all associated data. You will be logged out immediately. This cannot be undone."
+        confirmText="Yes, Delete"
+        isDanger
+      />
     </div>
   );
 }

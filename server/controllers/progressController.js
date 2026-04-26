@@ -396,6 +396,85 @@ exports.getAllProgress = async (req, res) => {
   }
 };
 
+// @desc    Update memorized pages — replace existing set (add new, delete removed)
+// @route   PUT /api/progress/memorized
+// @access  Private
+exports.updateMemorized = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { memorizedPages } = req.body;
+
+    if (!Array.isArray(memorizedPages)) {
+      return res.status(400).json({ success: false, message: 'memorizedPages must be an array' });
+    }
+
+    const newPageSet = new Set(memorizedPages.map(Number).filter(n => n >= 1 && n <= 604));
+
+    // Remove pages that are no longer selected
+    await UserProgress.deleteMany({
+      userId,
+      status: 'memorized',
+      pageNumber: { $nin: Array.from(newPageSet) },
+    });
+
+    // Upsert new pages without overwriting existing review history
+    if (newPageSet.size > 0) {
+      const yesterday = new Date();
+      yesterday.setUTCHours(0, 0, 0, 0);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const bulkOps = Array.from(newPageSet).map(pageNumber => ({
+        updateOne: {
+          filter: { userId, pageNumber },
+          update: {
+            $set: { status: 'memorized' },
+            $setOnInsert: {
+              userId,
+              pageNumber,
+              memorizedDate: yesterday,
+              lastReviewedDate: yesterday,
+              reviewCount: 0,
+            },
+          },
+          upsert: true,
+        },
+      }));
+
+      await UserProgress.bulkWrite(bulkOps);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Memorized pages updated',
+      data: { memorizedCount: newPageSet.size },
+    });
+  } catch (error) {
+    console.error('UpdateMemorized error:', error);
+    res.status(500).json({ success: false, message: 'Error updating memorized pages', error: error.message });
+  }
+};
+
+// @desc    Reset all progress for the user
+// @route   DELETE /api/progress/reset
+// @access  Private
+exports.resetProgress = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    await UserProgress.deleteMany({ userId });
+    await User.findByIdAndUpdate(userId, {
+      currentStreak: 0,
+      lastActiveDate: null,
+      planStartDate: new Date(),
+    });
+
+    res.status(200).json({ success: true, message: 'Progress reset successfully' });
+  } catch (error) {
+    console.error('ResetProgress error:', error);
+    res.status(500).json({ success: false, message: 'Error resetting progress', error: error.message });
+  }
+};
+
 // @desc    Get Juz list with memorization status
 // @route   GET /api/progress/juz
 // @access  Private

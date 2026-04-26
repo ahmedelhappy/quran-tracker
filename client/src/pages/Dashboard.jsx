@@ -248,10 +248,11 @@ export default function Dashboard() {
 
   const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
   const revPending = (data?.reviewPages ?? []).filter(p => !completedKeys.has(`review-${p.pageNumber}`));
-  const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 && completedKeys.size > 0;
+  const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
+    (completedKeys.size > 0 || data.stats?.todayComplete);
 
   const REVIEW_LIMIT = 3;
-  const hasMoreReviews = revPending.length > REVIEW_LIMIT;
+  const hasMoreReviews = (data?.reviewPages ?? []).length > REVIEW_LIMIT;
 
   return (
     <div className="min-h-screen bg-[#FFFDF5] sacred-pattern flex flex-col">
@@ -517,8 +518,8 @@ export default function Dashboard() {
                   <p className="text-sm text-[#404944] py-4">No review pages today.</p>
                 ) : (
                   <>
-                    {/* Always show first REVIEW_LIMIT items */}
-                    {revPending.slice(0, REVIEW_LIMIT).map(p => (
+                    {/* Always show first REVIEW_LIMIT items (all, not just pending — enables undo) */}
+                    {data.reviewPages.slice(0, REVIEW_LIMIT).map(p => (
                       <TaskCard
                         key={`review-${p.pageNumber}`}
                         page={p} type="review"
@@ -538,7 +539,7 @@ export default function Dashboard() {
                         {showAllReviews ? (
                           <><FiChevronUp className="w-4 h-4" /> Show less</>
                         ) : (
-                          <><FiChevronDown className="w-4 h-4" /> Show all {revPending.length} review pages ({REVIEW_LIMIT} of {revPending.length} shown)</>
+                          <><FiChevronDown className="w-4 h-4" /> Show all {data.reviewPages.length} review pages ({REVIEW_LIMIT} of {data.reviewPages.length} shown)</>
                         )}
                       </button>
                     )}
@@ -546,7 +547,7 @@ export default function Dashboard() {
                     {/* Remaining items in scrollable section when expanded */}
                     {showAllReviews && hasMoreReviews && (
                       <div className="max-h-[600px] overflow-y-auto space-y-3 pr-1">
-                        {revPending.slice(REVIEW_LIMIT).map(p => (
+                        {data.reviewPages.slice(REVIEW_LIMIT).map(p => (
                           <TaskCard
                             key={`review-extra-${p.pageNumber}`}
                             page={p} type="review"

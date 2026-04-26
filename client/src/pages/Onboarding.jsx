@@ -123,6 +123,7 @@ export default function Onboarding() {
   const [reviewIntensity, setReviewIntensity] = useState('standard');
   const [offDays, setOffDays] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const selectedPages = computeSelectedPages(selectedJuz, pageRanges);
   const selectedCount = selectedPages.length;
@@ -426,9 +427,33 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] pt-6">
           <button onClick={() => setStep(2)} className="text-sm text-[#404944] hover:text-[#003527] transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe]">← Back</button>
-          <button onClick={() => setStep(4)} className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm">Generate My Plan →</button>
+          <button
+            onClick={() => {
+              setGeneratingPlan(true);
+              setTimeout(() => {
+                setGeneratingPlan(false);
+                setStep(4);
+              }, 2500);
+            }}
+            className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm"
+          >
+            Generate My Plan →
+          </button>
         </div>
       </main>
+    </div>
+  );
+
+  // ── GENERATING PLAN — Loading screen ─────────────────
+  if (generatingPlan) return (
+    <div className="min-h-screen bg-[#f9f9ff] sacred-pattern flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl sacred-shadow border border-[#dce2f3] max-w-sm w-full p-10 flex flex-col items-center text-center gap-6">
+        <div className="w-16 h-16 rounded-full border-4 border-[#dce2f3] border-t-[#fe932c] animate-spin" />
+        <div>
+          <h2 className="text-xl font-semibold text-[#003527] mb-2">Building your plan...</h2>
+          <p className="text-sm text-[#404944]">Generating your personalized memorization schedule.</p>
+        </div>
+      </div>
     </div>
   );
 

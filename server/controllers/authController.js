@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
 
 // Generate JWT Token
@@ -248,5 +249,22 @@ exports.updateProfile = async (req, res) => {
       message: 'Error updating profile',
       error: error.message
     });
+  }
+};
+
+// @desc    Delete current user account and all associated data
+// @route   DELETE /api/auth/account
+// @access  Private
+exports.deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    await UserProgress.deleteMany({ userId });
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('DeleteAccount error:', error);
+    res.status(500).json({ success: false, message: 'Error deleting account', error: error.message });
   }
 };

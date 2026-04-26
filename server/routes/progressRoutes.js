@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
   completeOnboarding,
+  updateMemorized,
+  resetProgress,
   getTodayTasks,
   markPageComplete,
   getAllProgress,
@@ -15,6 +17,12 @@ router.use(protect);
 
 // Onboarding
 router.post('/onboarding', completeOnboarding);
+
+// Edit memorized pages (Settings)
+router.put('/memorized', updateMemorized);
+
+// Reset all progress
+router.delete('/reset', resetProgress);
 
 // Daily tasks
 router.get('/today', getTodayTasks);
