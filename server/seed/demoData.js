@@ -1,6 +1,5 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 
@@ -31,11 +30,11 @@ async function seedDemo() {
   let user = await User.findOne({ email: DEMO_EMAIL }).select('+password');
 
   if (!user) {
-    const hash = await bcrypt.hash(DEMO_PASSWORD, 10);
+    // Pass plaintext — the pre-save hook handles hashing
     user = new User({
       name: DEMO_NAME,
       email: DEMO_EMAIL,
-      password: hash,
+      password: DEMO_PASSWORD,
       dailyNewPages: 2,
       reviewIntensity: 'standard',
       offDays: [],
@@ -48,6 +47,7 @@ async function seedDemo() {
     console.log('Created demo user:', DEMO_EMAIL);
   } else {
     user.name = DEMO_NAME;
+    user.password = DEMO_PASSWORD; // reset so pre-save hook rehashes correctly
     user.dailyNewPages = 2;
     user.reviewIntensity = 'standard';
     user.offDays = [];

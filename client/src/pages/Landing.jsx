@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown } from 'react-icons/fi';
+import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown, FiMoon, FiSun } from 'react-icons/fi';
 import Logo from '../components/Logo';
+import { useTheme } from '../context/ThemeContext';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
   const r = (size - stroke) / 2;
@@ -30,6 +31,8 @@ const FAQ_ITEMS = [
 ];
 
 const LandingNavbar = ({ activeSection }) => {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
   const navLinks = [
     { href: '#features', id: 'features', label: 'Features' },
     { href: '#how-it-works', id: 'how-it-works', label: 'How It Works' },
@@ -55,6 +58,13 @@ const LandingNavbar = ({ activeSection }) => {
           ))}
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors"
+          >
+            {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
+          </button>
           <Link to="/login" className="text-sm font-medium text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">Login</Link>
           <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
             Get Started

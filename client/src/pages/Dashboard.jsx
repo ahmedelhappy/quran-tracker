@@ -150,17 +150,19 @@ const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) 
 
 // ── Week plan day row ─────────────────────────────────────
 const WeekDayRow = ({ day }) => {
+  const baseCard = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow px-4 py-3 min-h-[64px]';
+
   if (day.isOffDay) {
     return (
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-[#dce2f3] dark:border-gray-700">
+      <div className={`${baseCard} flex items-center justify-between`}>
         <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{formatDate(day.date)}</span>
         <span className="text-sm text-[#707974] dark:text-gray-500">Rest Day 🌿</span>
       </div>
     );
   }
   return (
-    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-[#dce2f3] dark:border-gray-700">
-      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100 mb-2">{formatDate(day.date)}</p>
+    <div className={`${baseCard} flex flex-col justify-center gap-2`}>
+      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100">{formatDate(day.date)}</p>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {day.newPagesCount > 0 ? (
           <span className="flex items-center gap-1 text-[#004f35] dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
