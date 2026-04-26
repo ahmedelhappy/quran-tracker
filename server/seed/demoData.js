@@ -26,18 +26,16 @@ async function seedDemo() {
   yesterday.setDate(yesterday.getDate() - 1);
   yesterday.setUTCHours(20, 0, 0, 0);
 
-  // Find or create demo user
   let user = await User.findOne({ email: DEMO_EMAIL }).select('+password');
 
   if (!user) {
-    // Pass plaintext — the pre-save hook handles hashing
     user = new User({
       name: DEMO_NAME,
       email: DEMO_EMAIL,
       password: DEMO_PASSWORD,
       dailyNewPages: 2,
       reviewIntensity: 'standard',
-      offDays: [],
+      offDays: [5],
       onboardingComplete: true,
       planStartDate: planStart,
       currentStreak: 14,
@@ -47,10 +45,10 @@ async function seedDemo() {
     console.log('Created demo user:', DEMO_EMAIL);
   } else {
     user.name = DEMO_NAME;
-    user.password = DEMO_PASSWORD; // reset so pre-save hook rehashes correctly
+    user.password = DEMO_PASSWORD;
     user.dailyNewPages = 2;
     user.reviewIntensity = 'standard';
-    user.offDays = [];
+    user.offDays = [5];
     user.onboardingComplete = true;
     user.planStartDate = planStart;
     user.currentStreak = 14;
@@ -59,53 +57,56 @@ async function seedDemo() {
     console.log('Updated demo user:', DEMO_EMAIL);
   }
 
-  // Clear existing progress
-  await UserProgress.deleteMany({ userId: user._id });
+  // Use raw collection to set createdAt explicitly (bypass Mongoose timestamp auto-set)
+  const col = UserProgress.collection;
+  await col.deleteMany({ userId: user._id });
 
-  // Distribute 150 pages across ~90 days (2 pages/day with some variation + rest days)
-  const progressOps = [];
+  // Randomly skipped days to simulate missed days (indices into the 90-day window)
+  const skippedDays = new Set([6, 13, 21, 28, 35, 48, 55, 69, 76, 83]);
+
+  const progressDocs = [];
   let pageNum = 1;
 
-  for (let day = 0; day < 90 && pageNum <= 150; day++) {
-    // Every 5th day is a rest day (18 rest days total)
-    if (day % 5 === 4) continue;
-
+  for (let day = 0; day < 90 && pageNum <= 180; day++) {
     const memDate = new Date(planStart);
     memDate.setDate(memDate.getDate() + day);
+
+    // Skip Fridays (day.getUTCDay() === 5)
+    if (memDate.getUTCDay() === 5) continue;
+    // Skip some days to simulate imperfect consistency
+    if (skippedDays.has(day)) continue;
+
     memDate.setUTCHours(10, 0, 0, 0);
 
-    // Mostly 2 pages per day, occasionally 1 page for variety
-    const pagesThisDay = day % 7 === 0 ? 1 : 2;
+    // 2 pages/day mostly, occasionally 1 for variety
+    const pagesThisDay = day % 11 === 0 ? 1 : 2;
 
-    for (let p = 0; p < pagesThisDay && pageNum <= 150; p++) {
-      // Review count: 2-5 reviews per page (deterministic variety)
-      const reviewCount = 2 + (pageNum % 4);
+    for (let p = 0; p < pagesThisDay && pageNum <= 180; p++) {
+      const reviewCount = 2 + (pageNum % 4); // 2–5
 
-      // Last review 1-14 days ago (spread out realistically)
+      // Last review 1–14 days ago, spread deterministically
       const daysAgoReviewed = 1 + ((pageNum * 7) % 14);
       const lastReviewDate = new Date(now);
       lastReviewDate.setDate(lastReviewDate.getDate() - daysAgoReviewed);
       lastReviewDate.setUTCHours(10, 0, 0, 0);
 
-      progressOps.push({
-        insertOne: {
-          document: {
-            userId: user._id,
-            pageNumber: pageNum,
-            status: 'memorized',
-            memorizedDate: memDate,
-            lastReviewedDate: lastReviewDate,
-            reviewCount,
-          },
-        },
+      progressDocs.push({
+        userId: user._id,
+        pageNumber: pageNum,
+        status: 'memorized',
+        memorizedDate: new Date(memDate),
+        lastReviewedDate: lastReviewDate,
+        reviewCount,
+        createdAt: new Date(memDate),
+        updatedAt: lastReviewDate,
       });
 
       pageNum++;
     }
   }
 
-  if (progressOps.length > 0) {
-    await UserProgress.bulkWrite(progressOps);
+  if (progressDocs.length > 0) {
+    await col.insertMany(progressDocs);
   }
 
   console.log(`Seeded ${pageNum - 1} memorized pages (pages 1–${pageNum - 1})`);
@@ -113,6 +114,7 @@ async function seedDemo() {
   console.log('  Email:    demo@qurantracker.com');
   console.log('  Password: demo123456');
   console.log('  Streak:   14 days');
+  console.log('  Off days: Friday');
 
   await mongoose.disconnect();
   console.log('Done.');

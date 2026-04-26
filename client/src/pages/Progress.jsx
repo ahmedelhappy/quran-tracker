@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -54,7 +54,38 @@ export default function Progress() {
   const totalMemorized = overallStats?.totalMemorized ?? 0;
   const percentage = overallStats?.percentage ?? '0.0';
 
-  const heatmap = buildHeatmap(user?.createdAt);
+  const heatmap = useMemo(() => {
+    const cells = buildHeatmap(user?.createdAt);
+    const byDate = overallStats?.memorizedByDate || {};
+    cells.forEach(cell => {
+      const count = byDate[cell.date] || 0;
+      cell.level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
+    });
+    return cells;
+  }, [user?.createdAt, overallStats]);
+
+  const chartData = useMemo(() => {
+    const byDate = overallStats?.memorizedByDate;
+    if (!byDate || Object.keys(byDate).length === 0) {
+      return [{ label: 'Now', pages: totalMemorized }];
+    }
+    const sorted = Object.keys(byDate).sort();
+    let cumulative = 0;
+    const all = sorted.map(d => {
+      cumulative += byDate[d];
+      const dt = new Date(d + 'T00:00:00Z');
+      return {
+        label: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+        pages: cumulative,
+      };
+    });
+    if (all.length <= 20) return all;
+    const step = Math.ceil(all.length / 20);
+    const sampled = all.filter((_, i) => i % step === 0);
+    if (sampled[sampled.length - 1] !== all[all.length - 1]) sampled.push(all[all.length - 1]);
+    return sampled;
+  }, [overallStats, totalMemorized]);
+
   const hasActivity = totalMemorized > 0;
 
   const completedJuz = juzData.filter(j => j.isComplete).length;
@@ -215,7 +246,7 @@ export default function Progress() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart
-                data={[{ label: 'Now', pages: totalMemorized }]}
+                data={chartData}
                 margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />

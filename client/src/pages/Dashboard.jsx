@@ -148,25 +148,82 @@ const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) 
   );
 };
 
-// ── Week plan day row ─────────────────────────────────────
-const WeekDayRow = ({ day }) => {
-  const baseCard = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow px-4 py-3 min-h-[64px]';
+// ── Week plan day card (This Week tab) ───────────────────
+const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
+  const base = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow';
+  const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
+  const dateLabel = formatDate(day.date);
 
-  if (day.isOffDay) {
+  if (isOffDay) {
     return (
-      <div className={`${baseCard} flex items-center justify-between`}>
-        <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{formatDate(day.date)}</span>
-        <span className="text-sm text-[#707974] dark:text-gray-500">Rest Day 🌿</span>
+      <div className={`${base} ${isToday ? 'border-l-4 border-l-[#004f35]' : ''} px-4 py-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{dateLabel}</span>
+          {isToday && (
+            <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">Today</span>
+          )}
+        </div>
+        <span className="text-sm text-[#707974] dark:text-gray-500">Rest 🌿</span>
       </div>
     );
   }
+
+  if (isToday && todayData) {
+    const newPages = todayData.newPages ?? [];
+    const reviewCount = allReviewPages?.length ?? 0;
+    const sortedReviewNums = [...(allReviewPages ?? [])].sort((a, b) => a.pageNumber - b.pageNumber);
+    const reviewPreview = sortedReviewNums.slice(0, 8).map(p => p.pageNumber).join(', ');
+
+    return (
+      <div className={`${base} p-4 border-l-4 border-l-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{dateLabel}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">Today</span>
+        </div>
+
+        {newPages.length > 0 && (
+          <div className="mb-2.5">
+            <p className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 mb-1">📖 New Memorization</p>
+            <div className="flex flex-col gap-0.5 ml-1">
+              {newPages.map(p => (
+                <p key={p.pageNumber} className="text-sm text-[#003527] dark:text-gray-200">
+                  Page {p.pageNumber} · {p.surahName}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {reviewCount > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-0.5">
+              📘 Review · {reviewCount} pages
+            </p>
+            <p className="text-xs text-[#707974] dark:text-gray-500 ml-1">
+              Pages {reviewPreview}{reviewCount > 8 ? '...' : ''}
+            </p>
+          </div>
+        )}
+
+        {newPages.length === 0 && reviewCount === 0 && (
+          <p className="text-sm text-[#707974] dark:text-gray-500">No tasks today.</p>
+        )}
+      </div>
+    );
+  }
+
+  // Future day card
+  const newPagesInfo = day.newPagesInfo ?? (day.newPageInfo ? [day.newPageInfo] : []);
+
   return (
-    <div className={`${baseCard} flex flex-col justify-center gap-2`}>
-      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100">{formatDate(day.date)}</p>
+    <div className={`${base} px-4 py-3`}>
+      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100 mb-1.5">{dateLabel}</p>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {day.newPagesCount > 0 ? (
           <span className="flex items-center gap-1 text-[#004f35] dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
-            📖 New: {day.newPageInfo ? `Page ${day.newPageInfo.pageNumber}` : `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
+            📖 {newPagesInfo.length > 0
+              ? `Page${newPagesInfo.length > 1 ? 's' : ''} ${newPagesInfo.map(p => p.pageNumber).join(', ')}`
+              : `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
           </span>
         ) : (
           <span className="text-[#707974] dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg">No new page</span>
@@ -188,16 +245,17 @@ export default function Dashboard() {
   const [completedKeys, setCompletedKeys] = useState(new Set());
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
-  const [showAllReviews, setShowAllReviews] = useState(false);
+  const [showAllCycle, setShowAllCycle] = useState(false);
   const [showWantMore, setShowWantMore] = useState(false);
   const [extraData, setExtraData] = useState(null);
-  const [weekOpen, setWeekOpen] = useState(false);
   const [weekData, setWeekData] = useState(null);
   const [weekLoading, setWeekLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('today');
 
   const doy = dayOfYear();
   const quote = QUOTES[doy % QUOTES.length];
   const tip = TIPS[doy % TIPS.length];
+  const todayDateString = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     (async () => {
@@ -254,9 +312,6 @@ export default function Dashboard() {
     }
   };
 
-  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new'));
-  const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
-
   const loadExtraPages = () => {
     if (extraData) return;
     const extraNew = (data?.extraNewPages ?? []).map(p => p.pageNumber);
@@ -279,22 +334,30 @@ export default function Dashboard() {
     return Math.round((today - last) / 86400000) > 1;
   })();
 
-  // Combine recent review pages (shown at top) + regular review pages
+  // Split review pages into recent and cycle
+  const recentPages = data?.recentReviewPages ?? [];
+  const cycleReviewPages = data?.reviewPages ?? [];
   const allReviewPages = [
-    ...(data?.recentReviewPages ?? []).map(p => ({ ...p, isRecent: true })),
-    ...(data?.reviewPages ?? []).map(p => ({ ...p, isRecent: false })),
+    ...recentPages.map(p => ({ ...p, isRecent: true })),
+    ...cycleReviewPages.map(p => ({ ...p, isRecent: false })),
   ];
 
   const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
   const revPending = allReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
+  const recentPending = recentPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
+  const cyclePending = cycleReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
 
   const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
     (completedKeys.size > 0 || data.stats?.todayComplete);
 
-  const REVIEW_LIMIT = 3;
-  const hasMoreReviews = allReviewPages.length > REVIEW_LIMIT;
+  const CYCLE_LIMIT = 3;
+  const hasMoreCycle = cycleReviewPages.length > CYCLE_LIMIT;
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
+
+  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new'));
+  const markAllRecent = () => recentPending.forEach(p => markComplete(p.pageNumber, 'review'));
+  const markAllCycle = () => cyclePending.forEach(p => markComplete(p.pageNumber, 'review'));
 
   return (
     <div className="min-h-screen bg-[#FFFDF5] dark:bg-gray-900 sacred-pattern flex flex-col">
@@ -374,149 +437,170 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* ── Tasks Section ─────────────────────────────────── */}
+        {/* ── Tasks Section with Tabs ───────────────────────── */}
         <section className="flex flex-col gap-4">
-          <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 border-b border-[#dce2f3] dark:border-gray-700 pb-2">
-            Today's Tasks
-          </h3>
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
+            <button
+              onClick={() => setActiveTab('today')}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                activeTab === 'today'
+                  ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
+                  : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
+              }`}
+            >
+              📅 Today
+            </button>
+            <button
+              onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                activeTab === 'week'
+                  ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
+                  : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
+              }`}
+            >
+              📆 This Week
+            </button>
+          </div>
 
-          {loading ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {Array(4).fill(0).map((_, i) => (
-                <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 space-y-2">
-                  <Sk h="h-5" w="w-24" /><Sk h="h-4" w="w-36" />
+          {/* ── TODAY TAB ─────────────────────────────────────── */}
+          {activeTab === 'today' && (
+            loading ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {Array(4).fill(0).map((_, i) => (
+                  <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 space-y-2">
+                    <Sk h="h-5" w="w-24" /><Sk h="h-4" w="w-36" />
+                  </div>
+                ))}
+              </div>
+            ) : data?.isOffDay ? (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-12 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center relative overflow-hidden">
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
+                  <span style={{ fontSize: 200 }}>🌿</span>
                 </div>
-              ))}
-            </div>
-          ) : data?.isOffDay ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-12 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center relative overflow-hidden">
-              <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
-                <span style={{ fontSize: 200 }}>🌿</span>
+                <div className="w-20 h-20 rounded-full bg-[#004f35]/10 flex items-center justify-center text-[#004f35] mb-6">
+                  <span className="text-4xl">🌿</span>
+                </div>
+                <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">Today is your rest day 🌿</h2>
+                <p className="text-lg text-[#404944] dark:text-gray-400 max-w-2xl mb-8 leading-relaxed">
+                  The mind is a vessel; allowing it to rest expands its capacity to hold the words of Allah.
+                  Enjoy your day of pause without guilt, for consistency is built on sustainable rhythms.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 z-10">
+                  <button className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2">
+                    🧘 Start a 5-Min Reflection
+                  </button>
+                  <button className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide">
+                    Memorize Anyway
+                  </button>
+                </div>
               </div>
-              <div className="w-20 h-20 rounded-full bg-[#004f35]/10 flex items-center justify-center text-[#004f35] mb-6">
-                <span className="text-4xl">🌿</span>
-              </div>
-              <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">Today is your rest day 🌿</h2>
-              <p className="text-lg text-[#404944] dark:text-gray-400 max-w-2xl mb-8 leading-relaxed">
-                The mind is a vessel; allowing it to rest expands its capacity to hold the words of Allah.
-                Enjoy your day of pause without guilt, for consistency is built on sustainable rhythms.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 z-10">
-                <button className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2">
-                  🧘 Start a 5-Min Reflection
-                </button>
-                <button className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide">
-                  Memorize Anyway
-                </button>
-              </div>
-            </div>
-          ) : allTasksDone ? (
-            <div className="flex flex-col gap-4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-10 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center">
-                <p className="text-4xl mb-3">🎉</p>
-                <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">ما شاء الله! Tasks Complete!</h3>
-                <p className="text-[#404944] dark:text-gray-400">Come back tomorrow for your next session.</p>
-              </div>
-
-              {/* Want more? expandable section */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
-                <button
-                  onClick={() => { setShowWantMore(!showWantMore); if (!showWantMore) loadExtraPages(); }}
-                  className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">✨</span>
-                    <span className="text-base font-semibold text-[#003527] dark:text-gray-100">Want to do more today?</span>
-                  </div>
-                  {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
-                </button>
-
-                {showWantMore && (
-                  <div className="border-t border-[#dce2f3] dark:border-gray-700 p-4 space-y-6">
-                    {extraData?.extraNew?.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                          <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Memorize More</h4>
-                          <span className="text-xs text-[#707974] dark:text-gray-500">— upcoming pages</span>
-                        </div>
-                        <div className="space-y-2">
-                          {extraData.extraNew.map(pageNum => (
-                            <ExtraTaskCard key={`extra-new-${pageNum}`} pageNumber={pageNum} type="new"
-                              done={completedKeys.has(`new-${pageNum}`)} marking={markingKeys.has(`new-${pageNum}`)}
-                              onComplete={markComplete} onUndo={undoComplete} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {extraData?.extraReview?.length > 0 && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                          <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Review More</h4>
-                          <span className="text-xs text-[#707974] dark:text-gray-500">— additional pages</span>
-                        </div>
-                        <div className="space-y-2">
-                          {extraData.extraReview.map(pageNum => (
-                            <ExtraTaskCard key={`extra-review-${pageNum}`} pageNumber={pageNum} type="review"
-                              done={completedKeys.has(`review-${pageNum}`)} marking={markingKeys.has(`review-${pageNum}`)}
-                              onComplete={markComplete} onUndo={undoComplete} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
-                      <p className="text-sm text-[#707974] dark:text-gray-500 text-center py-4">No additional pages available.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* New Memorization column */}
+            ) : allTasksDone ? (
               <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                    <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">New Memorization</h4>
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-10 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center">
+                  <p className="text-4xl mb-3">🎉</p>
+                  <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">ما شاء الله! Tasks Complete!</h3>
+                  <p className="text-[#404944] dark:text-gray-400">Come back tomorrow for your next session.</p>
+                </div>
+
+                {/* Want more? */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
+                  <button
+                    onClick={() => { setShowWantMore(!showWantMore); if (!showWantMore) loadExtraPages(); }}
+                    className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">✨</span>
+                      <span className="text-base font-semibold text-[#003527] dark:text-gray-100">Want to do more today?</span>
+                    </div>
+                    {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
+                  </button>
+
+                  {showWantMore && (
+                    <div className="border-t border-[#dce2f3] dark:border-gray-700 p-4 space-y-6">
+                      {extraData?.extraNew?.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="w-2 h-2 rounded-full bg-[#004f35]" />
+                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Memorize More</h4>
+                            <span className="text-xs text-[#707974] dark:text-gray-500">— upcoming pages</span>
+                          </div>
+                          <div className="space-y-2">
+                            {extraData.extraNew.map(pageNum => (
+                              <ExtraTaskCard key={`extra-new-${pageNum}`} pageNumber={pageNum} type="new"
+                                done={completedKeys.has(`new-${pageNum}`)} marking={markingKeys.has(`new-${pageNum}`)}
+                                onComplete={markComplete} onUndo={undoComplete} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {extraData?.extraReview?.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
+                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Review More</h4>
+                            <span className="text-xs text-[#707974] dark:text-gray-500">— additional pages</span>
+                          </div>
+                          <div className="space-y-2">
+                            {extraData.extraReview.map(pageNum => (
+                              <ExtraTaskCard key={`extra-review-${pageNum}`} pageNumber={pageNum} type="review"
+                                done={completedKeys.has(`review-${pageNum}`)} marking={markingKeys.has(`review-${pageNum}`)}
+                                onComplete={markComplete} onUndo={undoComplete} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
+                        <p className="text-sm text-[#707974] dark:text-gray-500 text-center py-4">No additional pages available.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* New Memorization column */}
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#004f35]" />
+                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">New Memorization</h4>
+                    </div>
+                    {newPending.length > 0 && (
+                      <button onClick={markAllNew} className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
+                        Mark All
+                      </button>
+                    )}
                   </div>
-                  {newPending.length > 0 && (
-                    <button onClick={markAllNew} className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
-                      Mark All
-                    </button>
+
+                  {/* Continuation page card */}
+                  {showContinuation && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700/40 flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
+                        <span className="text-xl">📖</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Continue Yesterday's Page</p>
+                        <p className="text-lg font-medium text-blue-900 dark:text-blue-200">Page {data.continuationPage.pageNumber}</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{data.continuationPage.surahName}</p>
+                        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">No new page today — focus on perfecting yesterday's page.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {(data?.newPages ?? []).length === 0 && !showContinuation ? (
+                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No new memorization today.</p>
+                  ) : (
+                    (data?.newPages ?? []).map(p => (
+                      <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
+                        done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
+                        onComplete={markComplete} onUndo={undoComplete} />
+                    ))
                   )}
                 </div>
 
-                {/* Continuation page card (0.5/day on no-new-page days) */}
-                {showContinuation && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700/40 flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
-                      <span className="text-xl">📖</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Continue Yesterday's Page</p>
-                      <p className="text-lg font-medium text-blue-900 dark:text-blue-200">Page {data.continuationPage.pageNumber}</p>
-                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{data.continuationPage.surahName}</p>
-                      <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">No new page today — focus on perfecting yesterday's page.</p>
-                    </div>
-                  </div>
-                )}
-
-                {(data?.newPages ?? []).length === 0 && !showContinuation ? (
-                  <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No new memorization today.</p>
-                ) : (
-                  (data?.newPages ?? []).map(p => (
-                    <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
-                      done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
-                      onComplete={markComplete} onUndo={undoComplete} />
-                  ))
-                )}
-              </div>
-
-              {/* Review column */}
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between gap-2">
+                {/* Review column — split into Recent + Cycle */}
+                <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
                     <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">
@@ -528,96 +612,117 @@ export default function Dashboard() {
                       )}
                     </h4>
                   </div>
-                  {revPending.length > 0 && (
-                    <button onClick={markAllReview} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                      Mark All
-                    </button>
+
+                  {allReviewPages.length === 0 ? (
+                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No review pages today.</p>
+                  ) : (
+                    <>
+                      {/* Recent Review sub-section */}
+                      {recentPages.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs">🔄</span>
+                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Recent Review</span>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">(last 3 days) · {recentPages.length} pages</span>
+                            </div>
+                            {recentPending.length > 0 && (
+                              <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                                Mark All
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {recentPages.map(p => (
+                              <TaskCard
+                                key={`review-recent-${p.pageNumber}`}
+                                page={p} type="review"
+                                done={completedKeys.has(`review-${p.pageNumber}`)}
+                                marking={markingKeys.has(`review-${p.pageNumber}`)}
+                                onComplete={markComplete}
+                                onUndo={undoComplete}
+                                badge="🔄 Recent"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cycle Review sub-section */}
+                      {cycleReviewPages.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs">📘</span>
+                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Cycle Review</span>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">· {cycleReviewPages.length} pages</span>
+                            </div>
+                            {cyclePending.length > 0 && (
+                              <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                                Mark All
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {cycleReviewPages.slice(0, showAllCycle ? cycleReviewPages.length : CYCLE_LIMIT).map(p => (
+                              <TaskCard
+                                key={`review-cycle-${p.pageNumber}`}
+                                page={p} type="review"
+                                done={completedKeys.has(`review-${p.pageNumber}`)}
+                                marking={markingKeys.has(`review-${p.pageNumber}`)}
+                                onComplete={markComplete}
+                                onUndo={undoComplete}
+                              />
+                            ))}
+                          </div>
+                          {hasMoreCycle && (
+                            <button
+                              onClick={() => setShowAllCycle(!showAllCycle)}
+                              className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
+                            >
+                              {showAllCycle ? (
+                                <><FiChevronUp className="w-4 h-4" /> Show less</>
+                              ) : (
+                                <><FiChevronDown className="w-4 h-4" /> Show all {cycleReviewPages.length} pages</>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-
-                {allReviewPages.length === 0 ? (
-                  <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No review pages today.</p>
-                ) : (
-                  <>
-                    {allReviewPages.slice(0, REVIEW_LIMIT).map(p => (
-                      <TaskCard
-                        key={`review-${p.pageNumber}`}
-                        page={p} type="review"
-                        done={completedKeys.has(`review-${p.pageNumber}`)}
-                        marking={markingKeys.has(`review-${p.pageNumber}`)}
-                        onComplete={markComplete}
-                        onUndo={undoComplete}
-                        badge={p.isRecent ? '🔄 Recent' : undefined}
-                      />
-                    ))}
-
-                    {hasMoreReviews && (
-                      <button
-                        onClick={() => setShowAllReviews(!showAllReviews)}
-                        className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
-                      >
-                        {showAllReviews ? (
-                          <><FiChevronUp className="w-4 h-4" /> Show less</>
-                        ) : (
-                          <><FiChevronDown className="w-4 h-4" /> Show all {allReviewPages.length} review pages ({REVIEW_LIMIT} of {allReviewPages.length} shown)</>
-                        )}
-                      </button>
-                    )}
-
-                    {showAllReviews && hasMoreReviews && (
-                      <div className="max-h-[600px] overflow-y-auto space-y-3 pr-1">
-                        {allReviewPages.slice(REVIEW_LIMIT).map(p => (
-                          <TaskCard
-                            key={`review-extra-${p.pageNumber}`}
-                            page={p} type="review"
-                            done={completedKeys.has(`review-${p.pageNumber}`)}
-                            marking={markingKeys.has(`review-${p.pageNumber}`)}
-                            onComplete={markComplete}
-                            onUndo={undoComplete}
-                            badge={p.isRecent ? '🔄 Recent' : undefined}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
               </div>
+            )
+          )}
+
+          {/* ── THIS WEEK TAB ──────────────────────────────────── */}
+          {activeTab === 'week' && (
+            <div className="flex flex-col gap-3">
+              {/* Today card — always from loaded data */}
+              {loading ? (
+                <Sk h="h-24" />
+              ) : (
+                <WeekDayCard
+                  day={{ date: todayDateString }}
+                  isToday={true}
+                  todayData={data}
+                  allReviewPages={allReviewPages}
+                />
+              )}
+
+              {/* Next 6 days */}
+              {weekLoading ? (
+                Array(6).fill(0).map((_, i) => <Sk key={i} h="h-14" />)
+              ) : weekData ? (
+                weekData.map((day, i) => (
+                  <WeekDayCard key={i} day={day} isToday={false} todayData={null} allReviewPages={null} />
+                ))
+              ) : (
+                <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">Unable to load week plan.</p>
+              )}
             </div>
           )}
-        </section>
-
-        {/* ── This Week's Plan ──────────────────────────────── */}
-        <section>
-          <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
-            <button
-              onClick={() => {
-                setWeekOpen(!weekOpen);
-                if (!weekOpen) loadWeekPlan();
-              }}
-              className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">📅 This Week's Plan</span>
-              </div>
-              {weekOpen ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
-            </button>
-
-            {weekOpen && (
-              <div className="border-t border-[#dce2f3] dark:border-gray-700 px-4 py-3">
-                {weekLoading ? (
-                  <div className="space-y-2 py-2">
-                    {Array(6).fill(0).map((_, i) => <Sk key={i} h="h-14" />)}
-                  </div>
-                ) : weekData ? (
-                  <div className="space-y-2">
-                    {weekData.map((day, i) => <WeekDayRow key={i} day={day} />)}
-                  </div>
-                ) : (
-                  <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">Unable to load week plan.</p>
-                )}
-              </div>
-            )}
-          </div>
         </section>
 
         {/* ── Tip of the Day ───────────────────────────────── */}

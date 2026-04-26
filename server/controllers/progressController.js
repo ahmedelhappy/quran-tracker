@@ -242,6 +242,13 @@ exports.getTodayTasks = async (req, res) => {
       }
     }
 
+    // Sort recent pages ascending by page number
+    recentReviewPages.sort((a, b) => a.pageNumber - b.pageNumber);
+
+    // Cap: min(dailyNewPages * 3, 6)
+    const maxRecent = Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6);
+    const cappedRecentPages = recentReviewPages.slice(0, maxRecent);
+
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
     let continuationPageNum = null;
     if (targetNewPages === 0 && !isHafiz) {
@@ -300,7 +307,7 @@ exports.getTodayTasks = async (req, res) => {
         reviewPages: reviewPages.map(toReviewPageDto),
         extraNewPages: extraNewPageNums.map(toNewPageDto),
         extraReviewPages: extraReviewPages.map(toReviewPageDto),
-        recentReviewPages: recentReviewPages.map(toReviewPageDto),
+        recentReviewPages: cappedRecentPages.map(toReviewPageDto),
         continuationPage: continuationPageNum ? toNewPageDto(continuationPageNum) : null,
         stats: {
           totalMemorized, totalPages: 604,
@@ -528,10 +535,13 @@ exports.getWeekPlan = async (req, res) => {
 
       const newTarget = isHafiz ? 0 : computeNewPageTargetForDate(dailyNewPages, planStart, date);
 
-      let newPage = null;
-      if (newTarget > 0 && cumulativeNew < unmemorizedPages.length) {
-        newPage = unmemorizedPages[cumulativeNew];
-        pageNumsForMeta.push(newPage);
+      const newPagesForDay = [];
+      if (newTarget > 0) {
+        for (let j = 0; j < newTarget && (cumulativeNew + j) < unmemorizedPages.length; j++) {
+          const pg = unmemorizedPages[cumulativeNew + j];
+          newPagesForDay.push(pg);
+          pageNumsForMeta.push(pg);
+        }
       }
 
       const projectedMemorized = Math.min(604, totalMemorized + cumulativeNew);
@@ -543,7 +553,7 @@ exports.getWeekPlan = async (req, res) => {
         isOffDay: false,
         newPagesCount: newTarget,
         reviewPagesCount: reviewCount,
-        newPage,
+        newPagesForDay,
       });
 
       cumulativeNew += newTarget;
@@ -554,11 +564,16 @@ exports.getWeekPlan = async (req, res) => {
 
     const enrichedPlan = plan.map(day => ({
       ...day,
-      newPageInfo: day.newPage ? {
-        pageNumber: day.newPage,
-        juzNumber: metaMap[day.newPage]?.juzNumber || 1,
-        surahName: metaMap[day.newPage]?.surahName || 'Unknown',
+      newPageInfo: day.newPagesForDay?.[0] ? {
+        pageNumber: day.newPagesForDay[0],
+        juzNumber: metaMap[day.newPagesForDay[0]]?.juzNumber || 1,
+        surahName: metaMap[day.newPagesForDay[0]]?.surahName || 'Unknown',
       } : null,
+      newPagesInfo: (day.newPagesForDay || []).map(pg => ({
+        pageNumber: pg,
+        juzNumber: metaMap[pg]?.juzNumber || 1,
+        surahName: metaMap[pg]?.surahName || 'Unknown',
+      })),
     }));
 
     res.status(200).json({ success: true, data: enrichedPlan });
@@ -577,12 +592,22 @@ exports.getAllProgress = async (req, res) => {
     const progress = await UserProgress.find({ userId, status: 'memorized' }).sort({ pageNumber: 1 });
     const pageNumbers = progress.map(p => p.pageNumber);
 
+    // Build date → count map for heatmap and chart
+    const memorizedByDate = {};
+    for (const p of progress) {
+      const dateStr = p.memorizedDate
+        ? getDateString(p.memorizedDate)
+        : getDateString(p.createdAt);
+      memorizedByDate[dateStr] = (memorizedByDate[dateStr] || 0) + 1;
+    }
+
     res.status(200).json({
       success: true,
       data: {
         memorizedPages: pageNumbers,
         totalMemorized: pageNumbers.length,
         percentage: ((pageNumbers.length / 604) * 100).toFixed(1),
+        memorizedByDate,
       },
     });
   } catch (error) {
