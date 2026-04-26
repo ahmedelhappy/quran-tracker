@@ -366,6 +366,19 @@ export default function Onboarding() {
     </div>
   );
 
+  // ── GENERATING PLAN — Loading screen ─────────────────
+  if (generatingPlan) return (
+    <div className="min-h-screen bg-[#f9f9ff] sacred-pattern flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl sacred-shadow border border-[#dce2f3] max-w-sm w-full p-10 flex flex-col items-center text-center gap-6">
+        <div className="w-16 h-16 rounded-full border-4 border-[#dce2f3] border-t-[#fe932c] animate-spin" />
+        <div>
+          <h2 className="text-xl font-semibold text-[#003527] mb-2">Building your plan...</h2>
+          <p className="text-sm text-[#404944]">Generating your personalized memorization schedule.</p>
+        </div>
+      </div>
+    </div>
+  );
+
   // ── STEP 3 — Review Intensity + Rest Days ─────────────
   if (step === 3) return (
     <div className="min-h-screen bg-[#f9f9ff] sacred-pattern flex flex-col">
@@ -441,19 +454,6 @@ export default function Onboarding() {
           </button>
         </div>
       </main>
-    </div>
-  );
-
-  // ── GENERATING PLAN — Loading screen ─────────────────
-  if (generatingPlan) return (
-    <div className="min-h-screen bg-[#f9f9ff] sacred-pattern flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl sacred-shadow border border-[#dce2f3] max-w-sm w-full p-10 flex flex-col items-center text-center gap-6">
-        <div className="w-16 h-16 rounded-full border-4 border-[#dce2f3] border-t-[#fe932c] animate-spin" />
-        <div>
-          <h2 className="text-xl font-semibold text-[#003527] mb-2">Building your plan...</h2>
-          <p className="text-sm text-[#404944]">Generating your personalized memorization schedule.</p>
-        </div>
-      </div>
     </div>
   );
 

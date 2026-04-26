@@ -6,6 +6,7 @@ const {
   resetProgress,
   getTodayTasks,
   markPageComplete,
+  unmarkPageComplete,
   getAllProgress,
   getJuzProgress,
   getEstimate,
@@ -29,6 +30,9 @@ router.get('/today', getTodayTasks);
 
 // Mark complete
 router.post('/complete', markPageComplete);
+
+// Undo completion
+router.post('/uncomplete', unmarkPageComplete);
 
 // Get all progress
 router.get('/all', getAllProgress);

@@ -335,6 +335,60 @@ exports.markPageComplete = async (req, res) => {
   }
 };
 
+// @desc    Undo a page completion (un-memorize or un-review)
+// @route   POST /api/progress/uncomplete
+// @access  Private
+exports.unmarkPageComplete = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { pageNumber, type } = req.body;
+
+    if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    }
+
+    if (type === 'new') {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+
+      const deleted = await UserProgress.findOneAndDelete({
+        userId,
+        pageNumber,
+        memorizedDate: { $gte: todayStart, $lt: tomorrowStart },
+      });
+      if (!deleted) {
+        return res.status(400).json({ success: false, message: 'Page was not memorized today' });
+      }
+    } else if (type === 'review') {
+      const progress = await UserProgress.findOne({ userId, pageNumber, status: 'memorized' });
+      if (!progress) {
+        return res.status(400).json({ success: false, message: 'Page not found or not memorized' });
+      }
+      const yesterday = new Date();
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      yesterday.setUTCHours(0, 0, 0, 0);
+      await UserProgress.updateOne(
+        { userId, pageNumber },
+        {
+          $set: {
+            lastReviewedDate: yesterday,
+            reviewCount: Math.max(0, (progress.reviewCount || 0) - 1),
+          },
+        }
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
+    }
+
+    res.status(200).json({ success: true, message: `Page ${pageNumber} completion undone` });
+  } catch (error) {
+    console.error('UnmarkPageComplete error:', error);
+    res.status(500).json({ success: false, message: 'Error undoing completion', error: error.message });
+  }
+};
+
 // @desc    Get estimated completion time based on remaining pages
 // @route   GET /api/progress/estimate
 // @access  Private

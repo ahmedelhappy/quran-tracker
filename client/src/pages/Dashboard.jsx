@@ -146,7 +146,6 @@ export default function Dashboard() {
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [showWantMore, setShowWantMore] = useState(false);
   const [extraData, setExtraData] = useState(null);
-  const [loadingExtra, setLoadingExtra] = useState(false);
 
   const doy = dayOfYear();
   const quote = QUOTES[doy % QUOTES.length];
@@ -184,9 +183,14 @@ export default function Dashboard() {
     }
   };
 
-  const undoComplete = (pageNumber, type) => {
+  const undoComplete = async (pageNumber, type) => {
     const key = `${type}-${pageNumber}`;
-    setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+    try {
+      await progressAPI.uncomplete({ pageNumber, type });
+      setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+    } catch {
+      showToast('Failed to undo. Try again.', 'error');
+    }
   };
 
   const markAllNew = () => {
@@ -196,39 +200,11 @@ export default function Dashboard() {
     revPending.forEach(p => markComplete(p.pageNumber, 'review'));
   };
 
-  const loadExtraPages = async () => {
-    if (extraData || loadingExtra) return;
-    setLoadingExtra(true);
-    try {
-      const res = await progressAPI.getAllProgress();
-      const allData = res.data.data;
-      const memorizedSet = new Set(
-        Array.isArray(allData?.memorizedPages) ? allData.memorizedPages : []
-      );
-      const reviewedToday = new Set((data?.reviewPages ?? []).map(p => p.pageNumber));
-      const newToday = new Set((data?.newPages ?? []).map(p => p.pageNumber));
-
-      // Next 3 unmemoized pages after today's last new page
-      const lastNewPage = data?.newPages?.length > 0
-        ? Math.max(...data.newPages.map(p => p.pageNumber))
-        : 0;
-      const extraNew = [];
-      for (let p = lastNewPage + 1; p <= 604 && extraNew.length < 3; p++) {
-        if (!memorizedSet.has(p) && !newToday.has(p)) extraNew.push(p);
-      }
-
-      // Memorized pages not reviewed today
-      const extraReview = [...memorizedSet]
-        .sort((a, b) => a - b)
-        .filter(p => !reviewedToday.has(p) && !newToday.has(p))
-        .slice(0, 5);
-
-      setExtraData({ extraNew, extraReview });
-    } catch {
-      setExtraData({ extraNew: [], extraReview: [] });
-    } finally {
-      setLoadingExtra(false);
-    }
+  const loadExtraPages = () => {
+    if (extraData) return;
+    const extraNew = (data?.extraNewPages ?? []).map(p => p.pageNumber);
+    const extraReview = (data?.extraReviewPages ?? []).map(p => p.pageNumber);
+    setExtraData({ extraNew, extraReview });
   };
 
   const stats = data?.stats;
@@ -394,14 +370,9 @@ export default function Dashboard() {
 
                 {showWantMore && (
                   <div className="border-t border-[#dce2f3] p-4 space-y-6">
-                    {loadingExtra ? (
-                      <div className="space-y-2 py-2">
-                        <Sk h="h-12" /><Sk h="h-12" /><Sk h="h-12" />
-                      </div>
-                    ) : (
-                      <>
-                        {/* Extra new memorization */}
-                        {extraData?.extraNew?.length > 0 && (
+                    <>
+                      {/* Extra new memorization */}
+                      {extraData?.extraNew?.length > 0 && (
                           <div>
                             <div className="flex items-center gap-2 mb-3">
                               <span className="w-2 h-2 rounded-full bg-[#004f35]" />
@@ -448,11 +419,10 @@ export default function Dashboard() {
                           </div>
                         )}
 
-                        {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
-                          <p className="text-sm text-[#707974] text-center py-4">No additional pages available.</p>
-                        )}
-                      </>
-                    )}
+                      {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
+                        <p className="text-sm text-[#707974] text-center py-4">No additional pages available.</p>
+                      )}
+                    </>
                   </div>
                 )}
               </div>
