@@ -354,11 +354,24 @@ export default function Onboarding() {
   // ── GENERATING PLAN — Loading screen ─────────────────
   if (generatingPlan) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex items-center justify-center p-6">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-6">
-        <div className="w-16 h-16 rounded-full border-4 border-[#dce2f3] dark:border-gray-700 border-t-[#fe932c] animate-spin" />
+      <div className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-8">
+        <div className="relative w-20 h-20 flex-shrink-0">
+          <div className="absolute inset-0 rounded-full border-4 border-[#dce2f3] dark:border-gray-700" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#2D6A4F] animate-spin" />
+        </div>
         <div>
-          <h2 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-2">Building your plan...</h2>
-          <p className="text-sm text-[#404944] dark:text-gray-400">Generating your personalized memorization schedule.</p>
+          <h2 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-4">
+            Building your personalized plan...
+          </h2>
+          <div className="flex items-center justify-center gap-2">
+            {[0, 0.2, 0.4].map((delay) => (
+              <span
+                key={delay}
+                className="w-2 h-2 rounded-full bg-[#2D6A4F]"
+                style={{ animation: `dot-bounce 1.4s ease-in-out infinite`, animationDelay: `${delay}s` }}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
