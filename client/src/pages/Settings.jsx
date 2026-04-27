@@ -7,7 +7,7 @@ import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap } from 'react-icons/fi';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -333,7 +333,7 @@ export default function Settings() {
   const sidebarItems = [
     { id: 'profile',      label: 'Profile',           icon: <FiUser className="w-5 h-5" /> },
     { id: 'memorization', label: 'Memorization Plan',  icon: <FiBook className="w-5 h-5" /> },
-    { id: 'appearance',   label: 'Appearance',         icon: <span className="text-lg leading-none">🎨</span> },
+    { id: 'appearance',   label: 'Appearance',         icon: <FiMonitor className="w-5 h-5" /> },
   ];
 
   const saving = profileSaving || planSaving;
@@ -572,7 +572,7 @@ export default function Settings() {
             {activeSection === 'appearance' && (
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
                 <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
-                  <span className="text-2xl">🎨</span>
+                  <FiMonitor className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                   <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">Appearance</h2>
                 </div>
 
@@ -582,10 +582,10 @@ export default function Settings() {
                     <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">Theme</p>
                     <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-2 flex gap-1 border border-[#bfc9c3] dark:border-gray-600">
                       {[
-                        { id: 'light', label: '☀ Light' },
-                        { id: 'dark',  label: '🌙 Dark' },
-                        { id: 'auto',  label: '⚡ Auto' },
-                      ].map(({ id, label }) => (
+                        { id: 'light', label: 'Light', icon: <FiSun className="w-4 h-4" /> },
+                        { id: 'dark',  label: 'Dark',  icon: <FiMoon className="w-4 h-4" /> },
+                        { id: 'auto',  label: 'Auto',  icon: <FiZap className="w-4 h-4" /> },
+                      ].map(({ id, label, icon }) => (
                         <button
                           key={id}
                           onClick={() => setTheme(id)}
@@ -595,7 +595,7 @@ export default function Settings() {
                               : 'text-[#404944] dark:text-gray-400 hover:bg-[#e7eefe] dark:hover:bg-gray-700'
                           }`}
                         >
-                          {label}
+                          {icon} {label}
                         </button>
                       ))}
                     </div>

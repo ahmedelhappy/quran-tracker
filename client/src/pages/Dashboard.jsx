@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap } from 'react-icons/fi';
 
 // ── Daily rotating quotes ────────────────────────────────
 const QUOTES = [
@@ -112,7 +112,8 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
 };
 
 // ── Extra task card ──────────────────────────────────────
-const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) => {
+const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
+  const { pageNumber, surahName } = page;
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
@@ -124,7 +125,10 @@ const ExtraTaskCard = ({ pageNumber, type, done, marking, onComplete, onUndo }) 
         <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${accentColor}1a`, color: accentColor }}>
           {isNew ? <FiBook className="w-4 h-4" /> : <span className="text-xs font-bold">↺</span>}
         </div>
-        <p className="text-sm font-medium text-[#003527] dark:text-gray-100">Page {pageNumber}</p>
+        <div>
+          <p className="text-sm font-medium text-[#003527] dark:text-gray-100">Page {pageNumber}</p>
+          {surahName && <p className="text-xs text-[#404944] dark:text-gray-400">{surahName}</p>}
+        </div>
       </div>
       {done ? (
         <div className="flex items-center gap-2">
@@ -154,16 +158,31 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
   const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
   const dateLabel = formatDate(day.date);
 
+  const fmtPages = (pages) => {
+    if (!pages || pages.length === 0) return '';
+    const sorted = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
+    const nums = sorted.map(p => p.pageNumber);
+    const isSeq = nums.length === 1 || nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+    const range = nums.length === 1
+      ? `Page ${nums[0]}`
+      : isSeq
+        ? `Pages ${nums[0]}–${nums[nums.length - 1]}`
+        : `Pages ${nums.join(', ')}`;
+    const surah = sorted[0]?.surahName;
+    return surah ? `${range} · ${surah}` : range;
+  };
+
   if (isOffDay) {
     return (
       <div className={`${base} ${isToday ? 'border-l-4 border-l-[#004f35]' : ''} px-4 py-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
+          {isToday && <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />}
           <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{dateLabel}</span>
           {isToday && (
             <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">Today</span>
           )}
         </div>
-        <span className="text-sm text-[#707974] dark:text-gray-500">Rest 🌿</span>
+        <span className="text-sm text-[#707974] dark:text-gray-500">Rest Day 🌿</span>
       </div>
     );
   }
@@ -171,66 +190,45 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
   if (isToday && todayData) {
     const newPages = todayData.newPages ?? [];
     const reviewCount = allReviewPages?.length ?? 0;
-    const sortedReviewNums = [...(allReviewPages ?? [])].sort((a, b) => a.pageNumber - b.pageNumber);
-    const reviewPreview = sortedReviewNums.slice(0, 8).map(p => p.pageNumber).join(', ');
+    const pagesStr = fmtPages(newPages);
 
     return (
-      <div className={`${base} p-4 border-l-4 border-l-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10`}>
-        <div className="flex items-center justify-between mb-3">
+      <div className={`${base} px-4 py-3 border-l-4 border-l-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center justify-between gap-3`}>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />
           <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{dateLabel}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">Today</span>
+          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">Today</span>
         </div>
-
-        {newPages.length > 0 && (
-          <div className="mb-2.5">
-            <p className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 mb-1">📖 New Memorization</p>
-            <div className="flex flex-col gap-0.5 ml-1">
-              {newPages.map(p => (
-                <p key={p.pageNumber} className="text-sm text-[#003527] dark:text-gray-200">
-                  Page {p.pageNumber} · {p.surahName}
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {reviewCount > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-0.5">
-              📘 Review · {reviewCount} pages
-            </p>
-            <p className="text-xs text-[#707974] dark:text-gray-500 ml-1">
-              Pages {reviewPreview}{reviewCount > 8 ? '...' : ''}
-            </p>
-          </div>
-        )}
-
-        {newPages.length === 0 && reviewCount === 0 && (
-          <p className="text-sm text-[#707974] dark:text-gray-500">No tasks today.</p>
-        )}
+        <div className="text-xs text-right">
+          {pagesStr && <span className="text-[#004f35] dark:text-emerald-400 font-medium">{pagesStr}</span>}
+          {reviewCount > 0 && (
+            <span className="text-[#904d00] dark:text-amber-400">{pagesStr ? ' · ' : ''}Review: {reviewCount}</span>
+          )}
+          {!pagesStr && reviewCount === 0 && <span className="text-[#707974] dark:text-gray-500">No tasks</span>}
+        </div>
       </div>
     );
   }
 
   // Future day card
   const newPagesInfo = day.newPagesInfo ?? (day.newPageInfo ? [day.newPageInfo] : []);
+  const pagesStr = fmtPages(newPagesInfo);
+  const reviewCount = day.reviewPagesCount ?? 0;
 
   return (
-    <div className={`${base} px-4 py-3`}>
-      <p className="text-sm font-semibold text-[#003527] dark:text-gray-100 mb-1.5">{dateLabel}</p>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+    <div className={`${base} px-4 py-3 flex items-center justify-between gap-3`}>
+      <span className="text-sm font-medium text-[#003527] dark:text-gray-100 flex-shrink-0">{dateLabel}</span>
+      <div className="text-xs text-right">
         {day.newPagesCount > 0 ? (
-          <span className="flex items-center gap-1 text-[#004f35] dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-800/30">
-            📖 {newPagesInfo.length > 0
-              ? `Page${newPagesInfo.length > 1 ? 's' : ''} ${newPagesInfo.map(p => p.pageNumber).join(', ')}`
-              : `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
-          </span>
+          <>
+            <span className="text-[#004f35] dark:text-emerald-400 font-medium">
+              {pagesStr || `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
+            </span>
+            {reviewCount > 0 && <span className="text-[#904d00] dark:text-amber-400"> · Review: {reviewCount}</span>}
+          </>
         ) : (
-          <span className="text-[#707974] dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg">No new page</span>
+          <span className="text-[#707974] dark:text-gray-500">Review: {reviewCount}</span>
         )}
-        <span className="flex items-center gap-1 text-[#904d00] dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-lg border border-amber-100 dark:border-amber-800/30">
-          📘 Review: {day.reviewPagesCount}
-        </span>
       </div>
     </div>
   );
@@ -314,9 +312,10 @@ export default function Dashboard() {
 
   const loadExtraPages = () => {
     if (extraData) return;
-    const extraNew = (data?.extraNewPages ?? []).map(p => p.pageNumber);
-    const extraReview = (data?.extraReviewPages ?? []).map(p => p.pageNumber);
-    setExtraData({ extraNew, extraReview });
+    setExtraData({
+      extraNew: data?.extraNewPages ?? [],
+      extraReview: data?.extraReviewPages ?? [],
+    });
   };
 
   const stats = data?.stats;
@@ -443,23 +442,23 @@ export default function Dashboard() {
           <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
             <button
               onClick={() => setActiveTab('today')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'today'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              📅 Today
+              <FiCalendar className="w-4 h-4" />Today
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'week'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              📆 This Week
+              <FiList className="w-4 h-4" />This Week
             </button>
           </div>
 
@@ -526,9 +525,9 @@ export default function Dashboard() {
                             <span className="text-xs text-[#707974] dark:text-gray-500">— upcoming pages</span>
                           </div>
                           <div className="space-y-2">
-                            {extraData.extraNew.map(pageNum => (
-                              <ExtraTaskCard key={`extra-new-${pageNum}`} pageNumber={pageNum} type="new"
-                                done={completedKeys.has(`new-${pageNum}`)} marking={markingKeys.has(`new-${pageNum}`)}
+                            {extraData.extraNew.map(page => (
+                              <ExtraTaskCard key={`extra-new-${page.pageNumber}`} page={page} type="new"
+                                done={completedKeys.has(`new-${page.pageNumber}`)} marking={markingKeys.has(`new-${page.pageNumber}`)}
                                 onComplete={markComplete} onUndo={undoComplete} />
                             ))}
                           </div>
@@ -542,9 +541,9 @@ export default function Dashboard() {
                             <span className="text-xs text-[#707974] dark:text-gray-500">— additional pages</span>
                           </div>
                           <div className="space-y-2">
-                            {extraData.extraReview.map(pageNum => (
-                              <ExtraTaskCard key={`extra-review-${pageNum}`} pageNumber={pageNum} type="review"
-                                done={completedKeys.has(`review-${pageNum}`)} marking={markingKeys.has(`review-${pageNum}`)}
+                            {extraData.extraReview.map(page => (
+                              <ExtraTaskCard key={`extra-review-${page.pageNumber}`} page={page} type="review"
+                                done={completedKeys.has(`review-${page.pageNumber}`)} marking={markingKeys.has(`review-${page.pageNumber}`)}
                                 onComplete={markComplete} onUndo={undoComplete} />
                             ))}
                           </div>
@@ -577,7 +576,7 @@ export default function Dashboard() {
                   {showContinuation && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700/40 flex items-start gap-4">
                       <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
-                        <span className="text-xl">📖</span>
+                        <FiBook className="w-5 h-5" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Continue Yesterday's Page</p>
@@ -622,7 +621,7 @@ export default function Dashboard() {
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs">🔄</span>
+                              <FiRefreshCw className="w-3 h-3 text-[#404944] dark:text-gray-400" />
                               <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Recent Review</span>
                               <span className="text-xs text-[#707974] dark:text-gray-500">(last 3 days) · {recentPages.length} pages</span>
                             </div>
@@ -641,7 +640,7 @@ export default function Dashboard() {
                                 marking={markingKeys.has(`review-${p.pageNumber}`)}
                                 onComplete={markComplete}
                                 onUndo={undoComplete}
-                                badge="🔄 Recent"
+                                badge="Recent"
                               />
                             ))}
                           </div>
@@ -653,7 +652,7 @@ export default function Dashboard() {
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs">📘</span>
+                              <span className="w-2 h-2 rounded-full bg-[#fe932c] flex-shrink-0" />
                               <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Cycle Review</span>
                               <span className="text-xs text-[#707974] dark:text-gray-500">· {cycleReviewPages.length} pages</span>
                             </div>
@@ -733,7 +732,7 @@ export default function Dashboard() {
               className="w-full p-4 flex justify-between items-center bg-[#b0f0d6]/5 dark:bg-emerald-900/10 hover:bg-[#b0f0d6]/10 dark:hover:bg-emerald-900/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <span className="text-[#fe932c]">💡</span>
+                <FiZap className="w-5 h-5 text-[#fe932c]" />
                 <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">Tip of the Day</span>
               </div>
               <span className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>

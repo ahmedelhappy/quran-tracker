@@ -104,6 +104,8 @@ exports.login = async (req, res) => {
         email: user.email,
         onboardingComplete: user.onboardingComplete,
         dailyNewPages: user.dailyNewPages,
+        reviewIntensity: user.reviewIntensity,
+        offDays: user.offDays,
         currentStreak: user.currentStreak,
         token
       }

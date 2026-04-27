@@ -78,8 +78,8 @@ const Navbar = () => {
             {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
           </button>
           <Link
-            to="/settings"
-            title="Settings"
+            to="/settings?tab=memorization"
+            title="Memorization Plan"
             className={`transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400 border-b-2 border-amber-500 pb-1 font-semibold' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
           >
             <FiSettings className="w-5 h-5" />
@@ -154,7 +154,7 @@ const Navbar = () => {
               </Link>
             )
           )}
-          <Link to="/settings" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2">
+          <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2">
             <FiSettings className="w-4 h-4" /> Settings
           </Link>
           <button
