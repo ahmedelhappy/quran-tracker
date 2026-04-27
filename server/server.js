@@ -6,10 +6,21 @@ require('dotenv').config();
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    process.env.CLIENT_URL,
+  ].filter(Boolean),
+  credentials: true,
+}));
 app.use(express.json());
 
-// Test route
+// Health check for UptimeRobot
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Root route
 app.get('/', (req, res) => {
   res.json({ message: 'Quran Tracker API is running!' });
 });
