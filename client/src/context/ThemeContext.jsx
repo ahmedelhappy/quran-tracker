@@ -25,8 +25,9 @@ export function ThemeProvider({ children }) {
       else root.classList.remove('dark');
     };
     apply(mq.matches);
-    mq.addEventListener('change', e => apply(e.matches));
-    return () => mq.removeEventListener('change', e => apply(e.matches));
+    const listener = (e) => apply(e.matches);
+    mq.addEventListener('change', listener);
+    return () => mq.removeEventListener('change', listener);
   }, [theme]);
 
   const setTheme = (t) => {
