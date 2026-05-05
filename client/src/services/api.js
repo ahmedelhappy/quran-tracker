@@ -49,4 +49,8 @@ export const progressAPI = {
   getWeekPlan: () => API.get('/progress/week'),
 };
 
+export const chatAPI = {
+  sendMessage: (messages) => API.post('/chat', { messages }),
+};
+
 export default API;
