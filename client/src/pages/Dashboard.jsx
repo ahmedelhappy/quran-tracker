@@ -5,6 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Chatbot from '../components/Chatbot';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap } from 'react-icons/fi';
 
 // ── Daily rotating quotes ────────────────────────────────
@@ -768,6 +769,7 @@ export default function Dashboard() {
       </main>
 
       <Footer />
+      <Chatbot />
     </div>
   );
 }
