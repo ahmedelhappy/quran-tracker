@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
@@ -237,6 +238,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 export default function Dashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [juzData, setJuzData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +251,7 @@ export default function Dashboard() {
   const [weekData, setWeekData] = useState(null);
   const [weekLoading, setWeekLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('today');
+  const [isOverrideDay, setIsOverrideDay] = useState(false);
 
   const doy = dayOfYear();
   const quote = QUOTES[doy % QUOTES.length];
@@ -305,6 +308,7 @@ export default function Dashboard() {
     try {
       await progressAPI.uncomplete({ pageNumber, type });
       setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+      showToast('Undone', 'info');
     } catch {
       showToast('Failed to undo. Try again.', 'error');
     }
@@ -321,7 +325,10 @@ export default function Dashboard() {
   const stats = data?.stats;
   const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || juzData.find(j => j.percentage > 0) || null;
   const juzPct = activeJuz?.percentage ?? 0;
-  const totalJuz = stats ? (stats.totalMemorized / 20.13).toFixed(1) : '0';
+  const completedJuz = juzData.filter(j => j.isComplete).length;
+  const totalJuz = juzData.length > 0
+    ? (completedJuz + (activeJuz?.percentage ?? 0) / 100).toFixed(1)
+    : '0';
   const pagesToHifz = stats ? `${stats.totalMemorized} / 604` : '— / 604';
 
   const missedDay = (() => {
@@ -472,7 +479,7 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            ) : data?.isOffDay ? (
+            ) : data?.isOffDay && !isOverrideDay ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-12 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center relative overflow-hidden">
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
                   <span style={{ fontSize: 200 }}>🌿</span>
@@ -486,10 +493,16 @@ export default function Dashboard() {
                   Enjoy your day of pause without guilt, for consistency is built on sustainable rhythms.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 z-10">
-                  <button className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2">
+                  <button
+                    onClick={() => navigate('/progress')}
+                    className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2"
+                  >
                     🧘 Start a 5-Min Reflection
                   </button>
-                  <button className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide">
+                  <button
+                    onClick={() => setIsOverrideDay(true)}
+                    className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide"
+                  >
                     Memorize Anyway
                   </button>
                 </div>
