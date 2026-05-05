@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
@@ -58,6 +59,7 @@ const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded b
 
 // ── Task card ────────────────────────────────────────────
 const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
+  const { t } = useTranslation();
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
@@ -74,7 +76,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
         </div>
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-lg font-medium text-[#003527] dark:text-gray-100">Page {page.pageNumber}</p>
+            <p className="text-lg font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {page.pageNumber}</p>
             {badge && (
               <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/50">
                 {badge}
@@ -87,13 +89,13 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
       {done ? (
         <div className="flex items-center gap-2 self-stretch sm:self-auto">
           <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] bg-[#004f35]/10 px-4 py-2 rounded-lg">
-            ✓ Done
+            {t('dashboard.done')}
           </span>
           <button
             onClick={() => onUndo(page.pageNumber, type)}
             className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors"
           >
-            Undo
+            {t('dashboard.undo')}
           </button>
         </div>
       ) : (
@@ -106,7 +108,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
               : 'bg-[#dce2f3] dark:bg-gray-700 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-600 hover:text-[#003527] dark:hover:text-gray-100 border border-[#bfc9c3] dark:border-gray-600'
           }`}
         >
-          {marking ? '…' : 'Mark as Complete'}
+          {marking ? t('dashboard.marking') : t('dashboard.markComplete')}
         </button>
       )}
     </div>
@@ -115,6 +117,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
 
 // ── Extra task card ──────────────────────────────────────
 const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
+  const { t } = useTranslation();
   const { pageNumber, surahName } = page;
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
@@ -128,14 +131,14 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
           {isNew ? <FiBook className="w-4 h-4" /> : <span className="text-xs font-bold">↺</span>}
         </div>
         <div>
-          <p className="text-sm font-medium text-[#003527] dark:text-gray-100">Page {pageNumber}</p>
+          <p className="text-sm font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {pageNumber}</p>
           {surahName && <p className="text-xs text-[#404944] dark:text-gray-400">{surahName}</p>}
         </div>
       </div>
       {done ? (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[#004f35] bg-[#004f35]/10 px-3 py-1.5 rounded-lg">✓ Done</span>
-          <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">Undo</button>
+          <span className="text-xs font-semibold text-[#004f35] bg-[#004f35]/10 px-3 py-1.5 rounded-lg">{t('dashboard.done')}</span>
+          <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
         </div>
       ) : (
         <button
@@ -147,7 +150,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
               : 'bg-[#dce2f3] dark:bg-gray-700 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-600 border border-[#bfc9c3] dark:border-gray-600'
           }`}
         >
-          {marking ? '…' : 'Mark Complete'}
+          {marking ? t('dashboard.marking') : t('dashboard.markCompact')}
         </button>
       )}
     </div>
@@ -156,6 +159,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
 
 // ── Week plan day card (This Week tab) ───────────────────
 const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
+  const { t } = useTranslation();
   const base = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow';
   const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
   const dateLabel = formatDate(day.date);
@@ -181,10 +185,10 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
           {isToday && <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />}
           <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{dateLabel}</span>
           {isToday && (
-            <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">Today</span>
+            <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">{t('dashboard.today')}</span>
           )}
         </div>
-        <span className="text-sm text-[#707974] dark:text-gray-500">Rest Day 🌿</span>
+        <span className="text-sm text-[#707974] dark:text-gray-500">{t('dashboard.restDayLabel')}</span>
       </div>
     );
   }
@@ -199,14 +203,14 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />
           <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{dateLabel}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">Today</span>
+          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">{t('dashboard.today')}</span>
         </div>
         <div className="text-xs text-right">
           {pagesStr && <span className="text-[#004f35] dark:text-emerald-400 font-medium">{pagesStr}</span>}
           {reviewCount > 0 && (
-            <span className="text-[#904d00] dark:text-amber-400">{pagesStr ? ' · ' : ''}Review: {reviewCount}</span>
+            <span className="text-[#904d00] dark:text-amber-400">{pagesStr ? ' · ' : ''}{t('dashboard.reviewLabel')} {reviewCount}</span>
           )}
-          {!pagesStr && reviewCount === 0 && <span className="text-[#707974] dark:text-gray-500">No tasks</span>}
+          {!pagesStr && reviewCount === 0 && <span className="text-[#707974] dark:text-gray-500">{t('dashboard.noTasks')}</span>}
         </div>
       </div>
     );
@@ -226,10 +230,10 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
             <span className="text-[#004f35] dark:text-emerald-400 font-medium">
               {pagesStr || `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
             </span>
-            {reviewCount > 0 && <span className="text-[#904d00] dark:text-amber-400"> · Review: {reviewCount}</span>}
+            {reviewCount > 0 && <span className="text-[#904d00] dark:text-amber-400"> · {t('dashboard.reviewLabel')} {reviewCount}</span>}
           </>
         ) : (
-          <span className="text-[#707974] dark:text-gray-500">Review: {reviewCount}</span>
+          <span className="text-[#707974] dark:text-gray-500">{t('dashboard.reviewLabel')} {reviewCount}</span>
         )}
       </div>
     </div>
@@ -239,6 +243,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 export default function Dashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [juzData, setJuzData] = useState([]);
@@ -377,7 +382,7 @@ export default function Dashboard() {
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/30 rounded-xl px-5 py-3 flex items-center gap-3">
             <span>💛</span>
             <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
-              You missed yesterday — no worries! Your plan continues from where you left off.
+              {t('dashboard.missedDay')}
             </p>
           </div>
         )}
@@ -392,14 +397,14 @@ export default function Dashboard() {
             </div>
             <div>
               <h2 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
-                Assalamu Alaikum, {user?.name?.split(' ')[0]}
+                {t('dashboard.greeting', { name: user?.name?.split(' ')[0] })}
               </h2>
-              <p className="text-[#404944] dark:text-gray-400">Your journey of Hifz continues. You're doing great!</p>
+              <p className="text-[#404944] dark:text-gray-400">{t('dashboard.subtitle')}</p>
             </div>
             <div className="mt-6 inline-flex items-center gap-2 bg-[#b0f0d6]/20 dark:bg-emerald-900/20 px-4 py-2 rounded-full text-[#064e3b] dark:text-emerald-400 w-max">
               <span className="text-[#fe932c]">🔥</span>
               <span className="text-xs font-bold uppercase tracking-wider">
-                {stats?.currentStreak ?? user?.currentStreak ?? 0} Days Streak
+                {stats?.currentStreak ?? user?.currentStreak ?? 0} {t('dashboard.streak')}
               </span>
             </div>
           </div>
@@ -411,8 +416,8 @@ export default function Dashboard() {
               ) : (
                 <>
                   <FiBook className="w-8 h-8 text-[#004f35] dark:text-emerald-400 mb-2" />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">Daily Review</div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats?.dailyReviewTarget ?? 0} Pages</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">{t('dashboard.dailyReview')}</div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats?.dailyReviewTarget ?? 0} {t('dashboard.pages')}</div>
                 </>
               )}
             </div>
@@ -423,7 +428,7 @@ export default function Dashboard() {
               ) : (
                 <>
                   <JuzRing pct={juzPct} />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mt-2 mb-1">Juz Progress</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mt-2 mb-1">{t('dashboard.juzProgress')}</div>
                   <div className="text-sm font-semibold text-[#003527] dark:text-gray-100">{totalJuz} / 30</div>
                 </>
               )}
@@ -435,9 +440,9 @@ export default function Dashboard() {
               ) : (
                 <>
                   <FiList className="w-8 h-8 text-[#fe932c] mb-2" />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">Pages to Hifz</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">{t('dashboard.pagesToHifz')}</div>
                   <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{pagesToHifz}</div>
-                  <div className="text-[10px] text-[#404944]/70 dark:text-gray-500 uppercase tracking-widest font-bold mt-1">Remaining</div>
+                  <div className="text-[10px] text-[#404944]/70 dark:text-gray-500 uppercase tracking-widest font-bold mt-1">{t('dashboard.remaining')}</div>
                 </>
               )}
             </div>
@@ -456,7 +461,7 @@ export default function Dashboard() {
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiCalendar className="w-4 h-4" />Today
+              <FiCalendar className="w-4 h-4" />{t('dashboard.today')}
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
@@ -466,7 +471,7 @@ export default function Dashboard() {
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiList className="w-4 h-4" />This Week
+              <FiList className="w-4 h-4" />{t('dashboard.thisWeek')}
             </button>
           </div>
 
@@ -488,23 +493,22 @@ export default function Dashboard() {
                 <div className="w-20 h-20 rounded-full bg-[#004f35]/10 flex items-center justify-center text-[#004f35] mb-6">
                   <span className="text-4xl">🌿</span>
                 </div>
-                <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">Today is your rest day 🌿</h2>
+                <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">{t('dashboard.restDay')}</h2>
                 <p className="text-lg text-[#404944] dark:text-gray-400 max-w-2xl mb-8 leading-relaxed">
-                  The mind is a vessel; allowing it to rest expands its capacity to hold the words of Allah.
-                  Enjoy your day of pause without guilt, for consistency is built on sustainable rhythms.
+                  {t('dashboard.restSubtitle')}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 z-10">
                   <button
                     onClick={() => navigate('/progress')}
                     className="bg-[#003527] hover:bg-[#064e3b] text-white text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide flex items-center gap-2"
                   >
-                    🧘 Start a 5-Min Reflection
+                    {t('dashboard.reflection')}
                   </button>
                   <button
                     onClick={() => setIsOverrideDay(true)}
                     className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide"
                   >
-                    Memorize Anyway
+                    {t('dashboard.memorizeAnyway')}
                   </button>
                 </div>
               </div>
@@ -512,8 +516,8 @@ export default function Dashboard() {
               <div className="flex flex-col gap-4">
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-10 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center">
                   <p className="text-4xl mb-3">🎉</p>
-                  <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">ما شاء الله! Tasks Complete!</h3>
-                  <p className="text-[#404944] dark:text-gray-400">Come back tomorrow for your next session.</p>
+                  <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('dashboard.allDone')}</h3>
+                  <p className="text-[#404944] dark:text-gray-400">{t('dashboard.comeBack')}</p>
                 </div>
 
                 {/* Want more? */}
@@ -524,7 +528,7 @@ export default function Dashboard() {
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-lg">✨</span>
-                      <span className="text-base font-semibold text-[#003527] dark:text-gray-100">Want to do more today?</span>
+                      <span className="text-base font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.wantMore')}</span>
                     </div>
                     {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
                   </button>
@@ -535,8 +539,8 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Memorize More</h4>
-                            <span className="text-xs text-[#707974] dark:text-gray-500">— upcoming pages</span>
+                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.memorizeMore')}</h4>
+                            <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.upcomingPages')}</span>
                           </div>
                           <div className="space-y-2">
                             {extraData.extraNew.map(page => (
@@ -551,8 +555,8 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">Review More</h4>
-                            <span className="text-xs text-[#707974] dark:text-gray-500">— additional pages</span>
+                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.reviewMore')}</h4>
+                            <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.additionalPages')}</span>
                           </div>
                           <div className="space-y-2">
                             {extraData.extraReview.map(page => (
@@ -564,7 +568,7 @@ export default function Dashboard() {
                         </div>
                       )}
                       {extraData?.extraNew?.length === 0 && extraData?.extraReview?.length === 0 && (
-                        <p className="text-sm text-[#707974] dark:text-gray-500 text-center py-4">No additional pages available.</p>
+                        <p className="text-sm text-[#707974] dark:text-gray-500 text-center py-4">{t('dashboard.noAdditional')}</p>
                       )}
                     </div>
                   )}
@@ -577,11 +581,11 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">New Memorization</h4>
+                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
                     </div>
                     {newPending.length > 0 && (
                       <button onClick={markAllNew} className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
-                        Mark All
+                        {t('dashboard.markAll')}
                       </button>
                     )}
                   </div>
@@ -593,16 +597,16 @@ export default function Dashboard() {
                         <FiBook className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Continue Yesterday's Page</p>
-                        <p className="text-lg font-medium text-blue-900 dark:text-blue-200">Page {data.continuationPage.pageNumber}</p>
+                        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{t('dashboard.continuePage')}</p>
+                        <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
                         <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{data.continuationPage.surahName}</p>
-                        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">No new page today — focus on perfecting yesterday's page.</p>
+                        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
                       </div>
                     </div>
                   )}
 
                   {(data?.newPages ?? []).length === 0 && !showContinuation ? (
-                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No new memorization today.</p>
+                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noNewToday')}</p>
                   ) : (
                     (data?.newPages ?? []).map(p => (
                       <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
@@ -617,17 +621,17 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
                     <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">
-                      Review
+                      {t('dashboard.review')}
                       {allReviewPages.length > 0 && (
                         <span className="ml-2 text-xs font-normal text-[#707974] dark:text-gray-500">
-                          {allReviewPages.length} pages
+                          {t('dashboard.reviewCount', { count: allReviewPages.length })}
                         </span>
                       )}
                     </h4>
                   </div>
 
                   {allReviewPages.length === 0 ? (
-                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">No review pages today.</p>
+                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noReviewToday')}</p>
                   ) : (
                     <>
                       {/* Recent Review sub-section */}
@@ -636,12 +640,12 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
                               <FiRefreshCw className="w-3 h-3 text-[#404944] dark:text-gray-400" />
-                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Recent Review</span>
-                              <span className="text-xs text-[#707974] dark:text-gray-500">(last 3 days) · {recentPages.length} pages</span>
+                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">{t('dashboard.recentReview')}</span>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.last3days')} · {recentPages.length} {t('dashboard.pages')}</span>
                             </div>
                             {recentPending.length > 0 && (
                               <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                Mark All
+                                {t('dashboard.markAll')}
                               </button>
                             )}
                           </div>
@@ -654,7 +658,7 @@ export default function Dashboard() {
                                 marking={markingKeys.has(`review-${p.pageNumber}`)}
                                 onComplete={markComplete}
                                 onUndo={undoComplete}
-                                badge="Recent"
+                                badge={t('dashboard.recentBadge')}
                               />
                             ))}
                           </div>
@@ -667,12 +671,12 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-[#fe932c] flex-shrink-0" />
-                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">Cycle Review</span>
-                              <span className="text-xs text-[#707974] dark:text-gray-500">· {cycleReviewPages.length} pages</span>
+                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">{t('dashboard.cycleReview')}</span>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">· {cycleReviewPages.length} {t('dashboard.pages')}</span>
                             </div>
                             {cyclePending.length > 0 && (
                               <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                Mark All
+                                {t('dashboard.markAll')}
                               </button>
                             )}
                           </div>
@@ -694,9 +698,9 @@ export default function Dashboard() {
                               className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
                             >
                               {showAllCycle ? (
-                                <><FiChevronUp className="w-4 h-4" /> Show less</>
+                                <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
                               ) : (
-                                <><FiChevronDown className="w-4 h-4" /> Show all {cycleReviewPages.length} pages</>
+                                <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: cycleReviewPages.length })}</>
                               )}
                             </button>
                           )}
@@ -747,7 +751,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center gap-3">
                 <FiZap className="w-5 h-5 text-[#fe932c]" />
-                <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">Tip of the Day</span>
+                <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.tipTitle')}</span>
               </div>
               <span className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
             </button>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
@@ -102,6 +103,7 @@ const OnboardingHeader = ({ step }) => {
 export default function Onboarding() {
   const { refreshUser } = useAuth();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
@@ -174,7 +176,7 @@ export default function Onboarding() {
           <div className="flex justify-center mb-2">
             <Logo size="lg" />
           </div>
-          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">Welcome to Your Hifz Journey! 🎉</h1>
+          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.welcome')} Your Hifz Journey! 🎉</h1>
           <p className="text-[#404944] dark:text-gray-400 leading-relaxed">
             Find tranquility in discipline. Let's set up a personalized memorization plan to build a lasting connection with the Quran.
           </p>
@@ -182,7 +184,7 @@ export default function Onboarding() {
             onClick={() => setStep(2)}
             className="w-full bg-[#003527] text-white py-3.5 rounded-lg font-medium hover:bg-[#064e3b] transition-colors mt-4 flex items-center justify-center gap-2"
           >
-            Let's Begin <span>→</span>
+            {t('onboarding.letsBegin')} <span>→</span>
           </button>
         </div>
       </div>
@@ -223,7 +225,7 @@ export default function Onboarding() {
                 <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{selectedJuz.size} Juz selected</p>
               )}
               <button onClick={selectAll} className="ml-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
-                Select All ✓✓
+                {t('onboarding.selectAll')} ✓✓
               </button>
             </div>
           </div>
@@ -313,7 +315,7 @@ export default function Onboarding() {
           </div>
         </section>
 
-        {/* Estimate banner — shows any valid estimate, not just years */}
+        {/* Estimate banner */}
         {estimateDisplay && (
           <section className="bg-[#f0f3ff] dark:bg-gray-800 rounded-xl p-6 border border-[#bfc9c3]/50 dark:border-gray-700 flex items-start md:items-center gap-6 flex-col md:flex-row">
             <div className="w-12 h-12 rounded-full bg-[#fe932c]/20 flex items-center justify-center flex-shrink-0">
@@ -337,14 +339,14 @@ export default function Onboarding() {
             onClick={() => setStep(1)}
             className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800"
           >
-            ← Back
+            ← {t('onboarding.back')}
           </button>
           <button
             onClick={() => setStep(3)}
             disabled={hasRangeErrors}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
           >
-            Continue →
+            {t('onboarding.continue')} →
           </button>
         </div>
       </main>
@@ -435,7 +437,9 @@ export default function Onboarding() {
         </div>
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
-          <button onClick={() => setStep(2)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">← Back</button>
+          <button onClick={() => setStep(2)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
+            ← {t('onboarding.back')}
+          </button>
           <button
             onClick={() => {
               setGeneratingPlan(true);
@@ -443,7 +447,7 @@ export default function Onboarding() {
             }}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm"
           >
-            Generate My Plan →
+            {t('onboarding.generate')} →
           </button>
         </div>
       </main>
@@ -462,7 +466,7 @@ export default function Onboarding() {
           <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-700/40 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">⭐</span>
           </div>
-          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">Your Plan is Ready! ✨</h1>
+          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.planReady')} ✨</h1>
           <p className="text-sm text-[#404944] dark:text-gray-400 mt-2 max-w-md mx-auto">
             Based on your current progress and goals, we've structured a personalized path for you.
           </p>
@@ -516,13 +520,15 @@ export default function Onboarding() {
         </div>
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
-          <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">← Back</button>
+          <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
+            ← {t('onboarding.back')}
+          </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-60"
           >
-            {submitting ? 'Saving…' : 'Start Memorizing →'}
+            {submitting ? 'Saving…' : t('onboarding.startJourney')} →
           </button>
         </div>
       </main>

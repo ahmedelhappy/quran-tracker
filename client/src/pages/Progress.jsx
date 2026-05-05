@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -32,6 +33,7 @@ const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
 
 export default function Progress() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,7 @@ export default function Progress() {
       {/* Header bar — padded to clear fixed navbar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-extrabold mb-1">Progress & Statistics</h1>
+          <h1 className="text-3xl font-extrabold mb-1">{t('progress.title')}</h1>
           <p className="text-green-300 dark:text-gray-400 text-sm">Track your spiritual journey and memorization milestones.</p>
         </div>
       </div>
@@ -115,7 +117,7 @@ export default function Progress() {
               <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
             ) : (
               <>
-                <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-1">Total Quran Memorized</p>
+                <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-1">{t('progress.totalMemorized')}</p>
                 <div className="flex items-end gap-3 mb-3">
                   <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
                   <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
@@ -138,7 +140,7 @@ export default function Progress() {
 
           {/* Activity heatmap */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Activity Streak</h2>
+            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activity')} Streak</h2>
             {loading ? (
               <div className="space-y-2">
                 <Skeleton h="h-16" />
@@ -179,7 +181,7 @@ export default function Progress() {
         {/* Juz status grid */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">Juz Status</h2>
+            <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juz')} Status</h2>
             <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
@@ -218,7 +220,7 @@ export default function Progress() {
 
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                 {[
-                  { label: 'Completed', count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
+                  { label: t('progress.completed'), count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
                   { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
                   { label: 'Pending', count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
                 ].map(({ label, count, color }) => (

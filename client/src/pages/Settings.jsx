@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
@@ -212,6 +213,7 @@ export default function Settings() {
   const { user, updateUser, refreshUser, logout } = useAuth();
   const { showToast } = useToast();
   const { theme, setTheme } = useTheme();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -231,10 +233,14 @@ export default function Settings() {
   const [planDirty, setPlanDirty]     = useState(false);
   const [planSaving, setPlanSaving]   = useState(false);
 
-  const [language, setLanguage] = useState('en');
-
   const [resetModal, setResetModal]   = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
+
+  const sidebarItems = [
+    { id: 'profile',      label: t('settings.profile'),      icon: <FiUser className="w-5 h-5" /> },
+    { id: 'memorization', label: t('settings.memorization'), icon: <FiBook className="w-5 h-5" /> },
+    { id: 'appearance',   label: t('settings.theme'),        icon: <FiMonitor className="w-5 h-5" /> },
+  ];
 
   useEffect(() => {
     if (user) {
@@ -267,6 +273,12 @@ export default function Settings() {
 
   const toggleOffDay = (jsDay) =>
     setOffDays(prev => prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : prev.length < 2 ? [...prev, jsDay] : prev);
+
+  const changeLanguage = () => {
+    const newLang = i18n.language === 'en' ? 'ar' : 'en';
+    i18n.changeLanguage(newLang);
+    authAPI.updateProfile({ language: newLang }).catch(() => {});
+  };
 
   const saveProfile = async () => {
     setProfileSaving(true);
@@ -330,12 +342,6 @@ export default function Settings() {
     }
   };
 
-  const sidebarItems = [
-    { id: 'profile',      label: 'Profile',           icon: <FiUser className="w-5 h-5" /> },
-    { id: 'memorization', label: 'Memorization Plan',  icon: <FiBook className="w-5 h-5" /> },
-    { id: 'appearance',   label: 'Appearance',         icon: <FiMonitor className="w-5 h-5" /> },
-  ];
-
   const saving = profileSaving || planSaving;
 
   return (
@@ -344,7 +350,7 @@ export default function Settings() {
 
       <main className="flex-grow pt-[100px] pb-24 px-6 max-w-[1280px] w-full mx-auto">
         <div className="mb-12">
-          <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">Settings</h1>
+          <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('settings.title')}</h1>
           <p className="text-lg text-[#404944] dark:text-gray-400">Customize your hifz journey and app preferences.</p>
         </div>
 
@@ -395,7 +401,7 @@ export default function Settings() {
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
                   <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                     <FiUser className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
-                    <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">Profile</h2>
+                    <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.profile')}</h2>
                   </div>
 
                   <div className="flex items-center gap-4 mb-6">
@@ -411,7 +417,7 @@ export default function Settings() {
 
                   <div className="mb-6">
                     <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
-                      Display Name
+                      {t('settings.displayName')}
                     </label>
                     <input
                       type="text"
@@ -422,7 +428,7 @@ export default function Settings() {
                     />
                   </div>
 
-                  <div>
+                  <div className="mb-6">
                     <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
                       Email Address
                     </label>
@@ -434,10 +440,23 @@ export default function Settings() {
                     />
                     <p className="text-xs text-[#707974] dark:text-gray-500 mt-1">Email cannot be changed</p>
                   </div>
+
+                  {/* Language row */}
+                  <div>
+                    <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                      {t('settings.languageLabel')}
+                    </label>
+                    <button
+                      onClick={changeLanguage}
+                      className="px-5 py-2.5 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-sm font-medium text-[#003527] dark:text-gray-200 bg-[#f0f3ff] dark:bg-gray-700 hover:bg-[#e7eefe] dark:hover:bg-gray-600 transition-colors"
+                    >
+                      {i18n.language === 'en' ? t('settings.arabic') : t('settings.english')}
+                    </button>
+                  </div>
                 </section>
 
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow border-2 border-red-100 dark:border-red-900/30">
-                  <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">Danger Zone</h2>
+                  <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">{t('settings.danger')}</h2>
                   <div className="flex items-center justify-between gap-4 py-3 border-b border-[#dce2f3] dark:border-gray-700">
                     <div>
                       <p className="font-medium text-[#151c27] dark:text-gray-200">Reset Progress</p>
@@ -449,11 +468,11 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center justify-between gap-4 pt-3">
                     <div>
-                      <p className="font-medium text-[#151c27] dark:text-gray-200">Delete Account</p>
+                      <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.deleteAccount')}</p>
                       <p className="text-sm text-[#404944] dark:text-gray-400">Permanently remove your account and all data. This cannot be undone.</p>
                     </div>
                     <button onClick={() => setDeleteModal(true)} className="flex-shrink-0 bg-[#ba1a1a] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors">
-                      Delete Account
+                      {t('settings.deleteAccount')}
                     </button>
                   </div>
                 </section>
@@ -465,7 +484,7 @@ export default function Settings() {
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
                 <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                   <FiBook className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
-                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">Memorization Plan</h2>
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.memorization')} Plan</h2>
                 </div>
 
                 <div className="mb-6">
@@ -573,13 +592,13 @@ export default function Settings() {
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
                 <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                   <FiMonitor className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
-                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">Appearance</h2>
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.theme')}</h2>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Theme */}
                   <div>
-                    <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">Theme</p>
+                    <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.theme')}</p>
                     <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-2 flex gap-1 border border-[#bfc9c3] dark:border-gray-600">
                       {[
                         { id: 'light', label: 'Light', icon: <FiSun className="w-4 h-4" /> },
@@ -603,18 +622,13 @@ export default function Settings() {
 
                   {/* Language */}
                   <div>
-                    <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">Language</p>
-                    <div className="relative">
-                      <select
-                        value={language}
-                        onChange={e => setLanguage(e.target.value)}
-                        className="w-full appearance-none bg-[#f9f9ff] dark:bg-gray-700 border border-[#bfc9c3] dark:border-gray-600 text-[#151c27] dark:text-gray-200 py-3 px-4 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003527] font-medium"
-                      >
-                        <option value="en">English</option>
-                        <option value="ar">Arabic (العربية)</option>
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-[#404944] dark:text-gray-400">▾</div>
-                    </div>
+                    <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.language')}</p>
+                    <button
+                      onClick={changeLanguage}
+                      className="w-full py-3 px-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 text-[#151c27] dark:text-gray-200 bg-[#f9f9ff] dark:bg-gray-700 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-600 transition-colors text-left"
+                    >
+                      {i18n.language === 'en' ? t('settings.arabic') : t('settings.english')}
+                    </button>
                   </div>
                 </div>
               </section>
@@ -634,14 +648,14 @@ export default function Settings() {
               disabled={saving}
               className="text-sm text-[#404944] dark:text-gray-400 border border-[#bfc9c3] dark:border-gray-600 px-4 py-2.5 rounded-xl hover:bg-[#f0f3ff] dark:hover:bg-gray-800 transition-colors disabled:opacity-60"
             >
-              Discard
+              {t('settings.cancel')}
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
               className="bg-[#003527] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#064e3b] transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
             >
-              {saving ? 'Saving…' : <><FiSave className="w-4 h-4" /> Save Changes</>}
+              {saving ? t('settings.saving') : <><FiSave className="w-4 h-4" /> {t('settings.save')}</>}
             </button>
           </div>
         </div>
