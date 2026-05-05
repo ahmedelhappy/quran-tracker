@@ -64,7 +64,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-l-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
+      className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-l-4 rtl:border-l-0 rtl:border-r-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div className="flex items-start gap-4">
@@ -123,7 +123,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-xl p-3 border border-[#dce2f3] dark:border-gray-700 border-l-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
+      className={`bg-white dark:bg-gray-800 rounded-xl p-3 border border-[#dce2f3] dark:border-gray-700 border-l-4 rtl:border-l-0 rtl:border-r-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
       style={{ borderLeftColor: accentColor }}
     >
       <div className="flex items-center gap-3">
