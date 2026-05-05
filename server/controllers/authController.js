@@ -43,6 +43,7 @@ exports.register = async (req, res) => {
         name: user.name,
         email: user.email,
         onboardingComplete: user.onboardingComplete,
+        language: user.language,
         token
       }
     });
@@ -107,6 +108,7 @@ exports.login = async (req, res) => {
         reviewIntensity: user.reviewIntensity,
         offDays: user.offDays,
         currentStreak: user.currentStreak,
+        language: user.language,
         token
       }
     });
@@ -141,6 +143,7 @@ exports.getMe = async (req, res) => {
         currentStreak: user.currentStreak,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
+        language: user.language,
       }
     });
 
@@ -214,6 +217,18 @@ exports.updateProfile = async (req, res) => {
       updateData.offDays = offDays;
     }
 
+    const { language } = req.body;
+
+    if (language !== undefined) {
+      if (!['en', 'ar'].includes(language)) {
+        return res.status(400).json({
+          success: false,
+          message: 'language must be "en" or "ar"'
+        });
+      }
+      updateData.language = language;
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -241,6 +256,7 @@ exports.updateProfile = async (req, res) => {
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,
+        language: updatedUser.language,
       }
     });
 

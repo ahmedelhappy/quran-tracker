@@ -60,6 +60,7 @@ const userSchema = new mongoose.Schema(
         message: 'offDays must contain at most 2 values, each between 0 (Sun) and 6 (Sat)',
       },
     },
+    language: { type: String, enum: ['en', 'ar'], default: 'en' },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically
