@@ -14,6 +14,18 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
+// Redirect to login on 401
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API functions
 export const authAPI = {
   register: (data) => API.post('/auth/register', data),
