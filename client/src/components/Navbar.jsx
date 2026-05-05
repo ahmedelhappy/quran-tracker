@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { authAPI } from '../services/api';
 import { FiSettings, FiGlobe, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser } from 'react-icons/fi';
 import Logo from './Logo';
 
 const NAV_LINKS = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/progress',  label: 'Progress' },
-  { to: null,         label: 'Quran Library', disabled: true },
+  { to: '/dashboard', labelKey: 'nav.dashboard' },
+  { to: '/progress',  labelKey: 'nav.progress' },
+  { to: null,         labelKey: 'nav.library', disabled: true },
 ];
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -32,6 +35,14 @@ const Navbar = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'en' ? 'ar' : 'en';
+    i18n.changeLanguage(newLang);
+    if (user) {
+      authAPI.updateProfile({ language: newLang }).catch(() => {});
+    }
+  };
+
   const isDark = theme === 'dark';
 
   return (
@@ -45,8 +56,8 @@ const Navbar = () => {
           <nav className="hidden md:flex gap-6">
             {NAV_LINKS.map((link) =>
               link.disabled ? (
-                <span key={link.label} className="text-emerald-800/40 dark:text-gray-500 font-medium cursor-not-allowed select-none text-sm">
-                  {link.label}
+                <span key={link.labelKey} title={t('nav.comingSoon')} className="text-emerald-800/40 dark:text-gray-500 font-medium cursor-not-allowed select-none text-sm">
+                  {t(link.labelKey)}
                 </span>
               ) : (
                 <Link
@@ -58,7 +69,7 @@ const Navbar = () => {
                       : 'text-emerald-800/60 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'
                   }`}
                 >
-                  {link.label}
+                  {t(link.labelKey)}
                 </Link>
               )
             )}
@@ -67,8 +78,12 @@ const Navbar = () => {
 
         {/* Desktop right icons */}
         <div className="hidden md:flex items-center gap-4">
-          <button title="Language" className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
-            <FiGlobe className="w-5 h-5" />
+          <button
+            onClick={toggleLanguage}
+            title={t('nav.language')}
+            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-xs font-bold w-8 h-8 flex items-center justify-center"
+          >
+            {i18n.language === 'en' ? 'AR' : 'EN'}
           </button>
           <button
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -79,7 +94,7 @@ const Navbar = () => {
           </button>
           <Link
             to="/settings?tab=memorization"
-            title="Memorization Plan"
+            title={t('nav.settings')}
             className={`transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400 border-b-2 border-amber-500 pb-1 font-semibold' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
           >
             <FiSettings className="w-5 h-5" />
@@ -102,21 +117,21 @@ const Navbar = () => {
                     onClick={() => setAvatarOpen(false)}
                     className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiUser className="w-4 h-4" /> Profile
+                    <FiUser className="w-4 h-4" /> {t('settings.profile')}
                   </Link>
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
                     className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiSettings className="w-4 h-4" /> Settings
+                    <FiSettings className="w-4 h-4" /> {t('nav.settings')}
                   </Link>
                   <hr className="my-1 border-[#dce2f3]/50 dark:border-gray-700" />
                   <button
                     onClick={handleLogout}
                     className="w-full text-left px-4 py-2 text-[#ba1a1a] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiLogOut className="w-4 h-4" /> Logout
+                    <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
                   </button>
                 </div>
               </>
@@ -138,7 +153,7 @@ const Navbar = () => {
         <div className="md:hidden bg-white dark:bg-gray-900 border-t border-[#dce2f3]/50 dark:border-gray-700/50 px-6 py-4 flex flex-col gap-1">
           {NAV_LINKS.map((link) =>
             link.disabled ? (
-              <span key={link.label} className="px-4 py-2.5 text-sm text-emerald-800/40 dark:text-gray-500">{link.label}</span>
+              <span key={link.labelKey} className="px-4 py-2.5 text-sm text-emerald-800/40 dark:text-gray-500">{t(link.labelKey)}</span>
             ) : (
               <Link
                 key={link.to}
@@ -150,12 +165,12 @@ const Navbar = () => {
                     : 'text-emerald-800/60 dark:text-gray-400'
                 }`}
               >
-                {link.label}
+                {t(link.labelKey)}
               </Link>
             )
           )}
           <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2">
-            <FiSettings className="w-4 h-4" /> Settings
+            <FiSettings className="w-4 h-4" /> {t('nav.settings')}
           </Link>
           <button
             onClick={toggleTheme}
@@ -163,6 +178,13 @@ const Navbar = () => {
           >
             {isDark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
             {isDark ? 'Light Mode' : 'Dark Mode'}
+          </button>
+          <button
+            onClick={toggleLanguage}
+            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left"
+          >
+            <FiGlobe className="w-4 h-4" />
+            {i18n.language === 'en' ? 'العربية' : 'English'}
           </button>
           <div className="border-t border-[#dce2f3]/50 dark:border-gray-700/50 mt-2 pt-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -175,7 +197,7 @@ const Navbar = () => {
               </div>
             </div>
             <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5">
-              <FiLogOut className="w-4 h-4" /> Sign out
+              <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
             </button>
           </div>
         </div>
