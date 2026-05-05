@@ -78,6 +78,9 @@ const Login = () => {
                   className="w-full bg-[#064e3b] text-white py-3 rounded-lg font-medium hover:bg-[#004f35] transition-colors disabled:opacity-60">
                   {loading ? 'Signing in…' : 'Log In'}
                 </button>
+                <p className="text-xs text-center text-[#707974] dark:text-gray-500 mt-2">
+                  Want to explore first? Use demo@qurantracker.com / demo123456
+                </p>
               </div>
             </form>
 
