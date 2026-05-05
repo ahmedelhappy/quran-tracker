@@ -10,7 +10,7 @@ import Logo from './Logo';
 const NAV_LINKS = [
   { to: '/dashboard', labelKey: 'nav.dashboard' },
   { to: '/progress',  labelKey: 'nav.progress' },
-  { to: null,         labelKey: 'nav.library', disabled: true },
+  { to: '/library',   labelKey: 'nav.library' },
 ];
 
 const Navbar = () => {
