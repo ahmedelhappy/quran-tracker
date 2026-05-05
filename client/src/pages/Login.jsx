@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
@@ -9,6 +10,7 @@ import Logo from '../components/Logo';
 const Login = () => {
   const { login } = useAuth();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
@@ -38,36 +40,37 @@ const Login = () => {
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
 
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">Welcome Back</h2>
-              <p className="text-[#404944] dark:text-gray-400">Continue your hifz journey today.</p>
+              <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('auth.welcomeBack')}</h2>
+              <p className="text-[#404944] dark:text-gray-400">{t('auth.signIn')}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="email">Email</label>
+                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="email">{t('auth.email')}</label>
                 <div className="relative">
-                  <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
+                  <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400 rtl:left-auto rtl:right-3" />
                   <input
                     id="email" type="email" value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                     placeholder="you@example.com" required
-                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
+                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500 rtl:pl-4 rtl:pr-10"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="password">Password</label>
+                <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="password">{t('auth.password')}</label>
                 <div className="relative">
-                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
+                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400 rtl:left-auto rtl:right-3" />
                   <input
                     id="password" type={showPw ? 'text' : 'password'} value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     placeholder="••••••••" required
-                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
+                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500 rtl:pl-10 rtl:pr-10"
                   />
                   <button type="button" onClick={() => setShowPw(!showPw)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944]">
+                    aria-label={showPw ? t('auth.password') : t('auth.password')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944] rtl:right-auto rtl:left-3">
                     {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -76,19 +79,19 @@ const Login = () => {
               <div className="pt-2">
                 <button type="submit" disabled={loading}
                   className="w-full bg-[#064e3b] text-white py-3 rounded-lg font-medium hover:bg-[#004f35] transition-colors disabled:opacity-60">
-                  {loading ? 'Signing in…' : 'Log In'}
+                  {loading ? t('auth.loggingIn') : t('auth.login')}
                 </button>
                 <p className="text-xs text-center text-[#707974] dark:text-gray-500 mt-2">
-                  Want to explore first? Use demo@qurantracker.com / demo123456
+                  {t('auth.demoHint')}
                 </p>
               </div>
             </form>
 
             <div className="mt-6 text-center">
               <p className="text-[#404944] dark:text-gray-400">
-                Don't have an account?{' '}
+                {t('auth.noAccount')}{' '}
                 <Link to="/register" className="font-medium text-[#064e3b] dark:text-emerald-400 hover:text-[#004f35] underline underline-offset-4 transition-colors">
-                  Sign up
+                  {t('auth.signUp')}
                 </Link>
               </p>
             </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
@@ -9,6 +10,7 @@ import Logo from '../components/Logo';
 const Register = () => {
   const { register } = useAuth();
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [showPw, setShowPw] = useState(false);
@@ -28,7 +30,7 @@ const Register = () => {
     else showToast(result.message || 'Registration failed', 'error');
   };
 
-  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
+  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500 rtl:pl-4 rtl:pr-11';
   const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-200 uppercase tracking-wider mb-1.5';
 
   return (
@@ -46,44 +48,44 @@ const Register = () => {
             <div className="flex justify-center mb-4">
               <Logo size="md" />
             </div>
-            <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2 tracking-tight">Create Your Account</h1>
-            <p className="text-[#404944] dark:text-gray-400">Begin your dedicated journey of Hifz.</p>
+            <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2 tracking-tight">{t('auth.createAccount')}</h1>
+            <p className="text-[#404944] dark:text-gray-400">{t('auth.joinUs')}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className={labelCls} htmlFor="fullName">Full Name</label>
+              <label className={labelCls} htmlFor="fullName">{t('auth.fullName')}</label>
               <div className="relative group">
-                <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors rtl:left-auto rtl:right-3.5" />
                 <input id="fullName" type="text" value={form.name} onChange={set('name')} placeholder="Enter your full name" required className={inputCls} />
               </div>
             </div>
 
             <div>
-              <label className={labelCls} htmlFor="email">Email Address</label>
+              <label className={labelCls} htmlFor="email">{t('auth.email')}</label>
               <div className="relative group">
-                <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
+                <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors rtl:left-auto rtl:right-3.5" />
                 <input id="email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required className={inputCls} />
               </div>
             </div>
 
             <div>
-              <label className={labelCls} htmlFor="password">Password</label>
+              <label className={labelCls} htmlFor="password">{t('auth.password')}</label>
               <div className="relative group">
-                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
-                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder="Create a strong password" required className={inputCls + ' pr-10'} />
-                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
+                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors rtl:left-auto rtl:right-3.5" />
+                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder="Create a strong password" required className={inputCls + ' pr-10 rtl:pr-11 rtl:pl-10'} />
+                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944] rtl:right-auto rtl:left-3">
                   {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className={labelCls} htmlFor="confirmPassword">Confirm Password</label>
+              <label className={labelCls} htmlFor="confirmPassword">{t('auth.confirmPassword')}</label>
               <div className="relative group">
-                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors" />
-                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder="Repeat your password" required className={inputCls + ' pr-10'} />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
+                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] transition-colors rtl:left-auto rtl:right-3.5" />
+                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder="Repeat your password" required className={inputCls + ' pr-10 rtl:pr-11 rtl:pl-10'} />
+                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944] rtl:right-auto rtl:left-3">
                   {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
               </div>
@@ -95,7 +97,7 @@ const Register = () => {
                 disabled={loading}
                 className="w-full bg-[#003527] text-white font-medium rounded-lg py-3.5 px-6 hover:bg-[#064e3b] active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 shadow-[0_2px_8px_rgba(0,53,39,0.2)] disabled:opacity-60"
               >
-                <span>{loading ? 'Creating account…' : 'Create Account'}</span>
+                <span>{loading ? t('auth.creating') : t('auth.createAccount')}</span>
                 {!loading && <span className="text-base">→</span>}
               </button>
             </div>
@@ -103,9 +105,9 @@ const Register = () => {
 
           <div className="mt-8 text-center border-t border-[#bfc9c3]/20 dark:border-gray-700 pt-6">
             <p className="text-[#404944] dark:text-gray-400">
-              Already have an account?{' '}
+              {t('auth.haveAccount')}{' '}
               <Link to="/login" className="text-[#003527] dark:text-emerald-400 font-semibold hover:text-[#fe932c] underline underline-offset-4 decoration-[#003527]/30 transition-colors">
-                Log in
+                {t('auth.loginLink')}
               </Link>
             </p>
           </div>
