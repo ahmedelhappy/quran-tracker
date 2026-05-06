@@ -31,12 +31,126 @@ const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
   <div className={`${h} ${w} ${rounded} bg-gray-100 animate-pulse`} />
 );
 
+const ACHIEVEMENTS = [
+  // ── Memorization milestones ───────────────────────────────
+  {
+    id: 'first_page',
+    icon: '🌱',
+    name: 'First Step',
+    desc: 'Memorized your very first page',
+    check: ({ total }) => total >= 1,
+  },
+  {
+    id: '10_pages',
+    icon: '📖',
+    name: 'Getting Started',
+    desc: 'Memorized 10 pages',
+    check: ({ total }) => total >= 10,
+  },
+  {
+    id: '50_pages',
+    icon: '🎯',
+    name: 'On a Roll',
+    desc: 'Memorized 50 pages',
+    check: ({ total }) => total >= 50,
+  },
+  {
+    id: '100_pages',
+    icon: '💯',
+    name: 'Century Mark',
+    desc: 'Memorized 100 pages',
+    check: ({ total }) => total >= 100,
+  },
+  {
+    id: '300_pages',
+    icon: '🌟',
+    name: 'Three Hundred',
+    desc: 'Memorized 300 pages',
+    check: ({ total }) => total >= 300,
+  },
+  {
+    id: 'hafiz',
+    icon: '👑',
+    name: 'Hafiz',
+    desc: 'Completed memorization of all 604 pages',
+    check: ({ total }) => total >= 604,
+  },
+
+  // ── Juz milestones ────────────────────────────────────────
+  {
+    id: 'first_juz',
+    icon: '📚',
+    name: 'First Juz',
+    desc: 'Completed your first full Juz',
+    check: ({ completedJuz }) => completedJuz >= 1,
+  },
+  {
+    id: '5_juz',
+    icon: '📕',
+    name: 'Five Ajzaa',
+    desc: 'Completed 5 full Juz',
+    check: ({ completedJuz }) => completedJuz >= 5,
+  },
+  {
+    id: '10_juz',
+    icon: '📗',
+    name: 'Ten Ajzaa',
+    desc: 'Completed 10 full Juz',
+    check: ({ completedJuz }) => completedJuz >= 10,
+  },
+  {
+    id: '15_juz',
+    icon: '📘',
+    name: 'Half the Quran',
+    desc: 'Completed 15 full Juz',
+    check: ({ completedJuz }) => completedJuz >= 15,
+  },
+  {
+    id: '30_juz',
+    icon: '🕋',
+    name: 'All Thirty Ajzaa',
+    desc: 'Completed all 30 Juz',
+    check: ({ completedJuz }) => completedJuz >= 30,
+  },
+
+  // ── Streak milestones ─────────────────────────────────────
+  {
+    id: 'streak_3',
+    icon: '🔥',
+    name: 'Three in a Row',
+    desc: 'Maintained a 3-day streak',
+    check: ({ streak }) => streak >= 3,
+  },
+  {
+    id: 'streak_7',
+    icon: '⚡',
+    name: 'Week Warrior',
+    desc: 'Maintained a 7-day streak',
+    check: ({ streak }) => streak >= 7,
+  },
+  {
+    id: 'streak_30',
+    icon: '💪',
+    name: 'Month Strong',
+    desc: 'Maintained a 30-day streak',
+    check: ({ streak }) => streak >= 30,
+  },
+  {
+    id: 'streak_100',
+    icon: '🏆',
+    name: 'Century Streak',
+    desc: 'Maintained a 100-day streak',
+    check: ({ streak }) => streak >= 100,
+  },
+];
+
 export default function Progress() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('progress');
 
   useEffect(() => {
     (async () => {
@@ -108,161 +222,187 @@ export default function Progress() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
-        {/* Top row */}
-        <div className="grid md:grid-cols-2 gap-5">
-          {/* Overall completion */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Overall Completion</h2>
-            {loading ? (
-              <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
-            ) : (
-              <>
-                <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-1">{t('progress.totalMemorized')}</p>
-                <div className="flex items-end gap-3 mb-3">
-                  <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
-                  <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
-                    {totalMemorized} pages
-                  </span>
-                </div>
-                <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${percentage}%`,
-                      background: 'linear-gradient(90deg, #40916C, #1B4332)',
-                    }}
-                  />
-                </div>
-                <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{604 - totalMemorized} pages remaining</p>
-              </>
-            )}
-          </div>
-
-          {/* Activity heatmap */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activity')} Streak</h2>
-            {loading ? (
-              <div className="space-y-2">
-                <Skeleton h="h-16" />
-                <Skeleton h="h-4" w="w-32" />
-              </div>
-            ) : !hasActivity ? (
-              <div className="flex flex-col items-center justify-center py-6 text-center">
-                <div className="flex flex-wrap gap-0.5 mb-3 opacity-30">
-                  {heatmap.slice(0, 90).map((cell, i) => (
-                    <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100" />
-                  ))}
-                </div>
-                <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-0.5 mb-3">
-                  {heatmap.map((cell, i) => (
-                    <div
-                      key={i}
-                      title={cell.date}
-                      className={`w-2.5 h-2.5 rounded-sm ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
-                  <span>Less</span>
-                  {HEAT_COLORS.map((c, i) => (
-                    <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
-                  ))}
-                  <span>More</span>
-                </div>
-              </>
-            )}
-          </div>
+        {/* Tab bar */}
+        <div className="border-b border-[#dce2f3] dark:border-gray-700 flex gap-6">
+          {[
+            { key: 'progress', label: 'Progress' },
+            { key: 'achievements', label: 'Achievements' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`pb-3 text-sm font-semibold transition-colors ${
+                activeTab === tab.key
+                  ? 'border-b-2 border-[#004f35] text-[#003527] dark:text-emerald-400'
+                  : 'text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        {/* Juz status grid */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juz')} Status</h2>
-            <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> Pending</span>
-            </div>
-          </div>
+        {activeTab === 'progress' && (
+          <>
+            {/* Top row */}
+            <div className="grid md:grid-cols-2 gap-5">
+              {/* Overall completion */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Overall Completion</h2>
+                {loading ? (
+                  <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
+                ) : (
+                  <>
+                    <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-1">{t('progress.totalMemorized')}</p>
+                    <div className="flex items-end gap-3 mb-3">
+                      <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
+                      <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
+                        {totalMemorized} pages
+                      </span>
+                    </div>
+                    <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${percentage}%`,
+                          background: 'linear-gradient(90deg, #40916C, #1B4332)',
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{604 - totalMemorized} pages remaining</p>
+                  </>
+                )}
+              </div>
 
-          {loading ? (
-            <div className="grid grid-cols-10 gap-2">
-              {Array(30).fill(0).map((_, i) => <Skeleton key={i} h="h-14" rounded="rounded-lg" />)}
+              {/* Activity heatmap */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activity')} Streak</h2>
+                {loading ? (
+                  <div className="space-y-2">
+                    <Skeleton h="h-16" />
+                    <Skeleton h="h-4" w="w-32" />
+                  </div>
+                ) : !hasActivity ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <div className="flex flex-wrap gap-0.5 mb-3 opacity-30">
+                      {heatmap.slice(0, 90).map((cell, i) => (
+                        <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100" />
+                      ))}
+                    </div>
+                    <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-0.5 mb-3">
+                      {heatmap.map((cell, i) => (
+                        <div
+                          key={i}
+                          title={cell.date}
+                          className={`w-2.5 h-2.5 rounded-sm ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
+                      <span>Less</span>
+                      {HEAT_COLORS.map((c, i) => (
+                        <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
+                      ))}
+                      <span>More</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-6">
-                {juzData.map(j => (
-                  <div
-                    key={j.juzNumber}
-                    title={`Juz ${j.juzNumber}: ${j.memorizedPages}/${j.totalPages} pages (${j.percentage}%)`}
-                    className={`rounded-lg p-2 text-center cursor-default transition-all hover:scale-105 ${
-                      j.isComplete
-                        ? 'bg-[#1B4332] text-white'
-                        : j.memorizedPages > 0
-                        ? 'bg-amber-100 border-2 border-amber-400'
-                        : 'bg-gray-100 text-gray-400'
-                    }`}
+
+            {/* Juz status grid */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juz')} Status</h2>
+                <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> Pending</span>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="grid grid-cols-10 gap-2">
+                  {Array(30).fill(0).map((_, i) => <Skeleton key={i} h="h-14" rounded="rounded-lg" />)}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-6">
+                    {juzData.map(j => (
+                      <div
+                        key={j.juzNumber}
+                        title={`Juz ${j.juzNumber}: ${j.memorizedPages}/${j.totalPages} pages (${j.percentage}%)`}
+                        className={`rounded-lg p-2 text-center cursor-default transition-all hover:scale-105 ${
+                          j.isComplete
+                            ? 'bg-[#1B4332] text-white'
+                            : j.memorizedPages > 0
+                            ? 'bg-amber-100 border-2 border-amber-400'
+                            : 'bg-gray-100 text-gray-400'
+                        }`}
+                      >
+                        <p className={`text-lg font-bold leading-none ${j.isComplete ? 'text-white' : j.memorizedPages > 0 ? 'text-amber-800' : ''}`}>
+                          {j.juzNumber}
+                        </p>
+                        <p className={`text-xs mt-1 ${j.isComplete ? 'text-green-200' : j.memorizedPages > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+                          {j.percentage}%
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    {[
+                      { label: t('progress.completed'), count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
+                      { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
+                      { label: 'Pending', count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
+                    ].map(({ label, count, color }) => (
+                      <div key={label} className="text-center">
+                        <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
+                        <p className="text-xs text-[#4A4A4A] dark:text-gray-400">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Memorization chart */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">Pages Memorized Over Time</h2>
+              {loading ? (
+                <Skeleton h="h-52" />
+              ) : !hasActivity ? (
+                <div className="h-52 flex flex-col items-center justify-center text-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">📈</div>
+                  <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
+                  <p className="text-xs text-gray-300">Start memorizing pages to see your chart</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart
+                    data={chartData}
+                    margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
                   >
-                    <p className={`text-lg font-bold leading-none ${j.isComplete ? 'text-white' : j.memorizedPages > 0 ? 'text-amber-800' : ''}`}>
-                      {j.juzNumber}
-                    </p>
-                    <p className={`text-xs mt-1 ${j.isComplete ? 'text-green-200' : j.memorizedPages > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                      {j.percentage}%
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                {[
-                  { label: t('progress.completed'), count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
-                  { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
-                  { label: 'Pending', count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
-                ].map(({ label, count, color }) => (
-                  <div key={label} className="text-center">
-                    <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
-                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400">{label}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Memorization chart */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-          <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">Pages Memorized Over Time</h2>
-          {loading ? (
-            <Skeleton h="h-52" />
-          ) : !hasActivity ? (
-            <div className="h-52 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">📈</div>
-              <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
-              <p className="text-xs text-gray-300">Start memorizing pages to see your chart</p>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
+                    <Tooltip
+                      contentStyle={{ border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
+                      formatter={(v) => [`${v} pages`, 'Memorized']}
+                    />
+                    <Line type="monotone" dataKey="pages" stroke="#1B4332" strokeWidth={2.5} dot={{ fill: '#1B4332', r: 3 }} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart
-                data={chartData}
-                margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
-                <Tooltip
-                  contentStyle={{ border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
-                  formatter={(v) => [`${v} pages`, 'Memorized']}
-                />
-                <Line type="monotone" dataKey="pages" stroke="#1B4332" strokeWidth={2.5} dot={{ fill: '#1B4332', r: 3 }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+          </>
+        )}
+
+        {activeTab === 'achievements' && null}
 
       </main>
 
