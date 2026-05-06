@@ -208,6 +208,15 @@ export default function Progress() {
   const inProgressJuz = juzData.filter(j => j.memorizedPages > 0 && !j.isComplete).length;
   const pendingJuz = juzData.filter(j => j.memorizedPages === 0).length;
 
+  const achievementInput = {
+    total: overallStats?.totalMemorized ?? 0,
+    completedJuz: (juzData ?? []).filter(j => j.isComplete).length,
+    streak: user?.currentStreak ?? 0,
+  };
+
+  const earned = ACHIEVEMENTS.filter(a => a.check(achievementInput));
+  const locked = ACHIEVEMENTS.filter(a => !a.check(achievementInput));
+
   return (
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
@@ -402,7 +411,83 @@ export default function Progress() {
           </>
         )}
 
-        {activeTab === 'achievements' && null}
+        {activeTab === 'achievements' && (
+          <div className="space-y-8">
+            {/* Summary bar */}
+            {!loading && (
+              <div className="flex flex-wrap gap-3">
+                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                  🏅 {earned.length} / {ACHIEVEMENTS.length} Earned
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                  📚 {achievementInput.completedJuz} Juz Complete
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                  🔥 {achievementInput.streak} Day Streak
+                </span>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {Array(8).fill(0).map((_, i) => <Skeleton key={i} h="h-36" rounded="rounded-2xl" />)}
+              </div>
+            ) : (
+              <>
+                {/* Empty state */}
+                {earned.length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="text-5xl mb-3">🌱</div>
+                    <p className="text-base font-semibold text-[#1A1A1A] dark:text-gray-100">Start memorizing to earn your first badge!</p>
+                    <p className="text-sm text-[#707974] dark:text-gray-400 mt-1">Complete your first page to unlock 'First Step'</p>
+                  </div>
+                )}
+
+                {/* Earned section */}
+                {earned.length > 0 && (
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#1A1A1A] dark:text-gray-100 mb-4">Earned ({earned.length})</h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {earned.map(a => (
+                        <div
+                          key={a.id}
+                          className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2"
+                        >
+                          <span className="text-4xl">{a.icon}</span>
+                          <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{a.name}</span>
+                          <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{a.desc}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                            ✓ Earned
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Locked section */}
+                <div>
+                  <h2 className="text-lg font-semibold text-[#707974] dark:text-gray-500 mb-4">Locked ({locked.length})</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {locked.map(a => (
+                      <div
+                        key={a.id}
+                        className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2 opacity-50 grayscale"
+                      >
+                        <span className="text-4xl">{a.icon}</span>
+                        <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{a.name}</span>
+                        <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{a.desc}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                          Locked
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
       </main>
 
