@@ -94,7 +94,26 @@
     "failedUndo": "Failed to undo. Try again.",
     "fmtPage": "Page {{num}}",
     "fmtPageRange": "Pages {{start}}–{{end}}",
-    "fmtPagesMulti": "Pages {{nums}}"
+    "fmtPagesMulti": "Pages {{nums}}",
+    "quotes": [
+      { "text": "The best among you (Muslims) are those who learn the Qur'an and teach it.", "source": "Sahih Al-Bukhari 5027" },
+      { "text": "Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.", "source": "Tirmidhi 2910" },
+      { "text": "The Quran is a healing for what is in the hearts.", "source": "Quran 10:57" },
+      { "text": "Indeed, this Qur'an guides to that which is most suitable.", "source": "Quran 17:9" },
+      { "text": "And We have certainly made the Qur'an easy for remembrance, so is there any who will remember?", "source": "Quran 54:17" },
+      { "text": "Recite the Quran for it will come as an intercessor for its reciters on the Day of Resurrection.", "source": "Muslim 804" },
+      { "text": "The one who is skilled in the Quran will be with the honourable, righteous scribes.", "source": "Bukhari & Muslim" },
+      { "text": "It will be said to the companion of the Quran: Recite and rise in status.", "source": "Abu Dawud 1464" },
+      { "text": "The heart that has no Quran in it is like a ruined house.", "source": "Tirmidhi" },
+      { "text": "Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.", "source": "Tabarani" }
+    ],
+    "tips": [
+      "Connect verses conceptually. Don't just memorize sounds — try to understand the flow and logical progression.",
+      "Start after Fajr. Your mind is sharpest before the distractions of the day begin.",
+      "Recite aloud. Hearing your own voice reinforces neural pathways for retention.",
+      "Review before sleeping. The brain consolidates memory during sleep.",
+      "Write out verses by hand to engage multiple senses in memorization."
+    ]
   },
   "progress": {
     "title": "My Progress",
