@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FiImage, FiHeadphones, FiPlay, FiPause, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -17,6 +18,8 @@ const JUZ_START_PAGES = [
 ];
 
 export default function Library() {
+  const { i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
   const [verses, setVerses] = useState([]);
@@ -97,7 +100,7 @@ export default function Library() {
   );
 
   const currentChapterId = verses[0]?.chapter_id ?? null;
-  const currentSurahName = chapters.find(c => c.id === currentChapterId)?.name_simple ?? '';
+  const currentSurahName = chapters.find(c => c.id === currentChapterId)?.[isArabic ? 'name_arabic' : 'name_simple'] ?? '';
 
   const togglePlayPause = () => {
     if (!audioRef.current) return;
@@ -196,7 +199,7 @@ export default function Library() {
                 >
                   {chapters.map(ch => (
                     <option key={ch.id} value={ch.id}>
-                      {ch.id}. {ch.name_simple}
+                      {ch.id}. {isArabic ? ch.name_arabic : ch.name_simple}
                     </option>
                   ))}
                 </select>
@@ -326,7 +329,7 @@ export default function Library() {
                   ) : (
                     <div className="flex flex-col">
                       {verses.map((verse, idx) => {
-                        const chName = chapters.find(c => c.id === verse.chapter_id)?.name_simple ?? '';
+                        const chName = chapters.find(c => c.id === verse.chapter_id)?.[isArabic ? 'name_arabic' : 'name_simple'] ?? '';
                         return (
                           <div key={verse.id}>
                             <div dir="rtl" className="py-3">
