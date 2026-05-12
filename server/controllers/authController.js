@@ -270,6 +270,40 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+// @desc    Change current user password
+// @route   PUT /api/auth/password
+// @access  Private
+exports.changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Both current and new password are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ success: false, message: 'New password must be different from current password' });
+    }
+
+    const user = await User.findById(userId).select('+password');
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({ success: true, message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('ChangePassword error:', error);
+    res.status(500).json({ success: false, message: 'Error changing password' });
+  }
+};
+
 // @desc    Delete current user account and all associated data
 // @route   DELETE /api/auth/account
 // @access  Private
