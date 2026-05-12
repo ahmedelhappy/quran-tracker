@@ -8,7 +8,7 @@ import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -206,6 +206,80 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Change Password Card ─────────────────────────────────
+function ChangePasswordCard() {
+  const { showToast } = useToast();
+  const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
+  const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const { current, newPw, confirm } = pwForm;
+    if (!current || !newPw || !confirm) return showToast('All fields required', 'error');
+    if (newPw.length < 6) return showToast('New password must be at least 6 characters', 'error');
+    if (newPw !== confirm) return showToast('Passwords do not match', 'error');
+    if (newPw === current) return showToast('New password must be different', 'error');
+
+    setPwLoading(true);
+    try {
+      await authAPI.changePassword({ currentPassword: current, newPassword: newPw });
+      showToast('Password changed successfully', 'success');
+      setPwForm({ current: '', newPw: '', confirm: '' });
+    } catch (error) {
+      showToast(error.response?.data?.message ?? 'Failed to change password', 'error');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  const fields = [
+    { key: 'current', label: 'Current Password' },
+    { key: 'newPw',   label: 'New Password' },
+    { key: 'confirm', label: 'Confirm New Password' },
+  ];
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-6 sacred-shadow">
+      <div className="flex items-center gap-3 mb-5">
+        <FiLock className="w-5 h-5 text-[#003527] dark:text-emerald-400" />
+        <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">Change Password</h3>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
+        {fields.map(({ key, label }) => (
+          <div key={key}>
+            <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+              {label}
+            </label>
+            <div className="relative">
+              <input
+                type={pwShow[key] ? 'text' : 'password'}
+                value={pwForm[key]}
+                onChange={e => setPwForm(prev => ({ ...prev, [key]: e.target.value }))}
+                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pr-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
+              />
+              <button
+                type="button"
+                onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
+              >
+                {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        ))}
+        <button
+          type="submit"
+          disabled={pwLoading}
+          className="bg-[#003527] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#064e3b] transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
+        >
+          {pwLoading ? 'Saving…' : <><FiSave className="w-4 h-4" /> Update Password</>}
+        </button>
+      </form>
     </div>
   );
 }
@@ -455,6 +529,8 @@ export default function Settings() {
                     </button>
                   </div>
                 </section>
+
+                <ChangePasswordCard />
 
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow border-2 border-red-100 dark:border-red-900/30">
                   <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">{t('settings.danger')}</h2>
