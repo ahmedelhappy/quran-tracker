@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
+import i18n from '../i18n';
 
 // Create the context
 const AuthContext = createContext();
@@ -35,7 +36,11 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const response = await authAPI.getMe();
-      setUser(response.data.data);
+      const userData = response.data.data;
+      setUser(userData);
+      if (userData.language && userData.language !== i18n.language) {
+        i18n.changeLanguage(userData.language);
+      }
     } catch (err) {
       console.log(err);
       localStorage.removeItem('token');
@@ -74,7 +79,10 @@ export const AuthProvider = ({ children }) => {
       
       localStorage.setItem('token', token);
       setUser(userData);
-      
+      if (userData.language && userData.language !== i18n.language) {
+        i18n.changeLanguage(userData.language);
+      }
+
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Login failed';
