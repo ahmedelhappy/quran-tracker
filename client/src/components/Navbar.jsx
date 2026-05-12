@@ -111,7 +111,7 @@ const Navbar = () => {
             {avatarOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setAvatarOpen(false)} />
-                <div className="absolute right-0 top-10 z-40 bg-white dark:bg-gray-800 rounded-lg sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-48 py-1 overflow-hidden">
+                <div className="absolute right-0 rtl:right-auto rtl:left-0 top-10 z-40 bg-white dark:bg-gray-800 rounded-lg sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-48 py-1 overflow-hidden">
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
