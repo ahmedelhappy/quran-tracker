@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-const HEAT_COLORS = ['bg-gray-100', 'bg-green-100', 'bg-green-300', 'bg-[#40916C]', 'bg-[#1B4332]'];
+const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 
 // Generate empty heatmap cells from user's registration date (or last 90 days)
 function buildHeatmap(createdAt) {
@@ -55,6 +56,8 @@ const ACHIEVEMENTS = [
 export default function Progress() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -219,7 +222,7 @@ export default function Progress() {
                         />
                       ))}
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
+                    <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
                       <span>{t('progress.less')}</span>
                       {HEAT_COLORS.map((c, i) => (
                         <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
@@ -304,11 +307,11 @@ export default function Progress() {
                     data={chartData}
                     margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F0F0" />
-                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#F0F0F0'} />
+                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
                     <Tooltip
-                      contentStyle={{ border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
+                      contentStyle={isDark ? { background: '#1F2937', border: '1px solid #374151', color: '#F9FAFB', borderRadius: 8, fontSize: 12 } : { border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
                       formatter={(v) => [t('progress.pagesCount', { count: v }), t('progress.memorized')]}
                     />
                     <Line type="monotone" dataKey="pages" stroke="#1B4332" strokeWidth={2.5} dot={{ fill: '#1B4332', r: 3 }} activeDot={{ r: 5 }} />
