@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -308,6 +308,12 @@ export default function Settings() {
   const [planDirty, setPlanDirty]     = useState(false);
   const [planSaving, setPlanSaving]   = useState(false);
 
+  const [recentReviewMode, setRecentReviewMode] = useState(user?.recentReviewCount != null ? 'custom' : 'auto');
+  const [recentReviewValue, setRecentReviewValue] = useState(user?.recentReviewCount ?? 3);
+  const [cycleReviewMode, setCycleReviewMode] = useState(user?.cycleReviewCount != null ? 'custom' : 'auto');
+  const [cycleReviewValue, setCycleReviewValue] = useState(user?.cycleReviewCount ?? 5);
+  const customPagesInputRef = useRef(null);
+
   const [resetModal, setResetModal]   = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
 
@@ -323,6 +329,10 @@ export default function Settings() {
       setDailyPages(user.dailyNewPages ?? 1);
       setIntensity(user.reviewIntensity ?? 'standard');
       setOffDays(user.offDays ?? []);
+      setRecentReviewMode(user.recentReviewCount != null ? 'custom' : 'auto');
+      setRecentReviewValue(user.recentReviewCount ?? 3);
+      setCycleReviewMode(user.cycleReviewCount != null ? 'custom' : 'auto');
+      setCycleReviewValue(user.cycleReviewCount ?? 5);
     }
   }, [user]);
 
@@ -336,12 +346,18 @@ export default function Settings() {
 
   useEffect(() => {
     if (!user) return;
+    const userRecentMode = (user.recentReviewCount ?? null) !== null ? 'custom' : 'auto';
+    const userCycleMode = (user.cycleReviewCount ?? null) !== null ? 'custom' : 'auto';
     const changed =
       dailyPages !== (user.dailyNewPages ?? 1) ||
       intensity  !== (user.reviewIntensity ?? 'standard') ||
-      JSON.stringify([...offDays].sort()) !== JSON.stringify([...(user.offDays ?? [])].sort());
+      JSON.stringify([...offDays].sort()) !== JSON.stringify([...(user.offDays ?? [])].sort()) ||
+      recentReviewMode !== userRecentMode ||
+      (recentReviewMode === 'custom' && recentReviewValue !== (user.recentReviewCount ?? 3)) ||
+      cycleReviewMode !== userCycleMode ||
+      (cycleReviewMode === 'custom' && cycleReviewValue !== (user.cycleReviewCount ?? 5));
     setPlanDirty(changed);
-  }, [dailyPages, intensity, offDays, user]);
+  }, [dailyPages, intensity, offDays, recentReviewMode, recentReviewValue, cycleReviewMode, cycleReviewValue, user]);
 
   const isDirty = (activeSection === 'profile' && profileDirty) ||
                   (activeSection === 'memorization' && planDirty);
@@ -372,7 +388,13 @@ export default function Settings() {
   const savePlan = async () => {
     setPlanSaving(true);
     try {
-      await authAPI.updateProfile({ dailyNewPages: dailyPages, reviewIntensity: intensity, offDays });
+      await authAPI.updateProfile({
+        dailyNewPages: dailyPages,
+        reviewIntensity: intensity,
+        offDays,
+        recentReviewCount: recentReviewMode === 'custom' ? recentReviewValue : null,
+        cycleReviewCount: cycleReviewMode === 'custom' ? cycleReviewValue : null,
+      });
       await refreshUser();
       setPlanDirty(false);
       showToast(t('settings.planUpdated'), 'success');
@@ -394,6 +416,10 @@ export default function Settings() {
       setDailyPages(user?.dailyNewPages ?? 1);
       setIntensity(user?.reviewIntensity ?? 'standard');
       setOffDays(user?.offDays ?? []);
+      setRecentReviewMode(user?.recentReviewCount != null ? 'custom' : 'auto');
+      setRecentReviewValue(user?.recentReviewCount ?? 3);
+      setCycleReviewMode(user?.cycleReviewCount != null ? 'custom' : 'auto');
+      setCycleReviewValue(user?.cycleReviewCount ?? 5);
     }
   };
 
@@ -612,6 +638,35 @@ export default function Settings() {
                         {v}
                       </button>
                     ))}
+                    <div
+                      onClick={() => customPagesInputRef.current?.focus()}
+                      className={`px-4 py-3 rounded-xl border font-medium transition-colors cursor-pointer flex items-center gap-2 ${
+                        !DAILY_OPTIONS.includes(dailyPages)
+                          ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
+                          : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
+                      }`}
+                    >
+                      <span className="text-sm">{t('settings.customPages')}</span>
+                      <input
+                        ref={customPagesInputRef}
+                        type="number"
+                        min="0.5"
+                        max="10"
+                        step="0.5"
+                        value={!DAILY_OPTIONS.includes(dailyPages) ? dailyPages : ''}
+                        placeholder="—"
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val >= 0.5 && val <= 10) {
+                            setDailyPages(Math.round(val * 2) / 2);
+                          }
+                        }}
+                        className={`w-10 bg-transparent text-center text-sm focus:outline-none ${
+                          !DAILY_OPTIONS.includes(dailyPages) ? 'text-white placeholder-white/60' : ''
+                        }`}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -638,6 +693,91 @@ export default function Settings() {
                         </div>
                       </label>
                     ))}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.reviewLimitsTitle')}</p>
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewLimitsDesc')}</p>
+                  <div className="space-y-3">
+                    {/* Recent review pages */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
+                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
+                        {recentReviewMode === 'auto' && (
+                          <p className="text-xs text-[#707974] dark:text-gray-500 mt-0.5">
+                            {t('settings.autoLabel')}: {Math.min(Math.ceil((dailyPages || 1) * 3), 6)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex bg-[#f0f3ff] dark:bg-gray-700 rounded-lg p-0.5 border border-[#bfc9c3] dark:border-gray-600">
+                          <button
+                            onClick={() => setRecentReviewMode('auto')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${recentReviewMode === 'auto' ? 'bg-white dark:bg-gray-600 text-[#003527] dark:text-gray-100 shadow-sm' : 'text-[#404944] dark:text-gray-400'}`}
+                          >
+                            {t('settings.autoLabel')}
+                          </button>
+                          <button
+                            onClick={() => setRecentReviewMode('custom')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${recentReviewMode === 'custom' ? 'bg-white dark:bg-gray-600 text-[#003527] dark:text-gray-100 shadow-sm' : 'text-[#404944] dark:text-gray-400'}`}
+                          >
+                            {t('settings.customLabel')}
+                          </button>
+                        </div>
+                        {recentReviewMode === 'custom' && (
+                          <input
+                            type="number" min="0" max="20"
+                            value={recentReviewValue}
+                            onChange={e => {
+                              const n = parseInt(e.target.value, 10);
+                              if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n);
+                            }}
+                            className="w-14 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]"
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {/* Cycle review pages */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
+                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
+                        {cycleReviewMode === 'auto' && (
+                          <p className="text-xs text-[#707974] dark:text-gray-500 mt-0.5">
+                            {t('settings.autoLabel')}: {t('settings.cycleReviewAutoHint')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex bg-[#f0f3ff] dark:bg-gray-700 rounded-lg p-0.5 border border-[#bfc9c3] dark:border-gray-600">
+                          <button
+                            onClick={() => setCycleReviewMode('auto')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${cycleReviewMode === 'auto' ? 'bg-white dark:bg-gray-600 text-[#003527] dark:text-gray-100 shadow-sm' : 'text-[#404944] dark:text-gray-400'}`}
+                          >
+                            {t('settings.autoLabel')}
+                          </button>
+                          <button
+                            onClick={() => setCycleReviewMode('custom')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${cycleReviewMode === 'custom' ? 'bg-white dark:bg-gray-600 text-[#003527] dark:text-gray-100 shadow-sm' : 'text-[#404944] dark:text-gray-400'}`}
+                          >
+                            {t('settings.customLabel')}
+                          </button>
+                        </div>
+                        {cycleReviewMode === 'custom' && (
+                          <input
+                            type="number" min="0" max="40"
+                            value={cycleReviewValue}
+                            onChange={e => {
+                              const n = parseInt(e.target.value, 10);
+                              if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n);
+                            }}
+                            className="w-14 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]"
+                          />
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 

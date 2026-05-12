@@ -226,7 +226,17 @@
     "dayThu": "خميس",
     "dayFri": "جمعة",
     "daySat": "سبت",
-    "daySun": "أحد"
+    "daySun": "أحد",
+    "customPages": "مخصص",
+    "reviewLimitsTitle": "حدود المراجعة اليومية",
+    "reviewLimitsDesc": "تجاوز الحساب التلقائي، أو اتركه على تلقائي.",
+    "recentReviewLabel": "صفحات المراجعة الحديثة يومياً",
+    "recentReviewHint": "الصفحات المحفوظة خلال آخر 3 أيام",
+    "cycleReviewLabel": "صفحات الدورة يومياً",
+    "cycleReviewHint": "دورة التكرار المتباعد",
+    "cycleReviewAutoHint": "حسب الشدة",
+    "autoLabel": "تلقائي",
+    "customLabel": "مخصص"
   },
   "onboarding": {
     "welcome": "مرحباً بك في",

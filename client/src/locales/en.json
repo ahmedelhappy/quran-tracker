@@ -226,7 +226,17 @@
     "dayThu": "Thu",
     "dayFri": "Fri",
     "daySat": "Sat",
-    "daySun": "Sun"
+    "daySun": "Sun",
+    "customPages": "Custom",
+    "reviewLimitsTitle": "Daily Review Limits",
+    "reviewLimitsDesc": "Override the automatic calculation, or leave on Auto.",
+    "recentReviewLabel": "Recent pages per day",
+    "recentReviewHint": "Pages memorized in the last 3 days",
+    "cycleReviewLabel": "Cycle pages per day",
+    "cycleReviewHint": "Spaced-repetition rotation",
+    "cycleReviewAutoHint": "Based on intensity",
+    "autoLabel": "Auto",
+    "customLabel": "Custom"
   },
   "onboarding": {
     "welcome": "Welcome to",
