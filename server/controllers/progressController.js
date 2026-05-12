@@ -134,6 +134,8 @@ exports.getTodayTasks = async (req, res) => {
             currentStreak: user.currentStreak || 0,
             dailyNewPages: user.dailyNewPages || 1,
             reviewIntensity: user.reviewIntensity || 'standard',
+            recentReviewCount: user.recentReviewCount ?? null,
+            cycleReviewCount: user.cycleReviewCount ?? null,
             newPagesCompletedToday: 0, reviewsCompletedToday: 0,
             targetNewPages: 0, dailyReviewTarget: 0,
             newMemorizationComplete: true, reviewComplete: true,
@@ -152,7 +154,9 @@ exports.getTodayTasks = async (req, res) => {
     const isHafiz = totalMemorized === 604;
 
     // --- REVIEW TARGET ---
-    const dailyReviewTarget = computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
+      ? user.cycleReviewCount
+      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
 
     // --- NEW MEMORIZATION TARGET ---
     let targetNewPages = 0;
@@ -245,8 +249,10 @@ exports.getTodayTasks = async (req, res) => {
     // Sort recent pages ascending by page number
     recentReviewPages.sort((a, b) => a.pageNumber - b.pageNumber);
 
-    // Cap: min(dailyNewPages * 3, 6)
-    const maxRecent = Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6);
+    // Cap: custom override or formula min(dailyNewPages * 3, 6)
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6);
     const cappedRecentPages = recentReviewPages.slice(0, maxRecent);
 
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
@@ -315,6 +321,8 @@ exports.getTodayTasks = async (req, res) => {
           currentStreak: user.currentStreak || 0,
           dailyNewPages: user.dailyNewPages || 1,
           reviewIntensity: user.reviewIntensity || 'standard',
+          recentReviewCount: user.recentReviewCount ?? null,
+          cycleReviewCount: user.cycleReviewCount ?? null,
           newPagesCompletedToday, reviewsCompletedToday,
           targetNewPages, dailyReviewTarget,
           newMemorizationComplete, reviewComplete, todayComplete,

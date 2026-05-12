@@ -60,6 +60,18 @@ const userSchema = new mongoose.Schema(
         message: 'offDays must contain at most 2 values, each between 0 (Sun) and 6 (Sat)',
       },
     },
+    recentReviewCount: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 20,
+    },
+    cycleReviewCount: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 40,
+    },
     language: { type: String, enum: ['en', 'ar'], default: 'en' },
   },
   {
