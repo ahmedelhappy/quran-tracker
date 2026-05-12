@@ -108,6 +108,8 @@ exports.login = async (req, res) => {
         reviewIntensity: user.reviewIntensity,
         offDays: user.offDays,
         currentStreak: user.currentStreak,
+        recentReviewCount: user.recentReviewCount ?? null,
+        cycleReviewCount: user.cycleReviewCount ?? null,
         language: user.language,
         token
       }
@@ -141,6 +143,8 @@ exports.getMe = async (req, res) => {
         reviewIntensity: user.reviewIntensity,
         offDays: user.offDays,
         currentStreak: user.currentStreak,
+        recentReviewCount: user.recentReviewCount ?? null,
+        cycleReviewCount: user.cycleReviewCount ?? null,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
         language: user.language,
@@ -229,6 +233,26 @@ exports.updateProfile = async (req, res) => {
       updateData.language = language;
     }
 
+    if (req.body.recentReviewCount !== undefined) {
+      const v = req.body.recentReviewCount;
+      if (v === null) {
+        updateData.recentReviewCount = null;
+      } else {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 0 && n <= 20) updateData.recentReviewCount = n;
+      }
+    }
+
+    if (req.body.cycleReviewCount !== undefined) {
+      const v = req.body.cycleReviewCount;
+      if (v === null) {
+        updateData.cycleReviewCount = null;
+      } else {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 0 && n <= 40) updateData.cycleReviewCount = n;
+      }
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -253,6 +277,8 @@ exports.updateProfile = async (req, res) => {
         dailyNewPages: updatedUser.dailyNewPages,
         reviewIntensity: updatedUser.reviewIntensity,
         offDays: updatedUser.offDays,
+        recentReviewCount: updatedUser.recentReviewCount ?? null,
+        cycleReviewCount: updatedUser.cycleReviewCount ?? null,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,
