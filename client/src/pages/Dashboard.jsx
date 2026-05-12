@@ -8,27 +8,6 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap } from 'react-icons/fi';
 
-// ── Daily rotating quotes ────────────────────────────────
-const QUOTES = [
-  { text: 'The best among you (Muslims) are those who learn the Qur\'an and teach it.', source: 'Sahih Al-Bukhari 5027' },
-  { text: 'Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.', source: 'Tirmidhi 2910' },
-  { text: 'The Quran is a healing for what is in the hearts.', source: 'Quran 10:57' },
-  { text: 'Indeed, this Qur\'an guides to that which is most suitable.', source: 'Quran 17:9' },
-  { text: 'And We have certainly made the Qur\'an easy for remembrance, so is there any who will remember?', source: 'Quran 54:17' },
-  { text: 'Recite the Quran for it will come as an intercessor for its reciters on the Day of Resurrection.', source: 'Muslim 804' },
-  { text: 'The one who is skilled in the Quran will be with the honourable, righteous scribes.', source: 'Bukhari & Muslim' },
-  { text: 'It will be said to the companion of the Quran: Recite and rise in status.', source: 'Abu Dawud 1464' },
-  { text: 'The heart that has no Quran in it is like a ruined house.', source: 'Tirmidhi' },
-  { text: 'Hold fast to the Quran, for it is the rope of Allah extended to you from the heaven to the earth.', source: 'Tabarani' },
-];
-
-const TIPS = [
-  'Connect verses conceptually. Don\'t just memorize sounds — try to understand the flow and logical progression.',
-  'Start after Fajr. Your mind is sharpest before the distractions of the day begin.',
-  'Recite aloud. Hearing your own voice reinforces neural pathways for retention.',
-  'Review before sleeping. The brain consolidates memory during sleep.',
-  'Write out verses by hand to engage multiple senses in memorization.',
-];
 
 const dayOfYear = () => {
   const now = new Date();
@@ -258,9 +237,11 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('today');
   const [isOverrideDay, setIsOverrideDay] = useState(false);
 
+  const quotes = t('dashboard.quotes', { returnObjects: true });
+  const tips = t('dashboard.tips', { returnObjects: true });
   const doy = dayOfYear();
-  const quote = QUOTES[doy % QUOTES.length];
-  const tip = TIPS[doy % TIPS.length];
+  const quote = quotes[doy % quotes.length];
+  const tip = tips[doy % tips.length];
   const todayDateString = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
