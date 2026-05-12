@@ -24,7 +24,7 @@ const Login = () => {
     if (result.success) {
       navigate('/dashboard');
     } else {
-      showToast(result.message || 'Invalid email or password', 'error');
+      showToast(result.message || t('auth.invalidCredentials'), 'error');
     }
   };
 

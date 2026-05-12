@@ -86,7 +86,7 @@ const Navbar = () => {
             {i18n.language === 'en' ? 'AR' : 'EN'}
           </button>
           <button
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
             onClick={toggleTheme}
             className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
           >
@@ -177,7 +177,7 @@ const Navbar = () => {
             className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left"
           >
             {isDark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
-            {isDark ? 'Light Mode' : 'Dark Mode'}
+            {isDark ? t('nav.lightMode') : t('nav.darkMode')}
           </button>
           <button
             onClick={toggleLanguage}

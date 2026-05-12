@@ -21,13 +21,13 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password !== form.confirm) { showToast('Passwords do not match', 'error'); return; }
-    if (form.password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+    if (form.password !== form.confirm) { showToast(t('auth.passwordsMismatch'), 'error'); return; }
+    if (form.password.length < 6) { showToast(t('auth.passwordTooShort'), 'error'); return; }
     setLoading(true);
     const result = await register(form.name.trim(), form.email, form.password);
     setLoading(false);
     if (result.success) navigate('/onboarding');
-    else showToast(result.message || 'Registration failed', 'error');
+    else showToast(result.message || t('auth.registrationFailed'), 'error');
   };
 
   const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500 rtl:pl-4 rtl:pr-11';

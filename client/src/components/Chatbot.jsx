@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { FiMessageSquare, FiX, FiSend } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 import { chatAPI } from '../services/api';
 
-const WELCOME = {
-  role: 'assistant',
-  content:
-    'Assalamu Alaikum! I\'m here to help with Quran memorization and Islamic knowledge. What would you like to know?',
-};
-
 export default function Chatbot() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([WELCOME]);
+  const [messages, setMessages] = useState(() => [{
+    role: 'assistant',
+    content: t('chatbot.welcome'),
+    isWelcome: true,
+  }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
@@ -32,7 +32,7 @@ export default function Chatbot() {
     setLoading(true);
 
     // Send last 6 messages (3 turns) excluding the static welcome
-    const history = next.filter((m) => m !== WELCOME).slice(-6);
+    const history = next.filter((m) => !m.isWelcome).slice(-6);
 
     try {
       const res = await chatAPI.sendMessage(history);
@@ -41,7 +41,7 @@ export default function Chatbot() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Sorry, I\'m unavailable right now.' },
+        { role: 'assistant', content: t('chatbot.error') },
       ]);
     } finally {
       setLoading(false);
@@ -61,7 +61,7 @@ export default function Chatbot() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Toggle Islamic Assistant"
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+        className="fixed bottom-6 right-6 rtl:right-auto rtl:left-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
         style={{ backgroundColor: '#004f35' }}
       >
         {open ? (
@@ -74,7 +74,7 @@ export default function Chatbot() {
       {/* Chat panel */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
+          className="fixed bottom-24 right-6 rtl:right-auto rtl:left-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
         >
           {/* Header */}
           <div
@@ -83,7 +83,7 @@ export default function Chatbot() {
           >
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-white font-semibold text-sm">Islamic Assistant</span>
+              <span className="text-white font-semibold text-sm">{t('chatbot.title')}</span>
             </div>
             <button
               onClick={() => setOpen(false)}
@@ -137,14 +137,14 @@ export default function Chatbot() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Ask about Quran or Hifz..."
+              placeholder={t('chatbot.placeholder')}
               disabled={loading}
               className="flex-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#004f35]/40 disabled:opacity-60"
             />
             <button
               onClick={send}
               disabled={loading || !input.trim()}
-              aria-label="Send"
+              aria-label={t('chatbot.send')}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-opacity disabled:opacity-40 hover:opacity-90"
               style={{ backgroundColor: '#004f35' }}
             >

@@ -33,115 +33,23 @@ const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
 
 const ACHIEVEMENTS = [
   // ── Memorization milestones ───────────────────────────────
-  {
-    id: 'first_page',
-    icon: '🌱',
-    name: 'First Step',
-    desc: 'Memorized your very first page',
-    check: ({ total }) => total >= 1,
-  },
-  {
-    id: '10_pages',
-    icon: '📖',
-    name: 'Getting Started',
-    desc: 'Memorized 10 pages',
-    check: ({ total }) => total >= 10,
-  },
-  {
-    id: '50_pages',
-    icon: '🎯',
-    name: 'On a Roll',
-    desc: 'Memorized 50 pages',
-    check: ({ total }) => total >= 50,
-  },
-  {
-    id: '100_pages',
-    icon: '💯',
-    name: 'Century Mark',
-    desc: 'Memorized 100 pages',
-    check: ({ total }) => total >= 100,
-  },
-  {
-    id: '300_pages',
-    icon: '🌟',
-    name: 'Three Hundred',
-    desc: 'Memorized 300 pages',
-    check: ({ total }) => total >= 300,
-  },
-  {
-    id: 'hafiz',
-    icon: '👑',
-    name: 'Hafiz',
-    desc: 'Completed memorization of all 604 pages',
-    check: ({ total }) => total >= 604,
-  },
-
+  { id: 'first_page',  icon: '🌱', nameKey: 'achievements.first_page_name',  descKey: 'achievements.first_page_desc',  check: ({ total }) => total >= 1 },
+  { id: '10_pages',    icon: '📖', nameKey: 'achievements.10_pages_name',    descKey: 'achievements.10_pages_desc',    check: ({ total }) => total >= 10 },
+  { id: '50_pages',    icon: '🎯', nameKey: 'achievements.50_pages_name',    descKey: 'achievements.50_pages_desc',    check: ({ total }) => total >= 50 },
+  { id: '100_pages',   icon: '💯', nameKey: 'achievements.100_pages_name',   descKey: 'achievements.100_pages_desc',   check: ({ total }) => total >= 100 },
+  { id: '300_pages',   icon: '🌟', nameKey: 'achievements.300_pages_name',   descKey: 'achievements.300_pages_desc',   check: ({ total }) => total >= 300 },
+  { id: 'hafiz',       icon: '👑', nameKey: 'achievements.hafiz_name',       descKey: 'achievements.hafiz_desc',       check: ({ total }) => total >= 604 },
   // ── Juz milestones ────────────────────────────────────────
-  {
-    id: 'first_juz',
-    icon: '📚',
-    name: 'First Juz',
-    desc: 'Completed your first full Juz',
-    check: ({ completedJuz }) => completedJuz >= 1,
-  },
-  {
-    id: '5_juz',
-    icon: '📕',
-    name: 'Five Ajzaa',
-    desc: 'Completed 5 full Juz',
-    check: ({ completedJuz }) => completedJuz >= 5,
-  },
-  {
-    id: '10_juz',
-    icon: '📗',
-    name: 'Ten Ajzaa',
-    desc: 'Completed 10 full Juz',
-    check: ({ completedJuz }) => completedJuz >= 10,
-  },
-  {
-    id: '15_juz',
-    icon: '📘',
-    name: 'Half the Quran',
-    desc: 'Completed 15 full Juz',
-    check: ({ completedJuz }) => completedJuz >= 15,
-  },
-  {
-    id: '30_juz',
-    icon: '🕋',
-    name: 'All Thirty Ajzaa',
-    desc: 'Completed all 30 Juz',
-    check: ({ completedJuz }) => completedJuz >= 30,
-  },
-
+  { id: 'first_juz',  icon: '📚', nameKey: 'achievements.first_juz_name',  descKey: 'achievements.first_juz_desc',  check: ({ completedJuz }) => completedJuz >= 1 },
+  { id: '5_juz',      icon: '📕', nameKey: 'achievements.5_juz_name',      descKey: 'achievements.5_juz_desc',      check: ({ completedJuz }) => completedJuz >= 5 },
+  { id: '10_juz',     icon: '📗', nameKey: 'achievements.10_juz_name',     descKey: 'achievements.10_juz_desc',     check: ({ completedJuz }) => completedJuz >= 10 },
+  { id: '15_juz',     icon: '📘', nameKey: 'achievements.15_juz_name',     descKey: 'achievements.15_juz_desc',     check: ({ completedJuz }) => completedJuz >= 15 },
+  { id: '30_juz',     icon: '🕋', nameKey: 'achievements.30_juz_name',     descKey: 'achievements.30_juz_desc',     check: ({ completedJuz }) => completedJuz >= 30 },
   // ── Streak milestones ─────────────────────────────────────
-  {
-    id: 'streak_3',
-    icon: '🔥',
-    name: 'Three in a Row',
-    desc: 'Maintained a 3-day streak',
-    check: ({ streak }) => streak >= 3,
-  },
-  {
-    id: 'streak_7',
-    icon: '⚡',
-    name: 'Week Warrior',
-    desc: 'Maintained a 7-day streak',
-    check: ({ streak }) => streak >= 7,
-  },
-  {
-    id: 'streak_30',
-    icon: '💪',
-    name: 'Month Strong',
-    desc: 'Maintained a 30-day streak',
-    check: ({ streak }) => streak >= 30,
-  },
-  {
-    id: 'streak_100',
-    icon: '🏆',
-    name: 'Century Streak',
-    desc: 'Maintained a 100-day streak',
-    check: ({ streak }) => streak >= 100,
-  },
+  { id: 'streak_3',   icon: '🔥', nameKey: 'achievements.streak_3_name',   descKey: 'achievements.streak_3_desc',   check: ({ streak }) => streak >= 3 },
+  { id: 'streak_7',   icon: '⚡', nameKey: 'achievements.streak_7_name',   descKey: 'achievements.streak_7_desc',   check: ({ streak }) => streak >= 7 },
+  { id: 'streak_30',  icon: '💪', nameKey: 'achievements.streak_30_name',  descKey: 'achievements.streak_30_desc',  check: ({ streak }) => streak >= 30 },
+  { id: 'streak_100', icon: '🏆', nameKey: 'achievements.streak_100_name', descKey: 'achievements.streak_100_desc', check: ({ streak }) => streak >= 100 },
 ];
 
 export default function Progress() {
@@ -225,7 +133,7 @@ export default function Progress() {
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-1">{t('progress.title')}</h1>
-          <p className="text-green-300 dark:text-gray-400 text-sm">Track your spiritual journey and memorization milestones.</p>
+          <p className="text-green-300 dark:text-gray-400 text-sm">{t('progress.subtitle')}</p>
         </div>
       </div>
 
@@ -234,8 +142,8 @@ export default function Progress() {
         {/* Tab bar */}
         <div className="border-b border-[#dce2f3] dark:border-gray-700 flex gap-6">
           {[
-            { key: 'progress', label: 'Progress' },
-            { key: 'achievements', label: 'Achievements' },
+            { key: 'progress', labelKey: 'progress.progressTab' },
+            { key: 'achievements', labelKey: 'progress.achievementsTab' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -246,7 +154,7 @@ export default function Progress() {
                   : 'text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>
@@ -257,7 +165,7 @@ export default function Progress() {
             <div className="grid md:grid-cols-2 gap-5">
               {/* Overall completion */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">Overall Completion</h2>
+                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.overallCompletion')}</h2>
                 {loading ? (
                   <div className="space-y-3"><Skeleton h="h-10" w="w-24" /><Skeleton h="h-3" /><Skeleton h="h-3" w="w-32" /></div>
                 ) : (
@@ -266,7 +174,7 @@ export default function Progress() {
                     <div className="flex items-end gap-3 mb-3">
                       <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
-                        {totalMemorized} pages
+                        {t('progress.pagesCount', { count: totalMemorized })}
                       </span>
                     </div>
                     <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -278,14 +186,14 @@ export default function Progress() {
                         }}
                       />
                     </div>
-                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{604 - totalMemorized} pages remaining</p>
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{t('progress.pagesRemaining', { count: 604 - totalMemorized })}</p>
                   </>
                 )}
               </div>
 
               {/* Activity heatmap */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activity')} Streak</h2>
+                <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activityStreak')}</h2>
                 {loading ? (
                   <div className="space-y-2">
                     <Skeleton h="h-16" />
@@ -298,7 +206,7 @@ export default function Progress() {
                         <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100" />
                       ))}
                     </div>
-                    <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
+                    <p className="text-sm text-gray-400 italic">{t('progress.activityPlaceholder')}</p>
                   </div>
                 ) : (
                   <>
@@ -312,11 +220,11 @@ export default function Progress() {
                       ))}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-[#4A4A4A]">
-                      <span>Less</span>
+                      <span>{t('progress.less')}</span>
                       {HEAT_COLORS.map((c, i) => (
                         <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
                       ))}
-                      <span>More</span>
+                      <span>{t('progress.more')}</span>
                     </div>
                   </>
                 )}
@@ -326,11 +234,11 @@ export default function Progress() {
             {/* Juz status grid */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juz')} Status</h2>
+                <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juzStatus')}</h2>
                 <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> Memorized</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> In Progress</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> Pending</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> {t('progress.inProgress')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> {t('progress.pending')}</span>
                 </div>
               </div>
 
@@ -366,8 +274,8 @@ export default function Progress() {
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                     {[
                       { label: t('progress.completed'), count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
-                      { label: 'In Progress', count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
-                      { label: 'Pending', count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
+                      { label: t('progress.inProgress'), count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
+                      { label: t('progress.pending'), count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
                     ].map(({ label, count, color }) => (
                       <div key={label} className="text-center">
                         <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
@@ -381,14 +289,14 @@ export default function Progress() {
 
             {/* Memorization chart */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">Pages Memorized Over Time</h2>
+              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">{t('progress.chartTitle')}</h2>
               {loading ? (
                 <Skeleton h="h-52" />
               ) : !hasActivity ? (
                 <div className="h-52 flex flex-col items-center justify-center text-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">📈</div>
-                  <p className="text-sm text-gray-400 italic">Your activity will appear here as you progress</p>
-                  <p className="text-xs text-gray-300">Start memorizing pages to see your chart</p>
+                  <p className="text-sm text-gray-400 italic">{t('progress.chartEmpty')}</p>
+                  <p className="text-xs text-gray-300">{t('progress.chartStart')}</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
@@ -401,7 +309,7 @@ export default function Progress() {
                     <YAxis tick={{ fontSize: 12, fill: '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
                     <Tooltip
                       contentStyle={{ border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
-                      formatter={(v) => [`${v} pages`, 'Memorized']}
+                      formatter={(v) => [t('progress.pagesCount', { count: v }), t('progress.memorized')]}
                     />
                     <Line type="monotone" dataKey="pages" stroke="#1B4332" strokeWidth={2.5} dot={{ fill: '#1B4332', r: 3 }} activeDot={{ r: 5 }} />
                   </LineChart>
@@ -417,13 +325,13 @@ export default function Progress() {
             {!loading && (
               <div className="flex flex-wrap gap-3">
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                  🏅 {earned.length} / {ACHIEVEMENTS.length} Earned
+                  🏅 {t('progress.achievementsEarned', { count: earned.length, total: ACHIEVEMENTS.length })}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                  📚 {achievementInput.completedJuz} Juz Complete
+                  📚 {t('progress.juzComplete', { count: achievementInput.completedJuz })}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
-                  🔥 {achievementInput.streak} Day Streak
+                  🔥 {t('progress.dayStreak', { count: achievementInput.streak })}
                 </span>
               </div>
             )}
@@ -438,15 +346,15 @@ export default function Progress() {
                 {earned.length === 0 && (
                   <div className="text-center py-8">
                     <div className="text-5xl mb-3">🌱</div>
-                    <p className="text-base font-semibold text-[#1A1A1A] dark:text-gray-100">Start memorizing to earn your first badge!</p>
-                    <p className="text-sm text-[#707974] dark:text-gray-400 mt-1">Complete your first page to unlock 'First Step'</p>
+                    <p className="text-base font-semibold text-[#1A1A1A] dark:text-gray-100">{t('progress.earnedEmpty')}</p>
+                    <p className="text-sm text-[#707974] dark:text-gray-400 mt-1">{t('progress.earnedEmptyHint')}</p>
                   </div>
                 )}
 
                 {/* Earned section */}
                 {earned.length > 0 && (
                   <div>
-                    <h2 className="text-lg font-semibold text-[#1A1A1A] dark:text-gray-100 mb-4">Earned ({earned.length})</h2>
+                    <h2 className="text-lg font-semibold text-[#1A1A1A] dark:text-gray-100 mb-4">{t('progress.earnedSection', { count: earned.length })}</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {earned.map(a => (
                         <div
@@ -454,10 +362,10 @@ export default function Progress() {
                           className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2"
                         >
                           <span className="text-4xl">{a.icon}</span>
-                          <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{a.name}</span>
-                          <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{a.desc}</span>
+                          <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t(a.nameKey)}</span>
+                          <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{t(a.descKey)}</span>
                           <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                            ✓ Earned
+                            {t('progress.earnedBadge')}
                           </span>
                         </div>
                       ))}
@@ -467,7 +375,7 @@ export default function Progress() {
 
                 {/* Locked section */}
                 <div>
-                  <h2 className="text-lg font-semibold text-[#707974] dark:text-gray-500 mb-4">Locked ({locked.length})</h2>
+                  <h2 className="text-lg font-semibold text-[#707974] dark:text-gray-500 mb-4">{t('progress.lockedSection', { count: locked.length })}</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                     {locked.map(a => (
                       <div
@@ -475,10 +383,10 @@ export default function Progress() {
                         className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2 opacity-50 grayscale"
                       >
                         <span className="text-4xl">{a.icon}</span>
-                        <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{a.name}</span>
-                        <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{a.desc}</span>
+                        <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t(a.nameKey)}</span>
+                        <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{t(a.descKey)}</span>
                         <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                          Locked
+                          {t('progress.lockedBadge')}
                         </span>
                       </div>
                     ))}

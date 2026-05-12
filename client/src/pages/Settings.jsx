@@ -10,13 +10,13 @@ import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap } from 'react-icons/fi';
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 const INTENSITY_OPTIONS = [
-  { value: 'light',    label: 'Light',     desc: 'Review 1/14 of memorized pages daily (~7% per day). Best for busy schedules.' },
-  { value: 'standard', label: 'Standard',  desc: 'Review 1/10 of memorized pages daily (~10% per day). Recommended for steady progress.' },
-  { value: 'strong',   label: 'Intensive', desc: 'Review 1/7 of memorized pages daily (~14% per day). Ideal for serious commitment.' },
+  { value: 'light',    labelKey: 'settings.intensityLight',    descKey: 'settings.intensityLightDesc' },
+  { value: 'standard', labelKey: 'settings.intensityStandard', descKey: 'settings.intensityStandardDesc' },
+  { value: 'strong',   labelKey: 'settings.intensityIntensive', descKey: 'settings.intensityIntensiveDesc' },
 ];
 
 const DAILY_OPTIONS = [0.5, 1, 2, 5];
@@ -52,16 +52,16 @@ function validateRanges(pageRanges) {
   const parsed = pageRanges.map(r => ({ start: parseInt(r.start, 10), end: parseInt(r.end, 10) }));
   parsed.forEach((r, i) => {
     if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
-      errors[i].start = 'Must be between 1 and 604';
+      errors[i].start = 'common.validationRange';
     if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
-      errors[i].end = 'Must be between 1 and 604';
+      errors[i].end = 'common.validationRange';
     if (!isNaN(r.start) && !isNaN(r.end) && r.start >= r.end)
-      errors[i].end = 'End page must be greater than start page';
+      errors[i].end = 'common.validationEndGreater';
     parsed.forEach((other, j) => {
       if (i === j) return;
       if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
           r.start < other.end && r.end > other.start)
-        errors[i].start = 'Ranges cannot overlap';
+        errors[i].start = 'common.validationNoOverlap';
     });
   });
   return errors;
@@ -74,6 +74,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
   const [rangeErrors, setRangeErrors] = useState([{}]);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (isOpen && currentJuzData) {
@@ -105,11 +106,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
     setSaving(true);
     try {
       await progressAPI.updateMemorized({ memorizedPages: selectedPages });
-      showToast('Progress updated!', 'success');
+      showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
     } catch {
-      showToast('Failed to update progress', 'error');
+      showToast(t('settings.progressUpdateFailed'), 'error');
     } finally {
       setSaving(false);
     }
@@ -122,7 +123,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">Edit Memorized Progress</h3>
+          <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
           <button onClick={onClose} className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
             <FiX className="w-5 h-5" />
           </button>
@@ -130,7 +131,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
 
         <div className="p-6 space-y-6">
           <div>
-            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">Select by Juz (complete Juz only)</p>
+            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.selectByJuz')}</p>
             <div className="grid grid-cols-5 gap-2">
               {JUZ_RANGES.map(({ juz }) => (
                 <button
@@ -147,13 +148,13 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
               ))}
             </div>
             <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-              {selectedJuz.size > 0 ? `${selectedJuz.size} Juz selected` : 'No Juz selected'}
+              {selectedJuz.size > 0 ? t('settings.juzSelected', { count: selectedJuz.size }) : t('settings.noJuzSelected')}
             </p>
           </div>
 
           <div className="border-t border-[#dce2f3] dark:border-gray-700 pt-4">
             <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-              Add specific page ranges <span className="text-xs font-normal text-[#404944] dark:text-gray-400">(optional)</span>
+              {t('settings.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('settings.optional')}</span>
             </p>
             <div className="space-y-2">
               {pageRanges.map((r, i) => (
@@ -162,7 +163,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
                     <input type="number" min="1" max="604" value={r.start} onChange={e => updateRange(i, 'start', e.target.value)}
                       placeholder="Start (1–604)"
                       className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                    <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">to</span>
+                    <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('settings.to')}</span>
                     <input type="number" min="1" max="604" value={r.end} onChange={e => updateRange(i, 'end', e.target.value)}
                       placeholder="End (1–604)"
                       className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
@@ -173,12 +174,12 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
                     )}
                   </div>
                   {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                    <p className="text-xs text-[#ba1a1a]">{rangeErrors[i]?.end || rangeErrors[i]?.start}</p>
+                    <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                   )}
                 </div>
               ))}
               <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                <FiPlus className="w-3 h-3" /> Add another range
+                <FiPlus className="w-3 h-3" /> {t('settings.addRange')}
               </button>
             </div>
           </div>
@@ -186,7 +187,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
           {selectedPages.length > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                Total: <strong>{selectedPages.length}</strong> pages selected
+                {t('settings.pagesSelected', { count: selectedPages.length })}
               </p>
             </div>
           )}
@@ -194,14 +195,14 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
 
         <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 text-sm text-[#404944] dark:text-gray-300 border border-[#bfc9c3] dark:border-gray-600 rounded-lg hover:bg-[#f9f9ff] dark:hover:bg-gray-700 transition-colors">
-            Cancel
+            {t('settings.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || hasRangeErrors}
             className="px-5 py-2 text-sm font-medium bg-[#003527] text-white rounded-lg hover:bg-[#064e3b] transition-colors disabled:opacity-60 flex items-center gap-2"
           >
-            {saving ? 'Saving…' : <><FiSave className="w-4 h-4" /> Save Progress</>}
+            {saving ? t('settings.saving') : <><FiSave className="w-4 h-4" /> {t('settings.saveProgress')}</>}
           </button>
         </div>
       </div>
@@ -286,9 +287,9 @@ export default function Settings() {
       await authAPI.updateProfile({ name: profileName.trim() });
       updateUser({ name: profileName.trim() });
       setProfileDirty(false);
-      showToast('Profile updated!', 'success');
+      showToast(t('settings.profileUpdated'), 'success');
     } catch {
-      showToast('Failed to update profile', 'error');
+      showToast(t('settings.profileUpdateFailed'), 'error');
     } finally {
       setProfileSaving(false);
     }
@@ -300,9 +301,9 @@ export default function Settings() {
       await authAPI.updateProfile({ dailyNewPages: dailyPages, reviewIntensity: intensity, offDays });
       await refreshUser();
       setPlanDirty(false);
-      showToast('Plan updated!', 'success');
+      showToast(t('settings.planUpdated'), 'success');
     } catch {
-      showToast('Failed to update plan', 'error');
+      showToast(t('settings.planUpdateFailed'), 'error');
     } finally {
       setPlanSaving(false);
     }
@@ -326,9 +327,9 @@ export default function Settings() {
     try {
       await progressAPI.resetProgress();
       await refreshUser();
-      showToast('Progress reset. Starting fresh!', 'success');
+      showToast(t('settings.progressReset'), 'success');
     } catch {
-      showToast('Failed to reset progress', 'error');
+      showToast(t('settings.progressResetFailed'), 'error');
     }
   };
 
@@ -338,7 +339,7 @@ export default function Settings() {
       logout();
       navigate('/');
     } catch {
-      showToast('Failed to delete account', 'error');
+      showToast(t('settings.deleteFailed'), 'error');
     }
   };
 
@@ -351,7 +352,7 @@ export default function Settings() {
       <main className="flex-grow pt-[100px] pb-24 px-6 max-w-[1280px] w-full mx-auto">
         <div className="mb-12">
           <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('settings.title')}</h1>
-          <p className="text-lg text-[#404944] dark:text-gray-400">Customize your hifz journey and app preferences.</p>
+          <p className="text-lg text-[#404944] dark:text-gray-400">{t('settings.subtitle')}</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -411,7 +412,7 @@ export default function Settings() {
                     <div>
                       <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{user?.name}</p>
                       <p className="text-xs text-[#707974] dark:text-gray-400">{user?.email}</p>
-                      <p className="text-xs text-[#bfc9c3] dark:text-gray-500 mt-1">Avatar is generated from your initials</p>
+                      <p className="text-xs text-[#bfc9c3] dark:text-gray-500 mt-1">{t('settings.avatarHint')}</p>
                     </div>
                   </div>
 
@@ -423,14 +424,14 @@ export default function Settings() {
                       type="text"
                       value={profileName}
                       onChange={e => setProfileName(e.target.value)}
-                      placeholder="Your name"
+                      placeholder={t('settings.namePlaceholder')}
                       className="w-full max-w-sm border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
                     />
                   </div>
 
                   <div className="mb-6">
                     <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
-                      Email Address
+                      {t('auth.email')}
                     </label>
                     <input
                       type="email"
@@ -438,7 +439,7 @@ export default function Settings() {
                       readOnly
                       className="w-full max-w-sm border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] dark:bg-gray-700/50 text-[#707974] dark:text-gray-500 cursor-not-allowed"
                     />
-                    <p className="text-xs text-[#707974] dark:text-gray-500 mt-1">Email cannot be changed</p>
+                    <p className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
                   </div>
 
                   {/* Language row */}
@@ -459,17 +460,17 @@ export default function Settings() {
                   <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">{t('settings.danger')}</h2>
                   <div className="flex items-center justify-between gap-4 py-3 border-b border-[#dce2f3] dark:border-gray-700">
                     <div>
-                      <p className="font-medium text-[#151c27] dark:text-gray-200">Reset Progress</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">Clear all tracking history and start fresh. Your account and settings are kept.</p>
+                      <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.resetProgress')}</p>
+                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.resetProgressDesc')}</p>
                     </div>
                     <button onClick={() => setResetModal(true)} className="flex-shrink-0 border-2 border-[#ba1a1a] text-[#ba1a1a] text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                      Reset Data
+                      {t('settings.resetData')}
                     </button>
                   </div>
                   <div className="flex items-center justify-between gap-4 pt-3">
                     <div>
                       <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.deleteAccount')}</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">Permanently remove your account and all data. This cannot be undone.</p>
+                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.deleteAccountDesc')}</p>
                     </div>
                     <button onClick={() => setDeleteModal(true)} className="flex-shrink-0 bg-[#ba1a1a] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors">
                       {t('settings.deleteAccount')}
@@ -484,33 +485,33 @@ export default function Settings() {
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
                 <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                   <FiBook className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
-                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.memorization')} Plan</h2>
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.memorizationPlan')}</h2>
                 </div>
 
                 <div className="mb-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
                     <div>
-                      <p className="text-lg font-medium text-[#151c27] dark:text-gray-200">Prior Memorization</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">Update what you have already memorized.</p>
+                      <p className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.priorMem')}</p>
+                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.priorMemDesc')}</p>
                     </div>
                     <button
                       onClick={() => setEditProgressOpen(true)}
                       className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 flex-shrink-0"
                     >
-                      <FiEdit2 className="w-4 h-4" /> Edit Progress
+                      <FiEdit2 className="w-4 h-4" /> {t('settings.editProgress')}
                     </button>
                   </div>
                   <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-4 border border-[#bfc9c3] dark:border-gray-600">
-                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">Currently tracking as completed:</p>
+                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.currentlyTracking')}</p>
                     <div className="flex flex-wrap gap-2">
                       {memorizedJuz.filter(j => j.isComplete).length > 0 ? (
                         memorizedJuz.filter(j => j.isComplete).map(j => (
                           <span key={j.juzNumber} className="px-3 py-1.5 bg-[#003527]/10 dark:bg-emerald-900/30 text-[#003527] dark:text-emerald-400 rounded-lg text-sm font-medium">
-                            Juz {j.juzNumber}
+                            {t('progress.juz')} {j.juzNumber}
                           </span>
                         ))
                       ) : (
-                        <span className="text-sm text-[#707974] dark:text-gray-500 italic">No completed Juz yet</span>
+                        <span className="text-sm text-[#707974] dark:text-gray-500 italic">{t('settings.noJuzYet')}</span>
                       )}
                     </div>
                   </div>
@@ -519,8 +520,8 @@ export default function Settings() {
                 <hr className="border-[#dce2f3] dark:border-gray-700 my-6" />
 
                 <div className="mb-6">
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">Daily Target (Pages)</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">Select your preferred number of pages to memorize per day.</p>
+                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.dailyTarget')}</p>
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.dailyTargetDesc')}</p>
                   <div className="flex flex-wrap gap-3">
                     {DAILY_OPTIONS.map(v => (
                       <button
@@ -539,10 +540,10 @@ export default function Settings() {
                 </div>
 
                 <div className="mb-6">
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">Review Intensity</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">How rigorously would you like to review past memorization?</p>
+                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.reviewIntensity')}</p>
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewIntensityDesc')}</p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {INTENSITY_OPTIONS.map(({ value, label, desc }) => (
+                    {INTENSITY_OPTIONS.map(({ value, labelKey, descKey }) => (
                       <label key={value} className="cursor-pointer">
                         <input type="radio" name="settings-intensity" value={value}
                           checked={intensity === value} onChange={() => setIntensity(value)} className="sr-only" />
@@ -552,12 +553,12 @@ export default function Settings() {
                             : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30'
                         }`}>
                           <div className="flex justify-between items-center mb-2">
-                            <span className={`font-medium ${intensity === value ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{label}</span>
+                            <span className={`font-medium ${intensity === value ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
                             <span className={intensity === value ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>
                               {intensity === value ? '●' : '○'}
                             </span>
                           </div>
-                          <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{desc}</p>
+                          <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
                         </div>
                       </label>
                     ))}
@@ -565,20 +566,20 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">Rest Days</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">Select days you do not plan to memorize new portions.</p>
+                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.restDays')}</p>
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.restDaysDesc')}</p>
                   <div className="flex flex-wrap gap-6">
-                    {DAY_LABELS.map((label, idx) => {
+                    {DAY_LABEL_KEYS.map((labelKey, idx) => {
                       const jsDay = DAY_JS_INDICES[idx];
                       return (
-                        <label key={label} className="flex items-center gap-2 cursor-pointer">
+                        <label key={labelKey} className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={offDays.includes(jsDay)}
                             onChange={() => toggleOffDay(jsDay)}
                             className="w-5 h-5 rounded border-[#707974] accent-[#003527] cursor-pointer"
                           />
-                          <span className="font-medium text-[#151c27] dark:text-gray-200">{label}</span>
+                          <span className="font-medium text-[#151c27] dark:text-gray-200">{t(labelKey)}</span>
                         </label>
                       );
                     })}
@@ -601,10 +602,10 @@ export default function Settings() {
                     <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.theme')}</p>
                     <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-2 flex gap-1 border border-[#bfc9c3] dark:border-gray-600">
                       {[
-                        { id: 'light', label: 'Light', icon: <FiSun className="w-4 h-4" /> },
-                        { id: 'dark',  label: 'Dark',  icon: <FiMoon className="w-4 h-4" /> },
-                        { id: 'auto',  label: 'Auto',  icon: <FiZap className="w-4 h-4" /> },
-                      ].map(({ id, label, icon }) => (
+                        { id: 'light', labelKey: 'settings.lightTheme', icon: <FiSun className="w-4 h-4" /> },
+                        { id: 'dark',  labelKey: 'settings.darkTheme',  icon: <FiMoon className="w-4 h-4" /> },
+                        { id: 'auto',  labelKey: 'settings.autoTheme',  icon: <FiZap className="w-4 h-4" /> },
+                      ].map(({ id, labelKey, icon }) => (
                         <button
                           key={id}
                           onClick={() => setTheme(id)}
@@ -614,7 +615,7 @@ export default function Settings() {
                               : 'text-[#404944] dark:text-gray-400 hover:bg-[#e7eefe] dark:hover:bg-gray-700'
                           }`}
                         >
-                          {icon} {label}
+                          {icon} {t(labelKey)}
                         </button>
                       ))}
                     </div>
@@ -641,7 +642,7 @@ export default function Settings() {
       {/* ── Sticky save bar ───────────────────────────────── */}
       {isDirty && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-t border-[#dce2f3] dark:border-gray-700 shadow-lg px-6 py-3 flex items-center justify-between gap-4">
-          <p className="text-sm text-[#404944] dark:text-gray-400">You have unsaved changes.</p>
+          <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.unsavedChanges')}</p>
           <div className="flex items-center gap-3">
             <button
               onClick={handleDiscard}
@@ -674,18 +675,18 @@ export default function Settings() {
         isOpen={resetModal}
         onClose={() => setResetModal(false)}
         onConfirm={handleResetProgress}
-        title="Reset All Progress?"
-        message="This will permanently delete all your memorization records and reset your streak to 0. Your account and settings will be kept. This cannot be undone."
-        confirmText="Yes, Reset"
+        title={t('settings.resetModal_title')}
+        message={t('settings.resetModal_message')}
+        confirmText={t('settings.resetConfirm')}
         isDanger
       />
       <ConfirmModal
         isOpen={deleteModal}
         onClose={() => setDeleteModal(false)}
         onConfirm={handleDeleteAccount}
-        title="Delete Your Account?"
-        message="This will permanently delete your account and all associated data. You will be logged out immediately. This cannot be undone."
-        confirmText="Yes, Delete"
+        title={t('settings.deleteModal_title')}
+        message={t('settings.deleteModal_message')}
+        confirmText={t('settings.deleteConfirm')}
         isDanger
       />
     </div>

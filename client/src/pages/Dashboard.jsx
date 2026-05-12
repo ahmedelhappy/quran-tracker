@@ -164,16 +164,16 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
   const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
   const dateLabel = formatDate(day.date);
 
-  const fmtPages = (pages) => {
+  const fmtPages = (pages, t) => {
     if (!pages || pages.length === 0) return '';
     const sorted = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
     const nums = sorted.map(p => p.pageNumber);
     const isSeq = nums.length === 1 || nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
     const range = nums.length === 1
-      ? `Page ${nums[0]}`
+      ? t('dashboard.fmtPage', { num: nums[0] })
       : isSeq
-        ? `Pages ${nums[0]}–${nums[nums.length - 1]}`
-        : `Pages ${nums.join(', ')}`;
+        ? t('dashboard.fmtPageRange', { start: nums[0], end: nums[nums.length - 1] })
+        : t('dashboard.fmtPagesMulti', { nums: nums.join(', ') });
     const surah = sorted[0]?.surahName;
     return surah ? `${range} · ${surah}` : range;
   };
@@ -196,7 +196,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
   if (isToday && todayData) {
     const newPages = todayData.newPages ?? [];
     const reviewCount = allReviewPages?.length ?? 0;
-    const pagesStr = fmtPages(newPages);
+    const pagesStr = fmtPages(newPages, t);
 
     return (
       <div className={`${base} px-4 py-3 border-l-4 border-l-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center justify-between gap-3`}>
@@ -218,7 +218,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 
   // Future day card
   const newPagesInfo = day.newPagesInfo ?? (day.newPageInfo ? [day.newPageInfo] : []);
-  const pagesStr = fmtPages(newPagesInfo);
+  const pagesStr = fmtPages(newPagesInfo, t);
   const reviewCount = day.reviewPagesCount ?? 0;
 
   return (
@@ -228,7 +228,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
         {day.newPagesCount > 0 ? (
           <>
             <span className="text-[#004f35] dark:text-emerald-400 font-medium">
-              {pagesStr || `${day.newPagesCount} page${day.newPagesCount !== 1 ? 's' : ''}`}
+              {pagesStr || t(day.newPagesCount === 1 ? 'dashboard.pagesCount' : 'dashboard.pagesCountPlural', { count: day.newPagesCount })}
             </span>
             {reviewCount > 0 && <span className="text-[#904d00] dark:text-amber-400"> · {t('dashboard.reviewLabel')} {reviewCount}</span>}
           </>
@@ -274,7 +274,7 @@ export default function Dashboard() {
         setData(taskRes.data.data);
         setJuzData(juzRes.data.data);
       } catch {
-        showToast('Failed to load today\'s tasks', 'error');
+        showToast(t('dashboard.failedTasks'), 'error');
       } finally {
         setLoading(false);
       }
@@ -288,7 +288,7 @@ export default function Dashboard() {
       const res = await progressAPI.getWeekPlan();
       setWeekData(res.data.data);
     } catch {
-      showToast('Failed to load week plan', 'error');
+      showToast(t('dashboard.failedWeekPlan'), 'error');
     } finally {
       setWeekLoading(false);
     }
@@ -301,9 +301,9 @@ export default function Dashboard() {
     try {
       await progressAPI.markComplete({ pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
-      showToast(`Page ${pageNumber} marked as ${type === 'new' ? 'memorized' : 'reviewed'}!`, 'success');
+      showToast(t(type === 'new' ? 'dashboard.pageMarkedMemorized' : 'dashboard.pageMarkedReviewed', { number: pageNumber }), 'success');
     } catch {
-      showToast('Failed to mark page. Try again.', 'error');
+      showToast(t('dashboard.failedMark'), 'error');
     } finally {
       setMarkingKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
     }
@@ -314,9 +314,9 @@ export default function Dashboard() {
     try {
       await progressAPI.uncomplete({ pageNumber, type });
       setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
-      showToast('Undone', 'info');
+      showToast(t('dashboard.undone'), 'info');
     } catch {
-      showToast('Failed to undo. Try again.', 'error');
+      showToast(t('dashboard.failedUndo'), 'error');
     }
   };
 
@@ -736,7 +736,7 @@ export default function Dashboard() {
                   <WeekDayCard key={i} day={day} isToday={false} todayData={null} allReviewPages={null} />
                 ))
               ) : (
-                <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">Unable to load week plan.</p>
+                <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">{t('dashboard.weekPlanError')}</p>
               )}
             </div>
           )}
