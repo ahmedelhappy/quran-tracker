@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import Chatbot from './components/Chatbot';
 
 // Pages
 import Landing from './pages/Landing';
@@ -28,6 +29,11 @@ const OnboardingWrapper = () => {
   const { user } = useAuth();
   if (user && user.onboardingComplete) return <Navigate to="/dashboard" replace />;
   return <Onboarding />;
+};
+
+const PersistentChatbot = () => {
+  const { user } = useAuth();
+  return user && user.onboardingComplete ? <Chatbot /> : null;
 };
 
 // Redirect authenticated users away from public pages
@@ -73,6 +79,7 @@ function App() {
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <PersistentChatbot />
         </Router>
       </ToastProvider>
     </AuthProvider>
