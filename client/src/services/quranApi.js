@@ -3,7 +3,7 @@ const IMAGE_CDN = 'https://images.qurancdn.com/images/pages';
 const AUDIO_CDN = 'https://cdn.islamic.network/quran/audio-surah/128/ar.alafasy';
 
 export const getPageImageUrl = (pageNumber) =>
-  `${IMAGE_CDN}/${pageNumber}.jpg`;
+  `${IMAGE_CDN}/${String(pageNumber).padStart(3, '0')}.jpg`;
 
 export const getChapterAudioUrl = (chapterId) =>
   `${AUDIO_CDN}/${chapterId}.mp3`;
