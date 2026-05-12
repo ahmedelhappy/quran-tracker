@@ -364,7 +364,7 @@ export default function Settings() {
                 <button
                   key={id}
                   onClick={() => setActiveSection(id)}
-                  className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left transition-colors ${
+                  className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left rtl:text-right rtl:flex-row-reverse transition-colors ${
                     activeSection === id
                       ? 'bg-[#e2e8f8] dark:bg-gray-700 text-[#003527] dark:text-gray-100'
                       : 'text-[#404944] dark:text-gray-400 hover:bg-[#e7eefe] dark:hover:bg-gray-800 hover:text-[#003527] dark:hover:text-gray-200'
@@ -400,7 +400,7 @@ export default function Settings() {
             {activeSection === 'profile' && (
               <>
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                  <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
+                  <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
                     <FiUser className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                     <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.profile')}</h2>
                   </div>
@@ -483,7 +483,7 @@ export default function Settings() {
             {/* ── Memorization Plan ────────────────────────── */}
             {activeSection === 'memorization' && (
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
+                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
                   <FiBook className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                   <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.memorizationPlan')}</h2>
                 </div>
@@ -496,7 +496,7 @@ export default function Settings() {
                     </div>
                     <button
                       onClick={() => setEditProgressOpen(true)}
-                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 flex-shrink-0"
+                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 flex-shrink-0 rtl:flex-row-reverse"
                     >
                       <FiEdit2 className="w-4 h-4" /> {t('settings.editProgress')}
                     </button>
@@ -591,7 +591,7 @@ export default function Settings() {
             {/* ── Appearance ──────────────────────────────── */}
             {activeSection === 'appearance' && (
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
+                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
                   <FiMonitor className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                   <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.theme')}</h2>
                 </div>

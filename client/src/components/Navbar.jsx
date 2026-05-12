@@ -115,21 +115,21 @@ const Navbar = () => {
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
-                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
+                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
                   >
                     <FiUser className="w-4 h-4" /> {t('settings.profile')}
                   </Link>
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
-                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
+                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
                   >
                     <FiSettings className="w-4 h-4" /> {t('nav.settings')}
                   </Link>
                   <hr className="my-1 border-[#dce2f3]/50 dark:border-gray-700" />
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-[#ba1a1a] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-sm"
+                    className="w-full text-left rtl:text-right px-4 py-2 text-[#ba1a1a] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
                   >
                     <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
                   </button>
@@ -169,19 +169,19 @@ const Navbar = () => {
               </Link>
             )
           )}
-          <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2">
+          <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 rtl:flex-row-reverse rtl:text-right">
             <FiSettings className="w-4 h-4" /> {t('nav.settings')}
           </Link>
           <button
             onClick={toggleTheme}
-            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left"
+            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left rtl:flex-row-reverse rtl:text-right"
           >
             {isDark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
             {isDark ? t('nav.lightMode') : t('nav.darkMode')}
           </button>
           <button
             onClick={toggleLanguage}
-            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left"
+            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left rtl:flex-row-reverse rtl:text-right"
           >
             <FiGlobe className="w-4 h-4" />
             {i18n.language === 'en' ? 'العربية' : 'English'}
@@ -196,7 +196,7 @@ const Navbar = () => {
                 <p className="text-xs text-[#404944] dark:text-gray-400">{user?.email}</p>
               </div>
             </div>
-            <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5">
+            <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5 rtl:flex-row-reverse">
               <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
             </button>
           </div>

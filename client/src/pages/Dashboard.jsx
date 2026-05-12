@@ -180,7 +180,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 
   if (isOffDay) {
     return (
-      <div className={`${base} ${isToday ? 'border-l-4 border-l-[#004f35]' : ''} px-4 py-3 flex items-center justify-between`}>
+      <div className={`${base} ${isToday ? 'border-l-4 border-l-[#004f35] rtl:border-l-0 rtl:border-r-4 rtl:border-r-[#004f35]' : ''} px-4 py-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
           {isToday && <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />}
           <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{dateLabel}</span>
@@ -199,7 +199,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
     const pagesStr = fmtPages(newPages, t);
 
     return (
-      <div className={`${base} px-4 py-3 border-l-4 border-l-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center justify-between gap-3`}>
+      <div className={`${base} px-4 py-3 border-l-4 border-l-[#004f35] rtl:border-l-0 rtl:border-r-4 rtl:border-r-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center justify-between gap-3`}>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />
           <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{dateLabel}</span>
@@ -455,7 +455,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
             <button
               onClick={() => setActiveTab('today')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 rtl:flex-row-reverse ${
                 activeTab === 'today'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
@@ -465,7 +465,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 rtl:flex-row-reverse ${
                 activeTab === 'week'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
@@ -623,7 +623,7 @@ export default function Dashboard() {
                     <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">
                       {t('dashboard.review')}
                       {allReviewPages.length > 0 && (
-                        <span className="ml-2 text-xs font-normal text-[#707974] dark:text-gray-500">
+                        <span className="ml-2 rtl:ml-0 rtl:mr-2 text-xs font-normal text-[#707974] dark:text-gray-500">
                           {t('dashboard.reviewCount', { count: allReviewPages.length })}
                         </span>
                       )}
