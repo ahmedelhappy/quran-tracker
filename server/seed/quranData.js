@@ -165,14 +165,22 @@ function getJuzForPage(pageNumber) {
 }
 
 // Get all surahs that appear on a given page.
-// A surah S occupies page P if S.startPage <= P AND nextSurah.startPage >= P.
-// This correctly captures pages shared by two consecutive surahs (e.g. pages 602-604).
+// Three inclusion cases for surah S on page P:
+//   1. S starts on P — always include.
+//   2. S spans through P (started before P, ends after P) — always include.
+//   3. S ends mid-page on P: nextStart === P but the surah spans more than one page
+//      (nextStart - s.startPage > 1). Genuine mid-page transition — include.
+//      When the gap is exactly 1 page the surah fits on a single page and the
+//      boundary is a clean break, so do NOT bleed onto the next page.
 function getSurahsForPage(pageNumber) {
   const result = [];
   for (let i = 0; i < surahData.length; i++) {
     const s = surahData[i];
     const nextStart = i + 1 < surahData.length ? surahData[i + 1].startPage : 605;
-    if (s.startPage <= pageNumber && nextStart >= pageNumber) {
+    const startsOnPage      = s.startPage === pageNumber;
+    const spansPage         = s.startPage < pageNumber && nextStart > pageNumber;
+    const midPageTransition = s.startPage < pageNumber && nextStart === pageNumber && (nextStart - s.startPage) > 1;
+    if (startsOnPage || spansPage || midPageTransition) {
       result.push({ name: s.name, nameArabic: s.arabic });
     }
   }
