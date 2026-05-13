@@ -276,21 +276,29 @@ exports.getTodayTasks = async (req, res) => {
     ];
     const metaMap = await getMetadataMap(allPageNumsNeeded);
 
-    const toNewPageDto = (pageNum) => ({
-      pageNumber: pageNum,
-      juzNumber: metaMap[pageNum]?.juzNumber || 1,
-      surahName: metaMap[pageNum]?.surahName || 'Unknown',
-      surahNameArabic: metaMap[pageNum]?.surahNameArabic || '',
-    });
+    const toNewPageDto = (pageNum) => {
+      const meta = metaMap[pageNum];
+      return {
+        pageNumber: pageNum,
+        juzNumber: meta?.juzNumber || 1,
+        surahName: meta?.surahName || 'Unknown',
+        surahNameArabic: meta?.surahNameArabic || '',
+        surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+      };
+    };
 
-    const toReviewPageDto = (progress) => ({
-      pageNumber: progress.pageNumber,
-      juzNumber: metaMap[progress.pageNumber]?.juzNumber || 1,
-      surahName: metaMap[progress.pageNumber]?.surahName || 'Unknown',
-      surahNameArabic: metaMap[progress.pageNumber]?.surahNameArabic || '',
-      lastReviewedDate: progress.lastReviewedDate,
-      reviewCount: progress.reviewCount || 0,
-    });
+    const toReviewPageDto = (progress) => {
+      const meta = metaMap[progress.pageNumber];
+      return {
+        pageNumber: progress.pageNumber,
+        juzNumber: meta?.juzNumber || 1,
+        surahName: meta?.surahName || 'Unknown',
+        surahNameArabic: meta?.surahNameArabic || '',
+        surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        lastReviewedDate: progress.lastReviewedDate,
+        reviewCount: progress.reviewCount || 0,
+      };
+    };
 
     // --- STATS ---
     const percentage = ((totalMemorized / 604) * 100).toFixed(1);
@@ -572,16 +580,27 @@ exports.getWeekPlan = async (req, res) => {
 
     const enrichedPlan = plan.map(day => ({
       ...day,
-      newPageInfo: day.newPagesForDay?.[0] ? {
-        pageNumber: day.newPagesForDay[0],
-        juzNumber: metaMap[day.newPagesForDay[0]]?.juzNumber || 1,
-        surahName: metaMap[day.newPagesForDay[0]]?.surahName || 'Unknown',
-      } : null,
-      newPagesInfo: (day.newPagesForDay || []).map(pg => ({
-        pageNumber: pg,
-        juzNumber: metaMap[pg]?.juzNumber || 1,
-        surahName: metaMap[pg]?.surahName || 'Unknown',
-      })),
+      newPageInfo: day.newPagesForDay?.[0] ? (() => {
+        const pg = day.newPagesForDay[0];
+        const meta = metaMap[pg];
+        return {
+          pageNumber: pg,
+          juzNumber: meta?.juzNumber || 1,
+          surahName: meta?.surahName || 'Unknown',
+          surahNameArabic: meta?.surahNameArabic || '',
+          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        };
+      })() : null,
+      newPagesInfo: (day.newPagesForDay || []).map(pg => {
+        const meta = metaMap[pg];
+        return {
+          pageNumber: pg,
+          juzNumber: meta?.juzNumber || 1,
+          surahName: meta?.surahName || 'Unknown',
+          surahNameArabic: meta?.surahNameArabic || '',
+          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        };
+      }),
     }));
 
     res.status(200).json({ success: true, data: enrichedPlan });

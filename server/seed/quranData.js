@@ -164,81 +164,56 @@ function getJuzForPage(pageNumber) {
   return 1;
 }
 
-// Get Surah for a page
-function getSurahForPage(pageNumber) {
-  let currentSurah = surahData[0];
-  
-  for (const surah of surahData) {
-    if (surah.startPage <= pageNumber) {
-      currentSurah = surah;
-    } else {
-      break;
+// Get all surahs that appear on a given page.
+// A surah S occupies page P if S.startPage <= P AND nextSurah.startPage >= P.
+// This correctly captures pages shared by two consecutive surahs (e.g. pages 602-604).
+function getSurahsForPage(pageNumber) {
+  const result = [];
+  for (let i = 0; i < surahData.length; i++) {
+    const s = surahData[i];
+    const nextStart = i + 1 < surahData.length ? surahData[i + 1].startPage : 605;
+    if (s.startPage <= pageNumber && nextStart >= pageNumber) {
+      result.push({ name: s.name, nameArabic: s.arabic });
     }
   }
-  
-  return currentSurah;
+  return result;
 }
 
-// Generate all 604 pages
+// Generate all 604 pages with full multi-surah data
 function generateQuranPages() {
   const pages = [];
-  
   for (let page = 1; page <= 604; page++) {
     const juz = getJuzForPage(page);
-    const surah = getSurahForPage(page);
-    
+    const surahs = getSurahsForPage(page);
     pages.push({
       pageNumber: page,
       juzNumber: juz,
-      surahName: surah.name,
-      surahNameArabic: surah.arabic
+      surahs,
+      surahName: surahs[0]?.name ?? 'Unknown',
+      surahNameArabic: surahs[0]?.nameArabic ?? '',
     });
   }
-  
   return pages;
 }
 
-// Seed function
+// Seed function — always replaces existing data
 async function seedQuranData() {
   try {
-    // Connect to MongoDB
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB');
-    
-    // Check if data already exists
-    const existingCount = await QuranMetadata.countDocuments();
-    
-    if (existingCount > 0) {
-      console.log(`⚠️  QuranMetadata already has ${existingCount} records.`);
-      console.log('   Delete existing data? Run with --force flag');
-      
-      if (process.argv.includes('--force')) {
-        await QuranMetadata.deleteMany({});
-        console.log('🗑️  Deleted existing data');
-      } else {
-        console.log('   Exiting without changes.');
-        process.exit(0);
-      }
-    }
-    
-    // Generate and insert pages
+    console.log('Connected to MongoDB');
+
+    await QuranMetadata.deleteMany({});
+    console.log('Cleared existing QuranMetadata');
+
     const pages = generateQuranPages();
-    console.log(`📖 Generated ${pages.length} pages`);
-    
     await QuranMetadata.insertMany(pages);
-    console.log('✅ Successfully seeded QuranMetadata collection!');
-    
-    // Show sample data
-    console.log('\n📋 Sample data:');
-    const samples = await QuranMetadata.find().limit(5);
-    samples.forEach(s => {
-      console.log(`   Page ${s.pageNumber}: Juz ${s.juzNumber}, ${s.surahName} (${s.surahNameArabic})`);
-    });
-    
+
+    const multiSurahCount = pages.filter(p => p.surahs.length > 1).length;
+    console.log(`Seeded ${pages.length} pages, ${multiSurahCount} have multiple surahs`);
+
     process.exit(0);
-    
   } catch (error) {
-    console.error('❌ Seed error:', error);
+    console.error('Seed error:', error);
     process.exit(1);
   }
 }

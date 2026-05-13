@@ -21,7 +21,12 @@ const quranMetadataSchema = new mongoose.Schema({
   surahNameArabic: {
     type: String,
     default: ''
-  }
+  },
+  surahs: [{
+    name: { type: String, required: true },
+    nameArabic: { type: String, default: '' },
+    _id: false,
+  }]
 });
 
 // Index for fast lookups
