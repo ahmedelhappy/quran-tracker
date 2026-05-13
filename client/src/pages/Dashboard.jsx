@@ -385,12 +385,31 @@ export default function Dashboard() {
               </h2>
               <p className="text-[#404944] dark:text-gray-400">{t('dashboard.subtitle')}</p>
             </div>
-            <div className="mt-6 inline-flex items-center gap-2 bg-[#b0f0d6]/20 dark:bg-emerald-900/20 px-4 py-2 rounded-full text-[#064e3b] dark:text-emerald-400 w-max">
-              <span className="text-[#fe932c]">🔥</span>
-              <span className="text-xs font-bold uppercase tracking-wider">
-                {stats?.currentStreak ?? user?.currentStreak ?? 0} {t('dashboard.streak')}
-              </span>
-            </div>
+            {(() => {
+              const streak = stats?.currentStreak ?? user?.currentStreak ?? 0;
+              const lastActive = user?.lastActiveDate
+                ? new Date(user.lastActiveDate).toLocaleDateString()
+                : null;
+              if (streak === 0) {
+                return (
+                  <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[#707974] dark:text-gray-500 bg-[#f0f3ff] dark:bg-gray-700/50 w-max">
+                    <FiZap className="w-4 h-4" />
+                    <span className="text-xs font-medium">{t('dashboard.streakStart')}</span>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  title={lastActive ? t('dashboard.streakLastActive', { date: lastActive }) : undefined}
+                  className="mt-6 inline-flex items-center gap-2 bg-[#b0f0d6]/20 dark:bg-emerald-900/20 px-4 py-2 rounded-full text-[#064e3b] dark:text-emerald-400 w-max cursor-default"
+                >
+                  <FiZap className="w-4 h-4 text-[#fe932c]" />
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {streak} {t(streak === 1 ? 'dashboard.streakDay' : 'dashboard.streakDays')}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">

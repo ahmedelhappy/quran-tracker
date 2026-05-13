@@ -910,7 +910,7 @@ export default function Settings() {
         onClose={() => setResetModal(false)}
         onConfirm={handleResetProgress}
         title={t('settings.resetModal_title')}
-        message={t('settings.resetModal_message')}
+        message={t('settings.resetModal_message', { streak: user?.currentStreak ?? 0 })}
         confirmText={t('settings.resetConfirm')}
         isDanger
       />
