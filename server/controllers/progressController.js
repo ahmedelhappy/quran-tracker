@@ -121,6 +121,14 @@ exports.getTodayTasks = async (req, res) => {
     // --- OFF DAY ---
     if (offDays.includes(new Date().getUTCDay())) {
       const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+
+      // Preserve streak on off-days: bump lastActiveDate without incrementing the count.
+      // Guard: never tick for a user who has never been active (null lastActiveDate).
+      if (user.lastActiveDate && getDateString(user.lastActiveDate) !== todayString
+          && isStreakContinued(user.lastActiveDate, offDays)) {
+        await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+      }
+
       return res.status(200).json({
         success: true,
         data: {
@@ -311,6 +319,18 @@ exports.getTodayTasks = async (req, res) => {
     const estimatedDays = !isHafiz && effectiveDailyPages > 0
       ? Math.ceil((604 - totalMemorized) / effectiveDailyPages)
       : 0;
+
+    // Streak tick for view-only days: preserve streak when user has nothing left to do
+    // today but hasn't yet triggered markPageComplete (which would bump lastActiveDate).
+    // Conditions: the day is effectively complete, the user has been active before (not
+    // their very first open), lastActiveDate is not already today, and the streak would
+    // still be alive if counted from yesterday.
+    const isViewOnlyComplete = todayComplete || (isHafiz && dailyReviewTarget === 0);
+    if (isViewOnlyComplete && user.lastActiveDate
+        && getDateString(user.lastActiveDate) !== todayString
+        && isStreakContinued(user.lastActiveDate, offDays)) {
+      await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+    }
 
     res.status(200).json({
       success: true,
