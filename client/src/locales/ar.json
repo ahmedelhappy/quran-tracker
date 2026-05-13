@@ -236,7 +236,16 @@
     "cycleReviewHint": "دورة التكرار المتباعد",
     "cycleReviewAutoHint": "حسب الشدة",
     "autoLabel": "تلقائي",
-    "customLabel": "مخصص"
+    "customLabel": "مخصص",
+    "basedOnDailyPages": "بناءً على الصفحات اليومية",
+    "basedOnIntensity": "بناءً على الشدة",
+    "reviewSettings": "إعدادات المراجعة",
+    "reviewSettingsDesc": "اختر طريقة تحديد عدد صفحات المراجعة اليومية.",
+    "modeIntensity": "حسب الكثافة",
+    "modeIntensityDesc": "يضبط عدد المراجعات بناءً على حجم ما حفظته",
+    "modeFixed": "عدد ثابت",
+    "modeFixedDesc": "حدد عدد الصفحات بنفسك",
+    "orDivider": "أو"
   },
   "onboarding": {
     "welcome": "مرحباً بك في",

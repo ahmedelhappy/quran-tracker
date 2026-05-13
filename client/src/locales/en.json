@@ -236,7 +236,16 @@
     "cycleReviewHint": "Spaced-repetition rotation",
     "cycleReviewAutoHint": "Based on intensity",
     "autoLabel": "Auto",
-    "customLabel": "Custom"
+    "customLabel": "Custom",
+    "basedOnDailyPages": "based on daily pages",
+    "basedOnIntensity": "based on intensity",
+    "reviewSettings": "Review Settings",
+    "reviewSettingsDesc": "Choose how your daily review count is determined.",
+    "modeIntensity": "Intensity preset",
+    "modeIntensityDesc": "Adjusts daily reviews based on how much you've memorized",
+    "modeFixed": "Fixed number",
+    "modeFixedDesc": "Set exact page counts yourself",
+    "orDivider": "OR"
   },
   "onboarding": {
     "welcome": "Welcome to",
