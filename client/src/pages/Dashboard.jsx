@@ -7,6 +7,7 @@ import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap } from 'react-icons/fi';
+import { formatSurahNames } from '../utils/surahDisplay';
 
 
 const dayOfYear = () => {
@@ -37,7 +38,7 @@ const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded b
 
 // ── Task card ────────────────────────────────────────────
 const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
@@ -61,7 +62,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
               </span>
             )}
           </div>
-          <p className="text-sm text-[#404944] dark:text-gray-400">{page.surahName}</p>
+          <p className="text-sm text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>
         </div>
       </div>
       {done ? (
@@ -95,8 +96,8 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
 
 // ── Extra task card ──────────────────────────────────────
 const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
-  const { t } = useTranslation();
-  const { pageNumber, surahName } = page;
+  const { t, i18n } = useTranslation();
+  const { pageNumber } = page;
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
@@ -110,7 +111,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
         </div>
         <div>
           <p className="text-sm font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {pageNumber}</p>
-          {surahName && <p className="text-xs text-[#404944] dark:text-gray-400">{surahName}</p>}
+          {formatSurahNames(page, i18n.language === 'ar') && <p className="text-xs text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>}
         </div>
       </div>
       {done ? (
@@ -137,7 +138,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
 
 // ── Week plan day card (This Week tab) ───────────────────
 const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const base = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow';
   const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
   const dateLabel = formatDate(day.date);
@@ -152,7 +153,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
       : isSeq
         ? t('dashboard.fmtPageRange', { start: nums[0], end: nums[nums.length - 1] })
         : t('dashboard.fmtPagesMulti', { nums: nums.join(', ') });
-    const surah = sorted[0]?.surahName;
+    const surah = formatSurahNames(sorted[0], i18n.language === 'ar');
     return surah ? `${range} · ${surah}` : range;
   };
 
@@ -221,7 +222,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 export default function Dashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [juzData, setJuzData] = useState([]);
@@ -582,7 +583,7 @@ export default function Dashboard() {
                       <div>
                         <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{t('dashboard.continuePage')}</p>
                         <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{data.continuationPage.surahName}</p>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
                         <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
                       </div>
                     </div>
