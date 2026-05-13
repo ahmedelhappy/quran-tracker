@@ -230,6 +230,7 @@ export default function Dashboard() {
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
   const [showAllCycle, setShowAllCycle] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(false);
   const [showWantMore, setShowWantMore] = useState(false);
   const [extraData, setExtraData] = useState(null);
   const [weekData, setWeekData] = useState(null);
@@ -344,6 +345,8 @@ export default function Dashboard() {
 
   const CYCLE_LIMIT = 3;
   const hasMoreCycle = cycleReviewPages.length > CYCLE_LIMIT;
+  const RECENT_LIMIT = 3;
+  const hasMoreRecent = recentPages.length > RECENT_LIMIT;
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
 
@@ -621,7 +624,12 @@ export default function Dashboard() {
                             <div className="flex items-center gap-1.5">
                               <FiRefreshCw className="w-3 h-3 text-[#404944] dark:text-gray-400" />
                               <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">{t('dashboard.recentReview')}</span>
-                              <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.last3days')} · {recentPages.length} {t('dashboard.pages')}</span>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">
+                                {stats?.recentReviewCount != null
+                                  ? `${t('dashboard.last3days')} · ${t('dashboard.maxLabel', { count: stats.recentReviewCount })}`
+                                  : t('dashboard.last3days')
+                                }
+                              </span>
                             </div>
                             {recentPending.length > 0 && (
                               <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
@@ -630,7 +638,7 @@ export default function Dashboard() {
                             )}
                           </div>
                           <div className="flex flex-col gap-2">
-                            {recentPages.map(p => (
+                            {recentPages.slice(0, showAllRecent ? recentPages.length : RECENT_LIMIT).map(p => (
                               <TaskCard
                                 key={`review-recent-${p.pageNumber}`}
                                 page={p} type="review"
@@ -642,6 +650,18 @@ export default function Dashboard() {
                               />
                             ))}
                           </div>
+                          {hasMoreRecent && (
+                            <button
+                              onClick={() => setShowAllRecent(!showAllRecent)}
+                              className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
+                            >
+                              {showAllRecent ? (
+                                <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
+                              ) : (
+                                <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: recentPages.length })}</>
+                              )}
+                            </button>
+                          )}
                         </div>
                       )}
 

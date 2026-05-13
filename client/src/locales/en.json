@@ -49,6 +49,7 @@
     "review": "Review",
     "recentReview": "Recent Review",
     "last3days": "(last 3 days)",
+    "maxLabel": "max {{count}}",
     "cycleReview": "Cycle Review",
     "markComplete": "Mark as Complete",
     "markCompact": "Mark Complete",

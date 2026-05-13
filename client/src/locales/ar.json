@@ -49,6 +49,7 @@
     "review": "مراجعة",
     "recentReview": "مراجعة حديثة",
     "last3days": "(آخر 3 أيام)",
+    "maxLabel": "حد أقصى {{count}}",
     "cycleReview": "مراجعة دورية",
     "markComplete": "تمييز كمنجز",
     "markCompact": "تمييز كمنجز",
