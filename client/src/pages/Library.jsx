@@ -18,7 +18,7 @@ const JUZ_START_PAGES = [
 ];
 
 export default function Library() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
   const [currentPage, setCurrentPage] = useState(1);
   const [pageInput, setPageInput] = useState('1');
@@ -127,7 +127,7 @@ export default function Library() {
 
             {/* 1. Page navigation */}
             <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">Page</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(currentPage - 1)}
@@ -157,36 +157,36 @@ export default function Library() {
                   onKeyDown={handlePageInputKey}
                   onBlur={handlePageInputBlur}
                   className="flex-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
-                  placeholder="Go to page…"
+                  placeholder={t('library.gotoPagePlaceholder')}
                 />
               </div>
               {memorizedPages.has(currentPage) && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-2.5 py-1 rounded-full w-max">
-                  ✓ Memorized
+                  ✓ {t('library.memorizedBadge')}
                 </span>
               )}
             </div>
 
             {/* 2. Jump to Juz */}
             <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">Jump to Juz</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
               <select
                 value={selectedJuz}
                 onChange={e => goToPage(JUZ_START_PAGES[Number(e.target.value) - 1])}
                 className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
               >
                 {JUZ_START_PAGES.map((_, i) => (
-                  <option key={i + 1} value={i + 1}>Juz {i + 1}</option>
+                  <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: i + 1 })}</option>
                 ))}
               </select>
             </div>
 
             {/* 3. Jump to Surah */}
             <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">Jump to Surah</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
               {chapters.length === 0 ? (
                 <div className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-gray-100 dark:bg-gray-700 px-3 py-2 text-sm text-[#707974] dark:text-gray-500 animate-pulse">
-                  Loading…
+                  {t('library.loading')}
                 </div>
               ) : (
                 <select
@@ -208,10 +208,7 @@ export default function Library() {
 
             {/* 4. Stats */}
             <div className="text-sm text-[#707974] dark:text-gray-500">
-              <span className={memorizedCount > 0 ? 'text-green-600 dark:text-green-400 font-semibold' : ''}>
-                {memorizedCount}
-              </span>
-              {' '}/ 604 pages memorized
+              {t('library.pagesMemorizedStat', { count: memorizedCount })}
             </div>
           </aside>
 
@@ -227,8 +224,8 @@ export default function Library() {
                 {imageError ? (
                   <div className="h-64 w-80 flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-gray-800 rounded border border-[#dce2f3] dark:border-gray-700">
                     <FiImage className="w-10 h-10 text-[#707974] dark:text-gray-500" />
-                    <p className="text-sm font-medium text-[#404944] dark:text-gray-400">Page image unavailable</p>
-                    <p className="text-xs text-[#707974] dark:text-gray-500">Check your connection</p>
+                    <p className="text-sm font-medium text-[#404944] dark:text-gray-400">{t('library.imageUnavailable')}</p>
+                    <p className="text-xs text-[#707974] dark:text-gray-500">{t('library.checkConnection')}</p>
                   </div>
                 ) : (
                   <img
@@ -244,9 +241,9 @@ export default function Library() {
 
               {/* Page info bar */}
               <p className="text-sm text-[#707974] dark:text-gray-500 text-center">
-                Page {currentPage}
-                {currentSurahName && <> · Surah {currentSurahName}</>}
-                {' '}· Juz {currentJuz}
+                {t('library.pageInfoLabel', { n: currentPage })}
+                {currentSurahName && <> · {t('library.surahLabel')} {currentSurahName}</>}
+                {' '}· {t('library.juzInfoLabel', { n: currentJuz })}
               </p>
             </div>
 
@@ -257,9 +254,9 @@ export default function Library() {
                   <FiHeadphones className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[#1A1A1A] dark:text-gray-100 truncate">
-                      {currentSurahName || 'Surah'}
+                      {currentSurahName || t('library.surahLabel')}
                     </p>
-                    <p className="text-[11px] text-[#707974] dark:text-gray-500">Mishary Rashid Al-Afasy</p>
+                    <p className="text-[11px] text-[#707974] dark:text-gray-500">{t('library.reciterName')}</p>
                   </div>
                 </div>
                 <button
@@ -297,7 +294,7 @@ export default function Library() {
               >
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-[#1A1A1A] dark:text-gray-100">
-                    Verses on this page
+                    {t('library.versesOnPage')}
                   </span>
                   {verses.length > 0 && (
                     <span className="text-xs bg-[#dce2f3] dark:bg-gray-700 text-[#404944] dark:text-gray-300 px-2 py-0.5 rounded-full">
@@ -324,7 +321,7 @@ export default function Library() {
                     </div>
                   ) : versesError ? (
                     <p className="text-sm text-[#707974] dark:text-gray-500 text-center py-4">
-                      Could not load verses
+                      {t('library.couldNotLoadVerses')}
                     </p>
                   ) : (
                     <div className="flex flex-col">

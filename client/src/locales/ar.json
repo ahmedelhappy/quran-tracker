@@ -331,6 +331,23 @@
     "validationEndGreater": "يجب أن تكون صفحة النهاية أكبر من صفحة البداية",
     "validationNoOverlap": "لا يمكن أن تتداخل النطاقات"
   },
+  "library": {
+    "memorizedBadge": "محفوظة",
+    "pageLabel": "الصفحة",
+    "gotoPagePlaceholder": "اذهب إلى الصفحة...",
+    "imageUnavailable": "صورة الصفحة غير متوفرة",
+    "checkConnection": "تحقق من اتصالك",
+    "versesOnPage": "آيات هذه الصفحة",
+    "couldNotLoadVerses": "تعذر تحميل الآيات",
+    "reciterName": "مشاري راشد العفاسي",
+    "jumpToJuz": "الانتقال إلى الجزء",
+    "jumpToSurah": "الانتقال إلى السورة",
+    "loading": "جاري التحميل...",
+    "pagesMemorizedStat": "{{count}} / 604 صفحة محفوظة",
+    "pageInfoLabel": "صفحة {{n}}",
+    "surahLabel": "سورة",
+    "juzInfoLabel": "جزء {{n}}"
+  },
   "chatbot": {
     "title": "المساعد الإسلامي",
     "placeholder": "اسأل عن القرآن أو الحفظ...",

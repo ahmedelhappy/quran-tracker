@@ -331,6 +331,23 @@
     "validationEndGreater": "End page must be greater than start page",
     "validationNoOverlap": "Ranges cannot overlap"
   },
+  "library": {
+    "memorizedBadge": "Memorized",
+    "pageLabel": "Page",
+    "gotoPagePlaceholder": "Go to page…",
+    "imageUnavailable": "Page image unavailable",
+    "checkConnection": "Check your connection",
+    "versesOnPage": "Verses on this page",
+    "couldNotLoadVerses": "Could not load verses",
+    "reciterName": "Mishary Rashid Al-Afasy",
+    "jumpToJuz": "Jump to Juz",
+    "jumpToSurah": "Jump to Surah",
+    "loading": "Loading…",
+    "pagesMemorizedStat": "{{count}} / 604 pages memorized",
+    "pageInfoLabel": "Page {{n}}",
+    "surahLabel": "Surah",
+    "juzInfoLabel": "Juz {{n}}"
+  },
   "chatbot": {
     "title": "Islamic Assistant",
     "placeholder": "Ask about Quran or Hifz...",
