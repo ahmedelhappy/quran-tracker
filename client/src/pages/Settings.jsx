@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { SURAH_PAGES } from '../data/surahPages';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -34,10 +35,14 @@ const JUZ_RANGES = [
   {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
 ];
 
-function computeSelectedPages(selectedJuz, pageRanges) {
+function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
   const pages = new Set();
   JUZ_RANGES.forEach(({ juz, start, end }) => {
     if (selectedJuz.has(juz)) { for (let p = start; p <= end; p++) pages.add(p); }
+  });
+  selectedSurahs.forEach(num => {
+    const s = SURAH_PAGES.find(x => x.number === num);
+    if (s) for (let p = s.start; p <= s.end; p++) pages.add(p);
   });
   pageRanges.forEach(({ start, end }) => {
     const s = parseInt(start, 10), e = parseInt(end, 10);
@@ -68,27 +73,64 @@ function validateRanges(pageRanges) {
 }
 
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
+function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedPageNums }) {
   const [selectedJuz, setSelectedJuz] = useState(new Set());
+  const [selectedSurahs, setSelectedSurahs] = useState(new Set());
+  const [selectionMode, setSelectionMode] = useState('juz');
+  const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [rangeErrors, setRangeErrors] = useState([{}]);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
+
+  const memorizedSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
 
   useEffect(() => {
     if (isOpen && currentJuzData) {
       const memorized = new Set(currentJuzData.filter(j => j.isComplete).map(j => j.juzNumber));
       setSelectedJuz(memorized);
+      setSelectionMode('juz');
+      setSurahSearch('');
       setPageRanges([{ start: '', end: '' }]);
       setRangeErrors([{}]);
+
+      const mSet = new Set(memorizedPageNums);
+      const preSelectedSurahs = new Set(
+        SURAH_PAGES
+          .filter(surah => {
+            for (let p = surah.start; p <= surah.end; p++) {
+              if (!mSet.has(p)) return false;
+            }
+            return true;
+          })
+          .map(s => s.number)
+      );
+      setSelectedSurahs(preSelectedSurahs);
     }
-  }, [isOpen, currentJuzData]);
+  }, [isOpen, currentJuzData, memorizedPageNums]);
 
   const toggleJuz = (n) => setSelectedJuz(prev => {
     const next = new Set(prev);
     next.has(n) ? next.delete(n) : next.add(n);
     return next;
+  });
+
+  const toggleSurah = (n) => setSelectedSurahs(prev => {
+    const next = new Set(prev);
+    next.has(n) ? next.delete(n) : next.add(n);
+    return next;
+  });
+
+  const filteredSurahs = SURAH_PAGES.filter(s => {
+    if (!surahSearch.trim()) return true;
+    const q = surahSearch.trim().toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.arabic.includes(surahSearch.trim()) ||
+      String(s.number).includes(q)
+    );
   });
 
   const addRange = () => { setPageRanges(r => [...r, { start: '', end: '' }]); setRangeErrors(e => [...e, {}]); };
@@ -100,12 +142,28 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
   };
 
   const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
-  const selectedPages = computeSelectedPages(selectedJuz, pageRanges);
+  const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
+
+  const preservedPages = useMemo(() => {
+    const result = new Set();
+    JUZ_RANGES.forEach(({ juz, start, end }) => {
+      const isSelected = selectedJuz.has(juz);
+      const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
+      const isPartial = juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
+      if (isPartial && !isSelected) {
+        for (let p = start; p <= end; p++) {
+          if (memorizedSet.has(p)) result.add(p);
+        }
+      }
+    });
+    return result;
+  }, [selectedJuz, currentJuzData, memorizedSet]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await progressAPI.updateMemorized({ memorizedPages: selectedPages });
+      const finalPages = Array.from(new Set([...selectedPages, ...preservedPages])).sort((a, b) => a - b);
+      await progressAPI.updateMemorized({ memorizedPages: finalPages });
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
@@ -130,65 +188,151 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData }) {
         </div>
 
         <div className="p-6 space-y-6">
-          <div>
-            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.selectByJuz')}</p>
-            <div className="grid grid-cols-5 gap-2">
-              {JUZ_RANGES.map(({ juz }) => (
+          <div className="flex flex-col gap-1">
+            <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
+            <div className="flex items-center gap-2">
+              {[
+                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
+                { mode: 'surah', labelKey: 'onboarding.bySurah' },
+                { mode: 'range', labelKey: 'onboarding.byRange' },
+              ].map(({ mode, labelKey }) => (
                 <button
-                  key={juz}
-                  onClick={() => toggleJuz(juz)}
-                  className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
-                    selectedJuz.has(juz)
+                  key={mode}
+                  onClick={() => setSelectionMode(mode)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
                       : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
                   }`}
                 >
-                  {juz}
+                  {t(labelKey)}
                 </button>
               ))}
-            </div>
-            <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-              {selectedJuz.size > 0 ? t('settings.juzSelected', { count: selectedJuz.size }) : t('settings.noJuzSelected')}
-            </p>
-          </div>
-
-          <div className="border-t border-[#dce2f3] dark:border-gray-700 pt-4">
-            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-              {t('settings.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('settings.optional')}</span>
-            </p>
-            <div className="space-y-2">
-              {pageRanges.map((r, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="1" max="604" value={r.start} onChange={e => updateRange(i, 'start', e.target.value)}
-                      placeholder="Start (1–604)"
-                      className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                    <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('settings.to')}</span>
-                    <input type="number" min="1" max="604" value={r.end} onChange={e => updateRange(i, 'end', e.target.value)}
-                      placeholder="End (1–604)"
-                      className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                    {pageRanges.length > 1 && (
-                      <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
-                        <FiX className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                    <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                  )}
-                </div>
-              ))}
-              <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                <FiPlus className="w-3 h-3" /> {t('settings.addRange')}
+              <button
+                onClick={() => {
+                  setSelectedJuz(new Set());
+                  setSelectedSurahs(new Set());
+                  setPageRanges([{ start: '', end: '' }]);
+                  setRangeErrors([{}]);
+                }}
+                className="ml-auto text-xs text-[#707974] dark:text-gray-400 hover:text-[#ba1a1a] dark:hover:text-red-400 transition-colors"
+              >
+                {t('settings.clearSelection')}
               </button>
             </div>
           </div>
 
-          {selectedPages.length > 0 && (
+          {selectionMode === 'juz' && (
+            <div>
+              <div className="grid grid-cols-5 gap-2">
+                {JUZ_RANGES.map(({ juz }) => {
+                  const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
+                  const isSelected = selectedJuz.has(juz);
+                  const isPartial = !isSelected && juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
+                  return (
+                    <button
+                      key={juz}
+                      onClick={() => toggleJuz(juz)}
+                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
+                        isSelected
+                          ? 'bg-[#003527] text-white border-[#003527]'
+                          : isPartial
+                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
+                      }`}
+                    >
+                      <span>{juz}</span>
+                      {isPartial && <span className="text-[9px] leading-none opacity-80">{juzInfo.percentage}%</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+                {selectedJuz.size > 0 ? t('settings.juzSelected', { count: selectedJuz.size }) : t('settings.noJuzSelected')}
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
+            </div>
+          )}
+
+          {selectionMode === 'surah' && (
+            <div>
+              <input
+                type="text"
+                placeholder={t('onboarding.surahSearchPlaceholder')}
+                value={surahSearch}
+                onChange={e => setSurahSearch(e.target.value)}
+                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
+              />
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                {filteredSurahs.map(s => (
+                  <button
+                    key={s.number}
+                    onClick={() => toggleSurah(s.number)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
+                      selectedSurahs.has(s.number)
+                        ? 'bg-[#003527] text-white border-[#003527]'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
+                    }`}
+                  >
+                    <span className="text-xs font-medium leading-tight">
+                      {s.number}. {isArabic ? s.arabic : s.name}
+                    </span>
+                    <span className={`text-[10px] mt-0.5 leading-tight ${selectedSurahs.has(s.number) ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                      {isArabic ? s.name : s.arabic}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {selectedSurahs.size > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahs.size })}</p>
+              )}
+            </div>
+          )}
+
+          {selectionMode === 'range' && (
+            <div>
+              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
+                {t('settings.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('settings.optional')}</span>
+              </p>
+              <div className="space-y-2">
+                {pageRanges.map((r, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="1" max="604" value={r.start} onChange={e => updateRange(i, 'start', e.target.value)}
+                        placeholder="Start (1–604)"
+                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
+                      <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('settings.to')}</span>
+                      <input type="number" min="1" max="604" value={r.end} onChange={e => updateRange(i, 'end', e.target.value)}
+                        placeholder="End (1–604)"
+                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
+                      {pageRanges.length > 1 && (
+                        <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
+                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
+                    )}
+                  </div>
+                ))}
+                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
+                  <FiPlus className="w-3 h-3" /> {t('settings.addRange')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(selectedPages.length > 0 || preservedPages.size > 0) && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
                 {t('settings.pagesSelected', { count: selectedPages.length })}
               </p>
+              {preservedPages.size > 0 && (
+                <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
+                  {t('settings.preservedNote', { count: preservedPages.size })}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -296,6 +440,7 @@ export default function Settings() {
   const setActiveSection = (tab) => setSearchParams({ tab }, { replace: true });
 
   const [memorizedJuz, setMemorizedJuz] = useState([]);
+  const [memorizedPageNums, setMemorizedPageNums] = useState([]);
   const [editProgressOpen, setEditProgressOpen] = useState(false);
 
   const [profileName, setProfileName] = useState(user?.name ?? '');
@@ -345,7 +490,13 @@ export default function Settings() {
   }, [user]);
 
   useEffect(() => {
-    progressAPI.getJuzProgress().then(res => setMemorizedJuz(res.data.data)).catch(() => {});
+    Promise.all([
+      progressAPI.getJuzProgress(),
+      progressAPI.getAllProgress(),
+    ]).then(([juzRes, allRes]) => {
+      setMemorizedJuz(juzRes.data.data);
+      setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
+    }).catch(() => {});
     progressAPI.getTodayTasks().then(res => setTodayStats(res.data.data.stats)).catch(() => {});
   }, []);
 
@@ -901,8 +1052,15 @@ export default function Settings() {
       <EditProgressModal
         isOpen={editProgressOpen}
         onClose={() => setEditProgressOpen(false)}
-        onSave={() => progressAPI.getJuzProgress().then(res => setMemorizedJuz(res.data.data)).catch(() => {})}
+        onSave={() => Promise.all([
+          progressAPI.getJuzProgress(),
+          progressAPI.getAllProgress(),
+        ]).then(([juzRes, allRes]) => {
+          setMemorizedJuz(juzRes.data.data);
+          setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
+        }).catch(() => {})}
         currentJuzData={memorizedJuz}
+        memorizedPageNums={memorizedPageNums}
       />
 
       <ConfirmModal
