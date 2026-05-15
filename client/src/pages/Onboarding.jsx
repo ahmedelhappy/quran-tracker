@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
 import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
+import { SURAH_PAGES } from '../data/surahPages';
 
 const JUZ_RANGES = [
   {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
@@ -44,12 +45,16 @@ function formatEstimate(days) {
   return { value: years, unitKey: years === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
 }
 
-function computeSelectedPages(selectedJuz, pageRanges) {
+function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
   const pages = new Set();
   JUZ_RANGES.forEach(({ juz, start, end }) => {
     if (selectedJuz.has(juz)) {
       for (let p = start; p <= end; p++) pages.add(p);
     }
+  });
+  selectedSurahs.forEach(num => {
+    const s = SURAH_PAGES.find(x => x.number === num);
+    if (s) for (let p = s.start; p <= s.end; p++) pages.add(p);
   });
   pageRanges.forEach(({ start, end }) => {
     const s = parseInt(start, 10), e = parseInt(end, 10);
@@ -103,11 +108,15 @@ const OnboardingHeader = ({ step }) => {
 export default function Onboarding() {
   const { refreshUser } = useAuth();
   const { showToast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [selectedJuz, setSelectedJuz] = useState(new Set());
+  const [selectedSurahs, setSelectedSurahs] = useState(new Set());
+  const [selectionMode, setSelectionMode] = useState('juz');
+  const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [rangeErrors, setRangeErrors] = useState([{}]);
   const [dailyPages, setDailyPages] = useState(1);
@@ -116,7 +125,7 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
 
-  const selectedPages = computeSelectedPages(selectedJuz, pageRanges);
+  const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
   const selectedCount = selectedPages.length;
 
   // Client-side estimate
@@ -130,6 +139,22 @@ export default function Onboarding() {
     const next = new Set(prev);
     next.has(n) ? next.delete(n) : next.add(n);
     return next;
+  });
+
+  const toggleSurah = (n) => setSelectedSurahs(prev => {
+    const next = new Set(prev);
+    next.has(n) ? next.delete(n) : next.add(n);
+    return next;
+  });
+
+  const filteredSurahs = SURAH_PAGES.filter(s => {
+    if (!surahSearch.trim()) return true;
+    const q = surahSearch.trim().toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.arabic.includes(surahSearch.trim()) ||
+      String(s.number).includes(q)
+    );
   });
 
   const selectAll = () => setSelectedJuz(new Set(JUZ_RANGES.map(j => j.juz)));
@@ -203,79 +228,140 @@ export default function Onboarding() {
             <p className="text-[#404944] dark:text-gray-400">{t('onboarding.alreadyMemorizedHint')}</p>
           </div>
 
-          <div>
-            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('onboarding.selectByJuz')}</p>
-            <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-              {JUZ_RANGES.map(({ juz }) => (
+          <div className="flex flex-col gap-1">
+            <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
+            <div className="flex gap-2">
+              {[
+                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
+                { mode: 'surah', labelKey: 'onboarding.bySurah' },
+                { mode: 'range', labelKey: 'onboarding.byRange' },
+              ].map(({ mode, labelKey }) => (
                 <button
-                  key={juz}
-                  onClick={() => toggleJuz(juz)}
-                  className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
-                    selectedJuz.has(juz)
+                  key={mode}
+                  onClick={() => setSelectionMode(mode)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
                       : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                   }`}
                 >
-                  {juz}
+                  {t(labelKey)}
                 </button>
               ))}
             </div>
-            <div className="flex items-center justify-between mt-2">
-              {selectedJuz.size > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuz.size })}</p>
-              )}
-              <button onClick={selectAll} className="ml-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
-                {t('onboarding.selectAll')} ✓✓
-              </button>
-            </div>
           </div>
 
-          <div className="border-t border-[#f0f3ff] dark:border-gray-700 pt-4">
-            <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-              {t('onboarding.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('onboarding.optional')}</span>
-            </p>
-            <div className="space-y-2">
-              {pageRanges.map((r, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
-                      <input
-                        type="number" min="1" max="604" value={r.start}
-                        onChange={e => updateRange(i, 'start', e.target.value)}
-                        placeholder="Start page (1–604)"
-                        className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                      />
+          {selectionMode === 'juz' && (
+            <div>
+              <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                {JUZ_RANGES.map(({ juz }) => (
+                  <button
+                    key={juz}
+                    onClick={() => toggleJuz(juz)}
+                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
+                      selectedJuz.has(juz)
+                        ? 'bg-[#003527] text-white border-[#003527]'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                    }`}
+                  >
+                    {juz}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                {selectedJuz.size > 0 && (
+                  <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuz.size })}</p>
+                )}
+                <button onClick={selectAll} className="ml-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
+                  {t('onboarding.selectAll')} ✓✓
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectionMode === 'surah' && (
+            <div>
+              <input
+                type="text"
+                placeholder={t('onboarding.surahSearchPlaceholder')}
+                value={surahSearch}
+                onChange={e => setSurahSearch(e.target.value)}
+                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
+              />
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                {filteredSurahs.map(s => (
+                  <button
+                    key={s.number}
+                    onClick={() => toggleSurah(s.number)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
+                      selectedSurahs.has(s.number)
+                        ? 'bg-[#003527] text-white border-[#003527]'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                    }`}
+                  >
+                    <span className="text-xs font-medium leading-tight">
+                      {s.number}. {isArabic ? s.arabic : s.name}
+                    </span>
+                    <span className={`text-[10px] mt-0.5 leading-tight ${selectedSurahs.has(s.number) ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                      {isArabic ? s.name : s.arabic}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {selectedSurahs.size > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahs.size })}</p>
+              )}
+            </div>
+          )}
+
+          {selectionMode === 'range' && (
+            <div>
+              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
+                {t('onboarding.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('onboarding.optional')}</span>
+              </p>
+              <div className="space-y-2">
+                {pageRanges.map((r, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type="number" min="1" max="604" value={r.start}
+                          onChange={e => updateRange(i, 'start', e.target.value)}
+                          placeholder="Start page (1–604)"
+                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
+                        />
+                      </div>
+                      <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('onboarding.to')}</span>
+                      <div className="flex-1 relative">
+                        <input
+                          type="number" min="1" max="604" value={r.end}
+                          onChange={e => updateRange(i, 'end', e.target.value)}
+                          placeholder="End page (1–604)"
+                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
+                        />
+                      </div>
+                      {pageRanges.length > 1 && (
+                        <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('onboarding.to')}</span>
-                    <div className="flex-1 relative">
-                      <input
-                        type="number" min="1" max="604" value={r.end}
-                        onChange={e => updateRange(i, 'end', e.target.value)}
-                        placeholder="End page (1–604)"
-                        className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                      />
-                    </div>
-                    {pageRanges.length > 1 && (
-                      <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
-                        <FiX className="w-4 h-4" />
-                      </button>
+                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
+                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                     )}
                   </div>
-                  {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                    <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                  )}
-                </div>
-              ))}
-              <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                <FiPlus className="w-3 h-3" /> {t('onboarding.addRange')}
-              </button>
+                ))}
+                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
+                  <FiPlus className="w-3 h-3" /> {t('onboarding.addRange')}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                {t('onboarding.totalSelected', { count: selectedCount })}{selectedJuz.size > 0 && ` ${t('onboarding.totalSelectedWithJuz', { count: selectedJuz.size })}`}
+                {t('onboarding.totalSelectedAll', { pages: selectedCount, juz: selectedJuz.size, surah: selectedSurahs.size })}
               </p>
             </div>
           )}

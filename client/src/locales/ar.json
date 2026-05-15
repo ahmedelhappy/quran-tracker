@@ -250,7 +250,10 @@
     "modeIntensityDesc": "يضبط عدد المراجعات بناءً على حجم ما حفظته",
     "modeFixed": "عدد ثابت",
     "modeFixedDesc": "حدد عدد الصفحات بنفسك",
-    "orDivider": "أو"
+    "orDivider": "أو",
+    "juzGridNote": "الأجزاء البرتقالية محفوظة جزئياً. تحديدها سيكمل الصفحات المتبقية.",
+    "clearSelection": "مسح الاختيار",
+    "preservedNote": "+ {{count}} صفحة من الأجزاء المحفوظة جزئياً ستُحفظ أيضاً"
   },
   "onboarding": {
     "welcome": "مرحباً بك في",
@@ -321,7 +324,14 @@
     "dayName3": "الأربعاء",
     "dayName4": "الخميس",
     "dayName5": "الجمعة",
-    "dayName6": "السبت"
+    "dayName6": "السبت",
+    "selectMode": "اختر حسب",
+    "byJuz": "حسب الجزء",
+    "bySurah": "حسب السورة",
+    "byRange": "حسب النطاق",
+    "surahSearchPlaceholder": "ابحث عن سورة بالاسم أو الرقم...",
+    "surahsSelected": "{{count}} سورة محددة",
+    "totalSelectedAll": "{{pages}} صفحة محددة ({{juz}} جزء، {{surah}} سورة)"
   },
   "common": {
     "loading": "جاري التحميل...",

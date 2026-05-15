@@ -250,7 +250,10 @@
     "modeIntensityDesc": "Adjusts daily reviews based on how much you've memorized",
     "modeFixed": "Fixed number",
     "modeFixedDesc": "Set exact page counts yourself",
-    "orDivider": "OR"
+    "orDivider": "OR",
+    "juzGridNote": "Orange Juz are partially memorized. Selecting them will complete all remaining pages.",
+    "clearSelection": "Clear selection",
+    "preservedNote": "+ {{count}} pages from partially memorized Juz will also be kept"
   },
   "onboarding": {
     "welcome": "Welcome to",
@@ -321,7 +324,14 @@
     "dayName3": "Wednesday",
     "dayName4": "Thursday",
     "dayName5": "Friday",
-    "dayName6": "Saturday"
+    "dayName6": "Saturday",
+    "selectMode": "Select by",
+    "byJuz": "By Juz",
+    "bySurah": "By Surah",
+    "byRange": "By Range",
+    "surahSearchPlaceholder": "Search surah by name or number...",
+    "surahsSelected": "{{count}} Surah selected",
+    "totalSelectedAll": "{{pages}} pages selected ({{juz}} Juz, {{surah}} Surah)"
   },
   "common": {
     "loading": "Loading...",
