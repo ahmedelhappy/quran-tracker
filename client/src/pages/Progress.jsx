@@ -312,9 +312,10 @@ export default function Progress() {
                     <YAxis tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
                     <Tooltip
                       contentStyle={isDark ? { background: '#1F2937', border: '1px solid #374151', color: '#F9FAFB', borderRadius: 8, fontSize: 12 } : { border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
+                      itemStyle={isDark ? { color: '#6EE7B7' } : {}}
                       formatter={(v) => [t('progress.pagesCount', { count: v }), t('progress.memorized')]}
                     />
-                    <Line type="monotone" dataKey="pages" stroke="#1B4332" strokeWidth={2.5} dot={{ fill: '#1B4332', r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="pages" stroke={isDark ? '#6EE7B7' : '#1B4332'} strokeWidth={2.5} dot={{ fill: isDark ? '#6EE7B7' : '#1B4332', r: 3 }} activeDot={{ r: 5, fill: isDark ? '#A7F3D0' : '#1B4332' }} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
