@@ -67,7 +67,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
       </div>
       {done ? (
         <div className="flex items-center gap-2 self-stretch sm:self-auto">
-          <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] bg-[#004f35]/10 px-4 py-2 rounded-lg">
+          <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-4 py-2 rounded-lg">
             {t('dashboard.done')}
           </span>
           <button
@@ -116,7 +116,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
       </div>
       {done ? (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[#004f35] bg-[#004f35]/10 px-3 py-1.5 rounded-lg">{t('dashboard.done')}</span>
+          <span className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg">{t('dashboard.done')}</span>
           <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
         </div>
       ) : (
@@ -493,7 +493,7 @@ export default function Dashboard() {
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
                   <span style={{ fontSize: 200 }}>🌿</span>
                 </div>
-                <div className="w-20 h-20 rounded-full bg-[#004f35]/10 flex items-center justify-center text-[#004f35] mb-6">
+                <div className="w-20 h-20 rounded-full bg-[#004f35]/10 dark:bg-emerald-900/20 flex items-center justify-center text-[#004f35] dark:text-emerald-400 mb-6">
                   <span className="text-4xl">🌿</span>
                 </div>
                 <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">{t('dashboard.restDay')}</h2>
@@ -587,7 +587,7 @@ export default function Dashboard() {
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
                     </div>
                     {newPending.length > 0 && (
-                      <button onClick={markAllNew} className="text-[#004f35] border border-[#004f35]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 transition-colors">
+                      <button onClick={markAllNew} className="text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors">
                         {t('dashboard.markAll')}
                       </button>
                     )}

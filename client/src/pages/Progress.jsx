@@ -153,7 +153,7 @@ export default function Progress() {
               onClick={() => setActiveTab(tab.key)}
               className={`pb-3 text-sm font-semibold transition-colors ${
                 activeTab === tab.key
-                  ? 'border-b-2 border-[#004f35] text-[#003527] dark:text-emerald-400'
+                  ? 'border-b-2 border-[#004f35] dark:border-emerald-400 text-[#003527] dark:text-emerald-400'
                   : 'text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >

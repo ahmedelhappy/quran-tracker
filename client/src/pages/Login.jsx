@@ -90,7 +90,7 @@ const Login = () => {
             <div className="mt-6 text-center">
               <p className="text-[#404944] dark:text-gray-400">
                 {t('auth.noAccount')}{' '}
-                <Link to="/register" className="font-medium text-[#064e3b] dark:text-emerald-400 hover:text-[#004f35] underline underline-offset-4 transition-colors">
+                <Link to="/register" className="font-medium text-[#064e3b] dark:text-emerald-400 hover:text-[#004f35] dark:hover:text-emerald-300 underline underline-offset-4 transition-colors">
                   {t('auth.signUp')}
                 </Link>
               </p>
