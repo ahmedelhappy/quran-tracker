@@ -202,7 +202,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
-                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
+                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
                   }`}
                 >
                   {t(labelKey)}
@@ -238,7 +238,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isPartial
                             ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
+                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
                       }`}
                     >
                       <span>{juz}</span>
@@ -271,7 +271,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
                       selectedSurahs.has(s.number)
                         ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
                     }`}
                   >
                     <span className="text-xs font-medium leading-tight">
@@ -452,6 +452,9 @@ export default function Settings() {
   const [customDailyValue, setCustomDailyValue] = useState(
     DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? 1.5 : (user?.dailyNewPages ?? 1.5)
   );
+  const [customInputText, setCustomInputText] = useState(
+    DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? '' : String(user?.dailyNewPages ?? 1.5)
+  );
   const [intensity, setIntensity]     = useState(user?.reviewIntensity ?? 'standard');
   const [offDays, setOffDays]         = useState(user?.offDays ?? []);
   const [planDirty, setPlanDirty]     = useState(false);
@@ -481,6 +484,7 @@ export default function Settings() {
       setDailyPages(user.dailyNewPages ?? 1);
       setDailyMode(DAILY_OPTIONS.includes(user.dailyNewPages ?? 1) ? 'fixed' : 'custom');
       setCustomDailyValue(DAILY_OPTIONS.includes(user.dailyNewPages ?? 1) ? 1.5 : (user.dailyNewPages ?? 1.5));
+      setCustomInputText(DAILY_OPTIONS.includes(user.dailyNewPages ?? 1) ? '' : String(user.dailyNewPages ?? 1.5));
       setIntensity(user.reviewIntensity ?? 'standard');
       setOffDays(user.offDays ?? []);
       setReviewMode((user.recentReviewCount != null || user.cycleReviewCount != null) ? 'fixed' : 'intensity');
@@ -577,6 +581,7 @@ export default function Settings() {
       setDailyPages(user?.dailyNewPages ?? 1);
       setDailyMode(DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? 'fixed' : 'custom');
       setCustomDailyValue(DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? 1.5 : (user?.dailyNewPages ?? 1.5));
+      setCustomInputText(DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? '' : String(user?.dailyNewPages ?? 1.5));
       setIntensity(user?.reviewIntensity ?? 'standard');
       setOffDays(user?.offDays ?? []);
       setReviewMode((user?.recentReviewCount != null || user?.cycleReviewCount != null) ? 'fixed' : 'intensity');
@@ -606,6 +611,8 @@ export default function Settings() {
   };
 
   const saving = profileSaving || planSaving;
+  const isCustomInvalid = dailyMode === 'custom' && customInputText !== '' &&
+    (isNaN(parseFloat(customInputText)) || parseFloat(customInputText) < 0.5 || parseFloat(customInputText) > 10);
 
   return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
@@ -794,7 +801,7 @@ export default function Settings() {
                         className={`px-6 py-3 rounded-xl border font-medium transition-colors ${
                           dailyMode === 'fixed' && dailyPages === v
                             ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
-                            : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
+                            : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
                         }`}
                       >
                         {v}
@@ -803,6 +810,7 @@ export default function Settings() {
                     <div
                       onClick={() => {
                         const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
+                        setCustomInputText(String(seedValue));
                         setCustomDailyValue(seedValue);
                         setDailyMode('custom');
                         setDailyPages(seedValue);
@@ -811,7 +819,7 @@ export default function Settings() {
                       className={`px-4 py-3 rounded-xl border font-medium transition-colors cursor-pointer flex items-center gap-2 ${
                         dailyMode === 'custom'
                           ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
-                          : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
+                          : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
                       }`}
                     >
                       <span className="text-sm">{t('settings.customPages')}</span>
@@ -820,11 +828,22 @@ export default function Settings() {
                         type="number"
                         min="0.5"
                         max="10"
-                        step="0.5"
-                        value={dailyMode === 'custom' ? customDailyValue : ''}
+                        value={dailyMode === 'custom' ? customInputText : ''}
                         placeholder="—"
                         onClick={e => e.stopPropagation()}
+                        onFocus={e => {
+                          if (dailyMode !== 'custom') {
+                            const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
+                            setCustomInputText(String(seedValue));
+                            setCustomDailyValue(seedValue);
+                            setDailyMode('custom');
+                            setDailyPages(seedValue);
+                          }
+                          const input = e.target;
+                          setTimeout(() => input.select(), 0);
+                        }}
                         onChange={e => {
+                          setCustomInputText(e.target.value);
                           const val = parseFloat(e.target.value);
                           if (!isNaN(val) && val >= 0.5 && val <= 10) {
                             const rounded = Math.round(val * 2) / 2;
@@ -832,12 +851,20 @@ export default function Settings() {
                             setDailyPages(rounded);
                           }
                         }}
-                        className={`w-10 bg-transparent text-center text-sm focus:outline-none ${
+                        onBlur={() => {
+                          if (dailyMode === 'custom') {
+                            setCustomInputText(String(customDailyValue));
+                          }
+                        }}
+                        className={`w-12 bg-transparent text-center text-sm focus:outline-none rounded transition-shadow ${
                           dailyMode === 'custom' ? 'text-white placeholder-white/60' : ''
-                        }`}
+                        } ${isCustomInvalid ? 'ring-2 ring-red-400' : ''}`}
                       />
                     </div>
                   </div>
+                  {isCustomInvalid && (
+                    <p className="text-xs text-red-500 mt-2">{t('settings.dailyTargetRangeError')}</p>
+                  )}
                 </div>
 
                 <div className="mb-6">

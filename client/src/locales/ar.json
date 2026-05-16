@@ -186,6 +186,7 @@
     "noJuzYet": "لا أجزاء مكتملة بعد",
     "dailyTarget": "الهدف اليومي (صفحات)",
     "dailyTargetDesc": "اختر عدد الصفحات التي تريد حفظها يومياً.",
+    "dailyTargetRangeError": "يجب أن تكون القيمة بين 0.5 و 10",
     "reviewIntensity": "شدة المراجعة",
     "reviewIntensityDesc": "ما مدى الجدية التي تريد بها مراجعة ما حفظت؟",
     "intensityLight": "خفيف",

@@ -186,6 +186,7 @@
     "noJuzYet": "No completed Juz yet",
     "dailyTarget": "Daily Target (Pages)",
     "dailyTargetDesc": "Select your preferred number of pages to memorize per day.",
+    "dailyTargetRangeError": "Must be between 0.5 and 10",
     "reviewIntensity": "Review Intensity",
     "reviewIntensityDesc": "How rigorously would you like to review past memorization?",
     "intensityLight": "Light",

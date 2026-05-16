@@ -4,6 +4,19 @@
 /* Class-based dark mode for Tailwind v4 */
 @variant dark (&:where(.dark, .dark *));
 
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #40916C; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #2D6A4F; }
+.dark ::-webkit-scrollbar-thumb { background: #2D6A4F; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #40916C; }
+
+/* Remove number input up/down arrows */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
 html { scroll-behavior: smooth; }
 
 body {
