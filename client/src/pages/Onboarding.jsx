@@ -160,7 +160,7 @@ export default function Onboarding() {
   const selectAll = () => setSelectedJuz(new Set(JUZ_RANGES.map(j => j.juz)));
 
   const toggleOffDay = (d) =>
-    setOffDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : prev.length < 2 ? [...prev, d] : prev);
+    setOffDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
   const addRange = () => {
     setPageRanges(r => [...r, { start: '', end: '' }]);
@@ -511,7 +511,7 @@ export default function Onboarding() {
               <label key={i} className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={offDays.includes(i)}
+                  checked={!offDays.includes(i)}
                   onChange={() => toggleOffDay(i)}
                   className="w-5 h-5 rounded border-[#707974] accent-[#003527] cursor-pointer"
                 />
@@ -519,9 +519,9 @@ export default function Onboarding() {
               </label>
             ))}
           </div>
-          {offDays.length === 2 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('onboarding.maxRestDays')}</p>
-          )}
+          <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+            {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+          </p>
         </div>
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">

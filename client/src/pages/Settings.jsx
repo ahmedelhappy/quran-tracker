@@ -527,7 +527,7 @@ export default function Settings() {
                   (activeSection === 'memorization' && planDirty);
 
   const toggleOffDay = (jsDay) =>
-    setOffDays(prev => prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : prev.length < 2 ? [...prev, jsDay] : prev);
+    setOffDays(prev => prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : [...prev, jsDay]);
 
   const changeLanguage = () => {
     const newLang = i18n.language === 'en' ? 'ar' : 'en';
@@ -987,7 +987,7 @@ export default function Settings() {
                         <label key={labelKey} className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={offDays.includes(jsDay)}
+                            checked={!offDays.includes(jsDay)}
                             onChange={() => toggleOffDay(jsDay)}
                             className="w-5 h-5 rounded border-[#707974] accent-[#003527] cursor-pointer"
                           />
@@ -996,6 +996,9 @@ export default function Settings() {
                       );
                     })}
                   </div>
+                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+                    {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+                  </p>
                 </div>
               </section>
             )}

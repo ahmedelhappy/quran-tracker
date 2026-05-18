@@ -56,8 +56,8 @@ const userSchema = new mongoose.Schema(
       type: [Number],
       default: [],
       validate: {
-        validator: (days) => days.length <= 2 && days.every(d => d >= 0 && d <= 6),
-        message: 'offDays must contain at most 2 values, each between 0 (Sun) and 6 (Sat)',
+        validator: (days) => days.every(d => d >= 0 && d <= 6),
+        message: 'offDays values must be between 0 (Sun) and 6 (Sat)',
       },
     },
     recentReviewCount: {

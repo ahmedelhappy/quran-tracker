@@ -212,10 +212,10 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (offDays !== undefined) {
-      if (!Array.isArray(offDays) || offDays.length > 2 || !offDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
+      if (!Array.isArray(offDays) || !offDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
         return res.status(400).json({
           success: false,
-          message: 'offDays must be an array of at most 2 integers (0=Sun through 6=Sat)'
+          message: 'offDays must be an array of integers between 0 (Sun) and 6 (Sat)'
         });
       }
       updateData.offDays = offDays;
