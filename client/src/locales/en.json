@@ -359,6 +359,10 @@
     "surahLabel": "Surah",
     "juzInfoLabel": "Juz {{n}}"
   },
+  "footer": {
+    "contactSupport": "Contact Support",
+    "about": "About"
+  },
   "chatbot": {
     "title": "Islamic Assistant",
     "placeholder": "Ask about Quran or Hifz...",

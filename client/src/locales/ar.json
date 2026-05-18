@@ -359,6 +359,10 @@
     "surahLabel": "سورة",
     "juzInfoLabel": "جزء {{n}}"
   },
+  "footer": {
+    "contactSupport": "تواصل مع الدعم",
+    "about": "عن التطبيق"
+  },
   "chatbot": {
     "title": "المساعد الإسلامي",
     "placeholder": "اسأل عن القرآن أو الحفظ...",
