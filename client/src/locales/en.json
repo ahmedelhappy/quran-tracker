@@ -254,9 +254,11 @@
     "modeFixed": "Fixed number",
     "modeFixedDesc": "Set exact page counts yourself",
     "orDivider": "OR",
-    "juzGridNote": "Orange Juz are partially memorized. Selecting them will complete all remaining pages.",
+    "juzGridNote": "Orange = partially memorized (kept by default). Click to select all → click again to mark for removal (red) → click once more to restore.",
     "clearSelection": "Clear selection",
-    "preservedNote": "+ {{count}} pages from partially memorized Juz will also be kept"
+    "selectAll": "Select All",
+    "restore": "Restore",
+    "preservedNote": "+ {{count}} pages from partially memorized items will also be kept"
   },
   "onboarding": {
     "welcome": "Welcome to",

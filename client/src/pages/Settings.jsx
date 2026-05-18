@@ -75,7 +75,9 @@ function validateRanges(pageRanges) {
 // ── Edit Progress Modal ──────────────────────────────────
 function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedPageNums }) {
   const [selectedJuz, setSelectedJuz] = useState(new Set());
+  const [removedJuz, setRemovedJuz] = useState(new Set());
   const [selectedSurahs, setSelectedSurahs] = useState(new Set());
+  const [removedSurahs, setRemovedSurahs] = useState(new Set());
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
@@ -87,10 +89,19 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
 
   const memorizedSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
 
+  const surahMemPercent = (surah) => {
+    let count = 0;
+    for (let p = surah.start; p <= surah.end; p++)
+      if (memorizedSet.has(p)) count++;
+    return Math.round((count / (surah.end - surah.start + 1)) * 100);
+  };
+
   useEffect(() => {
     if (isOpen && currentJuzData) {
       const memorized = new Set(currentJuzData.filter(j => j.isComplete).map(j => j.juzNumber));
       setSelectedJuz(memorized);
+      setRemovedJuz(new Set());
+      setRemovedSurahs(new Set());
       setSelectionMode('juz');
       setSurahSearch('');
       setPageRanges([{ start: '', end: '' }]);
@@ -111,17 +122,48 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
     }
   }, [isOpen, currentJuzData, memorizedPageNums]);
 
-  const toggleJuz = (n) => setSelectedJuz(prev => {
-    const next = new Set(prev);
-    next.has(n) ? next.delete(n) : next.add(n);
-    return next;
-  });
+  const toggleJuz = (n) => {
+    const juzInfo = currentJuzData?.find(j => j.juzNumber === n);
+    if (!juzInfo || juzInfo.memorizedPages === 0) {
+      setSelectedJuz(prev => { const next = new Set(prev); next.has(n) ? next.delete(n) : next.add(n); return next; });
+      return;
+    }
+    const isSelected = selectedJuz.has(n);
+    const isRemoved = removedJuz.has(n);
+    if (!isSelected && !isRemoved) {
+      setSelectedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
+    } else if (isSelected) {
+      setSelectedJuz(prev => { const next = new Set(prev); next.delete(n); return next; });
+      setRemovedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
+    } else {
+      setRemovedJuz(prev => { const next = new Set(prev); next.delete(n); return next; });
+      if (juzInfo.isComplete) {
+        setSelectedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
+      }
+    }
+  };
 
-  const toggleSurah = (n) => setSelectedSurahs(prev => {
-    const next = new Set(prev);
-    next.has(n) ? next.delete(n) : next.add(n);
-    return next;
-  });
+  const toggleSurah = (n) => {
+    const surah = SURAH_PAGES.find(s => s.number === n);
+    const pct = surah ? surahMemPercent(surah) : 0;
+    if (pct === 0) {
+      setSelectedSurahs(prev => { const next = new Set(prev); next.has(n) ? next.delete(n) : next.add(n); return next; });
+      return;
+    }
+    const isSelected = selectedSurahs.has(n);
+    const isRemoved = removedSurahs.has(n);
+    if (!isSelected && !isRemoved) {
+      setSelectedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
+    } else if (isSelected) {
+      setSelectedSurahs(prev => { const next = new Set(prev); next.delete(n); return next; });
+      setRemovedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
+    } else {
+      setRemovedSurahs(prev => { const next = new Set(prev); next.delete(n); return next; });
+      if (pct === 100) {
+        setSelectedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
+      }
+    }
+  };
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -148,21 +190,43 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
     const result = new Set();
     JUZ_RANGES.forEach(({ juz, start, end }) => {
       const isSelected = selectedJuz.has(juz);
+      const isRemoved = removedJuz.has(juz);
       const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
       const isPartial = juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
-      if (isPartial && !isSelected) {
+      if (isPartial && !isSelected && !isRemoved) {
         for (let p = start; p <= end; p++) {
           if (memorizedSet.has(p)) result.add(p);
         }
       }
     });
+    SURAH_PAGES.forEach(surah => {
+      const isSelected = selectedSurahs.has(surah.number);
+      const isRemoved = removedSurahs.has(surah.number);
+      const pct = surahMemPercent(surah);
+      if (pct > 0 && pct < 100 && !isSelected && !isRemoved) {
+        for (let p = surah.start; p <= surah.end; p++) {
+          if (memorizedSet.has(p)) result.add(p);
+        }
+      }
+    });
     return result;
-  }, [selectedJuz, currentJuzData, memorizedSet]);
+  }, [selectedJuz, removedJuz, selectedSurahs, removedSurahs, currentJuzData, memorizedSet]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const finalPages = Array.from(new Set([...selectedPages, ...preservedPages])).sort((a, b) => a - b);
+      const removedPageSet = new Set();
+      removedJuz.forEach(juz => {
+        const r = JUZ_RANGES.find(x => x.juz === juz);
+        if (r) for (let p = r.start; p <= r.end; p++) removedPageSet.add(p);
+      });
+      removedSurahs.forEach(num => {
+        const s = SURAH_PAGES.find(x => x.number === num);
+        if (s) for (let p = s.start; p <= s.end; p++) removedPageSet.add(p);
+      });
+      const finalPages = Array.from(new Set([...selectedPages, ...preservedPages]))
+        .filter(p => !removedPageSet.has(p))
+        .sort((a, b) => a - b);
       await progressAPI.updateMemorized({ memorizedPages: finalPages });
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
@@ -210,14 +274,21 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
               ))}
               <button
                 onClick={() => {
-                  setSelectedJuz(new Set());
-                  setSelectedSurahs(new Set());
+                  const allComplete = new Set(currentJuzData?.filter(j => j.isComplete).map(j => j.juzNumber) ?? []);
+                  setSelectedJuz(allComplete);
+                  setRemovedJuz(new Set());
+                  const allCompleteSurahs = new Set(SURAH_PAGES.filter(surah => {
+                    for (let p = surah.start; p <= surah.end; p++) if (!memorizedSet.has(p)) return false;
+                    return true;
+                  }).map(s => s.number));
+                  setSelectedSurahs(allCompleteSurahs);
+                  setRemovedSurahs(new Set());
                   setPageRanges([{ start: '', end: '' }]);
                   setRangeErrors([{}]);
                 }}
-                className="ml-auto text-xs text-[#707974] dark:text-gray-400 hover:text-[#ba1a1a] dark:hover:text-red-400 transition-colors"
+                className="ml-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
-                {t('settings.clearSelection')}
+                {t('settings.restore')}
               </button>
             </div>
           </div>
@@ -228,7 +299,9 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                 {JUZ_RANGES.map(({ juz }) => {
                   const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
                   const isSelected = selectedJuz.has(juz);
-                  const isPartial = !isSelected && juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
+                  const isRemoved = removedJuz.has(juz);
+                  const isPartial = !isSelected && !isRemoved && juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
+                  const isCompleteDeselected = !isSelected && !isRemoved && juzInfo?.isComplete;
                   return (
                     <button
                       key={juz}
@@ -236,13 +309,19 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                       className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
                         isSelected
                           ? 'bg-[#003527] text-white border-[#003527]'
-                          : isPartial
-                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
+                          : isRemoved
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
+                            : isPartial
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
                       }`}
                     >
                       <span>{juz}</span>
-                      {isPartial && <span className="text-[9px] leading-none opacity-80">{juzInfo.percentage}%</span>}
+                      {(isSelected || isPartial || isRemoved || isCompleteDeselected) && (
+                        <span className={`text-[9px] leading-none ${isCompleteDeselected ? 'opacity-30' : 'opacity-80'}`}>
+                          {isSelected || isCompleteDeselected ? '100' : isRemoved ? '0' : juzInfo.percentage}%
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -264,24 +343,39 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                 className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
               />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {filteredSurahs.map(s => (
-                  <button
-                    key={s.number}
-                    onClick={() => toggleSurah(s.number)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
-                      selectedSurahs.has(s.number)
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                    }`}
-                  >
-                    <span className="text-xs font-medium leading-tight">
-                      {s.number}. {isArabic ? s.arabic : s.name}
-                    </span>
-                    <span className={`text-[10px] mt-0.5 leading-tight ${selectedSurahs.has(s.number) ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
-                      {isArabic ? s.name : s.arabic}
-                    </span>
-                  </button>
-                ))}
+                {filteredSurahs.map(s => {
+                  const pct = surahMemPercent(s);
+                  const isSelected = selectedSurahs.has(s.number);
+                  const isRemoved = removedSurahs.has(s.number);
+                  const isPartial = !isSelected && !isRemoved && pct > 0 && pct < 100;
+                  return (
+                    <button
+                      key={s.number}
+                      onClick={() => toggleSurah(s.number)}
+                      className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors ${
+                        isSelected
+                          ? 'bg-[#003527] text-white border-[#003527]'
+                          : isRemoved
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
+                            : isPartial
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
+                      }`}
+                    >
+                      {(isSelected || isPartial || isRemoved) && (
+                        <span className="absolute top-1 right-1 text-[9px] leading-none opacity-80">
+                          {isSelected ? '100' : isRemoved ? '0' : pct}%
+                        </span>
+                      )}
+                      <span className="text-xs font-medium leading-tight line-clamp-2 w-full">
+                        {s.number}. {isArabic ? s.arabic : s.name}
+                      </span>
+                      <span className={`text-[10px] mt-0.5 leading-tight line-clamp-1 w-full ${isSelected ? 'text-white/70' : isRemoved ? 'text-red-600/70 dark:text-red-300/70' : isPartial ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                        {isArabic ? s.name : s.arabic}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
               {selectedSurahs.size > 0 && (
                 <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahs.size })}</p>
