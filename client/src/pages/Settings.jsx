@@ -35,6 +35,22 @@ const JUZ_RANGES = [
   {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
 ];
 
+function toPageRanges(sortedPages) {
+  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
+  const pages = [...sortedPages].sort((a, b) => a - b);
+  const ranges = [];
+  let start = pages[0], prev = pages[0];
+  for (let i = 1; i < pages.length; i++) {
+    if (pages[i] !== prev + 1) {
+      ranges.push({ start: String(start), end: String(prev) });
+      start = pages[i];
+    }
+    prev = pages[i];
+  }
+  ranges.push({ start: String(start), end: String(prev) });
+  return ranges;
+}
+
 function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
   const pages = new Set();
   JUZ_RANGES.forEach(({ juz, start, end }) => {
@@ -46,7 +62,7 @@ function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
   });
   pageRanges.forEach(({ start, end }) => {
     const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s < e)
+    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
       for (let p = s; p <= e; p++) pages.add(p);
   });
   return Array.from(pages).sort((a, b) => a - b);
@@ -60,7 +76,7 @@ function validateRanges(pageRanges) {
       errors[i].start = 'common.validationRange';
     if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
       errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start >= r.end)
+    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
       errors[i].end = 'common.validationEndGreater';
     parsed.forEach((other, j) => {
       if (i === j) return;
@@ -82,6 +98,8 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [rangeErrors, setRangeErrors] = useState([{}]);
+  const [deletedRangeRows, setDeletedRangeRows] = useState([]);
+  const [pendingDeleteIdx, setPendingDeleteIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
@@ -104,8 +122,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
       setRemovedSurahs(new Set());
       setSelectionMode('juz');
       setSurahSearch('');
-      setPageRanges([{ start: '', end: '' }]);
-      setRangeErrors([{}]);
+      const initRanges = toPageRanges(memorizedPageNums);
+      setPageRanges(initRanges);
+      setRangeErrors(initRanges.map(() => ({})));
+      setDeletedRangeRows([]);
+      setPendingDeleteIdx(null);
 
       const mSet = new Set(memorizedPageNums);
       const preSelectedSurahs = new Set(
@@ -224,6 +245,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
         const s = SURAH_PAGES.find(x => x.number === num);
         if (s) for (let p = s.start; p <= s.end; p++) removedPageSet.add(p);
       });
+      deletedRangeRows.forEach(({ start, end }) => {
+        const s = parseInt(start, 10), e = parseInt(end, 10);
+        if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
+          for (let p = s; p <= e; p++) removedPageSet.add(p);
+      });
       const finalPages = Array.from(new Set([...selectedPages, ...preservedPages]))
         .filter(p => !removedPageSet.has(p))
         .sort((a, b) => a - b);
@@ -283,8 +309,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                   }).map(s => s.number));
                   setSelectedSurahs(allCompleteSurahs);
                   setRemovedSurahs(new Set());
-                  setPageRanges([{ start: '', end: '' }]);
-                  setRangeErrors([{}]);
+                  const initRanges = toPageRanges(memorizedPageNums);
+                  setPageRanges(initRanges);
+                  setRangeErrors(initRanges.map(() => ({})));
+                  setDeletedRangeRows([]);
+                  setPendingDeleteIdx(null);
                 }}
                 className="ml-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
@@ -385,27 +414,49 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
 
           {selectionMode === 'range' && (
             <div>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-                {t('settings.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('settings.optional')}</span>
-              </p>
+              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.rangeTabTitle')}</p>
+              <p className="text-xs text-[#707974] dark:text-gray-400 mb-3">{t('settings.rangeTabHint')}</p>
               <div className="space-y-2">
                 {pageRanges.map((r, i) => (
                   <div key={i} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <input type="number" min="1" max="604" value={r.start} onChange={e => updateRange(i, 'start', e.target.value)}
+                      <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
                         placeholder="Start (1–604)"
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('settings.to')}</span>
-                      <input type="number" min="1" max="604" value={r.end} onChange={e => updateRange(i, 'end', e.target.value)}
+                      <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
+                      <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
                         placeholder="End (1–604)"
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      {pageRanges.length > 1 && (
-                        <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
-                          <FiX className="w-4 h-4" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
+                        className={`shrink-0 transition-colors ${pendingDeleteIdx === i ? 'text-[#ba1a1a]' : 'text-[#bfc9c3] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400'}`}
+                      >
+                        <FiX className="w-4 h-4" />
+                      </button>
                     </div>
-                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
+                    {pendingDeleteIdx === i && (
+                      <div className="flex items-center justify-between gap-3 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-lg">
+                        <p className="text-xs text-red-700 dark:text-red-300">
+                          {t('settings.rangeDeleteConfirm', { start: r.start || '?', end: r.end || '?' })}
+                        </p>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button onClick={() => setPendingDeleteIdx(null)} className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
+                            {t('settings.cancel')}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeletedRangeRows(prev => [...prev, { start: r.start, end: r.end }]);
+                              removeRange(i);
+                              setPendingDeleteIdx(null);
+                            }}
+                            className="text-xs font-semibold text-[#ba1a1a] hover:text-red-800 dark:hover:text-red-300 transition-colors"
+                          >
+                            {t('settings.rangeDeleteConfirmBtn')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i && (
                       <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                     )}
                   </div>

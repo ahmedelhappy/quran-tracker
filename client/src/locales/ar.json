@@ -258,6 +258,10 @@
     "clearSelection": "مسح الاختيار",
     "selectAll": "تحديد الكل",
     "restore": "استعادة",
+    "rangeTabTitle": "نطاقات الصفحات المحفوظة",
+    "rangeTabHint": "صفحاتك المحفوظة معروضة كنطاقات. احذف صفاً لاستبعاد تلك الصفحات، أو أضف صفوفاً جديدة لتضمين المزيد.",
+    "rangeDeleteConfirm": "حذف الصفحات {{start}}–{{end}}؟",
+    "rangeDeleteConfirmBtn": "حذف",
     "preservedNote": "+ {{count}} صفحة من العناصر المحفوظة جزئياً ستُحفظ أيضاً"
   },
   "onboarding": {

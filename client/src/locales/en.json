@@ -258,6 +258,10 @@
     "clearSelection": "Clear selection",
     "selectAll": "Select All",
     "restore": "Restore",
+    "rangeTabTitle": "Memorized Page Ranges",
+    "rangeTabHint": "Your current memorized pages as ranges. Remove a row to exclude those pages, or add new rows to include more.",
+    "rangeDeleteConfirm": "Remove pages {{start}}–{{end}}?",
+    "rangeDeleteConfirmBtn": "Remove",
     "preservedNote": "+ {{count}} pages from partially memorized items will also be kept"
   },
   "onboarding": {
