@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { authAPI } from '../services/api';
-import { FiSettings, FiGlobe, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser } from 'react-icons/fi';
+import { FiSettings, FiGlobe, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen } from 'react-icons/fi';
 import Logo from './Logo';
 
 const NAV_LINKS = [
-  { to: '/dashboard', labelKey: 'nav.dashboard' },
-  { to: '/progress',  labelKey: 'nav.progress' },
-  { to: '/library',   labelKey: 'nav.library' },
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: FiHome },
+  { to: '/progress',  labelKey: 'nav.progress',  icon: FiTrendingUp },
+  { to: '/library',   labelKey: 'nav.library',   icon: FiBookOpen },
 ];
 
 const Navbar = () => {
@@ -77,7 +77,7 @@ const Navbar = () => {
         </div>
 
         {/* Desktop right icons */}
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden md:flex items-center gap-3">
           <button
             onClick={toggleLanguage}
             title={t('nav.language')}
@@ -88,14 +88,14 @@ const Navbar = () => {
           <button
             title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
             onClick={toggleTheme}
-            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors w-8 h-8 flex items-center justify-center"
           >
             {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
           </button>
           <Link
             to="/settings?tab=memorization"
             title={t('nav.settings')}
-            className={`transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400 border-b-2 border-amber-500 pb-1 font-semibold' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
+            className={`w-8 h-8 flex items-center justify-center transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
           >
             <FiSettings className="w-5 h-5" />
           </Link>
@@ -115,21 +115,21 @@ const Navbar = () => {
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
-                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
+                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
                     <FiUser className="w-4 h-4" /> {t('settings.profile')}
                   </Link>
                   <Link
                     to="/settings"
                     onClick={() => setAvatarOpen(false)}
-                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
+                    className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
                     <FiSettings className="w-4 h-4" /> {t('nav.settings')}
                   </Link>
                   <hr className="my-1 border-[#dce2f3]/50 dark:border-gray-700" />
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left rtl:text-right px-4 py-2 text-[#ba1a1a] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-sm rtl:flex-row-reverse"
+                    className="w-full text-left rtl:text-right px-4 py-2 text-[#ba1a1a] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-3 text-sm"
                   >
                     <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
                   </button>
@@ -153,35 +153,39 @@ const Navbar = () => {
         <div className="md:hidden bg-white dark:bg-gray-900 border-t border-[#dce2f3]/50 dark:border-gray-700/50 px-6 py-4 flex flex-col gap-1">
           {NAV_LINKS.map((link) =>
             link.disabled ? (
-              <span key={link.labelKey} className="px-4 py-2.5 text-sm text-emerald-800/40 dark:text-gray-500">{t(link.labelKey)}</span>
+              <span key={link.labelKey} className="px-4 py-2.5 text-sm text-emerald-800/40 dark:text-gray-500 flex items-center gap-2">
+                {link.icon && <link.icon className="w-4 h-4 shrink-0" />}
+                {t(link.labelKey)}
+              </span>
             ) : (
               <Link
                 key={link.to}
                 to={link.to}
                 onClick={() => setMobileOpen(false)}
-                className={`px-4 py-2.5 text-sm font-medium rounded-lg ${
+                className={`px-4 py-2.5 text-sm font-medium rounded-lg flex items-center gap-2 ${
                   isActive(link.to)
                     ? 'text-[#064e3b] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
                     : 'text-emerald-800/60 dark:text-gray-400'
                 }`}
               >
+                {link.icon && <link.icon className="w-4 h-4 shrink-0" />}
                 {t(link.labelKey)}
               </Link>
             )
           )}
-          <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 rtl:flex-row-reverse rtl:text-right">
+          <Link to="/settings?tab=memorization" onClick={() => setMobileOpen(false)} className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2">
             <FiSettings className="w-4 h-4" /> {t('nav.settings')}
           </Link>
           <button
             onClick={toggleTheme}
-            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left rtl:flex-row-reverse rtl:text-right"
+            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2"
           >
             {isDark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
             {isDark ? t('nav.lightMode') : t('nav.darkMode')}
           </button>
           <button
             onClick={toggleLanguage}
-            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2 text-left rtl:flex-row-reverse rtl:text-right"
+            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2"
           >
             <FiGlobe className="w-4 h-4" />
             {i18n.language === 'en' ? 'العربية' : 'English'}
@@ -196,7 +200,7 @@ const Navbar = () => {
                 <p className="text-xs text-[#404944] dark:text-gray-400">{user?.email}</p>
               </div>
             </div>
-            <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5 rtl:flex-row-reverse">
+            <button onClick={handleLogout} className="text-[#ba1a1a] text-sm font-medium flex items-center gap-1.5">
               <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
             </button>
           </div>
