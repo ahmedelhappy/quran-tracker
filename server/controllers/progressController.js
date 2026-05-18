@@ -117,9 +117,10 @@ exports.getTodayTasks = async (req, res) => {
 
     const todayString = getDateString(new Date());
     const offDays = user.offDays || [];
+    const ignoreOffDay = req.query.ignoreOffDay === 'true';
 
     // --- OFF DAY ---
-    if (offDays.includes(new Date().getUTCDay())) {
+    if (!ignoreOffDay && offDays.includes(new Date().getUTCDay())) {
       const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
 
       // Preserve streak on off-days: bump lastActiveDate without incrementing the count.
@@ -373,7 +374,7 @@ exports.getTodayTasks = async (req, res) => {
 exports.markPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pageNumber, type } = req.body;
+    const { pageNumber, type, alreadyKnow } = req.body;
 
     if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
       return res.status(400).json({ success: false, message: 'Invalid page number' });
@@ -382,9 +383,14 @@ exports.markPageComplete = async (req, res) => {
     const now = new Date();
 
     if (type === 'new') {
+      // alreadyKnow: true → back-date memorizedDate to yesterday so the page doesn't
+      // count against today's new-page quota, freeing today's slot for the next page.
+      const memorizedDate = alreadyKnow
+        ? (() => { const d = new Date(now); d.setUTCDate(d.getUTCDate() - 1); d.setUTCHours(0, 0, 0, 0); return d; })()
+        : now;
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
-        { $set: { status: 'memorized', memorizedDate: now, lastReviewedDate: now }, $inc: { reviewCount: 1 } },
+        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate }, $inc: { reviewCount: 1 } },
         { upsert: true, new: true }
       );
     } else if (type === 'review') {

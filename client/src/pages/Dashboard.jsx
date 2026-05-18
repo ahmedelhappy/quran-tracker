@@ -37,7 +37,7 @@ const JuzRing = ({ pct = 0 }) => {
 const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded bg-[#e7eefe] dark:bg-gray-700 animate-pulse`} />;
 
 // ── Task card ────────────────────────────────────────────
-const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
+const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo, badge }) => {
   const { t, i18n } = useTranslation();
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
@@ -78,17 +78,28 @@ const TaskCard = ({ page, type, done, marking, onComplete, onUndo, badge }) => {
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => onComplete(page.pageNumber, type)}
-          disabled={marking}
-          className={`text-xs font-semibold uppercase tracking-wide px-4 py-2 rounded-lg transition-colors self-stretch sm:self-auto disabled:opacity-60 ${
-            isNew
-              ? 'bg-[#004f35] text-white hover:bg-[#003527]'
-              : 'bg-[#dce2f3] dark:bg-gray-700 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-600 hover:text-[#003527] dark:hover:text-gray-100 border border-[#bfc9c3] dark:border-gray-600'
-          }`}
-        >
-          {marking ? t('dashboard.marking') : t('dashboard.markComplete')}
-        </button>
+        <div className="flex items-center gap-2 self-stretch sm:self-auto">
+          {isNew && onAlreadyKnow && (
+            <button
+              onClick={() => onAlreadyKnow(page.pageNumber)}
+              disabled={marking}
+              className="text-xs font-medium px-3 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f3ff] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-200 transition-colors disabled:opacity-60"
+            >
+              {t('dashboard.alreadyKnow')}
+            </button>
+          )}
+          <button
+            onClick={() => onComplete(page.pageNumber, type)}
+            disabled={marking}
+            className={`text-xs font-semibold uppercase tracking-wide px-4 py-2 rounded-lg transition-colors disabled:opacity-60 ${
+              isNew
+                ? 'bg-[#004f35] text-white hover:bg-[#003527]'
+                : 'bg-[#dce2f3] dark:bg-gray-700 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-600 hover:text-[#003527] dark:hover:text-gray-100 border border-[#bfc9c3] dark:border-gray-600'
+            }`}
+          >
+            {marking ? t('dashboard.marking') : t('dashboard.markComplete')}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -302,6 +313,22 @@ export default function Dashboard() {
     }
   };
 
+  const alreadyKnow = async (pageNumber) => {
+    const key = `new-${pageNumber}`;
+    if (markingKeys.has(key) || completedKeys.has(key)) return;
+    setMarkingKeys(prev => new Set(prev).add(key));
+    try {
+      await progressAPI.markComplete({ pageNumber, type: 'new', alreadyKnow: true });
+      const taskRes = await progressAPI.getTodayTasks(isOverrideDay ? { ignoreOffDay: 'true' } : undefined);
+      setData(taskRes.data.data);
+      setCompletedKeys(new Set());
+    } catch {
+      showToast(t('dashboard.failedMark'), 'error');
+    } finally {
+      setMarkingKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+    }
+  };
+
   const loadExtraPages = () => {
     if (extraData) return;
     setExtraData({
@@ -508,7 +535,22 @@ export default function Dashboard() {
                     {t('dashboard.reflection')}
                   </button>
                   <button
-                    onClick={() => setIsOverrideDay(true)}
+                    onClick={async () => {
+                      setIsOverrideDay(true);
+                      setLoading(true);
+                      try {
+                        const [taskRes, juzRes] = await Promise.all([
+                          progressAPI.getTodayTasks({ ignoreOffDay: 'true' }),
+                          progressAPI.getJuzProgress(),
+                        ]);
+                        setData(taskRes.data.data);
+                        setJuzData(juzRes.data.data);
+                      } catch {
+                        showToast(t('dashboard.failedTasks'), 'error');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
                     className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide"
                   >
                     {t('dashboard.memorizeAnyway')}
@@ -614,7 +656,7 @@ export default function Dashboard() {
                     (data?.newPages ?? []).map(p => (
                       <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
                         done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
-                        onComplete={markComplete} onUndo={undoComplete} />
+                        onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete} />
                     ))
                   )}
                 </div>
