@@ -155,7 +155,7 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- LOAD ALL MEMORIZED PAGES ---
     const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
-      .sort({ lastReviewedDate: 1 });
+      .sort({ lastReviewedDate: 1, pageNumber: 1 });
 
     const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
     const totalMemorized = allMemorizedPages.length;
@@ -199,9 +199,41 @@ exports.getTodayTasks = async (req, res) => {
       }
     }
 
-    // --- REVIEW PAGES ---
+    // --- RECENT ACTIVE DAYS (computed first — needed to exclude from cycle) ---
+    // "Active day" = any day the user memorized or reviewed on or after planStartDate.
+    // Onboarding pages (memorizedDate = yesterday, before planStartDate = today) are
+    // excluded automatically. Brand-new users have no active days → empty Recent Review.
+    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
+    const activeDatesSet = new Set();
+    for (const p of allMemorizedPages) {
+      if (p.memorizedDate) {
+        const d = getDateString(p.memorizedDate);
+        if (d !== todayString && d >= planStartDateString) activeDatesSet.add(d);
+      }
+      if (p.lastReviewedDate) {
+        const d = getDateString(p.lastReviewedDate);
+        if (d !== todayString && d >= planStartDateString) activeDatesSet.add(d);
+      }
+    }
+    const lastThreeActiveDays = new Set(
+      Array.from(activeDatesSet).sort().reverse().slice(0, 3)
+    );
+
+    // Pages whose memorizedDate falls in the recent window belong to recent review.
+    // Cycle review skips them so no page appears in both sections at once.
+    const recentEligibleNums = new Set(
+      allMemorizedPages
+        .filter(p => p.memorizedDate && lastThreeActiveDays.has(getDateString(p.memorizedDate)))
+        .map(p => p.pageNumber)
+    );
+
+    // --- CYCLE REVIEW PAGES ---
+    // Excludes: pages memorized today, pages owned by the recent review window.
+    // Sorted by lastReviewedDate ASC, pageNumber ASC → cycles through all pages
+    // in page-number order, advancing from lowest to highest each day.
     const pagesForReview = allMemorizedPages.filter(
-      p => !p.memorizedDate || getDateString(p.memorizedDate) !== todayString
+      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
+        && !recentEligibleNums.has(p.pageNumber)
     );
 
     const reviewsCompletedToday = pagesForReview.filter(
@@ -217,51 +249,22 @@ exports.getTodayTasks = async (req, res) => {
     const reviewPages = pendingReviews.slice(0, remainingReviews);
     const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
 
-    // --- RECENT REVIEW PAGES (memorized in last 3 days, not today) ---
-    const threeDaysAgoStart = new Date();
-    threeDaysAgoStart.setUTCHours(0, 0, 0, 0);
-    threeDaysAgoStart.setDate(threeDaysAgoStart.getDate() - 3);
-
-    const regularReviewNums = new Set(reviewPages.map(p => p.pageNumber));
-
-    // Gather candidates: memorized within last 3 days, not today, not already in regular review, not done today
+    // --- RECENT REVIEW PAGES ---
     const recentCandidates = allMemorizedPages.filter(p => {
       if (!p.memorizedDate) return false;
       if (getDateString(p.memorizedDate) === todayString) return false;
-      if (new Date(p.memorizedDate) < threeDaysAgoStart) return false;
-      if (regularReviewNums.has(p.pageNumber)) return false;
+      if (!lastThreeActiveDays.has(getDateString(p.memorizedDate))) return false;
       if (p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString) return false;
       return true;
     });
 
-    // Group by memorizedDate to detect bulk onboarding imports.
-    // If more pages share a date than the max daily limit (10), it was a bulk import —
-    // in that case only surface the last 3 pages by page number (the memorization frontier).
-    const BULK_THRESHOLD = 10;
-    const dateGroupsMap = {};
-    for (const p of recentCandidates) {
-      const d = getDateString(p.memorizedDate);
-      if (!dateGroupsMap[d]) dateGroupsMap[d] = [];
-      dateGroupsMap[d].push(p);
-    }
-    const recentReviewPages = [];
-    for (const pages of Object.values(dateGroupsMap)) {
-      if (pages.length > BULK_THRESHOLD) {
-        const sorted = [...pages].sort((a, b) => b.pageNumber - a.pageNumber);
-        recentReviewPages.push(...sorted.slice(0, 3));
-      } else {
-        recentReviewPages.push(...pages);
-      }
-    }
+    recentCandidates.sort((a, b) => a.pageNumber - b.pageNumber);
 
-    // Sort recent pages ascending by page number
-    recentReviewPages.sort((a, b) => a.pageNumber - b.pageNumber);
-
-    // Cap: custom override or formula min(dailyNewPages * 3, 6)
+    // Cap: custom override or formula (minimum 3)
     const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
       ? user.recentReviewCount
-      : Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6);
-    const cappedRecentPages = recentReviewPages.slice(0, maxRecent);
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const cappedRecentPages = recentCandidates.slice(0, maxRecent);
 
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
     let continuationPageNum = null;
@@ -279,7 +282,7 @@ exports.getTodayTasks = async (req, res) => {
       ...newPageNums, ...extraNewPageNums,
       ...reviewPages.map(p => p.pageNumber),
       ...extraReviewPages.map(p => p.pageNumber),
-      ...recentReviewPages.map(p => p.pageNumber),
+      ...cappedRecentPages.map(p => p.pageNumber),
       ...(continuationPageNum ? [continuationPageNum] : []),
     ];
     const metaMap = await getMetadataMap(allPageNumsNeeded);
