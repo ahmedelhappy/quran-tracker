@@ -157,10 +157,14 @@ export default function Onboarding() {
     );
   });
 
-  const selectAll = () => setSelectedJuz(new Set(JUZ_RANGES.map(j => j.juz)));
+  const allJuzSelected = selectedJuz.size === JUZ_RANGES.length;
+  const selectAll = () => setSelectedJuz(allJuzSelected ? new Set() : new Set(JUZ_RANGES.map(j => j.juz)));
 
   const toggleOffDay = (d) =>
-    setOffDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
+    setOffDays(prev => {
+      if (!prev.includes(d) && prev.length === 6) return prev;
+      return prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d];
+    });
 
   const addRange = () => {
     setPageRanges(r => [...r, { start: '', end: '' }]);
@@ -273,7 +277,7 @@ export default function Onboarding() {
                   <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuz.size })}</p>
                 )}
                 <button onClick={selectAll} className="ml-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
-                  {t('onboarding.selectAll')} ✓✓
+                  {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
                 </button>
               </div>
             </div>

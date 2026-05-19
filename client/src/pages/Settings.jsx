@@ -672,7 +672,10 @@ export default function Settings() {
                   (activeSection === 'memorization' && planDirty);
 
   const toggleOffDay = (jsDay) =>
-    setOffDays(prev => prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : [...prev, jsDay]);
+    setOffDays(prev => {
+      if (!prev.includes(jsDay) && prev.length === 6) return prev;
+      return prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : [...prev, jsDay];
+    });
 
   const changeLanguage = () => {
     const newLang = i18n.language === 'en' ? 'ar' : 'en';
