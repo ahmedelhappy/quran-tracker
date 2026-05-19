@@ -110,6 +110,7 @@ exports.login = async (req, res) => {
         currentStreak: user.currentStreak,
         recentReviewCount: user.recentReviewCount ?? null,
         cycleReviewCount: user.cycleReviewCount ?? null,
+        pauseNewMemorization: user.pauseNewMemorization || false,
         language: user.language,
         token
       }
@@ -145,6 +146,7 @@ exports.getMe = async (req, res) => {
         currentStreak: user.currentStreak,
         recentReviewCount: user.recentReviewCount ?? null,
         cycleReviewCount: user.cycleReviewCount ?? null,
+        pauseNewMemorization: user.pauseNewMemorization || false,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
         language: user.language,
@@ -253,6 +255,10 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    if (req.body.pauseNewMemorization !== undefined) {
+      updateData.pauseNewMemorization = Boolean(req.body.pauseNewMemorization);
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -279,6 +285,7 @@ exports.updateProfile = async (req, res) => {
         offDays: updatedUser.offDays,
         recentReviewCount: updatedUser.recentReviewCount ?? null,
         cycleReviewCount: updatedUser.cycleReviewCount ?? null,
+        pauseNewMemorization: updatedUser.pauseNewMemorization || false,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,

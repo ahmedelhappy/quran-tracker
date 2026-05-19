@@ -60,6 +60,10 @@ const userSchema = new mongoose.Schema(
         message: 'offDays values must be between 0 (Sun) and 6 (Sat)',
       },
     },
+    pauseNewMemorization: {
+      type: Boolean,
+      default: false,
+    },
     recentReviewCount: {
       type: Number,
       default: null,

@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap } from 'react-icons/fi';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap, FiPause } from 'react-icons/fi';
 import { formatSurahNames } from '../utils/surahDisplay';
 
 
@@ -378,6 +378,9 @@ export default function Dashboard() {
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
 
+  const isHafiz = (stats?.totalMemorized ?? 0) >= 604;
+  const isPaused = !isHafiz && (user?.pauseNewMemorization === true);
+
   const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new'));
   const markAllRecent = () => recentPending.forEach(p => markComplete(p.pageNumber, 'review'));
   const markAllCycle = () => cyclePending.forEach(p => markComplete(p.pageNumber, 'review'));
@@ -395,6 +398,37 @@ export default function Dashboard() {
             <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
               {t('dashboard.missedDay')}
             </p>
+          </div>
+        )}
+
+        {/* Khatam Al-Quran banner */}
+        {isHafiz && !loading && (
+          <div className="bg-[#003527] rounded-2xl p-6 md:p-8 border border-amber-400/30 relative overflow-hidden shadow-lg">
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-[0.07] pointer-events-none">
+              <svg width="140" height="140" viewBox="0 0 24 24" fill="currentColor" className="text-amber-300">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+              </svg>
+            </div>
+            <div className="relative flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center shrink-0 text-2xl">🌟</div>
+              <div className="flex-1">
+                <p className="text-amber-400 text-[10px] font-bold uppercase tracking-widest mb-1">{t('dashboard.hafizBadge')}</p>
+                <h3 className="text-white text-xl md:text-2xl font-bold mb-2">{t('dashboard.hafizCongrats')}</h3>
+                <p className="text-white/60 text-sm leading-relaxed max-w-xl">{t('dashboard.hafizMessage')}</p>
+                <div className="flex gap-3 mt-4 flex-wrap">
+                  {[
+                    { value: '604', label: t('dashboard.hafizPages') },
+                    { value: '30',  label: t('progress.juz') },
+                    { value: String(stats?.currentStreak ?? user?.currentStreak ?? 0), label: t('dashboard.streak') },
+                  ].map(({ value, label }) => (
+                    <div key={label} className="bg-white/10 rounded-lg px-4 py-2 text-center min-w-[72px]">
+                      <p className="text-amber-300 text-lg font-bold">{value}</p>
+                      <p className="text-white/50 text-[10px] uppercase tracking-wide">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -620,46 +654,71 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* New Memorization column */}
+              <div className={`grid gap-4 ${isHafiz ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
+                {/* New Memorization column — hidden for Hafiz users */}
+                {!isHafiz && (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
                     </div>
-                    {newPending.length > 0 && (
+                    {!isPaused && newPending.length > 0 && (
                       <button onClick={markAllNew} className="text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors">
                         {t('dashboard.markAll')}
                       </button>
                     )}
                   </div>
 
-                  {/* Continuation page card */}
-                  {showContinuation && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700/40 flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center flex-shrink-0 text-blue-600 dark:text-blue-400">
-                        <FiBook className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{t('dashboard.continuePage')}</p>
-                        <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
-                        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
+                  {isPaused ? (
+                    <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-xl p-5 border border-[#003527]/20 dark:border-emerald-700/30">
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-full bg-[#003527]/10 dark:bg-emerald-900/40 flex items-center justify-center shrink-0 mt-0.5">
+                          <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-[#003527] dark:text-emerald-400">{t('dashboard.pausedTitle')}</p>
+                          <p className="text-xs text-[#707974] dark:text-gray-400 mt-1 leading-relaxed">
+                            {t('dashboard.pausedGoalNote', { pages: user?.dailyNewPages ?? 1 })}
+                          </p>
+                          <button
+                            onClick={() => navigate('/settings?tab=memorization')}
+                            className="mt-3 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline"
+                          >
+                            {t('dashboard.resumeMem')} →
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  )}
-
-                  {(data?.newPages ?? []).length === 0 && !showContinuation ? (
-                    <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noNewToday')}</p>
                   ) : (
-                    (data?.newPages ?? []).map(p => (
-                      <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
-                        done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
-                        onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete} />
-                    ))
+                    <>
+                      {/* Continuation page card */}
+                      {showContinuation && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-700/40 flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400">
+                            <FiBook className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{t('dashboard.continuePage')}</p>
+                            <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
+                            <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
+                          </div>
+                        </div>
+                      )}
+                      {(data?.newPages ?? []).length === 0 && !showContinuation ? (
+                        <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noNewToday')}</p>
+                      ) : (
+                        (data?.newPages ?? []).map(p => (
+                          <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
+                            done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
+                            onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete} />
+                        ))
+                      )}
+                    </>
                   )}
                 </div>
+                )}
 
                 {/* Review column — split into Recent + Cycle */}
                 <div className="flex flex-col gap-4">

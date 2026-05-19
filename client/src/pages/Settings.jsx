@@ -614,6 +614,9 @@ export default function Settings() {
   const [cycleReviewValue, setCycleReviewValue] = useState(user?.cycleReviewCount ?? 5);
   const customPagesInputRef = useRef(null);
 
+  const [isPaused, setIsPaused]       = useState(user?.pauseNewMemorization ?? false);
+  const [pauseSaving, setPauseSaving] = useState(false);
+
   const [resetModal, setResetModal]   = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
 
@@ -635,6 +638,7 @@ export default function Settings() {
       setReviewMode((user.recentReviewCount != null || user.cycleReviewCount != null) ? 'fixed' : 'intensity');
       setRecentReviewValue(user.recentReviewCount ?? 3);
       setCycleReviewValue(user.cycleReviewCount ?? 5);
+      setIsPaused(user.pauseNewMemorization ?? false);
     }
   }, [user]);
 
@@ -676,6 +680,22 @@ export default function Settings() {
       if (!prev.includes(jsDay) && prev.length === 6) return prev;
       return prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : [...prev, jsDay];
     });
+
+  const togglePause = async () => {
+    const next = !isPaused;
+    setIsPaused(next);
+    setPauseSaving(true);
+    try {
+      await authAPI.updateProfile({ pauseNewMemorization: next });
+      updateUser({ pauseNewMemorization: next });
+      showToast(next ? t('settings.pauseMemToastOn') : t('settings.pauseMemToastOff'), 'success');
+    } catch {
+      setIsPaused(!next);
+      showToast(t('settings.planUpdateFailed'), 'error');
+    } finally {
+      setPauseSaving(false);
+    }
+  };
 
   const changeLanguage = () => {
     const newLang = i18n.language === 'en' ? 'ar' : 'en';
@@ -1147,6 +1167,31 @@ export default function Settings() {
                   <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
                     {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
                   </p>
+                </div>
+
+                <hr className="border-[#dce2f3] dark:border-gray-700 my-6" />
+
+                <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                  <div>
+                    <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
+                    <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
+                      {isPaused
+                        ? t('settings.pauseMemActive', { pages: dailyPages })
+                        : t('settings.pauseMemDesc')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={togglePause}
+                    disabled={pauseSaving}
+                    aria-label={t('settings.pauseMemTitle')}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                      isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                      isPaused ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </button>
                 </div>
               </section>
             )}

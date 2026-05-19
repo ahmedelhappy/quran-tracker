@@ -169,7 +169,7 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- NEW MEMORIZATION TARGET ---
     let targetNewPages = 0;
-    if (!isHafiz) {
+    if (!isHafiz && !user.pauseNewMemorization) {
       const planStart = user.planStartDate || user.createdAt;
       targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
     }
