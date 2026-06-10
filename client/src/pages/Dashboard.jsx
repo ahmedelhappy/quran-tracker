@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap, FiPause, FiVolume2 } from 'react-icons/fi';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2 } from 'react-icons/fi';
 import { formatSurahNames } from '../utils/surahDisplay';
 
 // Ghost icon button: open the Library at this page to listen while reviewing
@@ -718,7 +718,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <div className={`grid gap-4 ${isHafiz ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
+              <div className={`grid gap-4 ${!isHafiz && allReviewPages.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
                 {/* New Memorization column — hidden for Hafiz users */}
                 {!isHafiz && (
                 <div className="flex flex-col gap-4">
@@ -784,86 +784,69 @@ export default function Dashboard() {
                 </div>
                 )}
 
-                {/* Review column — split into Recent + Cycle */}
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                    <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">
-                      {t('dashboard.review')}
-                      {allReviewPages.length > 0 && (
-                        <span className="ml-2 rtl:ml-0 rtl:mr-2 text-xs font-normal text-[#707974] dark:text-gray-500">
-                          {t('dashboard.reviewCount', { count: allReviewPages.length })}
-                        </span>
-                      )}
-                    </h4>
-                  </div>
-
+                {/* Review column — hidden entirely when nothing to review */}
+                {(allReviewPages.length > 0 || isHafiz) && (
+                <div className="flex flex-col gap-6">
                   {allReviewPages.length === 0 ? (
                     <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noReviewToday')}</p>
                   ) : (
                     <>
-                      {/* Recent Review sub-section */}
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <FiRefreshCw className="w-3 h-3 text-[#404944] dark:text-gray-400" />
-                            <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">{t('dashboard.recentReview')}</span>
-                            <span className="text-xs text-[#707974] dark:text-gray-500">
-                              {stats?.recentReviewCount != null
-                                ? `${t('dashboard.last3days')} · ${t('dashboard.maxLabel', { count: stats.recentReviewCount })}`
-                                : t('dashboard.last3days')
-                              }
-                            </span>
+                      {/* Recent Review section */}
+                      {recentPages.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
+                              <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.recentReview')}</h4>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">
+                                {stats?.recentReviewCount != null
+                                  ? `${t('dashboard.last3days')} · ${t('dashboard.maxLabel', { count: stats.recentReviewCount })}`
+                                  : t('dashboard.last3days')
+                                }
+                              </span>
+                            </div>
+                            {recentPending.length > 0 && (
+                              <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                                {t('dashboard.markAll')}
+                              </button>
+                            )}
                           </div>
-                          {recentPending.length > 0 && (
-                            <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                              {t('dashboard.markAll')}
+                          <div className="flex flex-col gap-2">
+                            {recentPages.slice(0, showAllRecent ? recentPages.length : RECENT_LIMIT).map(p => (
+                              <TaskCard
+                                key={`review-recent-${p.pageNumber}`}
+                                page={p} type="review"
+                                done={completedKeys.has(`review-${p.pageNumber}`)}
+                                marking={markingKeys.has(`review-${p.pageNumber}`)}
+                                onComplete={markComplete}
+                                onUndo={undoComplete}
+                                badge={t('dashboard.recentBadge')}
+                              />
+                            ))}
+                          </div>
+                          {hasMoreRecent && (
+                            <button
+                              onClick={() => setShowAllRecent(!showAllRecent)}
+                              className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
+                            >
+                              {showAllRecent ? (
+                                <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
+                              ) : (
+                                <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: recentPages.length })}</>
+                              )}
                             </button>
                           )}
                         </div>
-                        {recentPages.length === 0 ? (
-                          <p className="text-xs text-[#707974] dark:text-gray-500 italic py-1">
-                            {t('dashboard.noRecentPages')}
-                          </p>
-                        ) : (
-                          <>
-                            <div className="flex flex-col gap-2">
-                              {recentPages.slice(0, showAllRecent ? recentPages.length : RECENT_LIMIT).map(p => (
-                                <TaskCard
-                                  key={`review-recent-${p.pageNumber}`}
-                                  page={p} type="review"
-                                  done={completedKeys.has(`review-${p.pageNumber}`)}
-                                  marking={markingKeys.has(`review-${p.pageNumber}`)}
-                                  onComplete={markComplete}
-                                  onUndo={undoComplete}
-                                  badge={t('dashboard.recentBadge')}
-                                />
-                              ))}
-                            </div>
-                            {hasMoreRecent && (
-                              <button
-                                onClick={() => setShowAllRecent(!showAllRecent)}
-                                className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
-                              >
-                                {showAllRecent ? (
-                                  <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
-                                ) : (
-                                  <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: recentPages.length })}</>
-                                )}
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      )}
 
-                      {/* Cycle Review sub-section */}
+                      {/* Cycle Review section */}
                       {cycleReviewPages.length > 0 && (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-[#fe932c] flex-shrink-0" />
-                              <span className="text-sm font-semibold text-[#404944] dark:text-gray-300">{t('dashboard.cycleReview')}</span>
-                              <span className="text-xs text-[#707974] dark:text-gray-500">· {cycleReviewPages.length} {t('dashboard.pages')}</span>
+                              <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.cycleReview')}</h4>
+                              <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: cycleReviewPages.length })}</span>
                             </div>
                             {cyclePending.length > 0 && (
                               <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
@@ -900,6 +883,7 @@ export default function Dashboard() {
                     </>
                   )}
                 </div>
+                )}
               </div>
             )
           )}

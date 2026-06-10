@@ -71,7 +71,7 @@ export default function Library() {
   // Mount: memorized pages (for the badge + stat)
   useEffect(() => {
     progressAPI.getAllProgress().then(res => {
-      const pages = res.data?.memorizedPages ?? res.data?.data?.map?.(p => p.pageNumber) ?? [];
+      const pages = res.data?.data?.memorizedPages ?? [];
       setMemorizedPages(new Set(pages));
     }).catch(() => {});
   }, []);
