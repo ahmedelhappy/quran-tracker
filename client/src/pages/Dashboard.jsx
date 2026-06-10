@@ -1,13 +1,28 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap, FiPause } from 'react-icons/fi';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap, FiPause, FiVolume2 } from 'react-icons/fi';
 import { formatSurahNames } from '../utils/surahDisplay';
+
+// Ghost icon button: open the Library at this page to listen while reviewing
+const ListenButton = ({ pageNumber, compact = false }) => {
+  const { t } = useTranslation();
+  return (
+    <Link
+      to={`/library?page=${pageNumber}`}
+      title={t('dashboard.listenToPage')}
+      aria-label={t('dashboard.listenToPage')}
+      className={`${compact ? 'w-7 h-7' : 'w-8 h-8'} rounded-full flex items-center justify-center text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors shrink-0`}
+    >
+      <FiVolume2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+    </Link>
+  );
+};
 
 
 const dayOfYear = () => {
@@ -61,6 +76,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
                 {badge}
               </span>
             )}
+            <ListenButton pageNumber={page.pageNumber} />
           </div>
           <p className="text-sm text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>
         </div>
@@ -121,7 +137,10 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
           {isNew ? <FiBook className="w-4 h-4" /> : <span className="text-xs font-bold">↺</span>}
         </div>
         <div>
-          <p className="text-sm font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {pageNumber}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {pageNumber}</p>
+            <ListenButton pageNumber={pageNumber} compact />
+          </div>
           {formatSurahNames(page, i18n.language === 'ar') && <p className="text-xs text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>}
         </div>
       </div>

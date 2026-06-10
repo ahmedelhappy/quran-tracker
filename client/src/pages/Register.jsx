@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
 import Logo from '../components/Logo';
+import LanguageToggle from '../components/LanguageToggle';
 
 const Register = () => {
   const { register } = useAuth();
@@ -37,6 +38,9 @@ const Register = () => {
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 flex flex-col relative">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_#e2e8f8_0%,_transparent_60%)] dark:bg-none opacity-40" />
       <div className="fixed inset-0 pointer-events-none sacred-pattern opacity-80" />
+      <div className="absolute top-4 end-4 z-20">
+        <LanguageToggle variant="icon" />
+      </div>
 
       <main className="flex-grow flex items-center justify-center p-6 relative z-10 py-12">
         <div className="w-full max-w-[440px] bg-white dark:bg-gray-800 rounded-[24px] sacred-shadow p-8 md:p-10 border border-[#bfc9c3]/20 dark:border-gray-700 relative overflow-hidden">

@@ -3,9 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { authAPI } from '../services/api';
-import { FiSettings, FiGlobe, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen } from 'react-icons/fi';
+import { FiSettings, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen } from 'react-icons/fi';
 import Logo from './Logo';
+import LanguageToggle from './LanguageToggle';
 
 const NAV_LINKS = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: FiHome },
@@ -16,7 +16,7 @@ const NAV_LINKS = [
 const Navbar = () => {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -33,14 +33,6 @@ const Navbar = () => {
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
-
-  const toggleLanguage = () => {
-    const newLang = i18n.language === 'en' ? 'ar' : 'en';
-    i18n.changeLanguage(newLang);
-    if (user) {
-      authAPI.updateProfile({ language: newLang }).catch(() => {});
-    }
   };
 
   const isDark = theme === 'dark';
@@ -78,13 +70,7 @@ const Navbar = () => {
 
         {/* Desktop right icons */}
         <div className="hidden md:flex items-center gap-3">
-          <button
-            onClick={toggleLanguage}
-            title={t('nav.language')}
-            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-xs font-bold w-8 h-8 flex items-center justify-center"
-          >
-            {i18n.language === 'en' ? 'AR' : 'EN'}
-          </button>
+          <LanguageToggle variant="icon" />
           <button
             title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
             onClick={toggleTheme}
@@ -183,13 +169,7 @@ const Navbar = () => {
             {isDark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
             {isDark ? t('nav.lightMode') : t('nav.darkMode')}
           </button>
-          <button
-            onClick={toggleLanguage}
-            className="px-4 py-2.5 text-sm font-medium text-emerald-800/60 dark:text-gray-400 rounded-lg flex items-center gap-2"
-          >
-            <FiGlobe className="w-4 h-4" />
-            {i18n.language === 'en' ? 'العربية' : 'English'}
-          </button>
+          <LanguageToggle variant="menu" />
           <div className="border-t border-[#dce2f3]/50 dark:border-gray-700/50 mt-2 pt-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500">

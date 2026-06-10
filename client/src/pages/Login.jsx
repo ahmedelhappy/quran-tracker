@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
 import Logo from '../components/Logo';
+import LanguageToggle from '../components/LanguageToggle';
 
 const Login = () => {
   const { login } = useAuth();
@@ -29,7 +30,10 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
+    <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col relative">
+      <div className="absolute top-4 end-4 z-20">
+        <LanguageToggle variant="icon" />
+      </div>
       <main className="flex-grow flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-6">
