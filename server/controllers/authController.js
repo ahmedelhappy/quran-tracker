@@ -111,6 +111,8 @@ exports.login = async (req, res) => {
         recentReviewCount: user.recentReviewCount ?? null,
         cycleReviewCount: user.cycleReviewCount ?? null,
         pauseNewMemorization: user.pauseNewMemorization || false,
+        pausedFromOnboarding: user.pausedFromOnboarding || false,
+        cycleReviewStartPage: user.cycleReviewStartPage ?? null,
         language: user.language,
         token
       }
@@ -147,6 +149,8 @@ exports.getMe = async (req, res) => {
         recentReviewCount: user.recentReviewCount ?? null,
         cycleReviewCount: user.cycleReviewCount ?? null,
         pauseNewMemorization: user.pauseNewMemorization || false,
+        pausedFromOnboarding: user.pausedFromOnboarding || false,
+        cycleReviewStartPage: user.cycleReviewStartPage ?? null,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
         language: user.language,
@@ -259,6 +263,21 @@ exports.updateProfile = async (req, res) => {
       updateData.pauseNewMemorization = Boolean(req.body.pauseNewMemorization);
     }
 
+    if (req.body.pausedFromOnboarding !== undefined) {
+      updateData.pausedFromOnboarding = Boolean(req.body.pausedFromOnboarding);
+    }
+
+    if (req.body.cycleReviewStartPage !== undefined) {
+      const v = req.body.cycleReviewStartPage;
+      if (v === null) {
+        updateData.cycleReviewStartPage = null;
+      } else {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 1 && n <= 604) updateData.cycleReviewStartPage = n;
+        else return res.status(400).json({ success: false, message: 'cycleReviewStartPage must be between 1 and 604' });
+      }
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -286,6 +305,8 @@ exports.updateProfile = async (req, res) => {
         recentReviewCount: updatedUser.recentReviewCount ?? null,
         cycleReviewCount: updatedUser.cycleReviewCount ?? null,
         pauseNewMemorization: updatedUser.pauseNewMemorization || false,
+        pausedFromOnboarding: updatedUser.pausedFromOnboarding || false,
+        cycleReviewStartPage: updatedUser.cycleReviewStartPage ?? null,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,

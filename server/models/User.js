@@ -77,6 +77,8 @@ const userSchema = new mongoose.Schema(
       max: 40,
     },
     language: { type: String, enum: ['en', 'ar'], default: 'en' },
+    pausedFromOnboarding: { type: Boolean, default: false },
+    cycleReviewStartPage: { type: Number, default: null, min: 1, max: 604 },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically

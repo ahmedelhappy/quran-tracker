@@ -8,7 +8,7 @@ import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
@@ -34,6 +34,14 @@ const JUZ_RANGES = [
   {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
   {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
 ];
+
+function juzHealthColor(daysAgo) {
+  if (daysAgo === null) return { bg: 'bg-[#e7eefe] dark:bg-gray-700', text: 'text-[#bfc9c3]', ring: '' };
+  if (daysAgo < 7)  return { bg: 'bg-emerald-600', text: 'text-white', ring: 'ring-emerald-400' };
+  if (daysAgo < 14) return { bg: 'bg-emerald-400', text: 'text-white', ring: 'ring-emerald-300' };
+  if (daysAgo < 30) return { bg: 'bg-amber-400', text: 'text-white', ring: 'ring-amber-300' };
+  return { bg: 'bg-red-500', text: 'text-white', ring: 'ring-red-400' };
+}
 
 function toPageRanges(sortedPages) {
   if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
@@ -204,6 +212,36 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
     setRangeErrors(validateRanges(updated));
   };
 
+  const handleTabSwitch = (newMode) => {
+    if (newMode === selectionMode) return;
+    const currentPages = new Set(computeSelectedPages(selectedJuz, selectedSurahs, pageRanges));
+    if (newMode === 'juz') {
+      const derived = new Set(
+        JUZ_RANGES.filter(({ start, end }) => {
+          for (let p = start; p <= end; p++) if (!currentPages.has(p)) return false;
+          return true;
+        }).map(({ juz }) => juz)
+      );
+      setSelectedJuz(derived);
+      setRemovedJuz(new Set());
+    } else if (newMode === 'surah') {
+      const derived = new Set(
+        SURAH_PAGES.filter(s => {
+          for (let p = s.start; p <= s.end; p++) if (!currentPages.has(p)) return false;
+          return true;
+        }).map(s => s.number)
+      );
+      setSelectedSurahs(derived);
+      setRemovedSurahs(new Set());
+    } else if (newMode === 'range') {
+      const derived = toPageRanges(Array.from(currentPages).sort((a, b) => a - b));
+      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
+      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
+      setDeletedRangeRows([]);
+    }
+    setSelectionMode(newMode);
+  };
+
   const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
   const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
 
@@ -288,7 +326,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
               ].map(({ mode, labelKey }) => (
                 <button
                   key={mode}
-                  onClick={() => setSelectionMode(mode)}
+                  onClick={() => handleTabSwitch(mode)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -578,6 +616,7 @@ export default function Settings() {
   const { showToast } = useToast();
   const { theme, setTheme } = useTheme();
   const { t, i18n } = useTranslation();
+  const isArabic = i18n.language === 'ar';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -617,6 +656,11 @@ export default function Settings() {
   const [isPaused, setIsPaused]       = useState(user?.pauseNewMemorization ?? false);
   const [pauseSaving, setPauseSaving] = useState(false);
 
+  const [cycleStartMode, setCycleStartMode]   = useState('juz');
+  const [cycleStartPage, setCycleStartPage]   = useState(user?.cycleReviewStartPage ?? null);
+  const [cycleStartInput, setCycleStartInput] = useState('');
+  const [cycleStartSaving, setCycleStartSaving] = useState(false);
+
   const [resetModal, setResetModal]   = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
 
@@ -639,6 +683,7 @@ export default function Settings() {
       setRecentReviewValue(user.recentReviewCount ?? 3);
       setCycleReviewValue(user.cycleReviewCount ?? 5);
       setIsPaused(user.pauseNewMemorization ?? false);
+      setCycleStartPage(user.cycleReviewStartPage ?? null);
     }
   }, [user]);
 
@@ -694,6 +739,35 @@ export default function Settings() {
       showToast(t('settings.planUpdateFailed'), 'error');
     } finally {
       setPauseSaving(false);
+    }
+  };
+
+  const saveCycleStart = async (page) => {
+    setCycleStartSaving(true);
+    try {
+      await authAPI.updateProfile({ cycleReviewStartPage: page });
+      updateUser({ cycleReviewStartPage: page });
+      setCycleStartPage(page);
+      showToast(t('settings.cycleStartSaved'), 'success');
+    } catch {
+      showToast(t('settings.planUpdateFailed'), 'error');
+    } finally {
+      setCycleStartSaving(false);
+    }
+  };
+
+  const clearCycleStart = async () => {
+    setCycleStartSaving(true);
+    try {
+      await authAPI.updateProfile({ cycleReviewStartPage: null });
+      updateUser({ cycleReviewStartPage: null });
+      setCycleStartPage(null);
+      setCycleStartInput('');
+      showToast(t('settings.cycleStartSaved'), 'success');
+    } catch {
+      showToast(t('settings.planUpdateFailed'), 'error');
+    } finally {
+      setCycleStartSaving(false);
     }
   };
 
@@ -921,31 +995,31 @@ export default function Settings() {
 
             {/* ── Memorization Plan ────────────────────────── */}
             {activeSection === 'memorization' && (
-              <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
-                  <FiBook className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
-                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.memorizationPlan')}</h2>
-                </div>
+              <section className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow divide-y divide-[#dce2f3] dark:divide-gray-700 overflow-hidden">
 
-                <div className="mb-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
-                    <div>
-                      <p className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.priorMem')}</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.priorMemDesc')}</p>
+                {/* ── Group: Prior Memorization ─────────────────── */}
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                      <FiList className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
                     </div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.priorMem')}</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 rtl:flex-row-reverse">
+                    <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.priorMemDesc')}</p>
                     <button
                       onClick={() => setEditProgressOpen(true)}
-                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 flex-shrink-0 rtl:flex-row-reverse"
+                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 shrink-0 rtl:flex-row-reverse"
                     >
                       <FiEdit2 className="w-4 h-4" /> {t('settings.editProgress')}
                     </button>
                   </div>
                   <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-4 border border-[#bfc9c3] dark:border-gray-600">
-                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.currentlyTracking')}</p>
+                    <p className="text-xs text-[#707974] dark:text-gray-400 mb-2 uppercase tracking-wide font-medium">{t('settings.currentlyTracking')}</p>
                     <div className="flex flex-wrap gap-2">
                       {memorizedJuz.filter(j => j.isComplete).length > 0 ? (
                         memorizedJuz.filter(j => j.isComplete).map(j => (
-                          <span key={j.juzNumber} className="px-3 py-1.5 bg-[#003527]/10 dark:bg-emerald-900/30 text-[#003527] dark:text-emerald-400 rounded-lg text-sm font-medium">
+                          <span key={j.juzNumber} className="px-3 py-1 bg-[#003527]/10 dark:bg-emerald-900/30 text-[#003527] dark:text-emerald-400 rounded-lg text-sm font-medium">
                             {t('progress.juz')} {j.juzNumber}
                           </span>
                         ))
@@ -956,90 +1030,116 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <hr className="border-[#dce2f3] dark:border-gray-700 my-6" />
+                {/* ── Group: New Memorization ───────────────────── */}
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                      <FiBook className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.dailyTarget')}</p>
+                  </div>
 
-                <div className="mb-6">
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.dailyTarget')}</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.dailyTargetDesc')}</p>
-                  <div className="flex flex-wrap gap-3">
-                    {DAILY_OPTIONS.map(v => (
-                      <button
-                        key={v}
-                        onClick={() => { setDailyMode('fixed'); setDailyPages(v); }}
-                        className={`px-6 py-3 rounded-xl border font-medium transition-colors ${
-                          dailyMode === 'fixed' && dailyPages === v
+                  <div className="mb-5">
+                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.dailyTargetDesc')}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {DAILY_OPTIONS.map(v => (
+                        <button
+                          key={v}
+                          onClick={() => { setDailyMode('fixed'); setDailyPages(v); }}
+                          className={`px-6 py-3 rounded-xl border font-medium transition-colors ${
+                            dailyMode === 'fixed' && dailyPages === v
+                              ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
+                              : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                      <div
+                        onClick={() => {
+                          const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
+                          setCustomInputText(String(seedValue));
+                          setCustomDailyValue(seedValue);
+                          setDailyMode('custom');
+                          setDailyPages(seedValue);
+                          customPagesInputRef.current?.focus();
+                        }}
+                        className={`px-4 py-3 rounded-xl border font-medium transition-colors cursor-pointer flex items-center gap-2 ${
+                          dailyMode === 'custom'
                             ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
                             : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
                         }`}
                       >
-                        {v}
-                      </button>
-                    ))}
-                    <div
-                      onClick={() => {
-                        const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
-                        setCustomInputText(String(seedValue));
-                        setCustomDailyValue(seedValue);
-                        setDailyMode('custom');
-                        setDailyPages(seedValue);
-                        customPagesInputRef.current?.focus();
-                      }}
-                      className={`px-4 py-3 rounded-xl border font-medium transition-colors cursor-pointer flex items-center gap-2 ${
-                        dailyMode === 'custom'
-                          ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
-                          : 'border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500 bg-[#f9f9ff] dark:bg-gray-700/50'
+                        <span className="text-sm">{t('settings.customPages')}</span>
+                        <input
+                          ref={customPagesInputRef}
+                          type="number" min="0.5" max="10"
+                          value={dailyMode === 'custom' ? customInputText : ''}
+                          placeholder="—"
+                          onClick={e => e.stopPropagation()}
+                          onFocus={e => {
+                            if (dailyMode !== 'custom') {
+                              const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
+                              setCustomInputText(String(seedValue));
+                              setCustomDailyValue(seedValue);
+                              setDailyMode('custom');
+                              setDailyPages(seedValue);
+                            }
+                            setTimeout(() => e.target.select(), 0);
+                          }}
+                          onChange={e => {
+                            setCustomInputText(e.target.value);
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val) && val >= 0.5 && val <= 10) {
+                              const rounded = Math.round(val * 2) / 2;
+                              setCustomDailyValue(rounded);
+                              setDailyPages(rounded);
+                            }
+                          }}
+                          onBlur={() => { if (dailyMode === 'custom') setCustomInputText(String(customDailyValue)); }}
+                          className={`w-12 bg-transparent text-center text-sm focus:outline-none rounded ${
+                            dailyMode === 'custom' ? 'text-white placeholder-white/60' : ''
+                          } ${isCustomInvalid ? 'ring-2 ring-red-400' : ''}`}
+                        />
+                      </div>
+                    </div>
+                    {isCustomInvalid && (
+                      <p className="text-xs text-red-500 mt-2">{t('settings.dailyTargetRangeError')}</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600 rtl:flex-row-reverse">
+                    <div>
+                      <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
+                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
+                        {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={togglePause}
+                      disabled={pauseSaving}
+                      aria-label={t('settings.pauseMemTitle')}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                        isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
                       }`}
                     >
-                      <span className="text-sm">{t('settings.customPages')}</span>
-                      <input
-                        ref={customPagesInputRef}
-                        type="number"
-                        min="0.5"
-                        max="10"
-                        value={dailyMode === 'custom' ? customInputText : ''}
-                        placeholder="—"
-                        onClick={e => e.stopPropagation()}
-                        onFocus={e => {
-                          if (dailyMode !== 'custom') {
-                            const seedValue = dailyMode === 'fixed' ? dailyPages : customDailyValue;
-                            setCustomInputText(String(seedValue));
-                            setCustomDailyValue(seedValue);
-                            setDailyMode('custom');
-                            setDailyPages(seedValue);
-                          }
-                          const input = e.target;
-                          setTimeout(() => input.select(), 0);
-                        }}
-                        onChange={e => {
-                          setCustomInputText(e.target.value);
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val) && val >= 0.5 && val <= 10) {
-                            const rounded = Math.round(val * 2) / 2;
-                            setCustomDailyValue(rounded);
-                            setDailyPages(rounded);
-                          }
-                        }}
-                        onBlur={() => {
-                          if (dailyMode === 'custom') {
-                            setCustomInputText(String(customDailyValue));
-                          }
-                        }}
-                        className={`w-12 bg-transparent text-center text-sm focus:outline-none rounded transition-shadow ${
-                          dailyMode === 'custom' ? 'text-white placeholder-white/60' : ''
-                        } ${isCustomInvalid ? 'ring-2 ring-red-400' : ''}`}
-                      />
-                    </div>
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                        isPaused ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
                   </div>
-                  {isCustomInvalid && (
-                    <p className="text-xs text-red-500 mt-2">{t('settings.dailyTargetRangeError')}</p>
-                  )}
                 </div>
 
-                <div className="mb-6">
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.reviewSettings')}</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewSettingsDesc')}</p>
+                {/* ── Group: Review ─────────────────────────────── */}
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-6 h-6 rounded-md bg-[#fe932c]/15 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                      <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.reviewSettings')}</p>
+                  </div>
 
-                  {/* Mode picker */}
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewSettingsDesc')}</p>
                   <div className="flex flex-col gap-2 mb-5">
                     <button
                       onClick={() => setReviewMode('intensity')}
@@ -1055,13 +1155,11 @@ export default function Settings() {
                       </div>
                       <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('settings.modeIntensityDesc')}</p>
                     </button>
-
                     <div className="relative flex items-center">
                       <div className="flex-1 border-t border-[#dce2f3] dark:border-gray-700" />
                       <span className="mx-3 text-xs font-medium text-[#707974] dark:text-gray-500">{t('settings.orDivider')}</span>
                       <div className="flex-1 border-t border-[#dce2f3] dark:border-gray-700" />
                     </div>
-
                     <button
                       onClick={() => {
                         if (reviewMode === 'intensity') {
@@ -1084,9 +1182,8 @@ export default function Settings() {
                     </button>
                   </div>
 
-                  {/* Active mode content */}
                   {reviewMode === 'intensity' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                       {INTENSITY_OPTIONS.map(({ value, labelKey, descKey }) => (
                         <label key={value} className="cursor-pointer">
                           <input type="radio" name="settings-intensity" value={value}
@@ -1098,9 +1195,7 @@ export default function Settings() {
                           }`}>
                             <div className="flex justify-between items-center mb-2">
                               <span className={`font-medium ${intensity === value ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
-                              <span className={intensity === value ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>
-                                {intensity === value ? '●' : '○'}
-                              </span>
+                              <span className={intensity === value ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{intensity === value ? '●' : '○'}</span>
                             </div>
                             <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
                           </div>
@@ -1108,90 +1203,201 @@ export default function Settings() {
                       ))}
                     </div>
                   )}
-
                   {reviewMode === 'fixed' && (
-                    <div className="space-y-3">
+                    <div className="space-y-3 mb-6">
                       <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
                           <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
                         </div>
-                        <input
-                          type="number" min="0" max="20"
-                          value={recentReviewValue}
-                          onChange={e => {
-                            const n = parseInt(e.target.value, 10);
-                            if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n);
-                          }}
-                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]"
-                        />
+                        <input type="number" min="0" max="20" value={recentReviewValue}
+                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
+                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                       </div>
                       <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
                           <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
                         </div>
-                        <input
-                          type="number" min="0" max="40"
-                          value={cycleReviewValue}
-                          onChange={e => {
-                            const n = parseInt(e.target.value, 10);
-                            if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n);
-                          }}
-                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]"
-                        />
+                        <input type="number" min="0" max="40" value={cycleReviewValue}
+                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n); }}
+                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                       </div>
                     </div>
                   )}
-                </div>
 
-                <div>
-                  <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.restDays')}</p>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.restDaysDesc')}</p>
-                  <div className="flex flex-wrap gap-6">
-                    {DAY_LABEL_KEYS.map((labelKey, idx) => {
-                      const jsDay = DAY_JS_INDICES[idx];
-                      return (
-                        <label key={labelKey} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!offDays.includes(jsDay)}
-                            onChange={() => toggleOffDay(jsDay)}
-                            className="w-5 h-5 rounded border-[#707974] accent-[#003527] cursor-pointer"
-                          />
-                          <span className="font-medium text-[#151c27] dark:text-gray-200">{t(labelKey)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                    {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
-                  </p>
-                </div>
-
-                <hr className="border-[#dce2f3] dark:border-gray-700 my-6" />
-
-                <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                   <div>
-                    <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
-                    <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
-                      {isPaused
-                        ? t('settings.pauseMemActive', { pages: dailyPages })
-                        : t('settings.pauseMemDesc')}
+                    <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.restDays')}</p>
+                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.restDaysDesc')}</p>
+                    <div className="flex flex-wrap gap-5">
+                      {DAY_LABEL_KEYS.map((labelKey, idx) => {
+                        const jsDay = DAY_JS_INDICES[idx];
+                        return (
+                          <label key={labelKey} className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={!offDays.includes(jsDay)} onChange={() => toggleOffDay(jsDay)}
+                              className="w-5 h-5 rounded border-[#707974] accent-[#003527] cursor-pointer" />
+                            <span className="font-medium text-[#151c27] dark:text-gray-200">{t(labelKey)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+                      {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
                     </p>
                   </div>
-                  <button
-                    onClick={togglePause}
-                    disabled={pauseSaving}
-                    aria-label={t('settings.pauseMemTitle')}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-                      isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
-                    }`}
-                  >
-                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                      isPaused ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </button>
+                </div>
+
+                {/* ── Group: Review Cycle Start ─────────────────── */}
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                      <FiMapPin className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.cycleStartTitle')}</p>
+                  </div>
+                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4 mt-1">{t('settings.cycleStartDesc')}</p>
+
+                  {/* Current start indicator */}
+                  <div className="flex items-center gap-3 mb-4 p-3 bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-xl border border-green-100 dark:border-emerald-800/30 rtl:flex-row-reverse">
+                    <FiMapPin className="w-4 h-4 text-[#003527] dark:text-emerald-400 shrink-0" />
+                    <p className="text-xs text-[#003527] dark:text-emerald-300 font-medium flex-1">
+                      {cycleStartPage
+                        ? `${t('settings.cycleStartCurrent')}: ${(() => {
+                            const juzInfo = JUZ_RANGES.find(j => cycleStartPage >= j.start && cycleStartPage <= j.end);
+                            return juzInfo
+                              ? t('settings.cycleStartJuz', { juz: juzInfo.juz }) + ` · ${t('settings.cycleStartPage', { page: cycleStartPage })}`
+                              : t('settings.cycleStartPage', { page: cycleStartPage });
+                          })()}`
+                        : t('settings.cycleStartNone')}
+                    </p>
+                    {cycleStartPage && (
+                      <button onClick={clearCycleStart} disabled={cycleStartSaving}
+                        className="text-xs text-[#ba1a1a] hover:text-red-800 dark:hover:text-red-300 font-medium flex items-center gap-1 shrink-0 disabled:opacity-50">
+                        <FiRotateCcw className="w-3 h-3" /> {t('settings.cycleStartClear')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Health color legend — applies to the By Juz view */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+                    <span className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('settings.healthLegendTitle')}:</span>
+                    {[
+                      { color: 'bg-emerald-600', label: t('settings.healthFresh') },
+                      { color: 'bg-emerald-400', label: t('settings.healthGood') },
+                      { color: 'bg-amber-400',   label: t('settings.healthDue') },
+                      { color: 'bg-red-500',     label: t('settings.healthOverdue') },
+                    ].map(({ color, label }) => (
+                      <span key={label} className="flex items-center gap-1.5 text-[11px] text-[#707974] dark:text-gray-400">
+                        <span className={`w-2.5 h-2.5 rounded-sm ${color} inline-block shrink-0`} />
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Picker sub-tabs */}
+                  <div className="flex gap-2 mb-3">
+                    {[
+                      { mode: 'juz',   labelKey: 'settings.cycleStartByJuz' },
+                      { mode: 'surah', labelKey: 'settings.cycleStartBySurah' },
+                      { mode: 'page',  labelKey: 'settings.cycleStartByPage' },
+                    ].map(({ mode, labelKey }) => (
+                      <button key={mode} onClick={() => setCycleStartMode(mode)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          cycleStartMode === mode
+                            ? 'bg-[#003527] text-white border-[#003527]'
+                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                        }`}>
+                        {t(labelKey)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {cycleStartMode === 'juz' && (
+                    <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                      {(() => {
+                        const memSet = new Set(memorizedPageNums);
+                        return memorizedJuz.filter(j => j.memorizedPages > 0).map(juz => {
+                          let firstMemPage = juz.startPage;
+                          for (let p = juz.startPage; p <= juz.endPage; p++) {
+                            if (memSet.has(p)) { firstMemPage = p; break; }
+                          }
+                          return { ...juz, firstMemPage };
+                        });
+                      })().map(juz => {
+                        const { bg, text } = juzHealthColor(juz.oldestReviewDaysAgo);
+                        const isSelected = cycleStartPage !== null
+                          && cycleStartPage >= juz.startPage && cycleStartPage <= juz.endPage;
+                        return (
+                          <button key={juz.juzNumber}
+                            onClick={() => saveCycleStart(juz.firstMemPage)}
+                            disabled={cycleStartSaving}
+                            className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-bold transition-all border-2 hover:scale-105 ${
+                              isSelected
+                                ? `${bg} ${text} border-[#fe932c] ring-2 ring-[#fe932c]/40`
+                                : `${bg} ${text} border-transparent hover:border-[#fe932c]/60`
+                            } disabled:opacity-60`}
+                          >
+                            <span>{juz.juzNumber}</span>
+                            {juz.oldestReviewDaysAgo != null && (
+                              <span className="text-[8px] opacity-80 leading-none">{juz.oldestReviewDaysAgo}d</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {cycleStartMode === 'surah' && (
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-[#dce2f3] dark:border-gray-700 divide-y divide-[#dce2f3] dark:divide-gray-700">
+                      {(() => {
+                        const memSet = new Set(memorizedPageNums);
+                        return SURAH_PAGES
+                          .filter(s => { for (let p = s.start; p <= s.end; p++) if (memSet.has(p)) return true; return false; })
+                          .map(s => {
+                            let firstMemPage = s.start;
+                            for (let p = s.start; p <= s.end; p++) { if (memSet.has(p)) { firstMemPage = p; break; } }
+                            return { ...s, firstMemPage };
+                          });
+                      })().map(s => {
+                        const isSelected = cycleStartPage === s.firstMemPage;
+                        return (
+                          <button key={s.number} onClick={() => saveCycleStart(s.firstMemPage)}
+                            disabled={cycleStartSaving}
+                            className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors disabled:opacity-60 ${
+                              isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
+                            }`}
+                          >
+                            <span className="text-sm font-medium">{s.number}. {isArabic ? s.arabic : s.name}</span>
+                            <span className={`text-xs shrink-0 ${isSelected ? 'text-white/70' : 'text-[#707974] dark:text-gray-400'}`}>
+                              {t('settings.cycleStartPage', { page: s.firstMemPage })}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {cycleStartMode === 'page' && (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input type="number" min="1" max="604" value={cycleStartInput}
+                        onChange={e => setCycleStartInput(e.target.value)} placeholder="1–604"
+                        className="w-28 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
+                      <button
+                        onClick={() => {
+                          const n = parseInt(cycleStartInput, 10);
+                          const memSet = new Set(memorizedPageNums);
+                          if (isNaN(n) || n < 1 || n > 604 || !memSet.has(n)) {
+                            showToast(t('settings.cycleStartPageInvalid'), 'error'); return;
+                          }
+                          saveCycleStart(n);
+                        }}
+                        disabled={cycleStartSaving || !cycleStartInput}
+                        className="bg-[#003527] text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#064e3b] transition-colors disabled:opacity-60">
+                        {t('settings.cycleStartSet')}
+                      </button>
+                      <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleStartPageHint')}</p>
+                    </div>
+                  )}
                 </div>
               </section>
             )}

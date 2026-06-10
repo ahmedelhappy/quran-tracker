@@ -4,9 +4,25 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
-import { FiPlus, FiX } from 'react-icons/fi';
+import { FiPlus, FiX, FiPause } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import { SURAH_PAGES } from '../data/surahPages';
+
+function toPageRanges(sortedPages) {
+  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
+  const pages = [...sortedPages].sort((a, b) => a - b);
+  const ranges = [];
+  let start = pages[0], prev = pages[0];
+  for (let i = 1; i < pages.length; i++) {
+    if (pages[i] !== prev + 1) {
+      ranges.push({ start: String(start), end: String(prev) });
+      start = pages[i];
+    }
+    prev = pages[i];
+  }
+  ranges.push({ start: String(start), end: String(prev) });
+  return ranges;
+}
 
 const JUZ_RANGES = [
   {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
@@ -124,6 +140,7 @@ export default function Onboarding() {
   const [offDays, setOffDays] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [pauseOnStart, setPauseOnStart] = useState(false);
 
   const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
   const selectedCount = selectedPages.length;
@@ -166,6 +183,31 @@ export default function Onboarding() {
       return prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d];
     });
 
+  const handleTabSwitch = (newMode) => {
+    if (newMode === selectionMode) return;
+    const currentPages = new Set(computeSelectedPages(selectedJuz, selectedSurahs, pageRanges));
+    if (newMode === 'juz') {
+      setSelectedJuz(new Set(
+        JUZ_RANGES.filter(({ start, end }) => {
+          for (let p = start; p <= end; p++) if (!currentPages.has(p)) return false;
+          return true;
+        }).map(({ juz }) => juz)
+      ));
+    } else if (newMode === 'surah') {
+      setSelectedSurahs(new Set(
+        SURAH_PAGES.filter(s => {
+          for (let p = s.start; p <= s.end; p++) if (!currentPages.has(p)) return false;
+          return true;
+        }).map(s => s.number)
+      ));
+    } else if (newMode === 'range') {
+      const derived = toPageRanges(Array.from(currentPages));
+      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
+      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
+    }
+    setSelectionMode(newMode);
+  };
+
   const addRange = () => {
     setPageRanges(r => [...r, { start: '', end: '' }]);
     setRangeErrors(e => [...e, {}]);
@@ -186,7 +228,13 @@ export default function Onboarding() {
     setSubmitting(true);
     try {
       await progressAPI.completeOnboarding({ memorizedPages: selectedPages, dailyNewPages: dailyPages });
-      await authAPI.updateProfile({ reviewIntensity, offDays });
+      await authAPI.updateProfile({
+        reviewIntensity,
+        offDays,
+        ...(pauseOnStart && selectedPages.length > 0
+          ? { pauseNewMemorization: true, pausedFromOnboarding: true }
+          : {}),
+      });
       await refreshUser();
       navigate('/dashboard');
     } catch {
@@ -242,7 +290,7 @@ export default function Onboarding() {
               ].map(({ mode, labelKey }) => (
                 <button
                   key={mode}
-                  onClick={() => setSelectionMode(mode)}
+                  onClick={() => handleTabSwitch(mode)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -610,6 +658,32 @@ export default function Onboarding() {
             ))}
           </div>
         </div>
+
+        {selectedCount > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-5 sacred-shadow">
+            <div className="flex items-start justify-between gap-4 rtl:flex-row-reverse">
+              <div className="flex items-start gap-3 rtl:flex-row-reverse">
+                <div className="w-9 h-9 rounded-full bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('onboarding.pauseOnStartTitle')}</p>
+                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5 leading-relaxed max-w-md">{t('onboarding.pauseOnStartDesc')}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPauseOnStart(p => !p)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none mt-0.5 ${
+                  pauseOnStart ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
+                }`}
+              >
+                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                  pauseOnStart ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                }`} />
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">

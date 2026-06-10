@@ -230,12 +230,21 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- CYCLE REVIEW PAGES ---
     // Excludes: pages memorized today, pages owned by the recent review window.
-    // Sorted by lastReviewedDate ASC, pageNumber ASC → cycles through all pages
-    // in page-number order, advancing from lowest to highest each day.
+    // Sorted by cycleReviewStartPage order when set, otherwise lastReviewedDate ASC.
     const pagesForReview = allMemorizedPages.filter(
       p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
         && !recentEligibleNums.has(p.pageNumber)
     );
+
+    if (user.cycleReviewStartPage) {
+      const startPg = user.cycleReviewStartPage;
+      pagesForReview.sort((a, b) => {
+        const aGroup = a.pageNumber >= startPg ? 0 : 1;
+        const bGroup = b.pageNumber >= startPg ? 0 : 1;
+        if (aGroup !== bGroup) return aGroup - bGroup;
+        return a.pageNumber - b.pageNumber;
+      });
+    }
 
     const reviewsCompletedToday = pagesForReview.filter(
       p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
@@ -312,6 +321,16 @@ exports.getTodayTasks = async (req, res) => {
       };
     };
 
+    // --- FIRST CYCLE COMPLETE ---
+    // Fires once when user paused from onboarding and every memorized page has been
+    // reviewed at least once since the plan started.
+    const planStartStr = getDateString(user.planStartDate || user.createdAt);
+    const firstCycleComplete = user.pausedFromOnboarding === true
+      && totalMemorized > 0
+      && pagesForReview.every(
+          p => p.lastReviewedDate && getDateString(p.lastReviewedDate) >= planStartStr
+        );
+
     // --- STATS ---
     const percentage = ((totalMemorized / 604) * 100).toFixed(1);
     const newMemorizationComplete = isHafiz || newPagesCompletedToday >= targetNewPages;
@@ -341,6 +360,7 @@ exports.getTodayTasks = async (req, res) => {
       data: {
         isOffDay: false,
         isHafiz,
+        firstCycleComplete,
         newPages: newPageNums.map(toNewPageDto),
         reviewPages: reviewPages.map(toReviewPageDto),
         extraNewPages: extraNewPageNums.map(toNewPageDto),
@@ -578,7 +598,7 @@ exports.getWeekPlan = async (req, res) => {
         continue;
       }
 
-      const newTarget = isHafiz ? 0 : computeNewPageTargetForDate(dailyNewPages, planStart, date);
+      const newTarget = (isHafiz || user.pauseNewMemorization) ? 0 : computeNewPageTargetForDate(dailyNewPages, planStart, date);
 
       const newPagesForDay = [];
       if (newTarget > 0) {
@@ -755,8 +775,10 @@ exports.resetProgress = async (req, res) => {
 exports.getJuzProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' });
+    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, lastReviewedDate: 1 });
     const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
+    const reviewDateByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, p.lastReviewedDate]));
+    const now = new Date();
 
     const juzRanges = [
       { juz: 1,  start: 1,   end: 21  },
@@ -797,11 +819,23 @@ exports.getJuzProgress = async (req, res) => {
       for (let p = start; p <= end; p++) {
         if (memorizedPages.has(p)) memorizedInJuz++;
       }
+      // Find the oldest (most stale) review date among memorized pages in this juz
+      let oldestReview = null;
+      for (let p = start; p <= end; p++) {
+        if (!memorizedPages.has(p)) continue;
+        const rd = reviewDateByPage[p];
+        if (!rd || !oldestReview || rd < oldestReview) oldestReview = rd;
+      }
+      const oldestReviewDaysAgo = oldestReview
+        ? Math.floor((now - new Date(oldestReview)) / MS_PER_DAY)
+        : null;
+
       return {
         juzNumber: juz, startPage: start, endPage: end,
         totalPages, memorizedPages: memorizedInJuz,
         percentage: Math.round((memorizedInJuz / totalPages) * 100),
         isComplete: memorizedInJuz === totalPages,
+        oldestReviewDaysAgo,
       };
     });
 

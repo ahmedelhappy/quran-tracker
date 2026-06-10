@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { progressAPI } from '../services/api';
+import { progressAPI, authAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiRefreshCw, FiZap, FiPause } from 'react-icons/fi';
@@ -231,7 +231,7 @@ const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
 };
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -241,6 +241,7 @@ export default function Dashboard() {
   const [completedKeys, setCompletedKeys] = useState(new Set());
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
+  const [cycleBannerDismissed, setCycleBannerDismissed] = useState(false);
   const [showAllCycle, setShowAllCycle] = useState(false);
   const [showAllRecent, setShowAllRecent] = useState(false);
   const [showWantMore, setShowWantMore] = useState(false);
@@ -338,11 +339,13 @@ export default function Dashboard() {
   };
 
   const stats = data?.stats;
-  const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || juzData.find(j => j.percentage > 0) || null;
-  const juzPct = activeJuz?.percentage ?? 0;
+  const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || null;
+  const juzPct = activeJuz?.percentage ?? (juzData.some(j => j.isComplete) ? 100 : 0);
   const completedJuz = juzData.filter(j => j.isComplete).length;
   const totalJuz = juzData.length > 0
-    ? (completedJuz + (activeJuz?.percentage ?? 0) / 100).toFixed(1)
+    ? activeJuz
+      ? (completedJuz + activeJuz.percentage / 100).toFixed(1)
+      : String(completedJuz)
     : '0';
   const pagesToHifz = stats ? `${stats.totalMemorized} / 604` : '— / 604';
 
@@ -385,11 +388,53 @@ export default function Dashboard() {
   const markAllRecent = () => recentPending.forEach(p => markComplete(p.pageNumber, 'review'));
   const markAllCycle = () => cyclePending.forEach(p => markComplete(p.pageNumber, 'review'));
 
+  const handleFirstCycleResume = async () => {
+    try {
+      await authAPI.updateProfile({ pauseNewMemorization: false, pausedFromOnboarding: false });
+      updateUser({ pauseNewMemorization: false, pausedFromOnboarding: false });
+      const [taskRes, juzRes] = await Promise.all([
+        progressAPI.getTodayTasks(),
+        progressAPI.getJuzProgress(),
+      ]);
+      setData(taskRes.data.data);
+      setJuzData(juzRes.data.data);
+      setCycleBannerDismissed(true);
+    } catch {
+      showToast(t('dashboard.failedMark'), 'error');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FFFDF5] dark:bg-gray-900 sacred-pattern flex flex-col">
       <Navbar />
 
       <main className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
+
+        {/* First cycle complete banner */}
+        {data?.firstCycleComplete && !cycleBannerDismissed && (
+          <div className="bg-[#003527] rounded-2xl p-5 md:p-6 flex items-start gap-4 relative overflow-hidden shadow-lg">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none text-amber-300 text-[120px] leading-none select-none">🎊</div>
+            <div className="w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center shrink-0 text-xl">🎊</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-amber-400 text-[10px] font-bold uppercase tracking-widest mb-1">{t('dashboard.firstCycleTitle')}</p>
+              <p className="text-white/80 text-sm leading-relaxed">{t('dashboard.firstCycleMsg')}</p>
+              <div className="flex gap-3 mt-3 flex-wrap">
+                <button
+                  onClick={handleFirstCycleResume}
+                  className="text-xs font-semibold bg-white text-[#003527] px-4 py-2 rounded-lg hover:bg-amber-50 transition-colors"
+                >
+                  {t('dashboard.firstCycleResume')}
+                </button>
+                <button
+                  onClick={() => setCycleBannerDismissed(true)}
+                  className="text-xs text-white/60 hover:text-white px-4 py-2 rounded-lg transition-colors border border-white/20 hover:border-white/40"
+                >
+                  {t('dashboard.firstCycleDismiss')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Missed day banner */}
         {missedDay && (
