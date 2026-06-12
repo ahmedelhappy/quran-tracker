@@ -31,7 +31,7 @@ const Register = () => {
     else showToast(result.message || t('auth.registrationFailed'), 'error');
   };
 
-  const inputCls = 'w-full pl-11 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500 rtl:pl-4 rtl:pr-11';
+  const inputCls = 'w-full ps-11 pe-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
   const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-200 uppercase tracking-wider mb-1.5';
 
   return (
@@ -60,25 +60,25 @@ const Register = () => {
             <div>
               <label className={labelCls} htmlFor="fullName">{t('auth.fullName')}</label>
               <div className="relative group">
-                <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors rtl:left-auto rtl:right-3.5" />
-                <input id="fullName" type="text" value={form.name} onChange={set('name')} placeholder="Enter your full name" required className={inputCls} />
+                <FiUser className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
+                <input id="fullName" type="text" value={form.name} onChange={set('name')} placeholder={t('auth.namePlaceholder')} required className={inputCls} />
               </div>
             </div>
 
             <div>
               <label className={labelCls} htmlFor="email">{t('auth.email')}</label>
               <div className="relative group">
-                <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors rtl:left-auto rtl:right-3.5" />
-                <input id="email" type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required className={inputCls} />
+                <FiMail className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
+                <input id="email" type="email" value={form.email} onChange={set('email')} placeholder={t('auth.emailPlaceholder')} required className={inputCls} />
               </div>
             </div>
 
             <div>
               <label className={labelCls} htmlFor="password">{t('auth.password')}</label>
               <div className="relative group">
-                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors rtl:left-auto rtl:right-3.5" />
-                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder="Create a strong password" required className={inputCls + ' pr-10 rtl:pr-11 rtl:pl-10'} />
-                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944] rtl:right-auto rtl:left-3">
+                <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
+                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder={t('auth.passwordPlaceholder')} required className={inputCls + ' pe-10'} />
+                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
                   {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
               </div>
@@ -87,9 +87,9 @@ const Register = () => {
             <div>
               <label className={labelCls} htmlFor="confirmPassword">{t('auth.confirmPassword')}</label>
               <div className="relative group">
-                <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors rtl:left-auto rtl:right-3.5" />
-                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder="Repeat your password" required className={inputCls + ' pr-10 rtl:pr-11 rtl:pl-10'} />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944] rtl:right-auto rtl:left-3">
+                <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
+                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder={t('auth.confirmPlaceholder')} required className={inputCls + ' pe-10'} />
+                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
                   {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                 </button>
               </div>

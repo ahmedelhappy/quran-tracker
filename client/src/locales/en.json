@@ -32,7 +32,11 @@
     "passwordsMismatch": "Passwords do not match",
     "passwordTooShort": "Password must be at least 6 characters",
     "registrationFailed": "Registration failed",
-    "invalidCredentials": "Invalid email or password"
+    "invalidCredentials": "Invalid email or password",
+    "namePlaceholder": "Enter your full name",
+    "emailPlaceholder": "you@example.com",
+    "passwordPlaceholder": "Create a strong password",
+    "confirmPlaceholder": "Repeat your password"
   },
   "dashboard": {
     "greeting": "Assalamu Alaikum, {{name}}",
@@ -463,5 +467,101 @@
     "streak_30_desc": "Maintained a 30-day streak",
     "streak_100_name": "Century Streak",
     "streak_100_desc": "Maintained a 100-day streak"
+  },
+  "landing": {
+    "navbar": {
+      "features": "Features",
+      "howItWorks": "How It Works",
+      "faq": "FAQ",
+      "login": "Login",
+      "getStarted": "Get Started"
+    },
+    "hero": {
+      "badge": "✨ Spiritual Productivity Reimagined",
+      "title": "Your Journey to Memorize the Quran",
+      "titleHighlight": "Starts Here",
+      "subtitle": "Transform your Hifz goals into daily habits. A serene, disciplined tracker that brings focus and peace to your memorization journey.",
+      "cta": "Start Memorizing Free →",
+      "seeHow": "See How It Works",
+      "joinedBy": "Joined by",
+      "students": "10,000+",
+      "studentsGlobal": "students globally",
+      "cardGoalLabel": "Current Goal",
+      "cardGoalTitle": "Surah Al-Mulk",
+      "cardStreak": "🔥 14 Day Streak",
+      "cardKeepItUp": "Keep it up!",
+      "cardVerseTranslation": "\"Blessed is He in whose hand is dominion, and He is over all things competent.\"",
+      "cardMeccan": "Meccan",
+      "cardVerses": "30 Verses",
+      "planToday": "Today",
+      "planTomorrow": "Tomorrow",
+      "planDay3": "Day 3"
+    },
+    "features": {
+      "title": "Designed for Deep Focus",
+      "subtitle": "Everything you need to memorize, review, and retain the Quran",
+      "personalizedTitle": "Personalized Plans",
+      "personalizedDesc": "Set your pace based on your schedule. Whether it's half a page or 5 pages a day.",
+      "reviewTitle": "Smart Review",
+      "reviewDesc": "Spaced repetition algorithms ensure you review right before you forget.",
+      "reviewRetention": "Retention Strength",
+      "progressTitle": "Track Progress",
+      "progressDesc": "Visualize your journey through all 30 Juz. See exactly how much you've accomplished and how far you have to go.",
+      "motivateTitle": "Stay Motivated",
+      "motivateDesc": "Build consistent habits with daily streaks, achievements, and gentle reminders.",
+      "streakBadge": "14 Day Streak",
+      "juzBadge": "Juz 30 Completed"
+    },
+    "stats": {
+      "students": "Active Students",
+      "ayahs": "Ayahs Memorized",
+      "rating": "Average Rating"
+    },
+    "howItWorks": {
+      "title": "How It Works",
+      "subtitle": "Get started in minutes and build a lasting Hifz habit",
+      "step1Title": "Create Your Profile",
+      "step1Desc": "Register and tell us how much you've already memorized and how many pages per day you can commit to.",
+      "step2Title": "Get Your Daily Plan",
+      "step2Desc": "Each day we assign new pages to memorize and review old ones using spaced repetition.",
+      "step3Title": "Track & Stay Consistent",
+      "step3Desc": "Check off tasks, maintain your streak, and watch your progress grow across all 30 Juz."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "items": [
+        { "q": "Is Quran Tracker free to use?", "a": "Yes, completely free. All core features — personalized plans, spaced repetition reviews, and progress tracking — are available at no cost." },
+        { "q": "How does the smart review system work?", "a": "Pages are scheduled for revision based on how recently you memorized them. Newer pages appear more often, with intervals growing as your retention strengthens — grounded in the Ebbinghaus Forgetting Curve." },
+        { "q": "Can I track specific Surahs or page ranges?", "a": "Yes. During onboarding and in Settings you can select memorized content by Juz or by custom page ranges." },
+        { "q": "What happens if I miss a day?", "a": "No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection." }
+      ]
+    },
+    "footer": {
+      "copyright": "© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service",
+      "contact": "Contact Support"
+    }
+  },
+  "about": {
+    "title": "About Quran Tracker",
+    "subtitle": "A digital companion for your Hifz journey",
+    "missionTitle": "Our Mission",
+    "missionText": "Quran Tracker is built to help every Muslim who has ever felt overwhelmed by the task of memorizing the Quran. By combining the classical Islamic tradition of Muraja'ah (مراجعة) with modern cognitive science, we make daily Hifz sustainable, measurable, and spiritually fulfilling.",
+    "scienceTitle": "Grounded in Science and Tradition",
+    "scienceText": "The review system is based on Ebbinghaus's Forgetting Curve (1885) and spaced repetition (Pimsleur 1967, Leitner 1972): review intervals grow as retention strengthens. The Islamic concept of Muraja'ah — systematic revision — is the spiritual root of what this app does digitally.",
+    "howItWorksTitle": "How It Works",
+    "step1Title": "Register & Set Your Baseline",
+    "step1Desc": "Tell us what you've already memorized and your daily page goal.",
+    "step2Title": "Follow Your Daily Plan",
+    "step2Desc": "New pages to memorize + spaced review of previously memorized pages.",
+    "step3Title": "Track Your Growth",
+    "step3Desc": "30-Juz grid, streak tracking, and achievement badges celebrate your journey.",
+    "projectTitle": "Graduation Project",
+    "projectText": "This application was developed as a graduation project. It implements functional and non-functional requirements including Arabic UI, responsive design, and spaced repetition.",
+    "contactTitle": "Contact",
+    "contactText": "Have feedback or questions? We'd love to hear from you:",
+    "contactLink": "Send a message",
+    "backHome": "← Back to Home"
   }
 }

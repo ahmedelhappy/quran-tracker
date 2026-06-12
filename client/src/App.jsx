@@ -16,6 +16,7 @@ import Onboarding from './pages/Onboarding';
 import Settings from './pages/Settings';
 import Progress from './pages/Progress';
 import Library from './pages/Library';
+import About from './pages/About';
 
 // Redirect to /onboarding if onboarding not complete
 const DashboardWrapper = () => {
@@ -66,6 +67,7 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
+            <Route path="/about"    element={<About />} />
             <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
             <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 

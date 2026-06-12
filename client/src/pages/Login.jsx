@@ -52,12 +52,12 @@ const Login = () => {
               <div>
                 <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="email">{t('auth.email')}</label>
                 <div className="relative">
-                  <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400 rtl:left-auto rtl:right-3" />
+                  <FiMail className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
                   <input
                     id="email" type="email" value={form.email}
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="you@example.com" required
-                    className="w-full pl-10 pr-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500 rtl:pl-4 rtl:pr-10"
+                    placeholder={t('auth.emailPlaceholder')} required
+                    className="w-full ps-10 pe-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
                 </div>
               </div>
@@ -65,16 +65,16 @@ const Login = () => {
               <div>
                 <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="password">{t('auth.password')}</label>
                 <div className="relative">
-                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400 rtl:left-auto rtl:right-3" />
+                  <FiLock className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
                   <input
                     id="password" type={showPw ? 'text' : 'password'} value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     placeholder="••••••••" required
-                    className="w-full pl-10 pr-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500 rtl:pl-10 rtl:pr-10"
+                    className="w-full ps-10 pe-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
                   <button type="button" onClick={() => setShowPw(!showPw)}
                     aria-label={showPw ? t('auth.password') : t('auth.password')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944] rtl:right-auto rtl:left-3">
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944]">
                     {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                   </button>
                 </div>

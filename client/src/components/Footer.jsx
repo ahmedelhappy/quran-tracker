@@ -6,7 +6,7 @@ const Footer = () => {
   return (
     <footer className="bg-white dark:bg-gray-900 border-t border-emerald-100/50 dark:border-gray-700/50 w-full py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-4 mt-auto">
       <p className="text-sm text-[#064e3b] dark:text-gray-400 opacity-80">
-        © 2025 Quran Tracker. Dedicated to the pursuit of Hifz.
+        {t('landing.footer.copyright')}
       </p>
       <div className="flex flex-wrap justify-center gap-6">
         <a

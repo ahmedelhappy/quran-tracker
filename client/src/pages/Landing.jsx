@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown, FiMoon, FiSun } from 'react-icons/fi';
 import Logo from '../components/Logo';
+import LanguageToggle from '../components/LanguageToggle';
 import { useTheme } from '../context/ThemeContext';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
@@ -23,20 +25,14 @@ const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
   );
 };
 
-const FAQ_ITEMS = [
-  { q: 'Is Quran Tracker free to use?', a: 'Yes, completely free. All core features — personalized plans, spaced repetition reviews, and progress tracking — are available at no cost.' },
-  { q: 'How does the smart review system work?', a: 'Pages are scheduled for revision based on how recently you memorized them. Newer pages appear more often, with intervals growing as your retention strengthens — grounded in the Ebbinghaus Forgetting Curve.' },
-  { q: 'Can I track specific Surahs or page ranges?', a: 'Yes. During onboarding and in Settings you can select memorized content by Juz or by custom page ranges.' },
-  { q: 'What happens if I miss a day?', a: 'No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection.' },
-];
-
 const LandingNavbar = ({ activeSection }) => {
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark';
   const navLinks = [
-    { href: '#features', id: 'features', label: 'Features' },
-    { href: '#how-it-works', id: 'how-it-works', label: 'How It Works' },
-    { href: '#faq', id: 'faq', label: 'FAQ' },
+    { href: '#features', id: 'features', label: t('landing.navbar.features') },
+    { href: '#how-it-works', id: 'how-it-works', label: t('landing.navbar.howItWorks') },
+    { href: '#faq', id: 'faq', label: t('landing.navbar.faq') },
   ];
   return (
     <nav className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40">
@@ -57,17 +53,20 @@ const LandingNavbar = ({ activeSection }) => {
             </a>
           ))}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <LanguageToggle variant="icon" />
           <button
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
             className="p-2 rounded-lg cursor-pointer text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
           </button>
-          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">Login</Link>
+          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">
+            {t('landing.navbar.login')}
+          </Link>
           <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
-            Get Started
+            {t('landing.navbar.getStarted')}
           </Link>
         </div>
       </div>
@@ -76,8 +75,22 @@ const LandingNavbar = ({ activeSection }) => {
 };
 
 const Landing = () => {
+  const { t } = useTranslation();
   const [openFaq, setOpenFaq] = useState(null);
   const [activeSection, setActiveSection] = useState('');
+
+  const faqItems = t('landing.faq.items', { returnObjects: true });
+  const planDays = [t('landing.hero.planToday'), t('landing.hero.planTomorrow'), t('landing.hero.planDay3')];
+  const statsItems = [
+    { value: '10k+', label: t('landing.stats.students') },
+    { value: '5M+',  label: t('landing.stats.ayahs') },
+    { value: '4.9/5', label: t('landing.stats.rating') },
+  ];
+  const howItWorksSteps = [
+    { step: '01', title: t('landing.howItWorks.step1Title'), desc: t('landing.howItWorks.step1Desc') },
+    { step: '02', title: t('landing.howItWorks.step2Title'), desc: t('landing.howItWorks.step2Desc') },
+    { step: '03', title: t('landing.howItWorks.step3Title'), desc: t('landing.howItWorks.step3Desc') },
+  ];
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -105,30 +118,30 @@ const Landing = () => {
           {/* Left copy */}
           <div className="space-y-6">
             <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-amber-200">
-              ✨ Spiritual Productivity Reimagined
+              {t('landing.hero.badge')}
             </span>
             <h1 className="text-4xl lg:text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100 leading-tight">
-              Your Journey to Memorize the Quran{' '}
-              <span className="text-[#1B4332] dark:text-emerald-400">Starts Here</span>
+              {t('landing.hero.title')}{' '}
+              <span className="text-[#1B4332] dark:text-emerald-400">{t('landing.hero.titleHighlight')}</span>
             </h1>
             <p className="text-[#4A4A4A] dark:text-gray-400 text-lg leading-relaxed">
-              Transform your Hifz goals into daily habits. A serene, disciplined tracker that brings focus and peace to your memorization journey.
+              {t('landing.hero.subtitle')}
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
                 to="/register"
                 className="bg-[#1B4332] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#2D6A4F] transition-colors"
               >
-                Start Memorizing Free →
+                {t('landing.hero.cta')}
               </Link>
               <a
                 href="#how-it-works"
                 className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1A1A1A] dark:text-gray-200 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
               >
                 <span className="w-6 h-6 rounded-full bg-[#1B4332] flex items-center justify-center flex-shrink-0">
-                  <FiPlay className="w-3 h-3 text-white ml-0.5" />
+                  <FiPlay className="w-3 h-3 text-white ms-0.5" />
                 </span>
-                See How It Works
+                {t('landing.hero.seeHow')}
               </a>
             </div>
             <div className="flex items-center gap-3 pt-1">
@@ -144,7 +157,9 @@ const Landing = () => {
                 ))}
               </div>
               <span className="text-sm text-[#4A4A4A] dark:text-gray-300">
-                Joined by <span className="font-semibold text-[#1B4332] dark:text-emerald-400">10,000+</span> students globally
+                {t('landing.hero.joinedBy')}{' '}
+                <span className="font-semibold text-[#1B4332] dark:text-emerald-400">{t('landing.hero.students')}</span>
+                {' '}{t('landing.hero.studentsGlobal')}
               </span>
             </div>
           </div>
@@ -154,14 +169,14 @@ const Landing = () => {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-xs text-[#4A4A4A] font-medium uppercase tracking-wide mb-0.5">Current Goal</p>
-                  <p className="text-xl font-bold text-[#1A1A1A]">Surah Al-Mulk</p>
+                  <p className="text-xs text-[#4A4A4A] font-medium uppercase tracking-wide mb-0.5">{t('landing.hero.cardGoalLabel')}</p>
+                  <p className="text-xl font-bold text-[#1A1A1A]">{t('landing.hero.cardGoalTitle')}</p>
                 </div>
                 <CircleRing pct={75} />
               </div>
               <div className="bg-green-50 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-sm font-semibold text-[#1B4332]">🔥 14 Day Streak</span>
-                <span className="ml-auto text-xs text-[#40916C] font-medium">Keep it up!</span>
+                <span className="text-sm font-semibold text-[#1B4332]">{t('landing.hero.cardStreak')}</span>
+                <span className="ms-auto text-xs text-[#40916C] font-medium">{t('landing.hero.cardKeepItUp')}</span>
               </div>
             </div>
 
@@ -170,11 +185,11 @@ const Landing = () => {
                 تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ
               </p>
               <p className="text-sm text-[#4A4A4A] text-center italic mb-4">
-                "Blessed is He in whose hand is dominion, and He is over all things competent."
+                {t('landing.hero.cardVerseTranslation')}
               </p>
               <div className="flex justify-center gap-2">
-                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">Meccan</span>
-                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">30 Verses</span>
+                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">{t('landing.hero.cardMeccan')}</span>
+                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">{t('landing.hero.cardVerses')}</span>
               </div>
             </div>
           </div>
@@ -185,9 +200,9 @@ const Landing = () => {
       <section id="features" className="bg-white dark:bg-gray-800 py-20">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">Designed for Deep Focus</h2>
+            <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">{t('landing.features.title')}</h2>
             <p className="text-[#4A4A4A] dark:text-gray-400 text-lg max-w-xl mx-auto">
-              Everything you need to memorize, review, and retain the Quran
+              {t('landing.features.subtitle')}
             </p>
           </div>
           <div className="grid md:grid-cols-2 gap-5">
@@ -196,12 +211,12 @@ const Landing = () => {
               <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
                 <FiCalendar className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Personalized Plans</h3>
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('landing.features.personalizedTitle')}</h3>
               <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
-                Set your pace based on your schedule. Whether it's half a page or 5 pages a day.
+                {t('landing.features.personalizedDesc')}
               </p>
               <div className="flex gap-2">
-                {['Today', 'Tomorrow', 'Day 3'].map((d) => (
+                {planDays.map((d) => (
                   <div key={d} className="flex-1 bg-white dark:bg-gray-700 rounded-lg p-2.5 text-center border border-gray-100 dark:border-gray-600">
                     <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-0.5">{d}</p>
                     <p className="text-xs font-semibold text-[#1B4332] dark:text-emerald-400">5 Ayahs</p>
@@ -215,13 +230,13 @@ const Landing = () => {
               <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
                 <FiActivity className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Smart Review</h3>
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('landing.features.reviewTitle')}</h3>
               <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
-                Spaced repetition algorithms ensure you review right before you forget.
+                {t('landing.features.reviewDesc')}
               </p>
               <div className="bg-white dark:bg-gray-700 rounded-xl p-3 border border-gray-100 dark:border-gray-600">
                 <div className="flex justify-between text-xs mb-2">
-                  <span className="text-[#4A4A4A] dark:text-gray-300">Retention Strength</span>
+                  <span className="text-[#4A4A4A] dark:text-gray-300">{t('landing.features.reviewRetention')}</span>
                   <span className="font-semibold text-[#1B4332] dark:text-emerald-400">92%</span>
                 </div>
                 <div className="h-2 bg-gray-100 dark:bg-gray-600 rounded-full overflow-hidden">
@@ -235,29 +250,29 @@ const Landing = () => {
               <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
                 <FiTrendingUp className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Track Progress</h3>
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('landing.features.progressTitle')}</h3>
               <p className="text-[#4A4A4A] dark:text-gray-300 text-sm leading-relaxed">
-                Visualize your journey through all 30 Juz. See exactly how much you've accomplished and how far you have to go.
+                {t('landing.features.progressDesc')}
               </p>
             </div>
 
-            {/* 4 — Stay Motivated (light green card) */}
+            {/* 4 — Stay Motivated */}
             <div className="bg-green-50 dark:bg-emerald-900/20 rounded-2xl p-6 border border-green-100 dark:border-emerald-800/30">
               <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
                 <FiZap className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">Stay Motivated</h3>
+              <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('landing.features.motivateTitle')}</h3>
               <p className="text-[#4A4A4A] dark:text-gray-300 text-sm mb-4 leading-relaxed">
-                Build consistent habits with daily streaks, achievements, and gentle reminders.
+                {t('landing.features.motivateDesc')}
               </p>
               <div className="space-y-2">
                 <div className="bg-white dark:bg-gray-700 rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100 dark:border-gray-600">
                   <span>🔥</span>
-                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">14 Day Streak</span>
+                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">{t('landing.features.streakBadge')}</span>
                 </div>
                 <div className="bg-white dark:bg-gray-700 rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100 dark:border-gray-600">
                   <span>⭐</span>
-                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">Juz 30 Completed</span>
+                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">{t('landing.features.juzBadge')}</span>
                 </div>
               </div>
             </div>
@@ -269,11 +284,7 @@ const Landing = () => {
       <section className="bg-[#1B4332] py-16">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-3 gap-8 text-center">
-            {[
-              { value: '10k+', label: 'Active Students' },
-              { value: '5M+',  label: 'Ayahs Memorized' },
-              { value: '4.9/5', label: 'Average Rating' },
-            ].map(({ value, label }) => (
+            {statsItems.map(({ value, label }) => (
               <div key={label}>
                 <p className="text-4xl font-extrabold text-white mb-1">{value}</p>
                 <p className="text-green-300 text-sm">{label}</p>
@@ -286,15 +297,11 @@ const Landing = () => {
       {/* ── HOW IT WORKS ─────────────────────────────────── */}
       <section id="how-it-works" className="py-20 max-w-6xl mx-auto px-6">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">How It Works</h2>
-          <p className="text-[#4A4A4A] dark:text-gray-400">Get started in minutes and build a lasting Hifz habit</p>
+          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 mb-3">{t('landing.howItWorks.title')}</h2>
+          <p className="text-[#4A4A4A] dark:text-gray-400">{t('landing.howItWorks.subtitle')}</p>
         </div>
         <div className="grid md:grid-cols-3 gap-10">
-          {[
-            { step: '01', title: 'Create Your Profile', desc: "Register and tell us how much you've already memorized and how many pages per day you can commit to." },
-            { step: '02', title: 'Get Your Daily Plan', desc: 'Each day we assign new pages to memorize and review old ones using spaced repetition.' },
-            { step: '03', title: 'Track & Stay Consistent', desc: 'Check off tasks, maintain your streak, and watch your progress grow across all 30 Juz.' },
-          ].map(({ step, title, desc }) => (
+          {howItWorksSteps.map(({ step, title, desc }) => (
             <div key={step} className="text-center">
               <div className="w-14 h-14 bg-green-50 dark:bg-emerald-900/30 text-[#1B4332] dark:text-emerald-400 rounded-2xl flex items-center justify-center text-xl font-extrabold mx-auto mb-4">
                 {step}
@@ -309,12 +316,12 @@ const Landing = () => {
       {/* ── FAQ ───────────────────────────────────────────── */}
       <section id="faq" className="bg-white dark:bg-gray-800 py-20">
         <div className="max-w-2xl mx-auto px-6">
-          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 text-center mb-10">Frequently Asked Questions</h2>
+          <h2 className="text-3xl font-extrabold text-[#1A1A1A] dark:text-gray-100 text-center mb-10">{t('landing.faq.title')}</h2>
           <div className="space-y-3">
-            {FAQ_ITEMS.map(({ q, a }, i) => (
+            {Array.isArray(faqItems) && faqItems.map(({ q, a }, i) => (
               <div key={i} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden dark:bg-gray-700/30">
                 <button
-                  className="w-full px-5 py-4 flex items-center justify-between text-left gap-4"
+                  className="w-full px-5 py-4 flex items-center justify-between text-start gap-4"
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 >
                   <span className="font-medium text-[#1A1A1A] dark:text-gray-200 text-sm">{q}</span>
@@ -336,11 +343,12 @@ const Landing = () => {
       {/* ── FOOTER ───────────────────────────────────────── */}
       <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A] dark:text-gray-400">
-          <span>© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.</span>
+          <span>{t('landing.footer.copyright')}</span>
           <div className="flex gap-5">
-            <a href="#" className="hover:text-[#1B4332] transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-[#1B4332] transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-[#1B4332] transition-colors">Contact Support</a>
+            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.privacy')}</a>
+            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.terms')}</a>
+            <Link to="/about" className="hover:text-[#1B4332] transition-colors">{t('footer.about')}</Link>
+            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.contact')}</a>
           </div>
         </div>
       </footer>
