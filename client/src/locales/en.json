@@ -169,7 +169,15 @@
     "earnedSection": "Earned ({{count}})",
     "lockedSection": "Locked ({{count}})",
     "earnedBadge": "✓ Earned",
-    "lockedBadge": "Locked"
+    "lockedBadge": "Locked",
+    "surahProgress": "Surah Progress",
+    "surahSummary": "Complete: {{complete}} · In Progress: {{inProgress}} · Not Started: {{notStarted}}",
+    "showAllSurahs": "Show all",
+    "showLessSurahs": "Show less",
+    "memorizeMap": "Memorization Map",
+    "viewFullHistory": "View full history →",
+    "collapse": "← Collapse",
+    "editInSettings": "Want to update your memorized pages? Edit in Settings →"
   },
   "settings": {
     "title": "Settings",

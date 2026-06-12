@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -6,19 +7,19 @@ import { useTheme } from '../context/ThemeContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { SURAH_PAGES } from '../data/surahPages';
+import { JUZ_RANGES } from '../data/juzRanges';
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 
-// Generate empty heatmap cells from user's registration date (or last 90 days)
-function buildHeatmap(createdAt) {
+function buildHeatmap(createdAt, fullHistory = false) {
   const cells = [];
   const today = new Date();
-  const start = createdAt ? new Date(createdAt) : new Date();
-  start.setDate(start.getDate() - 89); // fallback: 90 days
+  const from = createdAt ? new Date(createdAt) : new Date();
+  if (!createdAt) from.setDate(from.getDate() - 89);
 
-  const from = createdAt ? new Date(createdAt) : start;
   const daysDiff = Math.ceil((today - from) / 86400000);
-  const days = Math.min(daysDiff + 1, 183); // cap at 6 months
+  const days = fullHistory ? daysDiff + 1 : Math.min(daysDiff + 1, 183);
 
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
@@ -55,13 +56,16 @@ const ACHIEVEMENTS = [
 
 export default function Progress() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const isArabic = i18n.language === 'ar';
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('progress');
+  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [showAllSurahs, setShowAllSurahs] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -81,15 +85,31 @@ export default function Progress() {
   const totalMemorized = overallStats?.totalMemorized ?? 0;
   const percentage = overallStats?.percentage ?? '0.0';
 
+  const memorizedSet = useMemo(() => new Set(overallStats?.memorizedPages ?? []), [overallStats]);
+
+  const surahStats = useMemo(() => SURAH_PAGES.map(surah => {
+    const total = surah.end - surah.start + 1;
+    let count = 0;
+    for (let p = surah.start; p <= surah.end; p++) {
+      if (memorizedSet.has(p)) count++;
+    }
+    const pct = total > 0 ? Math.round(count / total * 100) : 0;
+    return { ...surah, pct };
+  }), [memorizedSet]);
+
+  const surahComplete   = surahStats.filter(s => s.pct === 100).length;
+  const surahInProgress = surahStats.filter(s => s.pct > 0 && s.pct < 100).length;
+  const surahNotStarted = surahStats.filter(s => s.pct === 0).length;
+
   const heatmap = useMemo(() => {
-    const cells = buildHeatmap(user?.createdAt);
+    const cells = buildHeatmap(user?.createdAt, showFullHistory);
     const byDate = overallStats?.memorizedByDate || {};
     cells.forEach(cell => {
       const count = byDate[cell.date] || 0;
       cell.level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
     });
     return cells;
-  }, [user?.createdAt, overallStats]);
+  }, [user?.createdAt, overallStats, showFullHistory]);
 
   const chartData = useMemo(() => {
     const byDate = overallStats?.memorizedByDate;
@@ -102,7 +122,7 @@ export default function Progress() {
       cumulative += byDate[d];
       const dt = new Date(d + 'T00:00:00Z');
       return {
-        label: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+        label: dt.toLocaleDateString(i18n.language === 'ar' ? 'ar-SA' : 'en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
         pages: cumulative,
       };
     });
@@ -115,9 +135,9 @@ export default function Progress() {
 
   const hasActivity = totalMemorized > 0;
 
-  const completedJuz = juzData.filter(j => j.isComplete).length;
+  const completedJuz  = juzData.filter(j => j.isComplete).length;
   const inProgressJuz = juzData.filter(j => j.memorizedPages > 0 && !j.isComplete).length;
-  const pendingJuz = juzData.filter(j => j.memorizedPages === 0).length;
+  const pendingJuz    = juzData.filter(j => j.memorizedPages === 0).length;
 
   const achievementInput = {
     total: overallStats?.totalMemorized ?? 0,
@@ -132,7 +152,7 @@ export default function Progress() {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
-      {/* Header bar — padded to clear fixed navbar */}
+      {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-1">{t('progress.title')}</h1>
@@ -145,8 +165,8 @@ export default function Progress() {
         {/* Tab bar */}
         <div className="border-b border-[#dce2f3] dark:border-gray-700 flex gap-6">
           {[
-            { key: 'progress', labelKey: 'progress.progressTab' },
-            { key: 'achievements', labelKey: 'progress.achievementsTab' },
+            { key: 'progress',      labelKey: 'progress.progressTab' },
+            { key: 'achievements',  labelKey: 'progress.achievementsTab' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -164,7 +184,7 @@ export default function Progress() {
 
         {activeTab === 'progress' && (
           <>
-            {/* Top row */}
+            {/* ── Top row: Overall completion + Activity heatmap ── */}
             <div className="grid md:grid-cols-2 gap-5">
               {/* Overall completion */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
@@ -183,10 +203,7 @@ export default function Progress() {
                     <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${percentage}%`,
-                          background: 'linear-gradient(90deg, #40916C, #1B4332)',
-                        }}
+                        style={{ width: `${percentage}%`, background: 'linear-gradient(90deg, #40916C, #1B4332)' }}
                       />
                     </div>
                     <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{t('progress.pagesRemaining', { count: 604 - totalMemorized })}</p>
@@ -213,14 +230,16 @@ export default function Progress() {
                   </div>
                 ) : (
                   <>
-                    <div className="flex flex-wrap gap-0.5 mb-3">
-                      {heatmap.map((cell, i) => (
-                        <div
-                          key={i}
-                          title={cell.date}
-                          className={`w-2.5 h-2.5 rounded-sm ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
-                        />
-                      ))}
+                    <div className={showFullHistory ? 'overflow-x-auto' : ''}>
+                      <div className={`flex gap-0.5 mb-3 ${showFullHistory ? 'flex-nowrap' : 'flex-wrap'}`}>
+                        {heatmap.map((cell, i) => (
+                          <div
+                            key={i}
+                            title={cell.date}
+                            className={`w-2.5 h-2.5 rounded-sm shrink-0 ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
+                          />
+                        ))}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
                       <span>{t('progress.less')}</span>
@@ -229,14 +248,20 @@ export default function Progress() {
                       ))}
                       <span>{t('progress.more')}</span>
                     </div>
+                    <button
+                      onClick={() => setShowFullHistory(prev => !prev)}
+                      className="mt-2 text-xs text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors"
+                    >
+                      {showFullHistory ? t('progress.collapse') : t('progress.viewFullHistory')}
+                    </button>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Juz status grid */}
+            {/* ── Juz status grid ── */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
                 <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juzStatus')}</h2>
                 <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
@@ -244,6 +269,16 @@ export default function Progress() {
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> {t('progress.pending')}</span>
                 </div>
               </div>
+
+              {/* Edit-in-Settings link */}
+              <p className="text-xs text-[#707974] dark:text-gray-500 mb-5">
+                <Link
+                  to="/settings?tab=memorization"
+                  className="hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
+                >
+                  {t('progress.editInSettings')}
+                </Link>
+              </p>
 
               {loading ? (
                 <div className="grid grid-cols-10 gap-2">
@@ -276,9 +311,9 @@ export default function Progress() {
 
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                     {[
-                      { label: t('progress.completed'), count: completedJuz, color: 'text-[#1B4332] dark:text-emerald-400' },
+                      { label: t('progress.completed'), count: completedJuz,  color: 'text-[#1B4332] dark:text-emerald-400' },
                       { label: t('progress.inProgress'), count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
-                      { label: t('progress.pending'), count: pendingJuz, color: 'text-gray-400 dark:text-gray-500' },
+                      { label: t('progress.pending'),    count: pendingJuz,    color: 'text-gray-400 dark:text-gray-500' },
                     ].map(({ label, count, color }) => (
                       <div key={label} className="text-center">
                         <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
@@ -290,7 +325,96 @@ export default function Progress() {
               )}
             </div>
 
-            {/* Memorization chart */}
+            {/* ── Surah Progress ── */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('progress.surahProgress')}</h2>
+              {loading ? (
+                <Skeleton h="h-48" />
+              ) : (
+                <>
+                  <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-4">
+                    {t('progress.surahSummary', {
+                      complete: surahComplete,
+                      inProgress: surahInProgress,
+                      notStarted: surahNotStarted,
+                    })}
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
+                    {surahStats
+                      .filter(s => showAllSurahs || s.pct > 0)
+                      .map(surah => (
+                        <div
+                          key={surah.number}
+                          title={`${surah.number}. ${surah.name} — ${surah.pct}%`}
+                          className={`relative rounded-lg p-2 text-center cursor-default ${
+                            surah.pct === 100
+                              ? 'bg-[#1B4332] text-white'
+                              : surah.pct > 0
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-400'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                          }`}
+                        >
+                          {surah.pct > 0 && surah.pct < 100 && (
+                            <span className="absolute top-1 ltr:right-1 rtl:left-1 text-[9px] font-bold leading-none text-amber-700 dark:text-amber-400">
+                              {surah.pct}%
+                            </span>
+                          )}
+                          <p className={`text-xs font-semibold leading-tight line-clamp-2 mt-1 ${
+                            surah.pct === 100 ? 'text-white' : surah.pct > 0 ? 'text-amber-800 dark:text-amber-200' : ''
+                          }`}>
+                            {isArabic ? surah.arabic : surah.name}
+                          </p>
+                          {!isArabic && (
+                            <p className={`text-[10px] leading-tight line-clamp-1 mt-0.5 ${
+                              surah.pct === 100 ? 'text-green-200' : 'text-[#4A4A4A]/60 dark:text-gray-500'
+                            }`}>
+                              {surah.arabic}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    }
+                  </div>
+                  {surahNotStarted > 0 && (
+                    <button
+                      onClick={() => setShowAllSurahs(prev => !prev)}
+                      className="mt-3 text-xs text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
+                    >
+                      {showAllSurahs ? t('progress.showLessSurahs') : t('progress.showAllSurahs')}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── Memorization Map ── */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">{t('progress.memorizeMap')}</h2>
+              {loading ? (
+                <Skeleton h="h-64" />
+              ) : (
+                <div className="space-y-1">
+                  {JUZ_RANGES.map(({ juz, start, end }) => (
+                    <div key={juz} className="flex items-center gap-2">
+                      <span className="text-[10px] text-[#4A4A4A] dark:text-gray-500 w-14 shrink-0 text-right rtl:text-left">
+                        {t('settings.cycleStartJuz', { juz })}
+                      </span>
+                      <div className="flex flex-wrap gap-px">
+                        {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(page => (
+                          <div
+                            key={page}
+                            title={String(page)}
+                            className={`w-2.5 h-2.5 rounded-xs ${memorizedSet.has(page) ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-100 dark:bg-gray-700'}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Memorization chart ── */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
               <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">{t('progress.chartTitle')}</h2>
               {loading ? (
@@ -303,10 +427,7 @@ export default function Progress() {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart
-                    data={chartData}
-                    margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
-                  >
+                  <LineChart data={chartData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#F0F0F0'} />
                     <XAxis dataKey="label" tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
@@ -346,7 +467,6 @@ export default function Progress() {
               </div>
             ) : (
               <>
-                {/* Empty state */}
                 {earned.length === 0 && (
                   <div className="text-center py-8">
                     <div className="text-5xl mb-3">🌱</div>
@@ -355,16 +475,12 @@ export default function Progress() {
                   </div>
                 )}
 
-                {/* Earned section */}
                 {earned.length > 0 && (
                   <div>
                     <h2 className="text-lg font-semibold text-[#1A1A1A] dark:text-gray-100 mb-4">{t('progress.earnedSection', { count: earned.length })}</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {earned.map(a => (
-                        <div
-                          key={a.id}
-                          className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2"
-                        >
+                        <div key={a.id} className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2">
                           <span className="text-4xl">{a.icon}</span>
                           <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t(a.nameKey)}</span>
                           <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{t(a.descKey)}</span>
@@ -377,15 +493,11 @@ export default function Progress() {
                   </div>
                 )}
 
-                {/* Locked section */}
                 <div>
                   <h2 className="text-lg font-semibold text-[#707974] dark:text-gray-500 mb-4">{t('progress.lockedSection', { count: locked.length })}</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                     {locked.map(a => (
-                      <div
-                        key={a.id}
-                        className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2 opacity-50 grayscale"
-                      >
+                      <div key={a.id} className="bg-white dark:bg-gray-800 rounded-2xl p-5 border border-[#dce2f3] dark:border-gray-700 sacred-shadow flex flex-col items-center text-center gap-2 opacity-50 grayscale">
                         <span className="text-4xl">{a.icon}</span>
                         <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t(a.nameKey)}</span>
                         <span className="text-xs text-[#707974] dark:text-gray-400 leading-snug">{t(a.descKey)}</span>

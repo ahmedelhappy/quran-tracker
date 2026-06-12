@@ -169,7 +169,15 @@
     "earnedSection": "المكتسبة ({{count}})",
     "lockedSection": "المقفلة ({{count}})",
     "earnedBadge": "✓ مكتسب",
-    "lockedBadge": "مقفل"
+    "lockedBadge": "مقفل",
+    "surahProgress": "تقدم السور",
+    "surahSummary": "مكتملة: {{complete}} · قيد التقدم: {{inProgress}} · لم تبدأ: {{notStarted}}",
+    "showAllSurahs": "عرض الكل",
+    "showLessSurahs": "عرض أقل",
+    "memorizeMap": "خريطة الحفظ",
+    "viewFullHistory": "← عرض السجل الكامل",
+    "collapse": "طي →",
+    "editInSettings": "تريد تحديث صفحاتك المحفوظة؟ عدّل في الإعدادات ←"
   },
   "settings": {
     "title": "الإعدادات",
