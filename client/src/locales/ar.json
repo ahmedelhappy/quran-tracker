@@ -102,6 +102,12 @@
     "pagesCount": "{{count}} صفحة",
     "pagesCountPlural": "{{count}} صفحات",
     "weekPlanError": "تعذّر تحميل خطة الأسبوع.",
+    "week": {
+      "newRow": "جديد",
+      "recentRow": "حديث",
+      "cycleRow": "دوري",
+      "restDay": "راحة"
+    },
     "firstCycleTitle": "اكتملت دورة المراجعة الكاملة!",
     "firstCycleMsg": "لقد راجعت جميع الصفحات المحفوظة مرة واحدة على الأقل. هل أنت مستعد لحفظ صفحات جديدة؟",
     "firstCycleResume": "ابدأ الحفظ",

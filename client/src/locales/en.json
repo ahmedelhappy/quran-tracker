@@ -102,6 +102,12 @@
     "pagesCount": "{{count}} page",
     "pagesCountPlural": "{{count}} pages",
     "weekPlanError": "Unable to load week plan.",
+    "week": {
+      "newRow": "New",
+      "recentRow": "Recent",
+      "cycleRow": "Cycle",
+      "restDay": "Rest Day"
+    },
     "firstCycleTitle": "Full Review Cycle Complete!",
     "firstCycleMsg": "You've reviewed all your memorized pages at least once. Ready to start memorizing new ones?",
     "firstCycleResume": "Start Memorizing",

@@ -30,9 +30,10 @@ const dayOfYear = () => {
   return Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
 };
 
-const formatDate = (iso) => {
+const formatDate = (iso, lang = 'en') => {
   const d = new Date(iso + 'T00:00:00Z');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
+  return d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
 // ── Circular Juz progress ring ───────────────────────────
@@ -167,84 +168,77 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
 };
 
 // ── Week plan day card (This Week tab) ───────────────────
-const WeekDayCard = ({ day, isToday, todayData, allReviewPages }) => {
+const WeekDayCard = ({ day, isToday, todayData }) => {
   const { t, i18n } = useTranslation();
-  const base = 'bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow';
+  const isAr = i18n.language === 'ar';
   const isOffDay = isToday ? todayData?.isOffDay : day?.isOffDay;
-  const dateLabel = formatDate(day.date);
+  const dateLabel = formatDate(day.date, i18n.language);
 
-  const fmtPages = (pages, t) => {
-    if (!pages || pages.length === 0) return '';
-    const sorted = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
-    const nums = sorted.map(p => p.pageNumber);
-    const isSeq = nums.length === 1 || nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
-    const range = nums.length === 1
-      ? t('dashboard.fmtPage', { num: nums[0] })
-      : isSeq
-        ? t('dashboard.fmtPageRange', { start: nums[0], end: nums[nums.length - 1] })
-        : t('dashboard.fmtPagesMulti', { nums: nums.join(', ') });
-    const surah = formatSurahNames(sorted[0], i18n.language === 'ar');
-    return surah ? `${range} · ${surah}` : range;
+  const getNewStr = () => {
+    if (isToday) {
+      const pages = todayData?.newPages ?? [];
+      if (pages.length === 0) return '—';
+      const p = pages[0];
+      const surah = formatSurahNames(p, isAr);
+      const pageStr = t('dashboard.fmtPage', { num: p.pageNumber });
+      return surah ? `${pageStr} · ${surah}` : pageStr;
+    }
+    const count = day?.newPagesCount ?? 0;
+    if (count === 0) return '—';
+    const infos = day?.newPagesInfo ?? (day?.newPageInfo ? [day.newPageInfo] : []);
+    if (infos.length > 0) {
+      const p = infos[0];
+      const surah = formatSurahNames(p, isAr);
+      const pageStr = t('dashboard.fmtPage', { num: p.pageNumber });
+      return surah ? `${pageStr} · ${surah}` : pageStr;
+    }
+    return t('dashboard.reviewCount', { count });
   };
 
-  if (isOffDay) {
-    return (
-      <div className={`${base} ${isToday ? 'border-l-4 border-l-[#004f35] rtl:border-l-0 rtl:border-r-4 rtl:border-r-[#004f35]' : ''} px-4 py-3 flex items-center justify-between`}>
-        <div className="flex items-center gap-2">
-          {isToday && <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />}
-          <span className="text-sm font-medium text-[#404944] dark:text-gray-300">{dateLabel}</span>
-          {isToday && (
-            <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">{t('dashboard.today')}</span>
-          )}
-        </div>
-        <span className="text-sm text-[#707974] dark:text-gray-500">{t('dashboard.restDayLabel')}</span>
-      </div>
-    );
-  }
-
-  if (isToday && todayData) {
-    const newPages = todayData.newPages ?? [];
-    const reviewCount = allReviewPages?.length ?? 0;
-    const pagesStr = fmtPages(newPages, t);
-
-    return (
-      <div className={`${base} px-4 py-3 border-l-4 border-l-[#004f35] rtl:border-l-0 rtl:border-r-4 rtl:border-r-[#004f35] bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center justify-between gap-3`}>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />
-          <span className="text-sm font-semibold text-[#003527] dark:text-gray-100">{dateLabel}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">{t('dashboard.today')}</span>
-        </div>
-        <div className="text-xs text-right">
-          {pagesStr && <span className="text-[#004f35] dark:text-emerald-400 font-medium">{pagesStr}</span>}
-          {reviewCount > 0 && (
-            <span className="text-[#904d00] dark:text-amber-400">{pagesStr ? ' · ' : ''}{t('dashboard.reviewLabel')} {reviewCount}</span>
-          )}
-          {!pagesStr && reviewCount === 0 && <span className="text-[#707974] dark:text-gray-500">{t('dashboard.noTasks')}</span>}
-        </div>
-      </div>
-    );
-  }
-
-  // Future day card
-  const newPagesInfo = day.newPagesInfo ?? (day.newPageInfo ? [day.newPageInfo] : []);
-  const pagesStr = fmtPages(newPagesInfo, t);
-  const reviewCount = day.reviewPagesCount ?? 0;
+  const recentCount = isToday ? (todayData?.recentReviewPages?.length ?? 0) : null;
+  const cycleCount = isToday
+    ? (todayData?.reviewPages?.length ?? 0)
+    : (day?.reviewPagesCount ?? 0);
+  const newStr = getNewStr();
 
   return (
-    <div className={`${base} px-4 py-3 flex items-center justify-between gap-3`}>
-      <span className="text-sm font-medium text-[#003527] dark:text-gray-100 flex-shrink-0">{dateLabel}</span>
-      <div className="text-xs text-right">
-        {day.newPagesCount > 0 ? (
-          <>
-            <span className="text-[#004f35] dark:text-emerald-400 font-medium">
-              {pagesStr || t(day.newPagesCount === 1 ? 'dashboard.pagesCount' : 'dashboard.pagesCountPlural', { count: day.newPagesCount })}
-            </span>
-            {reviewCount > 0 && <span className="text-[#904d00] dark:text-amber-400"> · {t('dashboard.reviewLabel')} {reviewCount}</span>}
-          </>
-        ) : (
-          <span className="text-[#707974] dark:text-gray-500">{t('dashboard.reviewLabel')} {reviewCount}</span>
+    <div className={`bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 sacred-shadow overflow-hidden${isToday ? ' border-s-4 border-s-[#004f35]' : ''}`}>
+      {/* Header */}
+      <div className={`px-4 py-3 flex items-center gap-2 border-b border-[#dce2f3] dark:border-gray-700 ${isToday ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : 'bg-[#f9fafb] dark:bg-gray-800/50'}`}>
+        {isToday && <span className="w-2 h-2 rounded-full bg-[#004f35] flex-shrink-0" />}
+        <span className={`text-sm ${isToday ? 'font-semibold text-[#003527] dark:text-gray-100' : 'font-medium text-[#003527] dark:text-gray-100'}`}>{dateLabel}</span>
+        {isToday && (
+          <span className="ms-auto text-[10px] font-bold uppercase tracking-wide bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">{t('dashboard.today')}</span>
         )}
       </div>
+      {/* Body */}
+      {isOffDay ? (
+        <div className="px-4 py-4 bg-gray-50/50 dark:bg-gray-800/30 text-center">
+          <span className="text-sm text-[#707974] dark:text-gray-500">{t('dashboard.week.restDay')} 🌿</span>
+        </div>
+      ) : (
+        <div className="px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-600 dark:bg-emerald-400 flex-shrink-0" />
+            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.week.newRow')}</span>
+            <span className="text-[#003527] dark:text-gray-200 font-medium truncate">{newStr}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 flex-shrink-0" />
+            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.week.recentRow')}</span>
+            <span className="text-blue-700 dark:text-blue-300 font-medium">
+              {recentCount != null ? (recentCount > 0 ? t('dashboard.reviewCount', { count: recentCount }) : '—') : '—'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 flex-shrink-0" />
+            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.week.cycleRow')}</span>
+            <span className="text-[#904d00] dark:text-amber-300 font-medium">
+              {cycleCount > 0 ? t('dashboard.reviewCount', { count: cycleCount }) : '—'}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -893,22 +887,21 @@ export default function Dashboard() {
             <div className="flex flex-col gap-3">
               {/* Today card — always from loaded data */}
               {loading ? (
-                <Sk h="h-24" />
+                <Sk h="h-32" />
               ) : (
                 <WeekDayCard
                   day={{ date: todayDateString }}
                   isToday={true}
                   todayData={data}
-                  allReviewPages={allReviewPages}
                 />
               )}
 
               {/* Next 6 days */}
               {weekLoading ? (
-                Array(6).fill(0).map((_, i) => <Sk key={i} h="h-14" />)
+                Array(6).fill(0).map((_, i) => <Sk key={i} h="h-28" />)
               ) : weekData ? (
                 weekData.map((day, i) => (
-                  <WeekDayCard key={i} day={day} isToday={false} todayData={null} allReviewPages={null} />
+                  <WeekDayCard key={i} day={day} isToday={false} todayData={null} />
                 ))
               ) : (
                 <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">{t('dashboard.weekPlanError')}</p>
