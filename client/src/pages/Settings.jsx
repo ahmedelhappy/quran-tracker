@@ -353,7 +353,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                   setDeletedRangeRows([]);
                   setPendingDeleteIdx(null);
                 }}
-                className="ml-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
+                className="ms-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
                 {t('settings.restore')}
               </button>
@@ -1455,7 +1455,7 @@ export default function Settings() {
 
       {/* ── Sticky save bar ───────────────────────────────── */}
       {isDirty && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-t border-[#dce2f3] dark:border-gray-700 shadow-lg px-6 pr-20 rtl:pr-6 rtl:pl-20 py-3 flex items-center justify-between gap-4">
+        <div className="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-gray-900 border-t border-[#dce2f3] dark:border-gray-700 shadow-lg px-6 pe-20 py-3 flex items-center justify-between gap-4">
           <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.unsavedChanges')}</p>
           <div className="flex items-center gap-3">
             <button

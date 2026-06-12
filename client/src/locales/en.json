@@ -406,6 +406,8 @@
     "error": "Something went wrong.",
     "retry": "Retry",
     "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
     "validationRange": "Must be between 1 and 604",
     "validationEndGreater": "End page must be greater than start page",
     "validationNoOverlap": "Ranges cannot overlap"
@@ -448,7 +450,8 @@
     "placeholder": "Ask about Quran or Hifz...",
     "welcome": "Assalamu Alaikum! I'm here to help with Quran memorization and Islamic knowledge. What would you like to know?",
     "error": "Sorry, I'm unavailable right now.",
-    "send": "Send"
+    "send": "Send",
+    "toggleLabel": "Toggle Islamic Assistant"
   },
   "achievements": {
     "first_page_name": "First Step",

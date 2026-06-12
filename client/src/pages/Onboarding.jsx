@@ -324,7 +324,7 @@ export default function Onboarding() {
                 {selectedJuz.size > 0 && (
                   <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuz.size })}</p>
                 )}
-                <button onClick={selectAll} className="ml-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
+                <button onClick={selectAll} className="ms-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
                   {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
                 </button>
               </div>

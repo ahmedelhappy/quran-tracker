@@ -1,4 +1,7 @@
-const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = 'Confirm', isDanger = false }) => {
+import { useTranslation } from 'react-i18next';
+
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, isDanger = false }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -11,7 +14,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
             onClick={onClose}
             className="px-4 py-2 rounded-lg border border-gray-200 text-[#4A4A4A] hover:bg-gray-50 font-medium text-sm transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={() => { onConfirm(); onClose(); }}
@@ -19,7 +22,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
               isDanger ? 'bg-[#E63946] hover:bg-red-700' : 'bg-[#1B4332] hover:bg-[#2D6A4F]'
             }`}
           >
-            {confirmText}
+            {confirmText ?? t('common.confirm')}
           </button>
         </div>
       </div>

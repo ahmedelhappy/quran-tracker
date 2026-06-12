@@ -16,7 +16,7 @@ const ToastItem = ({ id, message, type, onDismiss }) => {
     <div className={`${s.bg} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 min-w-[260px] max-w-xs`}>
       {s.icon}
       <span className="flex-1 text-sm font-medium leading-snug">{message}</span>
-      <button onClick={() => onDismiss(id)} className="text-white/70 hover:text-white ml-1 flex-shrink-0">
+      <button onClick={() => onDismiss(id)} className="text-white/70 hover:text-white ms-1 shrink-0">
         <FiX className="w-4 h-4" />
       </button>
     </div>

@@ -60,8 +60,8 @@ export default function Chatbot() {
       {/* Floating toggle button */}
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label="Toggle Islamic Assistant"
-        className="fixed bottom-6 right-6 rtl:right-auto rtl:left-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+        aria-label={t('chatbot.toggleLabel')}
+        className="fixed bottom-6 end-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
         style={{ backgroundColor: '#004f35' }}
       >
         {open ? (
@@ -74,7 +74,7 @@ export default function Chatbot() {
       {/* Chat panel */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 rtl:right-auto rtl:left-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
+          className="fixed bottom-24 end-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
         >
           {/* Header */}
           <div
@@ -88,7 +88,7 @@ export default function Chatbot() {
             <button
               onClick={() => setOpen(false)}
               className="text-white/70 hover:text-white text-lg leading-none"
-              aria-label="Close"
+              aria-label={t('common.close')}
             >
               ×
             </button>
