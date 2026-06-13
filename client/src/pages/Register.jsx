@@ -102,7 +102,7 @@ const Register = () => {
                 className="w-full bg-[#003527] text-white font-medium rounded-lg py-3.5 px-6 hover:bg-[#064e3b] active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 shadow-[0_2px_8px_rgba(0,53,39,0.2)] disabled:opacity-60"
               >
                 <span>{loading ? t('auth.creating') : t('auth.createAccount')}</span>
-                {!loading && <span className="text-base">→</span>}
+                {!loading && <span className="text-base inline-block rtl:rotate-180">→</span>}
               </button>
             </div>
           </form>

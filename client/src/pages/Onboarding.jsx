@@ -261,7 +261,7 @@ export default function Onboarding() {
             onClick={() => setStep(2)}
             className="w-full bg-[#003527] text-white py-3.5 rounded-lg font-medium hover:bg-[#064e3b] transition-colors mt-4 flex items-center justify-center gap-2"
           >
-            {t('onboarding.letsBegin')} <span>→</span>
+            {t('onboarding.letsBegin')} <span className="inline-block rtl:rotate-180">→</span>
           </button>
         </div>
       </div>
@@ -479,14 +479,14 @@ export default function Onboarding() {
             onClick={() => setStep(1)}
             className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800"
           >
-            ← {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => setStep(3)}
             disabled={hasRangeErrors}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
           >
-            {t('onboarding.continue')} →
+            {t('onboarding.continue')} <span className="inline-block rtl:rotate-180">→</span>
           </button>
         </div>
       </main>
@@ -578,7 +578,7 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(2)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            ← {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => {
@@ -587,7 +587,7 @@ export default function Onboarding() {
             }}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm"
           >
-            {t('onboarding.generate')} →
+            {t('onboarding.generate')} <span className="inline-block rtl:rotate-180">→</span>
           </button>
         </div>
       </main>
@@ -687,14 +687,14 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            ← {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-60"
           >
-            {submitting ? t('onboarding.savingBtn') : t('onboarding.startJourney')} →
+            {submitting ? t('onboarding.savingBtn') : t('onboarding.startJourney')} <span className="inline-block rtl:rotate-180">→</span>
           </button>
         </div>
       </main>

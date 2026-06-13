@@ -743,7 +743,7 @@ export default function Dashboard() {
                             onClick={() => navigate('/settings?tab=memorization')}
                             className="mt-3 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline"
                           >
-                            {t('dashboard.resumeMem')} →
+                            {t('dashboard.resumeMem')} <span className="inline-block rtl:rotate-180">→</span>
                           </button>
                         </div>
                       </div>
