@@ -59,8 +59,8 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-l-4 rtl:border-l-0 rtl:border-r-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
-      style={{ borderLeftColor: accentColor }}
+      className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-s-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
+      style={{ borderInlineStartColor: accentColor }}
     >
       <div className="flex items-start gap-4">
         <div
@@ -130,8 +130,8 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
   const accentColor = isNew ? '#004f35' : '#fe932c';
   return (
     <div
-      className={`bg-white dark:bg-gray-800 rounded-xl p-3 border border-[#dce2f3] dark:border-gray-700 border-l-4 rtl:border-l-0 rtl:border-r-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
-      style={{ borderLeftColor: accentColor }}
+      className={`bg-white dark:bg-gray-800 rounded-xl p-3 border border-[#dce2f3] dark:border-gray-700 border-s-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
+      style={{ borderInlineStartColor: accentColor }}
     >
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${accentColor}1a`, color: accentColor }}>
