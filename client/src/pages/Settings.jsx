@@ -430,7 +430,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                       }`}
                     >
                       {(isSelected || isPartial || isRemoved) && (
-                        <span className="absolute top-1 right-1 text-[9px] leading-none opacity-80">
+                        <span className="absolute top-1 end-1 text-[9px] leading-none opacity-80">
                           {isSelected ? '100' : isRemoved ? '0' : pct}%
                         </span>
                       )}
@@ -588,12 +588,12 @@ function ChangePasswordCard() {
                 type={pwShow[key] ? 'text' : 'password'}
                 value={pwForm[key]}
                 onChange={e => setPwForm(prev => ({ ...prev, [key]: e.target.value }))}
-                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pr-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
+                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pe-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
               />
               <button
                 type="button"
                 onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
-                className="absolute inset-y-0 right-0 px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
+                className="absolute inset-y-0 end-0 px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
               >
                 {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
               </button>
@@ -1144,7 +1144,7 @@ export default function Settings() {
                   <div className="flex flex-col gap-2 mb-5">
                     <button
                       onClick={() => setReviewMode('intensity')}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      className={`p-4 rounded-xl border-2 text-start transition-all ${
                         reviewMode === 'intensity'
                           ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
                           : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
@@ -1169,7 +1169,7 @@ export default function Settings() {
                         }
                         setReviewMode('fixed');
                       }}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      className={`p-4 rounded-xl border-2 text-start transition-all ${
                         reviewMode === 'fixed'
                           ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
                           : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
@@ -1364,7 +1364,7 @@ export default function Settings() {
                         return (
                           <button key={s.number} onClick={() => saveCycleStart(s.firstMemPage)}
                             disabled={cycleStartSaving}
-                            className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors disabled:opacity-60 ${
+                            className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors disabled:opacity-60 ${
                               isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
                             }`}
                           >
@@ -1441,7 +1441,7 @@ export default function Settings() {
                     <p className="text-lg font-medium text-[#151c27] dark:text-gray-200 mb-3">{t('settings.language')}</p>
                     <button
                       onClick={changeLanguage}
-                      className="w-full py-3 px-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 text-[#151c27] dark:text-gray-200 bg-[#f9f9ff] dark:bg-gray-700 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-600 transition-colors text-left"
+                      className="w-full py-3 px-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 text-[#151c27] dark:text-gray-200 bg-[#f9f9ff] dark:bg-gray-700 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-600 transition-colors text-start"
                     >
                       {i18n.language === 'en' ? t('settings.arabic') : t('settings.english')}
                     </button>

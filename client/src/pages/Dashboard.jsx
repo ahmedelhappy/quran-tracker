@@ -426,7 +426,7 @@ export default function Dashboard() {
         {/* First cycle complete banner */}
         {data?.firstCycleComplete && !cycleBannerDismissed && (
           <div className="bg-[#003527] rounded-2xl p-5 md:p-6 flex items-start gap-4 relative overflow-hidden shadow-lg">
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none text-amber-300 text-[120px] leading-none select-none">🎊</div>
+            <div className="absolute end-4 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none text-amber-300 text-[120px] leading-none select-none">🎊</div>
             <div className="w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center shrink-0 text-xl">🎊</div>
             <div className="flex-1 min-w-0">
               <p className="text-amber-400 text-[10px] font-bold uppercase tracking-widest mb-1">{t('dashboard.firstCycleTitle')}</p>
@@ -462,7 +462,7 @@ export default function Dashboard() {
         {/* Khatam Al-Quran banner */}
         {isHafiz && !loading && (
           <div className="bg-[#003527] rounded-2xl p-6 md:p-8 border border-amber-400/30 relative overflow-hidden shadow-lg">
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-[0.07] pointer-events-none">
+            <div className="absolute end-6 top-1/2 -translate-y-1/2 opacity-[0.07] pointer-events-none">
               <svg width="140" height="140" viewBox="0 0 24 24" fill="currentColor" className="text-amber-300">
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
               </svg>
@@ -493,7 +493,7 @@ export default function Dashboard() {
         {/* ── Welcome & Stats Bento ─────────────────────────── */}
         <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="col-span-1 md:col-span-2 bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow flex flex-col justify-between border border-[#dce2f3] dark:border-gray-700 relative overflow-hidden">
-            <div className="absolute -right-12 -top-12 opacity-5 pointer-events-none text-[#064e3b]">
+            <div className="absolute -end-12 -top-12 opacity-5 pointer-events-none text-[#064e3b]">
               <svg fill="currentColor" height="200" viewBox="0 0 24 24" width="200">
                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
               </svg>

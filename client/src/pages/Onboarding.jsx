@@ -444,7 +444,7 @@ export default function Onboarding() {
                 <span className="text-4xl font-semibold">{label}</span>
                 <span className="text-xs">{t(subKey)}</span>
                 {badgeKey && (
-                  <div className="absolute top-0 right-0 bg-[#fe932c] text-white text-[10px] px-2 py-1 rounded-bl-lg font-bold">
+                  <div className="absolute top-0 end-0 bg-[#fe932c] text-white text-[10px] px-2 py-1 rounded-es-lg font-bold">
                     {t(badgeKey)}
                   </div>
                 )}
