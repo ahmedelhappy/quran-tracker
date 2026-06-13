@@ -577,7 +577,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
             <button
               onClick={() => setActiveTab('today')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 rtl:flex-row-reverse ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'today'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
@@ -587,7 +587,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 rtl:flex-row-reverse ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'week'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'

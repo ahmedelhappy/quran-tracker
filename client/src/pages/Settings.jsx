@@ -876,7 +876,7 @@ export default function Settings() {
                 <button
                   key={id}
                   onClick={() => setActiveSection(id)}
-                  className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left rtl:text-right rtl:flex-row-reverse transition-colors ${
+                  className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left rtl:text-right transition-colors ${
                     activeSection === id
                       ? 'bg-[#e2e8f8] dark:bg-gray-700 text-[#003527] dark:text-gray-100'
                       : 'text-[#404944] dark:text-gray-400 hover:bg-[#e7eefe] dark:hover:bg-gray-800 hover:text-[#003527] dark:hover:text-gray-200'
@@ -912,7 +912,7 @@ export default function Settings() {
             {activeSection === 'profile' && (
               <>
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                  <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
+                  <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                     <FiUser className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                     <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.profile')}</h2>
                   </div>
@@ -1006,11 +1006,11 @@ export default function Settings() {
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.priorMem')}</p>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 rtl:flex-row-reverse">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
                     <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.priorMemDesc')}</p>
                     <button
                       onClick={() => setEditProgressOpen(true)}
-                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 shrink-0 rtl:flex-row-reverse"
+                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 shrink-0"
                     >
                       <FiEdit2 className="w-4 h-4" /> {t('settings.editProgress')}
                     </button>
@@ -1109,7 +1109,7 @@ export default function Settings() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600 rtl:flex-row-reverse">
+                  <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                     <div>
                       <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
                       <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
@@ -1259,7 +1259,7 @@ export default function Settings() {
                   <p className="text-sm text-[#404944] dark:text-gray-400 mb-4 mt-1">{t('settings.cycleStartDesc')}</p>
 
                   {/* Current start indicator */}
-                  <div className="flex items-center gap-3 mb-4 p-3 bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-xl border border-green-100 dark:border-emerald-800/30 rtl:flex-row-reverse">
+                  <div className="flex items-center gap-3 mb-4 p-3 bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-xl border border-green-100 dark:border-emerald-800/30">
                     <FiMapPin className="w-4 h-4 text-[#003527] dark:text-emerald-400 shrink-0" />
                     <p className="text-xs text-[#003527] dark:text-emerald-300 font-medium flex-1">
                       {cycleStartPage
@@ -1406,7 +1406,7 @@ export default function Settings() {
             {/* ── Appearance ──────────────────────────────── */}
             {activeSection === 'appearance' && (
               <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
-                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4 rtl:flex-row-reverse">
+                <div className="flex items-center gap-3 mb-6 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                   <FiMonitor className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                   <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.theme')}</h2>
                 </div>

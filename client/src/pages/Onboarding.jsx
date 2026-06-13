@@ -661,8 +661,8 @@ export default function Onboarding() {
 
         {selectedCount > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-5 sacred-shadow">
-            <div className="flex items-start justify-between gap-4 rtl:flex-row-reverse">
-              <div className="flex items-start gap-3 rtl:flex-row-reverse">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-full bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
                   <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
                 </div>
