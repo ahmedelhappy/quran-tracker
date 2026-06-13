@@ -183,7 +183,8 @@
     "memorizeMap": "Memorization Map",
     "viewFullHistory": "View full history →",
     "collapse": "← Collapse",
-    "editInSettings": "Want to update your memorized pages? Edit in Settings →"
+    "editInSettings": "Want to update your memorized pages? Edit in Settings →",
+    "chartNow": "Now"
   },
   "settings": {
     "title": "Settings",
@@ -318,7 +319,23 @@
     "healthDue": "14–30 days",
     "healthOverdue": "30+ days",
     "healthNotMem": "Not memorized",
-    "syncTabNote": "Selections are synced when you switch tabs"
+    "syncTabNote": "Selections are synced when you switch tabs",
+    "rangeStart": "Start (1–604)",
+    "rangeEnd": "End (1–604)",
+    "password": {
+      "title": "Change Password",
+      "current": "Current Password",
+      "new": "New Password",
+      "confirm": "Confirm New Password",
+      "saving": "Saving…",
+      "update": "Update Password",
+      "allRequired": "All fields are required",
+      "tooShort": "New password must be at least 6 characters",
+      "mismatch": "Passwords do not match",
+      "mustDiffer": "New password must be different from the current one",
+      "success": "Password changed successfully",
+      "failed": "Failed to change password"
+    }
   },
   "onboarding": {
     "welcome": "Welcome to",
@@ -399,7 +416,9 @@
     "surahsSelected": "{{count}} Surah selected",
     "totalSelectedAll": "{{pages}} pages selected ({{juz}} Juz, {{surah}} Surah)",
     "pauseOnStartTitle": "Start in review-only mode",
-    "pauseOnStartDesc": "Review everything you've memorized before learning new pages. You'll be notified when you complete a full review cycle."
+    "pauseOnStartDesc": "Review everything you've memorized before learning new pages. You'll be notified when you complete a full review cycle.",
+    "rangeStart": "Start page (1–604)",
+    "rangeEnd": "End page (1–604)"
   },
   "common": {
     "loading": "Loading...",

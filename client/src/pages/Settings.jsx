@@ -459,11 +459,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                   <div key={i} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
-                        placeholder="Start (1–604)"
+                        placeholder={t('settings.rangeStart')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
                       <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
-                        placeholder="End (1–604)"
+                        placeholder={t('settings.rangeEnd')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <button
                         onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
@@ -540,6 +540,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
 // ── Change Password Card ─────────────────────────────────
 function ChangePasswordCard() {
   const { showToast } = useToast();
+  const { t } = useTranslation();
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
@@ -547,34 +548,34 @@ function ChangePasswordCard() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const { current, newPw, confirm } = pwForm;
-    if (!current || !newPw || !confirm) return showToast('All fields required', 'error');
-    if (newPw.length < 6) return showToast('New password must be at least 6 characters', 'error');
-    if (newPw !== confirm) return showToast('Passwords do not match', 'error');
-    if (newPw === current) return showToast('New password must be different', 'error');
+    if (!current || !newPw || !confirm) return showToast(t('settings.password.allRequired'), 'error');
+    if (newPw.length < 6) return showToast(t('settings.password.tooShort'), 'error');
+    if (newPw !== confirm) return showToast(t('settings.password.mismatch'), 'error');
+    if (newPw === current) return showToast(t('settings.password.mustDiffer'), 'error');
 
     setPwLoading(true);
     try {
       await authAPI.changePassword({ currentPassword: current, newPassword: newPw });
-      showToast('Password changed successfully', 'success');
+      showToast(t('settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {
-      showToast(error.response?.data?.message ?? 'Failed to change password', 'error');
+      showToast(error.response?.data?.message ?? t('settings.password.failed'), 'error');
     } finally {
       setPwLoading(false);
     }
   };
 
   const fields = [
-    { key: 'current', label: 'Current Password' },
-    { key: 'newPw',   label: 'New Password' },
-    { key: 'confirm', label: 'Confirm New Password' },
+    { key: 'current', label: t('settings.password.current') },
+    { key: 'newPw',   label: t('settings.password.new') },
+    { key: 'confirm', label: t('settings.password.confirm') },
   ];
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-6 sacred-shadow">
       <div className="flex items-center gap-3 mb-5">
         <FiLock className="w-5 h-5 text-[#003527] dark:text-emerald-400" />
-        <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">Change Password</h3>
+        <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.password.title')}</h3>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
         {fields.map(({ key, label }) => (
@@ -604,7 +605,7 @@ function ChangePasswordCard() {
           disabled={pwLoading}
           className="bg-[#003527] text-white text-sm font-medium px-6 py-2.5 rounded-xl hover:bg-[#064e3b] transition-colors shadow-sm disabled:opacity-60 flex items-center gap-2"
         >
-          {pwLoading ? 'Saving…' : <><FiSave className="w-4 h-4" /> Update Password</>}
+          {pwLoading ? t('settings.password.saving') : <><FiSave className="w-4 h-4" /> {t('settings.password.update')}</>}
         </button>
       </form>
     </div>

@@ -379,7 +379,7 @@ export default function Onboarding() {
                         <input
                           type="number" min="1" max="604" value={r.start}
                           onChange={e => updateRange(i, 'start', e.target.value)}
-                          placeholder="Start page (1–604)"
+                          placeholder={t('onboarding.rangeStart')}
                           className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
                         />
                       </div>
@@ -388,7 +388,7 @@ export default function Onboarding() {
                         <input
                           type="number" min="1" max="604" value={r.end}
                           onChange={e => updateRange(i, 'end', e.target.value)}
-                          placeholder="End page (1–604)"
+                          placeholder={t('onboarding.rangeEnd')}
                           className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
                         />
                       </div>

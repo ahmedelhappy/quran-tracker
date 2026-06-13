@@ -114,7 +114,7 @@ export default function Progress() {
   const chartData = useMemo(() => {
     const byDate = overallStats?.memorizedByDate;
     if (!byDate || Object.keys(byDate).length === 0) {
-      return [{ label: 'Now', pages: totalMemorized }];
+      return [{ label: t('progress.chartNow'), pages: totalMemorized }];
     }
     const sorted = Object.keys(byDate).sort();
     let cumulative = 0;
