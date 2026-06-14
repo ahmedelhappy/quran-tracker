@@ -8,6 +8,8 @@ import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
+import Tooltip from '../components/Tooltip';
+import InfoHint from '../components/InfoHint';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 
@@ -310,9 +312,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
       <div className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
           <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
-          <button onClick={onClose} className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
-            <FiX className="w-5 h-5" />
-          </button>
+          <Tooltip label={t('tooltips.close')}>
+            <button onClick={onClose} className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
+              <FiX className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="p-6 space-y-6">
@@ -465,12 +469,14 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                       <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
                         placeholder={t('settings.rangeEnd')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <button
-                        onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
-                        className={`shrink-0 transition-colors ${pendingDeleteIdx === i ? 'text-[#ba1a1a]' : 'text-[#bfc9c3] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400'}`}
-                      >
-                        <FiX className="w-4 h-4" />
-                      </button>
+                      <Tooltip label={t('tooltips.removeRange')}>
+                        <button
+                          onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
+                          className={`shrink-0 transition-colors ${pendingDeleteIdx === i ? 'text-[#ba1a1a]' : 'text-[#bfc9c3] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400'}`}
+                        >
+                          <FiX className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
                     </div>
                     {pendingDeleteIdx === i && (
                       <div className="flex items-center justify-between gap-3 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-lg">
@@ -590,13 +596,15 @@ function ChangePasswordCard() {
                 onChange={e => setPwForm(prev => ({ ...prev, [key]: e.target.value }))}
                 className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pe-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
               />
-              <button
-                type="button"
-                onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
-                className="absolute inset-y-0 end-0 px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
-              >
-                {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
-              </button>
+              <Tooltip label={pwShow[key] ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute inset-y-0 end-0">
+                <button
+                  type="button"
+                  onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className="h-full px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
+                >
+                  {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                </button>
+              </Tooltip>
             </div>
           </div>
         ))}
@@ -1116,18 +1124,20 @@ export default function Settings() {
                         {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
                       </p>
                     </div>
-                    <button
-                      onClick={togglePause}
-                      disabled={pauseSaving}
-                      aria-label={t('settings.pauseMemTitle')}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-                        isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
-                      }`}
-                    >
-                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                        isPaused ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
-                      }`} />
-                    </button>
+                    <Tooltip label={t('tooltips.pauseToggle')}>
+                      <button
+                        onClick={togglePause}
+                        disabled={pauseSaving}
+                        aria-label={t('settings.pauseMemTitle')}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                          isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
+                        }`}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                          isPaused ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
 
@@ -1138,6 +1148,7 @@ export default function Settings() {
                       <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.reviewSettings')}</p>
+                    <InfoHint text={t('hints.review')} label={t('dashboard.review')} size="xs" />
                   </div>
 
                   <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewSettingsDesc')}</p>

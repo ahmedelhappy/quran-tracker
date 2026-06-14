@@ -7,6 +7,7 @@ import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
+import Tooltip from '../components/Tooltip';
 
 const Register = () => {
   const { register } = useAuth();
@@ -78,9 +79,11 @@ const Register = () => {
               <div className="relative group">
                 <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
                 <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder={t('auth.passwordPlaceholder')} required className={inputCls + ' pe-10'} />
-                <button type="button" onClick={() => setShowPw(!showPw)} className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
-                  {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
-                </button>
+                <Tooltip label={showPw ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
+                  <button type="button" onClick={() => setShowPw(!showPw)} className="text-[#707974] hover:text-[#404944]">
+                    {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  </button>
+                </Tooltip>
               </div>
             </div>
 
@@ -89,9 +92,11 @@ const Register = () => {
               <div className="relative group">
                 <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
                 <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder={t('auth.confirmPlaceholder')} required className={inputCls + ' pe-10'} />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] hover:text-[#404944]">
-                  {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
-                </button>
+                <Tooltip label={showConfirm ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
+                  <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="text-[#707974] hover:text-[#404944]">
+                    {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  </button>
+                </Tooltip>
               </div>
             </div>
 

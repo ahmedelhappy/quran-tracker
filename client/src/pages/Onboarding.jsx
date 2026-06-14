@@ -6,6 +6,8 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
 import { FiPlus, FiX, FiPause } from 'react-icons/fi';
 import Logo from '../components/Logo';
+import Tooltip from '../components/Tooltip';
+import InfoHint from '../components/InfoHint';
 import { SURAH_PAGES } from '../data/surahPages';
 
 function toPageRanges(sortedPages) {
@@ -281,7 +283,10 @@ export default function Onboarding() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
+            <p className="text-xs font-medium text-[#404944] dark:text-gray-400 flex items-center gap-1">
+              {t('onboarding.selectMode')}
+              <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
+            </p>
             <div className="flex gap-2">
               {[
                 { mode: 'juz',   labelKey: 'onboarding.byJuz' },
@@ -393,9 +398,11 @@ export default function Onboarding() {
                         />
                       </div>
                       {pageRanges.length > 1 && (
-                        <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a] flex-shrink-0">
-                          <FiX className="w-4 h-4" />
-                        </button>
+                        <Tooltip label={t('tooltips.removeRange')} className="flex-shrink-0">
+                          <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a]">
+                            <FiX className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
                       )}
                     </div>
                     {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
@@ -671,16 +678,19 @@ export default function Onboarding() {
                   <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5 leading-relaxed max-w-md">{t('onboarding.pauseOnStartDesc')}</p>
                 </div>
               </div>
-              <button
-                onClick={() => setPauseOnStart(p => !p)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none mt-0.5 ${
-                  pauseOnStart ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
-                }`}
-              >
-                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                  pauseOnStart ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
+              <Tooltip label={t('onboarding.pauseOnStartTitle')} className="mt-0.5">
+                <button
+                  onClick={() => setPauseOnStart(p => !p)}
+                  aria-label={t('onboarding.pauseOnStartTitle')}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                    pauseOnStart ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
+                  }`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                    pauseOnStart ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                  }`} />
+                </button>
+              </Tooltip>
             </div>
           </div>
         )}

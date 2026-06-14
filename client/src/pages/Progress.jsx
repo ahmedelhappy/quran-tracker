@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import InfoHint from '../components/InfoHint';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
@@ -262,7 +263,10 @@ export default function Progress() {
             {/* ── Juz status grid ── */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juzStatus')}</h2>
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juzStatus')}</h2>
+                  <InfoHint text={t('hints.juz')} label={t('progress.juz')} />
+                </div>
                 <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
                   <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> {t('progress.inProgress')}</span>
@@ -290,7 +294,7 @@ export default function Progress() {
                     {juzData.map(j => (
                       <div
                         key={j.juzNumber}
-                        title={`Juz ${j.juzNumber}: ${j.memorizedPages}/${j.totalPages} pages (${j.percentage}%)`}
+                        title={`${t('progress.juz')} ${j.juzNumber} — ${j.memorizedPages}/${j.totalPages} (${j.percentage}%)`}
                         className={`rounded-lg p-2 text-center cursor-default transition-all hover:scale-105 ${
                           j.isComplete
                             ? 'bg-[#1B4332] text-white'
@@ -345,7 +349,7 @@ export default function Progress() {
                       .map(surah => (
                         <div
                           key={surah.number}
-                          title={`${surah.number}. ${surah.name} — ${surah.pct}%`}
+                          title={`${surah.number}. ${isArabic ? surah.arabic : surah.name} — ${surah.pct}%`}
                           className={`relative rounded-lg p-2 text-center cursor-default ${
                             surah.pct === 100
                               ? 'bg-[#1B4332] text-white'
@@ -457,6 +461,7 @@ export default function Progress() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
                   🔥 {t('progress.dayStreak', { count: achievementInput.streak })}
+                  <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
                 </span>
               </div>
             )}

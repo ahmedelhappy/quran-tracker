@@ -7,6 +7,7 @@ import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import Footer from '../components/Footer';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
+import Tooltip from '../components/Tooltip';
 
 const Login = () => {
   const { login } = useAuth();
@@ -72,11 +73,12 @@ const Login = () => {
                     placeholder="••••••••" required
                     className="w-full ps-10 pe-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
-                  <button type="button" onClick={() => setShowPw(!showPw)}
-                    aria-label={showPw ? t('auth.password') : t('auth.password')}
-                    className="absolute end-3 top-1/2 -translate-y-1/2 text-[#707974] dark:text-gray-400 hover:text-[#404944]">
-                    {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
-                  </button>
+                  <Tooltip label={showPw ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
+                    <button type="button" onClick={() => setShowPw(!showPw)}
+                      className="text-[#707974] dark:text-gray-400 hover:text-[#404944]">
+                      {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
 

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { FiGlobe } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
+import Tooltip from './Tooltip';
 
 // The app's single language-switching code path. Calling i18n.changeLanguage
 // persists the choice (detector cache → localStorage 'lang') and App.jsx's
@@ -34,14 +35,15 @@ const LanguageToggle = ({ variant = 'icon', className = '' }) => {
   }
 
   return (
-    <button
-      onClick={toggle}
-      title={t('nav.language')}
-      aria-label={t('nav.language')}
-      className={`text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-xs font-bold w-8 h-8 flex items-center justify-center ${className}`}
-    >
-      {isArabic ? 'EN' : 'AR'}
-    </button>
+    <Tooltip label={t('tooltips.language')}>
+      <button
+        onClick={toggle}
+        aria-label={t('tooltips.language')}
+        className={`text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-xs font-bold w-8 h-8 flex items-center justify-center ${className}`}
+      >
+        {isArabic ? 'EN' : 'AR'}
+      </button>
+    </Tooltip>
   );
 };
 

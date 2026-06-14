@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { FiSettings, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen } from 'react-icons/fi';
 import Logo from './Logo';
 import LanguageToggle from './LanguageToggle';
+import Tooltip from './Tooltip';
 
 const NAV_LINKS = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: FiHome },
@@ -71,29 +72,33 @@ const Navbar = () => {
         {/* Desktop right icons */}
         <div className="hidden md:flex items-center gap-3">
           <LanguageToggle variant="icon" />
-          <button
-            title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
-            onClick={toggleTheme}
-            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors w-8 h-8 flex items-center justify-center"
-          >
-            {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
-          </button>
-          <Link
-            to="/settings?tab=memorization"
-            title={t('nav.settings')}
-            className={`w-8 h-8 flex items-center justify-center transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
-          >
-            <FiSettings className="w-5 h-5" />
-          </Link>
+          <Tooltip label={isDark ? t('tooltips.themeToLight') : t('tooltips.themeToDark')}>
+            <button
+              onClick={toggleTheme}
+              className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors w-8 h-8 flex items-center justify-center"
+            >
+              {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('tooltips.settings')}>
+            <Link
+              to="/settings?tab=memorization"
+              className={`w-8 h-8 flex items-center justify-center transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
+            >
+              <FiSettings className="w-5 h-5" />
+            </Link>
+          </Tooltip>
 
           {/* Avatar with dropdown */}
           <div className="relative">
-            <button
-              onClick={() => setAvatarOpen(!avatarOpen)}
-              className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500 hover:opacity-90 transition-opacity"
-            >
-              {user?.name?.[0]?.toUpperCase() ?? 'U'}
-            </button>
+            <Tooltip label={t('tooltips.account')}>
+              <button
+                onClick={() => setAvatarOpen(!avatarOpen)}
+                className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500 hover:opacity-90 transition-opacity"
+              >
+                {user?.name?.[0]?.toUpperCase() ?? 'U'}
+              </button>
+            </Tooltip>
             {avatarOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setAvatarOpen(false)} />
@@ -126,12 +131,14 @@ const Navbar = () => {
         </div>
 
         {/* Mobile hamburger */}
-        <button
-          className="md:hidden text-[#064e3b] dark:text-gray-400 hover:text-amber-600"
-          onClick={() => setMobileOpen(!mobileOpen)}
-        >
-          {mobileOpen ? <FiX className="w-6 h-6" /> : <FiMenu className="w-6 h-6" />}
-        </button>
+        <Tooltip label={mobileOpen ? t('tooltips.closeMenu') : t('tooltips.openMenu')} className="md:hidden">
+          <button
+            className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <FiX className="w-6 h-6" /> : <FiMenu className="w-6 h-6" />}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Mobile drawer */}

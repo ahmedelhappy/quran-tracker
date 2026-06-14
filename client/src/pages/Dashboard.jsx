@@ -6,6 +6,8 @@ import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Tooltip from '../components/Tooltip';
+import InfoHint from '../components/InfoHint';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2 } from 'react-icons/fi';
 import { formatSurahNames } from '../utils/surahDisplay';
 
@@ -13,14 +15,14 @@ import { formatSurahNames } from '../utils/surahDisplay';
 const ListenButton = ({ pageNumber, compact = false }) => {
   const { t } = useTranslation();
   return (
-    <Link
-      to={`/library?page=${pageNumber}`}
-      title={t('dashboard.listenToPage')}
-      aria-label={t('dashboard.listenToPage')}
-      className={`${compact ? 'w-7 h-7' : 'w-8 h-8'} rounded-full flex items-center justify-center text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors shrink-0`}
-    >
-      <FiVolume2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
-    </Link>
+    <Tooltip label={t('tooltips.listen')}>
+      <Link
+        to={`/library?page=${pageNumber}`}
+        className={`${compact ? 'w-7 h-7' : 'w-8 h-8'} rounded-full flex items-center justify-center text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors shrink-0`}
+      >
+        <FiVolume2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+      </Link>
+    </Tooltip>
   );
 };
 
@@ -67,7 +69,11 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
           className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
           style={{ background: `${accentColor}1a`, color: accentColor }}
         >
-          {isNew ? <FiBook className="w-5 h-5" /> : <span className="text-sm font-bold">↺</span>}
+          {isNew ? <FiBook className="w-5 h-5" /> : (
+            <Tooltip label={t('tooltips.reviewIcon')}>
+              <span className="text-sm font-bold cursor-help">↺</span>
+            </Tooltip>
+          )}
         </div>
         <div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -87,12 +93,14 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
           <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-4 py-2 rounded-lg">
             {t('dashboard.done')}
           </span>
-          <button
-            onClick={() => onUndo(page.pageNumber, type)}
-            className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors"
-          >
-            {t('dashboard.undo')}
-          </button>
+          <Tooltip label={t('tooltips.undo')}>
+            <button
+              onClick={() => onUndo(page.pageNumber, type)}
+              className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors"
+            >
+              {t('dashboard.undo')}
+            </button>
+          </Tooltip>
         </div>
       ) : (
         <div className="flex items-center gap-2 self-stretch sm:self-auto">
@@ -135,7 +143,11 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
     >
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `${accentColor}1a`, color: accentColor }}>
-          {isNew ? <FiBook className="w-4 h-4" /> : <span className="text-xs font-bold">↺</span>}
+          {isNew ? <FiBook className="w-4 h-4" /> : (
+            <Tooltip label={t('tooltips.reviewIcon')}>
+              <span className="text-xs font-bold cursor-help">↺</span>
+            </Tooltip>
+          )}
         </div>
         <div>
           <div className="flex items-center gap-1.5">
@@ -148,7 +160,9 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
       {done ? (
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg">{t('dashboard.done')}</span>
-          <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
+          <Tooltip label={t('tooltips.undo')}>
+            <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
+          </Tooltip>
         </div>
       ) : (
         <button
@@ -514,6 +528,7 @@ export default function Dashboard() {
                   <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[#707974] dark:text-gray-500 bg-[#f0f3ff] dark:bg-gray-700/50 w-max">
                     <FiZap className="w-4 h-4" />
                     <span className="text-xs font-medium">{t('dashboard.streakStart')}</span>
+                    <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
                   </div>
                 );
               }
@@ -526,6 +541,7 @@ export default function Dashboard() {
                   <span className="text-xs font-bold uppercase tracking-wider">
                     {streak} {t(streak === 1 ? 'dashboard.streakDay' : 'dashboard.streakDays')}
                   </span>
+                  <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
                 </div>
               );
             })()}
@@ -550,7 +566,10 @@ export default function Dashboard() {
               ) : (
                 <>
                   <JuzRing pct={juzPct} />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mt-2 mb-1">{t('dashboard.juzProgress')}</div>
+                  <div className="flex items-center gap-1 mt-2 mb-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.juzProgress')}</span>
+                    <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
+                  </div>
                   <div className="text-sm font-semibold text-[#003527] dark:text-gray-100">{totalJuz} / 30</div>
                 </>
               )}
@@ -717,14 +736,17 @@ export default function Dashboard() {
                 {!isHafiz && (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
+                      <InfoHint text={t('hints.newMem')} label={t('dashboard.newMem')} />
                     </div>
                     {!isPaused && newPending.length > 0 && (
-                      <button onClick={markAllNew} className="text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors">
-                        {t('dashboard.markAll')}
-                      </button>
+                      <Tooltip label={t('tooltips.markAll')}>
+                        <button onClick={markAllNew} className="text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors">
+                          {t('dashboard.markAll')}
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
 
@@ -757,7 +779,10 @@ export default function Dashboard() {
                             <FiBook className="w-5 h-5" />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{t('dashboard.continuePage')}</p>
+                            <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1">
+                              {t('dashboard.continuePage')}
+                              <InfoHint text={t('hints.continuation')} label={t('dashboard.continuePage')} size="xs" />
+                            </p>
                             <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
                             <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
@@ -789,9 +814,10 @@ export default function Dashboard() {
                       {recentPages.length > 0 && (
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
                               <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.recentReview')}</h4>
+                              <InfoHint text={t('hints.recentReview')} label={t('dashboard.recentReview')} />
                               <span className="text-xs text-[#707974] dark:text-gray-500">
                                 {stats?.recentReviewCount != null
                                   ? `${t('dashboard.last3days')} · ${t('dashboard.maxLabel', { count: stats.recentReviewCount })}`
@@ -800,9 +826,11 @@ export default function Dashboard() {
                               </span>
                             </div>
                             {recentPending.length > 0 && (
-                              <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                {t('dashboard.markAll')}
-                              </button>
+                              <Tooltip label={t('tooltips.markAll')}>
+                                <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                                  {t('dashboard.markAll')}
+                                </button>
+                              </Tooltip>
                             )}
                           </div>
                           <div className="flex flex-col gap-2">
@@ -837,15 +865,18 @@ export default function Dashboard() {
                       {cycleReviewPages.length > 0 && (
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <span className="w-2 h-2 rounded-full bg-[#fe932c] flex-shrink-0" />
                               <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.cycleReview')}</h4>
+                              <InfoHint text={t('hints.cycleReview')} label={t('dashboard.cycleReview')} />
                               <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: cycleReviewPages.length })}</span>
                             </div>
                             {cyclePending.length > 0 && (
-                              <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                {t('dashboard.markAll')}
-                              </button>
+                              <Tooltip label={t('tooltips.markAll')}>
+                                <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                                  {t('dashboard.markAll')}
+                                </button>
+                              </Tooltip>
                             )}
                           </div>
                           <div className="flex flex-col gap-2">
