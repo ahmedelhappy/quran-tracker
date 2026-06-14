@@ -78,6 +78,11 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-lg font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {page.pageNumber}</p>
+            {!isNew && !badge && (
+              <span className="sm:hidden inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-[#fe932c]/15 text-[#904d00] dark:text-amber-400">
+                ↺ {t('dashboard.review')}
+              </span>
+            )}
             {badge && (
               <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/50">
                 {badge}
@@ -103,12 +108,12 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
           </Tooltip>
         </div>
       ) : (
-        <div className="flex items-center gap-2 self-stretch sm:self-auto">
+        <div className="flex items-center gap-3 self-stretch sm:self-auto">
           {isNew && onAlreadyKnow && (
             <button
               onClick={() => onAlreadyKnow(page.pageNumber)}
               disabled={marking}
-              className="text-xs font-medium px-3 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f3ff] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-200 transition-colors disabled:opacity-60"
+              className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors disabled:opacity-60 whitespace-nowrap"
             >
               {t('dashboard.alreadyKnow')}
             </button>
@@ -150,8 +155,13 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
           )}
         </div>
         <div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <p className="text-sm font-medium text-[#003527] dark:text-gray-100">{t('dashboard.page')} {pageNumber}</p>
+            {!isNew && (
+              <span className="sm:hidden inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-[#fe932c]/15 text-[#904d00] dark:text-amber-400">
+                ↺ {t('dashboard.review')}
+              </span>
+            )}
             <ListenButton pageNumber={pageNumber} compact />
           </div>
           {formatSurahNames(page, i18n.language === 'ar') && <p className="text-xs text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>}
@@ -209,10 +219,11 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
     return t('dashboard.reviewCount', { count });
   };
 
-  const recentCount = isToday ? (todayData?.recentReviewPages?.length ?? 0) : null;
+  const recentCount = isToday ? (todayData?.recentReviewPages?.length ?? 0) : 0;
   const cycleCount = isToday
     ? (todayData?.reviewPages?.length ?? 0)
     : (day?.reviewPagesCount ?? 0);
+  const reviewCount = recentCount + cycleCount;
   const newStr = getNewStr();
 
   return (
@@ -238,17 +249,10 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
             <span className="text-[#003527] dark:text-gray-200 font-medium truncate">{newStr}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 flex-shrink-0" />
-            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.week.recentRow')}</span>
-            <span className="text-blue-700 dark:text-blue-300 font-medium">
-              {recentCount != null ? (recentCount > 0 ? t('dashboard.reviewCount', { count: recentCount }) : '—') : '—'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
             <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 flex-shrink-0" />
-            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.week.cycleRow')}</span>
+            <span className="text-[#404944] dark:text-gray-400 w-14 flex-shrink-0">{t('dashboard.review')}</span>
             <span className="text-[#904d00] dark:text-amber-300 font-medium">
-              {cycleCount > 0 ? t('dashboard.reviewCount', { count: cycleCount }) : '—'}
+              {reviewCount > 0 ? t('dashboard.reviewCount', { count: reviewCount }) : '—'}
             </span>
           </div>
         </div>
@@ -269,8 +273,7 @@ export default function Dashboard() {
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
   const [cycleBannerDismissed, setCycleBannerDismissed] = useState(false);
-  const [showAllCycle, setShowAllCycle] = useState(false);
-  const [showAllRecent, setShowAllRecent] = useState(false);
+  const [showAllReview, setShowAllReview] = useState(false);
   const [showWantMore, setShowWantMore] = useState(false);
   const [extraData, setExtraData] = useState(null);
   const [weekData, setWeekData] = useState(null);
@@ -395,16 +398,12 @@ export default function Dashboard() {
 
   const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
   const revPending = allReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
-  const recentPending = recentPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
-  const cyclePending = cycleReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
 
   const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
     (completedKeys.size > 0 || data.stats?.todayComplete);
 
-  const CYCLE_LIMIT = 3;
-  const hasMoreCycle = cycleReviewPages.length > CYCLE_LIMIT;
-  const RECENT_LIMIT = 3;
-  const hasMoreRecent = recentPages.length > RECENT_LIMIT;
+  const REVIEW_LIMIT = 5;
+  const hasMoreReview = allReviewPages.length > REVIEW_LIMIT;
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
 
@@ -412,8 +411,7 @@ export default function Dashboard() {
   const isPaused = !isHafiz && (user?.pauseNewMemorization === true);
 
   const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new'));
-  const markAllRecent = () => recentPending.forEach(p => markComplete(p.pageNumber, 'review'));
-  const markAllCycle = () => cyclePending.forEach(p => markComplete(p.pageNumber, 'review'));
+  const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
 
   const handleFirstCycleResume = async () => {
     try {
@@ -805,105 +803,50 @@ export default function Dashboard() {
 
                 {/* Review column — hidden entirely when nothing to review */}
                 {(allReviewPages.length > 0 || isHafiz) && (
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
+                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h4>
+                      <InfoHint text={t('hints.review')} label={t('dashboard.review')} />
+                      <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: allReviewPages.length })}</span>
+                    </div>
+                    {revPending.length > 0 && (
+                      <Tooltip label={t('tooltips.markAll')}>
+                        <button onClick={markAllReview} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
+                          {t('dashboard.markAll')}
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
                   {allReviewPages.length === 0 ? (
                     <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noReviewToday')}</p>
                   ) : (
                     <>
-                      {/* Recent Review section */}
-                      {recentPages.length > 0 && (
-                        <div className="flex flex-col gap-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                              <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.recentReview')}</h4>
-                              <InfoHint text={t('hints.recentReview')} label={t('dashboard.recentReview')} />
-                              <span className="text-xs text-[#707974] dark:text-gray-500">
-                                {stats?.recentReviewCount != null
-                                  ? `${t('dashboard.last3days')} · ${t('dashboard.maxLabel', { count: stats.recentReviewCount })}`
-                                  : t('dashboard.last3days')
-                                }
-                              </span>
-                            </div>
-                            {recentPending.length > 0 && (
-                              <Tooltip label={t('tooltips.markAll')}>
-                                <button onClick={markAllRecent} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                  {t('dashboard.markAll')}
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            {recentPages.slice(0, showAllRecent ? recentPages.length : RECENT_LIMIT).map(p => (
-                              <TaskCard
-                                key={`review-recent-${p.pageNumber}`}
-                                page={p} type="review"
-                                done={completedKeys.has(`review-${p.pageNumber}`)}
-                                marking={markingKeys.has(`review-${p.pageNumber}`)}
-                                onComplete={markComplete}
-                                onUndo={undoComplete}
-                                badge={t('dashboard.recentBadge')}
-                              />
-                            ))}
-                          </div>
-                          {hasMoreRecent && (
-                            <button
-                              onClick={() => setShowAllRecent(!showAllRecent)}
-                              className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
-                            >
-                              {showAllRecent ? (
-                                <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
-                              ) : (
-                                <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: recentPages.length })}</>
-                              )}
-                            </button>
+                      <div className="flex flex-col gap-2">
+                        {allReviewPages.slice(0, showAllReview ? allReviewPages.length : REVIEW_LIMIT).map(p => (
+                          <TaskCard
+                            key={`review-${p.pageNumber}`}
+                            page={p} type="review"
+                            done={completedKeys.has(`review-${p.pageNumber}`)}
+                            marking={markingKeys.has(`review-${p.pageNumber}`)}
+                            onComplete={markComplete}
+                            onUndo={undoComplete}
+                            badge={p.isRecent ? t('dashboard.recentBadge') : undefined}
+                          />
+                        ))}
+                      </div>
+                      {hasMoreReview && (
+                        <button
+                          onClick={() => setShowAllReview(!showAllReview)}
+                          className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
+                        >
+                          {showAllReview ? (
+                            <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
+                          ) : (
+                            <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: allReviewPages.length })}</>
                           )}
-                        </div>
-                      )}
-
-                      {/* Cycle Review section */}
-                      {cycleReviewPages.length > 0 && (
-                        <div className="flex flex-col gap-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-[#fe932c] flex-shrink-0" />
-                              <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.cycleReview')}</h4>
-                              <InfoHint text={t('hints.cycleReview')} label={t('dashboard.cycleReview')} />
-                              <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: cycleReviewPages.length })}</span>
-                            </div>
-                            {cyclePending.length > 0 && (
-                              <Tooltip label={t('tooltips.markAll')}>
-                                <button onClick={markAllCycle} className="text-[#904d00] border border-[#904d00]/30 px-2 py-1 rounded text-[10px] uppercase tracking-wide hover:bg-[#904d00]/5 transition-colors">
-                                  {t('dashboard.markAll')}
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            {cycleReviewPages.slice(0, showAllCycle ? cycleReviewPages.length : CYCLE_LIMIT).map(p => (
-                              <TaskCard
-                                key={`review-cycle-${p.pageNumber}`}
-                                page={p} type="review"
-                                done={completedKeys.has(`review-${p.pageNumber}`)}
-                                marking={markingKeys.has(`review-${p.pageNumber}`)}
-                                onComplete={markComplete}
-                                onUndo={undoComplete}
-                              />
-                            ))}
-                          </div>
-                          {hasMoreCycle && (
-                            <button
-                              onClick={() => setShowAllCycle(!showAllCycle)}
-                              className="flex items-center justify-center gap-2 text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 py-2 border border-[#dce2f3] dark:border-gray-700 rounded-xl hover:bg-[#f9f9ff] dark:hover:bg-gray-800/50 transition-colors"
-                            >
-                              {showAllCycle ? (
-                                <><FiChevronUp className="w-4 h-4" /> {t('dashboard.showLess')}</>
-                              ) : (
-                                <><FiChevronDown className="w-4 h-4" /> {t('dashboard.showAll', { count: cycleReviewPages.length })}</>
-                              )}
-                            </button>
-                          )}
-                        </div>
+                        </button>
                       )}
                     </>
                   )}

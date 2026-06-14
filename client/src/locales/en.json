@@ -55,10 +55,6 @@
     "thisWeek": "This Week",
     "newMem": "New Memorization",
     "review": "Review",
-    "recentReview": "Recent Review",
-    "last3days": "(last 3 days)",
-    "maxLabel": "max {{count}}",
-    "cycleReview": "Cycle Review",
     "markComplete": "Mark as Complete",
     "alreadyKnow": "Already Know",
     "markCompact": "Mark Complete",
@@ -104,8 +100,6 @@
     "weekPlanError": "Unable to load week plan.",
     "week": {
       "newRow": "New",
-      "recentRow": "Recent",
-      "cycleRow": "Cycle",
       "restDay": "Rest Day"
     },
     "firstCycleTitle": "Full Review Cycle Complete!",
@@ -465,8 +459,6 @@
     "juz": "A Juz is one of the 30 equal parts the Quran is divided into — about 20 pages each.",
     "newMem": "New Memorization: pages you're learning for the first time today.",
     "review": "Review (Muraja'ah): going back over pages you already memorized so you don't forget them.",
-    "recentReview": "Recent Review: pages you memorized in the last few days, revisited often so they settle in.",
-    "cycleReview": "Cycle Review: older pages that come back around on a schedule, so your whole memorization stays fresh.",
     "streak": "Your streak is how many days in a row you've kept up your practice.",
     "tafsir": "Tafsir is a scholar's explanation of what a verse means.",
     "continuation": "A continuation page means picking up your memorization right where you left off.",
