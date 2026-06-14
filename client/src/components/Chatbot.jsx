@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { FiMessageSquare, FiX, FiSend } from 'react-icons/fi';
+import { FiMessageSquare, FiSend } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { chatAPI } from '../services/api';
+import { useDraggable } from '../hooks/useDraggable';
 
 export default function Chatbot() {
   const { t } = useTranslation();
@@ -14,6 +15,8 @@ export default function Chatbot() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
+  // Launcher is draggable vertically only; the panel opens in a fixed spot.
+  const { ref: launcherRef, style: dragStyle, moved, dragHandlers } = useDraggable('chatbotPosY', { axis: 'y' });
 
   useEffect(() => {
     if (open) {
@@ -57,24 +60,31 @@ export default function Chatbot() {
 
   return (
     <>
-      {/* Floating toggle button */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label={t('chatbot.toggleLabel')}
-        className="fixed bottom-6 end-6 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
-        style={{ backgroundColor: '#004f35' }}
-      >
-        {open ? (
-          <FiX className="w-6 h-6 text-white" />
-        ) : (
-          <FiMessageSquare className="w-6 h-6 text-white" />
-        )}
-      </button>
+      {/* Floating launcher — draggable vertically. Hidden while open so it can
+          never overlap the (fixed) panel. The drag offset lives on the wrapper
+          so the button keeps its own transform-based hover/press scale. */}
+      {!open && (
+        <div
+          ref={launcherRef}
+          {...dragHandlers}
+          style={dragStyle}
+          className="fixed bottom-24 end-6 z-50 touch-none cursor-grab active:cursor-grabbing"
+        >
+          <button
+            onClick={() => { if (!moved.current) setOpen(true); }}
+            aria-label={t('chatbot.toggleLabel')}
+            className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+            style={{ backgroundColor: '#004f35' }}
+          >
+            <FiMessageSquare className="w-6 h-6 text-white" />
+          </button>
+        </div>
+      )}
 
-      {/* Chat panel */}
+      {/* Chat panel — opens in a fixed spot, independent of the launcher */}
       {open && (
         <div
-          className="fixed bottom-24 end-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
+          className="fixed bottom-6 end-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
         >
           {/* Header */}
           <div

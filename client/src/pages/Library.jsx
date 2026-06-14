@@ -3,10 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
-  FiBookOpen, FiChevronLeft, FiChevronRight, FiAlertCircle, FiHeadphones,
+  FiBookOpen, FiChevronLeft, FiChevronRight, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import Tooltip from '../components/Tooltip';
+import InfoHint from '../components/InfoHint';
 import { progressAPI } from '../services/api';
 import {
   fetchPageText,
@@ -20,6 +22,7 @@ import {
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
 import { SURAH_PAGES } from '../data/surahPages';
+import { useDraggable } from '../hooks/useDraggable';
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -67,6 +70,9 @@ export default function Library() {
   const [tafsirLoading, setTafsirLoading] = useState(false);
   const [tafsirError, setTafsirError] = useState(false);
   const [tafsirReloadKey, setTafsirReloadKey] = useState(0);
+
+  // Draggable verse action popover — dragged only via the grip handle
+  const { ref: popoverRef, style: popoverDragStyle, dragHandlers: popoverDragHandlers } = useDraggable('versePopoverPos');
 
   // Mount: memorized pages (for the badge + stat)
   useEffect(() => {
@@ -141,6 +147,13 @@ export default function Library() {
     if (playingIndex == null) { playAyah(0); return; }
     if (isPlaying) { el.pause(); setIsPlaying(false); }
     else { el.play().catch(() => {}); setIsPlaying(true); }
+  };
+
+  // Popover play button: play from the selected verse, or pause if it's the one already playing
+  const toggleSelectedVerse = (index) => {
+    const el = audioRef.current;
+    if (index === playingIndex && isPlaying && el) { el.pause(); setIsPlaying(false); }
+    else playAyah(index);
   };
 
   const handleEnded = () => {
@@ -238,6 +251,11 @@ export default function Library() {
       <Navbar />
 
       <main className="grow w-full max-w-7xl mx-auto px-6 pt-28 pb-12">
+        {/* Page header — orient a first-time visitor */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#003527] dark:text-gray-100">{t('nav.library')}</h1>
+          <p className="text-sm text-[#404944] dark:text-gray-400 mt-1">{t('library.subtitle')}</p>
+        </div>
         <div className="flex flex-col lg:flex-row gap-6 items-start">
 
           {/* ── Sidebar ───────────────────────────────────── */}
@@ -247,25 +265,27 @@ export default function Library() {
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage <= 1}
-                  aria-label={t('library.prevPage')}
-                  className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                </button>
+                <Tooltip label={t('tooltips.prevPage')}>
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1}
+                    className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
                 <span className="flex-1 text-center text-sm font-semibold text-[#1A1A1A] dark:text-gray-100">
                   {fmtNum(currentPage)} / {fmtNum(604)}
                 </span>
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage >= 604}
-                  aria-label={t('library.nextPage')}
-                  className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
-                </button>
+                <Tooltip label={t('tooltips.nextPage')}>
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= 604}
+                    className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
               </div>
               <input
                 type="number"
@@ -326,6 +346,13 @@ export default function Library() {
 
           {/* ── Mushaf column ─────────────────────────────── */}
           <div className="flex-1 flex flex-col gap-4 min-w-0">
+
+            {/* Discoverability cue: the per-verse listen/tafsir actions only
+                appear after a tap, so tell the user up front. */}
+            <p className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
+              <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+              {t('hints.libraryVerseTap')}
+            </p>
 
             {/* Mushaf page card */}
             <div className="w-full max-w-[650px] mx-auto rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#fdf8ec] dark:bg-[#1f1b14] shadow-xl dark:shadow-black/40 overflow-hidden">
@@ -403,74 +430,95 @@ export default function Library() {
               {' '}· {t('library.juzInfoLabel', { n: fmtNum(currentJuz) })}
             </p>
 
-            {/* Verse action popover */}
+            {/* Verse action popover — draggable only via the grip handle */}
             {selectedAyah && (
-              <div className="sticky bottom-20 z-30 mx-auto bg-white dark:bg-gray-800 rounded-full border border-[#dce2f3] dark:border-gray-600 shadow-lg px-4 py-2 flex items-center gap-3">
+              <div
+                ref={popoverRef}
+                style={popoverDragStyle}
+                className="sticky bottom-20 z-30 mx-auto bg-white dark:bg-gray-800 rounded-full border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex items-center gap-2 select-none"
+              >
+                <Tooltip label={t('tooltips.dragHandle')}>
+                  <span
+                    {...popoverDragHandlers}
+                    aria-label={t('tooltips.dragHandle')}
+                    className="flex items-center justify-center w-6 h-8 rounded-full text-[#b0b6bd] dark:text-gray-500 hover:text-[#707974] dark:hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none"
+                  >
+                    <FiMove className="w-3.5 h-3.5" />
+                  </span>
+                </Tooltip>
                 <span className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
                   {verseRef(selectedAyah)}
                 </span>
-                <button
-                  onClick={() => { playAyah(selectedIndex); }}
-                  title={t('library.playFromHere')}
-                  aria-label={t('library.playFromHere')}
-                  className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
-                >
-                  <FiPlay className="w-3.5 h-3.5 ms-0.5 rtl:rotate-180" />
-                </button>
-                <button
-                  onClick={() => openTafsir(selectedIndex)}
-                  title={t('library.tafsir')}
-                  aria-label={t('library.tafsir')}
-                  className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                >
-                  <FiBookOpen className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setSelectedIndex(null)}
-                  aria-label={t('common.close')}
-                  className="w-8 h-8 rounded-full text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <FiX className="w-4 h-4" />
-                </button>
+                {(() => {
+                  const isThisPlaying = selectedIndex === playingIndex && isPlaying;
+                  return (
+                    <Tooltip label={isThisPlaying ? t('tooltips.pause') : t('tooltips.playFromHere')}>
+                      <button
+                        onClick={() => toggleSelectedVerse(selectedIndex)}
+                        className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
+                      >
+                        {isThisPlaying
+                          ? <FiPause className="w-3.5 h-3.5" />
+                          : <FiPlay className="w-3.5 h-3.5 ms-0.5 rtl:rotate-180" />}
+                      </button>
+                    </Tooltip>
+                  );
+                })()}
+                <Tooltip label={t('tooltips.verseTafsir')}>
+                  <button
+                    onClick={() => openTafsir(selectedIndex)}
+                    className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                  >
+                    <FiBookOpen className="w-3.5 h-3.5" />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('tooltips.close')}>
+                  <button
+                    onClick={() => setSelectedIndex(null)}
+                    className="w-8 h-8 rounded-full text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
             )}
 
             {/* ── Sticky audio bar ───────────────────────── */}
             <div className="sticky bottom-3 z-20 w-full max-w-[650px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => playAyah((playingIndex ?? 0) - 1)}
-                  disabled={pageLoading || pageError || playingIndex == null || playingIndex === 0}
-                  title={t('library.prevAyah')}
-                  aria-label={t('library.prevAyah')}
-                  className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                >
-                  <FiSkipBack className="w-4 h-4 rtl:rotate-180" />
-                </button>
-                <button
-                  onClick={togglePlayPause}
-                  disabled={pageLoading || pageError || ayahs.length === 0}
-                  title={isPlaying ? t('library.pause') : t('library.play')}
-                  aria-label={isPlaying ? t('library.pause') : t('library.play')}
-                  className="w-11 h-11 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] disabled:opacity-40 transition-colors shrink-0"
-                >
-                  {audioBuffering && isPlaying ? (
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : isPlaying ? (
-                    <FiPause className="w-5 h-5" />
-                  ) : (
-                    <FiPlay className="w-5 h-5 ms-0.5 rtl:rotate-180 rtl:me-0.5 rtl:ms-0" />
-                  )}
-                </button>
-                <button
-                  onClick={() => playAyah(playingIndex == null ? 0 : playingIndex + 1)}
-                  disabled={pageLoading || pageError || ayahs.length === 0 || (playingIndex != null && playingIndex >= ayahs.length - 1)}
-                  title={t('library.nextAyah')}
-                  aria-label={t('library.nextAyah')}
-                  className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                >
-                  <FiSkipForward className="w-4 h-4 rtl:rotate-180" />
-                </button>
+                <Tooltip label={t('tooltips.prevVerse')}>
+                  <button
+                    onClick={() => playAyah((playingIndex ?? 0) - 1)}
+                    disabled={pageLoading || pageError || playingIndex == null || playingIndex === 0}
+                    className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                  >
+                    <FiSkipBack className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
+                <Tooltip label={isPlaying ? t('tooltips.pause') : t('tooltips.play')}>
+                  <button
+                    onClick={togglePlayPause}
+                    disabled={pageLoading || pageError || ayahs.length === 0}
+                    className="w-11 h-11 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] disabled:opacity-40 transition-colors shrink-0"
+                  >
+                    {audioBuffering && isPlaying ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : isPlaying ? (
+                      <FiPause className="w-5 h-5" />
+                    ) : (
+                      <FiPlay className="w-5 h-5 ms-0.5 rtl:rotate-180 rtl:me-0.5 rtl:ms-0" />
+                    )}
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('tooltips.nextVerse')}>
+                  <button
+                    onClick={() => playAyah(playingIndex == null ? 0 : playingIndex + 1)}
+                    disabled={pageLoading || pageError || ayahs.length === 0 || (playingIndex != null && playingIndex >= ayahs.length - 1)}
+                    className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                  >
+                    <FiSkipForward className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
               </div>
 
               <div className="flex-1 min-w-[120px]">
@@ -484,16 +532,18 @@ export default function Library() {
                 </p>
               </div>
 
-              <select
-                value={reciter}
-                onChange={e => setReciter(e.target.value)}
-                aria-label={t('library.reciter')}
-                className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 max-w-[180px]"
-              >
-                {RECITERS.map(r => (
-                  <option key={r.id} value={r.id}>{isArabic ? r.nameAr : r.nameEn}</option>
-                ))}
-              </select>
+              <Tooltip label={t('tooltips.reciter')}>
+                <select
+                  value={reciter}
+                  onChange={e => setReciter(e.target.value)}
+                  aria-label={t('tooltips.reciter')}
+                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 max-w-[180px]"
+                >
+                  {RECITERS.map(r => (
+                    <option key={r.id} value={r.id}>{isArabic ? r.nameAr : r.nameEn}</option>
+                  ))}
+                </select>
+              </Tooltip>
             </div>
 
             <audio
@@ -522,36 +572,38 @@ export default function Library() {
                           md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0">
             {/* Header */}
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
                 <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">{t('library.tafsirTitle')}</h3>
+                <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => setTafsirIndex(i => Math.max(0, i - 1))}
-                  disabled={tafsirIndex === 0}
-                  title={t('library.prevAyah')}
-                  aria-label={t('library.prevAyah')}
-                  className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                >
-                  <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                </button>
-                <button
-                  onClick={() => setTafsirIndex(i => Math.min(ayahs.length - 1, i + 1))}
-                  disabled={tafsirIndex >= ayahs.length - 1}
-                  title={t('library.nextAyah')}
-                  aria-label={t('library.nextAyah')}
-                  className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                >
-                  <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
-                </button>
-                <button
-                  onClick={() => setTafsirOpen(false)}
-                  aria-label={t('common.close')}
-                  className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <FiX className="w-4 h-4" />
-                </button>
+                <Tooltip label={t('tooltips.prevVerse')}>
+                  <button
+                    onClick={() => setTafsirIndex(i => Math.max(0, i - 1))}
+                    disabled={tafsirIndex === 0}
+                    className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                  >
+                    <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('tooltips.nextVerse')}>
+                  <button
+                    onClick={() => setTafsirIndex(i => Math.min(ayahs.length - 1, i + 1))}
+                    disabled={tafsirIndex >= ayahs.length - 1}
+                    className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                  >
+                    <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('tooltips.close')}>
+                  <button
+                    onClick={() => setTafsirOpen(false)}
+                    className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
             </div>
 
@@ -585,15 +637,17 @@ export default function Library() {
                 <label className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
                   {t('library.tafsirEdition')}
                 </label>
-                <select
-                  value={tafsirEdition}
-                  onChange={e => setTafsirEdition(e.target.value)}
-                  className={selectCls}
-                >
-                  {TAFSIR_EDITIONS.map(ed => (
-                    <option key={ed.id} value={ed.id}>{isArabic ? ed.nameAr : ed.nameEn}</option>
-                  ))}
-                </select>
+                <Tooltip label={t('tooltips.tafsirEdition')} className="w-full">
+                  <select
+                    value={tafsirEdition}
+                    onChange={e => setTafsirEdition(e.target.value)}
+                    className={selectCls}
+                  >
+                    {TAFSIR_EDITIONS.map(ed => (
+                      <option key={ed.id} value={ed.id}>{isArabic ? ed.nameAr : ed.nameEn}</option>
+                    ))}
+                  </select>
+                </Tooltip>
               </div>
 
               {/* Tafsir text */}
