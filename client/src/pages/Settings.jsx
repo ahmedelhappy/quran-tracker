@@ -10,17 +10,21 @@ import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
 
 const INTENSITY_OPTIONS = [
-  { value: 'light',    labelKey: 'settings.intensityLight',    descKey: 'settings.intensityLightDesc' },
-  { value: 'standard', labelKey: 'settings.intensityStandard', descKey: 'settings.intensityStandardDesc' },
-  { value: 'strong',   labelKey: 'settings.intensityIntensive', descKey: 'settings.intensityIntensiveDesc' },
+  { value: 'light',    labelKey: 'settings.intensityLight',    descKey: 'settings.intensityLightDesc',     divisor: 14 },
+  { value: 'standard', labelKey: 'settings.intensityStandard', descKey: 'settings.intensityStandardDesc',  divisor: 10 },
+  { value: 'strong',   labelKey: 'settings.intensityIntensive', descKey: 'settings.intensityIntensiveDesc', divisor: 7 },
 ];
+
+// Approximate daily review pages for a preset given memorized page count.
+const estimateReviewPages = (memorized, divisor) =>
+  memorized > 0 ? Math.max(1, Math.round(memorized / divisor)) : null;
 
 const DAILY_OPTIONS = [0.5, 1, 2, 5];
 
@@ -665,6 +669,7 @@ export default function Settings() {
   const [isPaused, setIsPaused]       = useState(user?.pauseNewMemorization ?? false);
   const [pauseSaving, setPauseSaving] = useState(false);
 
+  const [showAdvanced, setShowAdvanced]       = useState(false);
   const [cycleStartMode, setCycleStartMode]   = useState('juz');
   const [cycleStartPage, setCycleStartPage]   = useState(user?.cycleReviewStartPage ?? null);
   const [cycleStartInput, setCycleStartInput] = useState('');
@@ -1196,7 +1201,9 @@ export default function Settings() {
 
                   {reviewMode === 'intensity' && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      {INTENSITY_OPTIONS.map(({ value, labelKey, descKey }) => (
+                      {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
+                        const estimate = estimateReviewPages(todayStats?.totalMemorized, divisor);
+                        return (
                         <label key={value} className="cursor-pointer">
                           <input type="radio" name="settings-intensity" value={value}
                             checked={intensity === value} onChange={() => setIntensity(value)} className="sr-only" />
@@ -1209,10 +1216,14 @@ export default function Settings() {
                               <span className={`font-medium ${intensity === value ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
                               <span className={intensity === value ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{intensity === value ? '●' : '○'}</span>
                             </div>
+                            {estimate != null && (
+                              <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
+                            )}
                             <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
                           </div>
                         </label>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {reviewMode === 'fixed' && (
@@ -1259,8 +1270,26 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {/* ── Group: Review Cycle Start ─────────────────── */}
+                {/* ── Group: Advanced (Review Cycle Start) ──────── */}
                 <div className="p-6">
+                  <button
+                    onClick={() => setShowAdvanced(v => !v)}
+                    aria-expanded={showAdvanced}
+                    className="flex items-center justify-between w-full gap-2 text-start"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                        <FiMapPin className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.advanced')}</span>
+                    </span>
+                    {showAdvanced
+                      ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500 shrink-0" />
+                      : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500 shrink-0" />}
+                  </button>
+
+                  {showAdvanced && (
+                  <div className="mt-5">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
                       <FiMapPin className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
@@ -1409,6 +1438,8 @@ export default function Settings() {
                       </button>
                       <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleStartPageHint')}</p>
                     </div>
+                  )}
+                  </div>
                   )}
                 </div>
               </section>

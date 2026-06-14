@@ -42,10 +42,14 @@ const JUZ_RANGES = [
 const DAY_LABEL_KEYS = ['onboarding.dayName0','onboarding.dayName1','onboarding.dayName2','onboarding.dayName3','onboarding.dayName4','onboarding.dayName5','onboarding.dayName6'];
 
 const INTENSITY_OPTIONS = [
-  { value: 'light',    labelKey: 'settings.intensityLight',    descKey: 'settings.intensityLightDesc' },
-  { value: 'standard', labelKey: 'settings.intensityStandard', descKey: 'settings.intensityStandardDesc' },
-  { value: 'strong',   labelKey: 'settings.intensityIntensive', descKey: 'settings.intensityIntensiveDesc' },
+  { value: 'light',    labelKey: 'settings.intensityLight',    descKey: 'settings.intensityLightDesc',     divisor: 14 },
+  { value: 'standard', labelKey: 'settings.intensityStandard', descKey: 'settings.intensityStandardDesc',  divisor: 10 },
+  { value: 'strong',   labelKey: 'settings.intensityIntensive', descKey: 'settings.intensityIntensiveDesc', divisor: 7 },
 ];
+
+// Approximate daily review pages for a preset given memorized page count.
+const estimateReviewPages = (memorized, divisor) =>
+  memorized > 0 ? Math.max(1, Math.round(memorized / divisor)) : null;
 
 // Returns display-friendly time estimate from a raw day count (unit is a translation key)
 function formatEstimate(days) {
@@ -540,7 +544,9 @@ export default function Onboarding() {
           <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h3>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.reviewIntensityDesc')}</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {INTENSITY_OPTIONS.map(({ value, labelKey, descKey }) => (
+            {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
+              const estimate = estimateReviewPages(selectedCount, divisor);
+              return (
               <label key={value} className="cursor-pointer">
                 <input type="radio" name="intensity" value={value} checked={reviewIntensity === value}
                   onChange={() => setReviewIntensity(value)} className="sr-only" />
@@ -555,10 +561,14 @@ export default function Onboarding() {
                       {reviewIntensity === value ? '●' : '○'}
                     </span>
                   </div>
+                  {estimate != null && (
+                    <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
+                  )}
                   <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
                 </div>
               </label>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -674,14 +684,14 @@ export default function Onboarding() {
                   <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('onboarding.pauseOnStartTitle')}</p>
-                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5 leading-relaxed max-w-md">{t('onboarding.pauseOnStartDesc')}</p>
+                  <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
+                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5 leading-relaxed max-w-md">{t('settings.pauseMemDesc')}</p>
                 </div>
               </div>
-              <Tooltip label={t('onboarding.pauseOnStartTitle')} className="mt-0.5">
+              <Tooltip label={t('settings.pauseMemTitle')} className="mt-0.5">
                 <button
                   onClick={() => setPauseOnStart(p => !p)}
-                  aria-label={t('onboarding.pauseOnStartTitle')}
+                  aria-label={t('settings.pauseMemTitle')}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                     pauseOnStart ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
                   }`}
