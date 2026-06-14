@@ -235,7 +235,11 @@ export default function Library() {
     firstSurah ? s.number === firstSurah.number : (s.start <= currentPage && currentPage <= s.end)
   ) ?? SURAH_PAGES.find(s => s.start <= currentPage && currentPage <= s.end);
   const currentSurahName = firstSurah
-    ? (isArabic ? firstSurah.name : firstSurah.englishName)
+    ? (isArabic
+        // API name already carries the "سورة" prefix; use the bare name from
+        // SURAH_PAGES so the "سورة" label isn't repeated.
+        ? (SURAH_PAGES.find(s => s.number === firstSurah.number)?.arabic ?? firstSurah.name)
+        : firstSurah.englishName)
     : '';
   const memorizedCount = memorizedPages.size;
   const selectedAyah = selectedIndex != null ? ayahs[selectedIndex] : null;
