@@ -8,6 +8,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 
@@ -67,6 +68,8 @@ export default function Progress() {
   const [activeTab, setActiveTab] = useState('progress');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showAllSurahs, setShowAllSurahs] = useState(false);
+  const [showJuzBreakdown, setShowJuzBreakdown] = useState(false);
+  const [showSurahBreakdown, setShowSurahBreakdown] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -260,36 +263,86 @@ export default function Progress() {
               </div>
             </div>
 
-            {/* ── Juz status grid ── */}
+            {/* ── Memorization Map (primary view) ── */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
-                <div className="flex items-center gap-1.5">
-                  <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.juzStatus')}</h2>
-                  <InfoHint text={t('hints.juz')} label={t('progress.juz')} />
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.memorizeMap')}</h2>
+                {/* Legend */}
                 <div className="flex items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400">
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> {t('progress.inProgress')}</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> {t('progress.pending')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-600 dark:bg-emerald-500 inline-block" /> {t('progress.memorized')}</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-700 inline-block" /> {t('progress.notMemorized')}</span>
                 </div>
               </div>
-
-              {/* Edit-in-Settings link */}
-              <p className="text-xs text-[#707974] dark:text-gray-500 mb-5">
-                <Link
-                  to="/settings?tab=memorization"
-                  className="hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
-                >
-                  {t('progress.editInSettings')}
-                </Link>
-              </p>
-
               {loading ? (
-                <div className="grid grid-cols-10 gap-2">
-                  {Array(30).fill(0).map((_, i) => <Skeleton key={i} h="h-14" rounded="rounded-lg" />)}
-                </div>
+                <Skeleton h="h-64" />
               ) : (
-                <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {JUZ_RANGES.map(({ juz, start, end }) => {
+                    const total = end - start + 1;
+                    let count = 0;
+                    for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
+                    const pct = Math.round((count / total) * 100);
+                    return (
+                      <div key={juz} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-sm font-bold text-[#1A1A1A] dark:text-gray-100">{t('settings.cycleStartJuz', { juz })}</span>
+                          <span className="text-[11px] font-medium text-[#4A4A4A] dark:text-gray-400">{count} / {total} · {pct}%</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {Array.from({ length: total }, (_, i) => start + i).map(page => {
+                            const done = memorizedSet.has(page);
+                            return (
+                              <div
+                                key={page}
+                                title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
+                                className={`w-5 h-5 sm:w-4 sm:h-4 xl:w-3.5 xl:h-3.5 rounded-sm shrink-0 ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Juz breakdown (collapsible) ── */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <button
+                onClick={() => setShowJuzBreakdown(v => !v)}
+                aria-expanded={showJuzBreakdown}
+                className="w-full flex items-center justify-between gap-2 p-6 text-start hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">
+                    {showJuzBreakdown ? t('progress.hideJuzBreakdown') : t('progress.showJuzBreakdown')}
+                  </span>
+                  <InfoHint text={t('hints.juz')} label={t('progress.juz')} />
+                </span>
+                {showJuzBreakdown
+                  ? <FiChevronUp className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />
+                  : <FiChevronDown className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />}
+              </button>
+
+              {showJuzBreakdown && (
+                <div className="px-6 pb-6">
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400 mb-3">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> {t('progress.inProgress')}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> {t('progress.pending')}</span>
+                  </div>
+
+                  {/* Edit-in-Settings link */}
+                  <p className="text-xs text-[#707974] dark:text-gray-500 mb-5">
+                    <Link
+                      to="/settings?tab=memorization"
+                      className="hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
+                    >
+                      {t('progress.editInSettings')}
+                    </Link>
+                  </p>
+
                   <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-6">
                     {juzData.map(j => (
                       <div
@@ -325,17 +378,27 @@ export default function Progress() {
                       </div>
                     ))}
                   </div>
-                </>
+                </div>
               )}
             </div>
 
-            {/* ── Surah Progress ── */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('progress.surahProgress')}</h2>
-              {loading ? (
-                <Skeleton h="h-48" />
-              ) : (
-                <>
+            {/* ── Surah breakdown (collapsible) ── */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <button
+                onClick={() => setShowSurahBreakdown(v => !v)}
+                aria-expanded={showSurahBreakdown}
+                className="w-full flex items-center justify-between gap-2 p-6 text-start hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+              >
+                <span className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">
+                  {showSurahBreakdown ? t('progress.hideSurahBreakdown') : t('progress.showSurahBreakdown')}
+                </span>
+                {showSurahBreakdown
+                  ? <FiChevronUp className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />
+                  : <FiChevronDown className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />}
+              </button>
+
+              {showSurahBreakdown && (
+                <div className="px-6 pb-6">
                   <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-4">
                     {t('progress.surahSummary', {
                       complete: surahComplete,
@@ -387,33 +450,6 @@ export default function Progress() {
                       {showAllSurahs ? t('progress.showLessSurahs') : t('progress.showAllSurahs')}
                     </button>
                   )}
-                </>
-              )}
-            </div>
-
-            {/* ── Memorization Map ── */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-5">{t('progress.memorizeMap')}</h2>
-              {loading ? (
-                <Skeleton h="h-64" />
-              ) : (
-                <div className="space-y-1">
-                  {JUZ_RANGES.map(({ juz, start, end }) => (
-                    <div key={juz} className="flex items-center gap-2">
-                      <span className="text-[10px] text-[#4A4A4A] dark:text-gray-500 w-14 shrink-0 text-right rtl:text-left">
-                        {t('settings.cycleStartJuz', { juz })}
-                      </span>
-                      <div className="flex flex-wrap gap-px">
-                        {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(page => (
-                          <div
-                            key={page}
-                            title={String(page)}
-                            className={`w-2.5 h-2.5 rounded-xs ${memorizedSet.has(page) ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-100 dark:bg-gray-700'}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
