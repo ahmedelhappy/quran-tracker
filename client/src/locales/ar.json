@@ -471,6 +471,10 @@
   "library": {
     "subtitle": "اقرأ أي صفحة من القرآن، واستمع إلى التلاوة، واستكشف المعنى.",
     "memorizedBadge": "محفوظة",
+    "markMemorized": "تحديدها كمحفوظة",
+    "undoMemorized": "محفوظة ✓ — اضغط للتراجع",
+    "markedToast": "تم تحديد الصفحة {{n}} كمحفوظة",
+    "unmarkedToast": "تمت إزالة الصفحة {{n}} من المحفوظات",
     "pageLabel": "الصفحة",
     "gotoPagePlaceholder": "اذهب إلى صفحة…",
     "prevPage": "الصفحة السابقة",

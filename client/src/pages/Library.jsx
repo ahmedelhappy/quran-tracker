@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
-  FiBookOpen, FiChevronLeft, FiChevronRight, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
+  FiBookOpen, FiChevronLeft, FiChevronRight, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import { progressAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
 import {
   fetchPageText,
   fetchPageTafsir,
@@ -34,6 +35,7 @@ const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
 
 export default function Library() {
   const { t, i18n } = useTranslation();
+  const { showToast } = useToast();
   const isArabic = i18n.language === 'ar';
   const fmtNum = (n) => (isArabic ? toArabicDigits(n) : String(n));
 
@@ -46,6 +48,7 @@ export default function Library() {
   const [pageError, setPageError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [memorizedPages, setMemorizedPages] = useState(new Set());
+  const [savingMemorized, setSavingMemorized] = useState(false);
 
   // ── Audio state ─────────────────────────────────────────
   const [reciter, setReciter] = useState(() => {
@@ -174,6 +177,39 @@ export default function Library() {
     const n = Number(pageInput);
     if (!n || n < 1 || n > 604) setPageInput(String(currentPage));
     else goToPage(n);
+  };
+
+  // ── Mark / unmark the current page as memorized ──────────
+  // This always marks/unmarks the FULL page (the app has no half-page mode),
+  // so there's no half-index to track here. Optimistically flip the local
+  // set + count, then reconcile with the server, rolling back on error.
+  const toggleMemorized = async () => {
+    if (savingMemorized) return;
+    const prevPages = memorizedPages;
+    const adding = !prevPages.has(currentPage);
+    const nextPages = new Set(prevPages);
+    if (adding) nextPages.add(currentPage); else nextPages.delete(currentPage);
+
+    setSavingMemorized(true);
+    setMemorizedPages(nextPages);
+    try {
+      if (adding) {
+        // memorizedDate is set server-side by the 'new' handler.
+        await progressAPI.markComplete({ pageNumber: currentPage, type: 'new' });
+        showToast(t('library.markedToast', { n: fmtNum(currentPage) }), 'success');
+      } else {
+        // Replace the memorized set instead of calling `uncomplete`: that route
+        // only undoes pages memorized *today*, so it 400s on older/onboarded
+        // pages. updateMemorized deletes the dropped page regardless of date.
+        await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
+        showToast(t('library.unmarkedToast', { n: fmtNum(currentPage) }), 'success');
+      }
+    } catch {
+      setMemorizedPages(prevPages); // roll back the optimistic change
+      showToast(t('common.error'), 'error');
+    } finally {
+      setSavingMemorized(false);
+    }
   };
 
   // ── Tafsir loading ───────────────────────────────────────
@@ -307,6 +343,22 @@ export default function Library() {
                   ✓ {t('library.memorizedBadge')}
                 </span>
               )}
+              {/* Quick edit: mark/unmark this page as memorized without leaving the reader */}
+              <button
+                onClick={toggleMemorized}
+                disabled={savingMemorized}
+                className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  memorizedPages.has(currentPage)
+                    ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    : 'bg-[#004f35] text-white hover:bg-[#003527]'
+                }`}
+              >
+                {memorizedPages.has(currentPage) ? (
+                  t('library.undoMemorized')
+                ) : (
+                  <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
+                )}
+              </button>
             </div>
 
             {/* Jump to Juz */}
