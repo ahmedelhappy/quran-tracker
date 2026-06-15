@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
@@ -32,7 +32,7 @@ function buildHeatmap(createdAt, fullHistory = false) {
 }
 
 const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
-  <div className={`${h} ${w} ${rounded} bg-gray-100 animate-pulse`} />
+  <div className={`${h} ${w} ${rounded} bg-gray-100 dark:bg-gray-700 animate-pulse`} />
 );
 
 const ACHIEVEMENTS = [
@@ -65,25 +65,30 @@ export default function Progress() {
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState('progress');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showAllSurahs, setShowAllSurahs] = useState(false);
   const [showSurahBreakdown, setShowSurahBreakdown] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [juzRes, allRes] = await Promise.all([
-          progressAPI.getJuzProgress(),
-          progressAPI.getAllProgress(),
-        ]);
-        setJuzData(juzRes.data.data);
-        setOverallStats(allRes.data.data);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const [juzRes, allRes] = await Promise.all([
+        progressAPI.getJuzProgress(),
+        progressAPI.getAllProgress(),
+      ]);
+      setJuzData(juzRes.data.data);
+      setOverallStats(allRes.data.data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const totalMemorized = overallStats?.totalMemorized ?? 0;
   const percentage = overallStats?.percentage ?? '0.0';
@@ -165,6 +170,19 @@ export default function Progress() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
+        {/* Load error — friendly message + retry (degrades to empty state below) */}
+        {error && !loading && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-sm font-medium text-red-700 dark:text-red-300">{t('common.error')}</p>
+            <button
+              onClick={load}
+              className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors self-start sm:self-auto"
+            >
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="border-b border-[#dce2f3] dark:border-gray-700 flex gap-6">
           {[
@@ -226,10 +244,10 @@ export default function Progress() {
                   <div className="flex flex-col items-center justify-center py-6 text-center">
                     <div className="flex flex-wrap gap-0.5 mb-3 opacity-30">
                       {heatmap.slice(0, 90).map((cell, i) => (
-                        <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100" />
+                        <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-700" />
                       ))}
                     </div>
-                    <p className="text-sm text-gray-400 italic">{t('progress.activityPlaceholder')}</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 italic">{t('progress.activityPlaceholder')}</p>
                   </div>
                 ) : (
                   <>
@@ -409,9 +427,9 @@ export default function Progress() {
                 <Skeleton h="h-52" />
               ) : !hasActivity ? (
                 <div className="h-52 flex flex-col items-center justify-center text-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl">📈</div>
-                  <p className="text-sm text-gray-400 italic">{t('progress.chartEmpty')}</p>
-                  <p className="text-xs text-gray-300">{t('progress.chartStart')}</p>
+                  <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl">📈</div>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">{t('progress.chartEmpty')}</p>
+                  <p className="text-xs text-gray-300 dark:text-gray-600">{t('progress.chartStart')}</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>

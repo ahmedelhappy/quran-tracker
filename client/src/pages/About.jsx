@@ -26,6 +26,7 @@ const About = () => {
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
               title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
+              aria-label={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
               className="p-2 rounded-lg cursor-pointer text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}

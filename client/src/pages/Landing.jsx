@@ -7,18 +7,20 @@ import LanguageToggle from '../components/LanguageToggle';
 import { useTheme } from '../context/ThemeContext';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   return (
     <svg width={size} height={size} className="flex-shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} stroke="#E8E8E8" strokeWidth={stroke} fill="none" />
+      <circle cx={size / 2} cy={size / 2} r={r} stroke={isDark ? '#374151' : '#E8E8E8'} strokeWidth={stroke} fill="none" />
       <circle
         cx={size / 2} cy={size / 2} r={r}
         stroke="#40916C" strokeWidth={stroke} fill="none"
         strokeDasharray={circ} strokeDashoffset={circ - (pct / 100) * circ}
         strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
-      <text x="50%" y="50%" textAnchor="middle" dy="0.35em" fill="#1B4332" fontSize="16" fontWeight="700">
+      <text x="50%" y="50%" textAnchor="middle" dy="0.35em" fill={isDark ? '#6EE7B7' : '#1B4332'} fontSize="16" fontWeight="700">
         {pct}%
       </text>
     </svg>
@@ -58,6 +60,7 @@ const LandingNavbar = ({ activeSection }) => {
           <button
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
             title={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
+            aria-label={isDark ? t('nav.lightModeTitle') : t('nav.darkModeTitle')}
             className="p-2 rounded-lg cursor-pointer text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
@@ -162,30 +165,30 @@ const Landing = () => {
 
           {/* Right decorative cards */}
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-xs text-[#4A4A4A] font-medium uppercase tracking-wide mb-0.5">{t('landing.hero.cardGoalLabel')}</p>
-                  <p className="text-xl font-bold text-[#1A1A1A]">{t('landing.hero.cardGoalTitle')}</p>
+                  <p className="text-xs text-[#4A4A4A] dark:text-gray-400 font-medium uppercase tracking-wide mb-0.5">{t('landing.hero.cardGoalLabel')}</p>
+                  <p className="text-xl font-bold text-[#1A1A1A] dark:text-gray-100">{t('landing.hero.cardGoalTitle')}</p>
                 </div>
                 <CircleRing pct={75} />
               </div>
-              <div className="bg-green-50 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-sm font-semibold text-[#1B4332]">{t('landing.hero.cardStreak')}</span>
-                <span className="ms-auto text-xs text-[#40916C] font-medium">{t('landing.hero.cardKeepItUp')}</span>
+              <div className="bg-green-50 dark:bg-emerald-900/20 rounded-xl p-3 flex items-center gap-2">
+                <span className="text-sm font-semibold text-[#1B4332] dark:text-emerald-400">{t('landing.hero.cardStreak')}</span>
+                <span className="ms-auto text-xs text-[#40916C] dark:text-emerald-500 font-medium">{t('landing.hero.cardKeepItUp')}</span>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <p className="arabic text-xl text-[#1A1A1A] text-center mb-3 leading-loose">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+              <p className="arabic text-xl text-[#1A1A1A] dark:text-gray-100 text-center mb-3 leading-loose">
                 تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ
               </p>
-              <p className="text-sm text-[#4A4A4A] text-center italic mb-4">
+              <p className="text-sm text-[#4A4A4A] dark:text-gray-400 text-center italic mb-4">
                 {t('landing.hero.cardVerseTranslation')}
               </p>
               <div className="flex justify-center gap-2">
-                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">{t('landing.hero.cardMeccan')}</span>
-                <span className="bg-amber-50 text-amber-700 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100">{t('landing.hero.cardVerses')}</span>
+                <span className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100 dark:border-amber-800/30">{t('landing.hero.cardMeccan')}</span>
+                <span className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-xs font-medium px-2.5 py-1 rounded-full border border-amber-100 dark:border-amber-800/30">{t('landing.hero.cardVerses')}</span>
               </div>
             </div>
           </div>

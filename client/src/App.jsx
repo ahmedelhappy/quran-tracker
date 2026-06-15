@@ -42,8 +42,8 @@ const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#1B4332] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#1B4332] dark:border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
