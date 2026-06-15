@@ -1,0 +1,145 @@
+const { test, before, after, beforeEach, describe } = require('node:test');
+const assert = require('node:assert/strict');
+const request = require('supertest');
+
+const {
+  connect, disconnect, clearDatabase, seedMetadata,
+  createUser, tokenFor, addMemorizedPage, daysAgo,
+} = require('./helpers');
+const app = require('../app');
+const User = require('../models/User');
+const UserProgress = require('../models/UserProgress');
+
+describe('Progress API — spaced repetition', () => {
+  before(connect);
+  after(disconnect);
+  beforeEach(async () => {
+    await clearDatabase();
+    await seedMetadata(30);
+  });
+
+  test('protected progress route returns 401 without a token', async () => {
+    const res = await request(app).get('/api/progress/today');
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+  });
+
+  test("new pages fill up to the user's dailyNewPages goal", async () => {
+    // planStartDate = now → day 0 of the plan → target = ceil(dailyNewPages).
+    const user = await createUser({ dailyNewPages: 3, planStartDate: new Date() });
+
+    const res = await request(app)
+      .get('/api/progress/today')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.stats.targetNewPages, 3);
+    assert.equal(res.body.data.newPages.length, 3);
+    // First three unmemorized pages, in order.
+    assert.deepEqual(res.body.data.newPages.map(p => p.pageNumber), [1, 2, 3]);
+  });
+
+  test('review pages are pulled oldest-reviewed first', async () => {
+    const user = await createUser({
+      planStartDate: new Date(),
+      pauseNewMemorization: true, // isolate the review queue from new pages
+      cycleReviewCount: 3,        // fixed daily review target
+      recentReviewCount: 0,       // ignore the recent-memorization bucket
+    });
+
+    // Five pages memorized in the past (before planStart, so they're cycle reviews),
+    // each last reviewed a different number of days ago. Page 1 is the most stale.
+    await addMemorizedPage(user._id, 1, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(9) });
+    await addMemorizedPage(user._id, 2, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(8) });
+    await addMemorizedPage(user._id, 3, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(7) });
+    await addMemorizedPage(user._id, 4, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(6) });
+    await addMemorizedPage(user._id, 5, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(5) });
+
+    const res = await request(app)
+      .get('/api/progress/today')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.newPages.length, 0); // paused
+    // The three most stale (oldest lastReviewedDate) come first.
+    assert.deepEqual(res.body.data.reviewPages.map(p => p.pageNumber), [1, 2, 3]);
+  });
+
+  test('an off-day returns empty task arrays unless ignoreOffDay is set', async () => {
+    const todayUtcDay = new Date().getUTCDay();
+    const user = await createUser({
+      dailyNewPages: 3,
+      planStartDate: new Date(),
+      offDays: [todayUtcDay],
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const offRes = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(offRes.status, 200);
+    assert.equal(offRes.body.data.isOffDay, true);
+    assert.equal(offRes.body.data.newPages.length, 0);
+    assert.equal(offRes.body.data.reviewPages.length, 0);
+
+    const onRes = await request(app)
+      .get('/api/progress/today?ignoreOffDay=true')
+      .set('Authorization', auth);
+    assert.equal(onRes.status, 200);
+    assert.equal(onRes.body.data.isOffDay, false);
+    assert.equal(onRes.body.data.newPages.length, 3);
+  });
+
+  test('completing a new page marks it memorized and starts the streak', async () => {
+    const user = await createUser({ currentStreak: 0, lastActiveDate: null });
+
+    const res = await request(app)
+      .post('/api/progress/complete')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`)
+      .send({ pageNumber: 1, type: 'new' });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.newStreak, 1);
+
+    const progress = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.equal(progress.status, 'memorized');
+
+    const refreshed = await User.findById(user._id);
+    assert.equal(refreshed.currentStreak, 1);
+  });
+
+  test('completing a review updates lastReviewedDate and review count', async () => {
+    const user = await createUser({ planStartDate: new Date() });
+    await addMemorizedPage(user._id, 1, { memorizedDate: daysAgo(2), lastReviewedDate: daysAgo(2), reviewCount: 0 });
+
+    const res = await request(app)
+      .post('/api/progress/complete')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`)
+      .send({ pageNumber: 1, type: 'review' });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+
+    const progress = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.equal(progress.reviewCount, 1);
+    const today = new Date().toISOString().split('T')[0];
+    assert.equal(progress.lastReviewedDate.toISOString().split('T')[0], today);
+  });
+
+  test('uncomplete reverses a new page memorized the same day', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    // Sanity: it was created.
+    assert.ok(await UserProgress.findOne({ userId: user._id, pageNumber: 1 }));
+
+    const res = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    // Same-day new completion is deleted entirely.
+    assert.equal(await UserProgress.findOne({ userId: user._id, pageNumber: 1 }), null);
+  });
+});
