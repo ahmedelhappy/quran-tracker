@@ -68,7 +68,6 @@ export default function Progress() {
   const [activeTab, setActiveTab] = useState('progress');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showAllSurahs, setShowAllSurahs] = useState(false);
-  const [showJuzBreakdown, setShowJuzBreakdown] = useState(false);
   const [showSurahBreakdown, setShowSurahBreakdown] = useState(false);
 
   useEffect(() => {
@@ -276,109 +275,58 @@ export default function Progress() {
               {loading ? (
                 <Skeleton h="h-64" />
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {JUZ_RANGES.map(({ juz, start, end }) => {
-                    const total = end - start + 1;
-                    let count = 0;
-                    for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
-                    const pct = Math.round((count / total) * 100);
-                    return (
-                      <div key={juz} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-3">
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-sm font-bold text-[#1A1A1A] dark:text-gray-100">{t('settings.cycleStartJuz', { juz })}</span>
-                          <span className="text-[11px] font-medium text-[#4A4A4A] dark:text-gray-400">{count} / {total} · {pct}%</span>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {JUZ_RANGES.map(({ juz, start, end }) => {
+                      const total = end - start + 1;
+                      let count = 0;
+                      for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
+                      const pct = Math.round((count / total) * 100);
+                      return (
+                        <div key={juz} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-3">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-sm font-bold text-[#1A1A1A] dark:text-gray-100">{t('settings.cycleStartJuz', { juz })}</span>
+                            <span className="text-[11px] font-medium text-[#4A4A4A] dark:text-gray-400">{count} / {total} · {pct}%</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {Array.from({ length: total }, (_, i) => start + i).map(page => {
+                              const done = memorizedSet.has(page);
+                              return (
+                                <div
+                                  key={page}
+                                  title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
+                                  className={`w-5 h-5 sm:w-4 sm:h-4 xl:w-3.5 xl:h-3.5 rounded-sm shrink-0 ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                />
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-1">
-                          {Array.from({ length: total }, (_, i) => start + i).map(page => {
-                            const done = memorizedSet.has(page);
-                            return (
-                              <div
-                                key={page}
-                                title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
-                                className={`w-5 h-5 sm:w-4 sm:h-4 xl:w-3.5 xl:h-3.5 rounded-sm shrink-0 ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ── Juz breakdown (collapsible) ── */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden">
-              <button
-                onClick={() => setShowJuzBreakdown(v => !v)}
-                aria-expanded={showJuzBreakdown}
-                className="w-full flex items-center justify-between gap-2 p-6 text-start hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <span className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">
-                    {showJuzBreakdown ? t('progress.hideJuzBreakdown') : t('progress.showJuzBreakdown')}
-                  </span>
-                  <InfoHint text={t('hints.juz')} label={t('progress.juz')} />
-                </span>
-                {showJuzBreakdown
-                  ? <FiChevronUp className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />
-                  : <FiChevronDown className="w-5 h-5 text-[#707974] dark:text-gray-500 shrink-0" />}
-              </button>
-
-              {showJuzBreakdown && (
-                <div className="px-6 pb-6">
-                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[#4A4A4A] dark:text-gray-400 mb-3">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-[#1B4332] inline-block" /> {t('progress.memorized')}</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400 inline-block" /> {t('progress.inProgress')}</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 dark:bg-gray-600 inline-block" /> {t('progress.pending')}</span>
+                      );
+                    })}
                   </div>
 
-                  {/* Edit-in-Settings link */}
-                  <p className="text-xs text-[#707974] dark:text-gray-500 mb-5">
+                  {/* Juz summary + edit link */}
+                  <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-6">
+                      {[
+                        { label: t('progress.completed'),  count: completedJuz,  color: 'text-[#1B4332] dark:text-emerald-400' },
+                        { label: t('progress.inProgress'), count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
+                        { label: t('progress.pending'),    count: pendingJuz,    color: 'text-gray-400 dark:text-gray-500' },
+                      ].map(({ label, count, color }) => (
+                        <div key={label} className="text-center">
+                          <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
+                          <p className="text-xs text-[#4A4A4A] dark:text-gray-400">{label}</p>
+                        </div>
+                      ))}
+                    </div>
                     <Link
                       to="/settings?tab=memorization"
-                      className="hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
+                      className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
                     >
                       {t('progress.editInSettings')}
                     </Link>
-                  </p>
-
-                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-6">
-                    {juzData.map(j => (
-                      <div
-                        key={j.juzNumber}
-                        title={`${t('progress.juz')} ${j.juzNumber} — ${j.memorizedPages}/${j.totalPages} (${j.percentage}%)`}
-                        className={`rounded-lg p-2 text-center cursor-default transition-all hover:scale-105 ${
-                          j.isComplete
-                            ? 'bg-[#1B4332] text-white'
-                            : j.memorizedPages > 0
-                            ? 'bg-amber-100 border-2 border-amber-400'
-                            : 'bg-gray-100 text-gray-400'
-                        }`}
-                      >
-                        <p className={`text-lg font-bold leading-none ${j.isComplete ? 'text-white' : j.memorizedPages > 0 ? 'text-amber-800' : ''}`}>
-                          {j.juzNumber}
-                        </p>
-                        <p className={`text-xs mt-1 ${j.isComplete ? 'text-green-200' : j.memorizedPages > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                          {j.percentage}%
-                        </p>
-                      </div>
-                    ))}
                   </div>
-
-                  <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                    {[
-                      { label: t('progress.completed'), count: completedJuz,  color: 'text-[#1B4332] dark:text-emerald-400' },
-                      { label: t('progress.inProgress'), count: inProgressJuz, color: 'text-amber-600 dark:text-amber-400' },
-                      { label: t('progress.pending'),    count: pendingJuz,    color: 'text-gray-400 dark:text-gray-500' },
-                    ].map(({ label, count, color }) => (
-                      <div key={label} className="text-center">
-                        <p className={`text-2xl font-extrabold ${color}`}>{count}</p>
-                        <p className="text-xs text-[#4A4A4A] dark:text-gray-400">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                </>
               )}
             </div>
 
