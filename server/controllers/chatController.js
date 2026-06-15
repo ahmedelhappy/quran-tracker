@@ -50,6 +50,9 @@ const buildUserContextMessage = (summary) => {
   return { role: 'system', content: lines.join('\n') };
 };
 
+// Caps the size of any single message to bound token cost sent to the model.
+const MAX_MESSAGE_LENGTH = 2000;
+
 // @desc    Send a message to the AI assistant
 // @route   POST /api/chat
 // @access  Private
@@ -73,6 +76,13 @@ exports.sendMessage = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Each message must have a valid role ("user" or "assistant") and a non-empty content string',
+      });
+    }
+
+    if (msg.content.length > MAX_MESSAGE_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Each message must be ${MAX_MESSAGE_LENGTH} characters or fewer`,
       });
     }
   }

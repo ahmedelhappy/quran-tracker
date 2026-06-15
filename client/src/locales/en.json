@@ -511,6 +511,7 @@
     "placeholder": "Ask about Quran or Hifz...",
     "welcome": "Assalamu Alaikum! I'm here to help with Quran memorization and Islamic knowledge. What would you like to know?",
     "error": "Sorry, I'm unavailable right now.",
+    "rateLimit": "You're sending messages too fast. Please wait a moment before trying again.",
     "send": "Send",
     "toggleLabel": "Toggle Islamic Assistant",
     "suggestions": {

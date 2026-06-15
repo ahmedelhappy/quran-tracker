@@ -45,10 +45,13 @@ export default function Chatbot() {
       const res = await chatAPI.sendMessage(history);
       const reply = res.data?.data?.reply ?? '';
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-    } catch {
+    } catch (err) {
+      // 429 = rate limited: nudge the user to slow down rather than show a
+      // generic failure.
+      const messageKey = err.response?.status === 429 ? 'chatbot.rateLimit' : 'chatbot.error';
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: t('chatbot.error') },
+        { role: 'assistant', content: t(messageKey) },
       ]);
     } finally {
       setLoading(false);
