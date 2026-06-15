@@ -512,7 +512,12 @@
     "welcome": "Assalamu Alaikum! I'm here to help with Quran memorization and Islamic knowledge. What would you like to know?",
     "error": "Sorry, I'm unavailable right now.",
     "send": "Send",
-    "toggleLabel": "Toggle Islamic Assistant"
+    "toggleLabel": "Toggle Islamic Assistant",
+    "suggestions": {
+      "plan": "What's my plan today?",
+      "memorized": "How many pages have I memorized?",
+      "streak": "What's my streak?"
+    }
   },
   "achievements": {
     "first_page_name": "First Step",

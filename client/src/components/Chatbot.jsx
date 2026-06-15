@@ -24,8 +24,12 @@ export default function Chatbot() {
     }
   }, [messages, open]);
 
-  const send = async () => {
-    const text = input.trim();
+  // Prompts offered when the conversation is empty (only the welcome message shown).
+  const suggestionKeys = ['plan', 'memorized', 'streak'];
+  const showSuggestions = !loading && messages.every((m) => m.isWelcome);
+
+  const send = async (textArg) => {
+    const text = (typeof textArg === 'string' ? textArg : input).trim();
     if (!text || loading) return;
 
     const userMsg = { role: 'user', content: text };
@@ -137,6 +141,21 @@ export default function Chatbot() {
               </div>
             )}
 
+            {/* Suggested prompts — shown only on an empty conversation */}
+            {showSuggestions && (
+              <div className="flex flex-col gap-2 pt-1">
+                {suggestionKeys.map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => send(t(`chatbot.suggestions.${key}`))}
+                    className="text-start text-sm px-3 py-2 rounded-xl border border-[#dce2f3] dark:border-gray-700 text-[#004f35] dark:text-emerald-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    {t(`chatbot.suggestions.${key}`)}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div ref={bottomRef} />
           </div>
 
@@ -152,7 +171,7 @@ export default function Chatbot() {
               className="flex-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#004f35]/40 disabled:opacity-60"
             />
             <button
-              onClick={send}
+              onClick={() => send()}
               disabled={loading || !input.trim()}
               aria-label={t('chatbot.send')}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-opacity disabled:opacity-40 hover:opacity-90"

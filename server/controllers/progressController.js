@@ -52,6 +52,111 @@ const getMetadataMap = async (pageNumbers) => {
   return Object.fromEntries(records.map(r => [r.pageNumber, r]));
 };
 
+// Builds a compact, read-only snapshot of a user's plan & progress. Reuses the
+// same helpers and new-page/review rules as getTodayTasks but returns only counts
+// plus a handful of page numbers — small enough to inject into the AI assistant's
+// context. Runs a single lightweight query and performs no writes.
+const buildProgressSummary = async (user) => {
+  const userId = user._id;
+  const todayString = getDateString(new Date());
+  const offDays = user.offDays || [];
+  const isOffDay = offDays.includes(new Date().getUTCDay());
+
+  const allMemorizedPages = await UserProgress.find(
+    { userId, status: 'memorized' },
+    { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1 }
+  ).sort({ lastReviewedDate: 1, pageNumber: 1 });
+
+  const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
+  const totalMemorized = allMemorizedPages.length;
+  const isHafiz = totalMemorized === 604;
+  const percentage = parseFloat(((totalMemorized / 604) * 100).toFixed(1));
+
+  // --- NEW PAGES DUE TODAY (mirrors getTodayTasks) ---
+  let targetNewPages = 0;
+  if (!isHafiz && !user.pauseNewMemorization && !isOffDay) {
+    const planStart = user.planStartDate || user.createdAt;
+    targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
+  }
+  const newPagesCompletedToday = allMemorizedPages.filter(
+    p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+  ).length;
+  const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
+
+  const newPageNumbers = [];
+  for (let page = 1; page <= 604 && newPageNumbers.length < remainingNewPages; page++) {
+    if (!memorizedPageNumbers.has(page)) newPageNumbers.push(page);
+  }
+
+  // --- REVIEWS DUE TODAY (cycle + recent buckets, mirrors getTodayTasks) ---
+  let reviewsDueToday = 0;
+  if (!isOffDay) {
+    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
+      ? user.cycleReviewCount
+      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+
+    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
+    const activeDatesSet = new Set();
+    for (const p of allMemorizedPages) {
+      for (const d of [p.memorizedDate, p.lastReviewedDate]) {
+        if (!d) continue;
+        const ds = getDateString(d);
+        if (ds !== todayString && ds >= planStartDateString) activeDatesSet.add(ds);
+      }
+    }
+    const lastThreeActiveDays = new Set(Array.from(activeDatesSet).sort().reverse().slice(0, 3));
+    const recentEligibleNums = new Set(
+      allMemorizedPages
+        .filter(p => p.memorizedDate && lastThreeActiveDays.has(getDateString(p.memorizedDate)))
+        .map(p => p.pageNumber)
+    );
+
+    // Cycle bucket: memorized pages not memorized today and not owned by recent window.
+    const pagesForReview = allMemorizedPages.filter(
+      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
+        && !recentEligibleNums.has(p.pageNumber)
+    );
+    const cycleCompletedToday = pagesForReview.filter(
+      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
+    ).length;
+    const cyclePending = pagesForReview.filter(
+      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
+    ).length;
+    const cycleDue = Math.min(Math.max(0, dailyReviewTarget - cycleCompletedToday), cyclePending);
+
+    // Recent bucket: pages memorized within the last three active days, not done today.
+    const recentPending = allMemorizedPages.filter(p =>
+      p.memorizedDate
+      && getDateString(p.memorizedDate) !== todayString
+      && lastThreeActiveDays.has(getDateString(p.memorizedDate))
+      && !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString)
+    ).length;
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const recentDue = Math.min(maxRecent, recentPending);
+
+    reviewsDueToday = cycleDue + recentDue;
+  }
+
+  return {
+    name: user.name,
+    dailyNewPages: user.dailyNewPages || 1,
+    isOffDay,
+    isHafiz,
+    currentStreak: user.currentStreak || 0,
+    totalMemorized,
+    totalPages: 604,
+    pagesLeft: 604 - totalMemorized,
+    percentage,
+    newPagesDueToday: newPageNumbers.length,
+    newPageNumbers,
+    reviewsDueToday,
+  };
+};
+
+exports.buildProgressSummary = buildProgressSummary;
+
 // @desc    Complete onboarding - save initial progress
 // @route   POST /api/progress/onboarding
 // @access  Private
