@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown, FiMoon, FiSun } from 'react-icons/fi';
+import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown, FiMoon, FiSun, FiBookOpen, FiHeadphones, FiFileText, FiGlobe, FiGift, FiCheck } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
 import { useTheme } from '../context/ThemeContext';
@@ -81,10 +81,16 @@ const Landing = () => {
 
   const faqItems = t('landing.faq.items', { returnObjects: true });
   const planDays = [t('landing.hero.planToday'), t('landing.hero.planTomorrow'), t('landing.hero.planDay3')];
-  const statsItems = [
-    { value: '10k+', label: t('landing.stats.students') },
-    { value: '5M+',  label: t('landing.stats.ayahs') },
-    { value: '4.9/5', label: t('landing.stats.rating') },
+  const valueItems = [
+    { icon: <FiActivity className="w-6 h-6 text-amber-200" />, label: t('landing.values.spacedRepetition') },
+    { icon: <FiGift className="w-6 h-6 text-amber-200" />,     label: t('landing.values.free') },
+    { icon: <FiGlobe className="w-6 h-6 text-amber-200" />,    label: t('landing.values.bilingual') },
+    { icon: <FiMoon className="w-6 h-6 text-amber-200" />,     label: t('landing.values.theming') },
+  ];
+  const libraryHighlights = [
+    { icon: <FiBookOpen className="w-4 h-4 text-amber-200" />,   title: t('landing.features.libraryRead'),   desc: t('landing.features.libraryReadDesc') },
+    { icon: <FiHeadphones className="w-4 h-4 text-amber-200" />, title: t('landing.features.libraryListen'), desc: t('landing.features.libraryListenDesc') },
+    { icon: <FiFileText className="w-4 h-4 text-amber-200" />,   title: t('landing.features.libraryTafsir'), desc: t('landing.features.libraryTafsirDesc') },
   ];
   const howItWorksSteps = [
     { step: '01', title: t('landing.howItWorks.step1Title'), desc: t('landing.howItWorks.step1Desc') },
@@ -144,23 +150,13 @@ const Landing = () => {
                 {t('landing.hero.seeHow')}
               </a>
             </div>
-            <div className="flex items-center gap-3 pt-1">
-              <div className="flex -space-x-2">
-                {['#40916C', '#2D6A4F', '#E09F3E', '#1B4332', '#74C69D'].map((c, i) => (
-                  <div
-                    key={i}
-                    className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-xs font-bold"
-                    style={{ background: c }}
-                  >
-                    {String.fromCharCode(65 + i)}
-                  </div>
-                ))}
-              </div>
-              <span className="text-sm text-[#4A4A4A] dark:text-gray-300">
-                {t('landing.hero.joinedBy')}{' '}
-                <span className="font-semibold text-[#1B4332] dark:text-emerald-400">{t('landing.hero.students')}</span>
-                {' '}{t('landing.hero.studentsGlobal')}
-              </span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+              {[t('landing.hero.trust1'), t('landing.hero.trust2'), t('landing.hero.trust3')].map((label) => (
+                <span key={label} className="inline-flex items-center gap-1.5 text-sm text-[#4A4A4A] dark:text-gray-300">
+                  <FiCheck className="w-4 h-4 text-[#40916C] dark:text-emerald-400 flex-shrink-0" />
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -205,6 +201,69 @@ const Landing = () => {
               {t('landing.features.subtitle')}
             </p>
           </div>
+
+          {/* ★ Flagship — Quran Library */}
+          <div className="bg-gradient-to-br from-[#1B4332] to-[#2D6A4F] rounded-2xl p-6 md:p-8 mb-5 text-white">
+            <div className="grid lg:grid-cols-2 gap-8 items-center">
+              {/* Copy */}
+              <div>
+                <span className="inline-flex items-center gap-2 bg-white/15 text-amber-200 text-xs font-semibold px-3 py-1.5 rounded-full mb-4">
+                  {t('landing.features.libraryBadge')}
+                </span>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <FiBookOpen className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-2xl font-extrabold">{t('landing.features.libraryTitle')}</h3>
+                </div>
+                <p className="text-green-100 text-sm md:text-base leading-relaxed mb-5">
+                  {t('landing.features.libraryDesc')}
+                </p>
+                <div className="space-y-3">
+                  {libraryHighlights.map(({ icon, title, desc }) => (
+                    <div key={title} className="flex items-start gap-3">
+                      <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {icon}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">{title}</p>
+                        <p className="text-green-100/80 text-xs leading-relaxed">{desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Mushaf mock */}
+              <div className="bg-white rounded-2xl p-5 shadow-lg">
+                <div className="flex items-center justify-between mb-3 text-xs font-medium text-[#4A4A4A]">
+                  <span>{t('landing.hero.cardGoalTitle')}</span>
+                  <span>{t('landing.features.libraryPage')}</span>
+                </div>
+                <p className="arabic text-lg text-[#1A1A1A] text-center leading-loose mb-4" dir="rtl">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ ۚ تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ
+                </p>
+                <div className="bg-green-50 rounded-xl p-3 flex items-center gap-3 mb-3">
+                  <span className="w-9 h-9 rounded-full bg-[#1B4332] flex items-center justify-center flex-shrink-0">
+                    <FiPlay className="w-4 h-4 text-white ms-0.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[#4A4A4A]">{t('library.reciter')}</p>
+                    <p className="text-sm font-semibold text-[#1B4332] truncate">{t('landing.features.libraryReciter')}</p>
+                  </div>
+                  <FiHeadphones className="w-4 h-4 text-[#40916C] ms-auto flex-shrink-0" />
+                </div>
+                <div className="border border-gray-100 rounded-xl p-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <FiFileText className="w-3.5 h-3.5 text-[#40916C] flex-shrink-0" />
+                    <p className="text-xs font-semibold text-[#1B4332]">{t('landing.features.libraryTafsirLabel')}</p>
+                  </div>
+                  <p className="text-xs text-[#4A4A4A] leading-relaxed">{t('landing.features.libraryTafsirSnippet')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-2 gap-5">
             {/* 1 — Personalized Plans */}
             <div className="bg-[#FAF9F6] dark:bg-gray-700/40 rounded-2xl p-6 border border-gray-100 dark:border-gray-600">
@@ -274,20 +333,59 @@ const Landing = () => {
                   <span>⭐</span>
                   <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">{t('landing.features.juzBadge')}</span>
                 </div>
+                <div className="bg-white dark:bg-gray-700 rounded-xl px-3 py-2 flex items-center gap-2 border border-green-100 dark:border-gray-600">
+                  <span>🏅</span>
+                  <span className="text-[#1B4332] dark:text-emerald-400 text-sm font-medium">{t('landing.features.achievementBadge')}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Arabic / English & light / dark */}
+          <div className="mt-5 bg-[#FAF9F6] dark:bg-gray-700/40 rounded-2xl p-6 md:p-8 border border-gray-100 dark:border-gray-600">
+            <div className="grid md:grid-cols-2 gap-6 items-center">
+              <div>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center">
+                    <FiGlobe className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
+                  </div>
+                  <div className="w-10 h-10 bg-green-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center">
+                    <FiMoon className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
+                  </div>
+                </div>
+                <h3 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-2">{t('landing.features.bilingualTitle')}</h3>
+                <p className="text-[#4A4A4A] dark:text-gray-300 text-sm leading-relaxed">
+                  {t('landing.features.bilingualDesc')}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 md:justify-end">
+                {[
+                  t('landing.features.bilingualRtl'),
+                  t('landing.features.bilingualEnglish'),
+                  t('landing.features.bilingualLight'),
+                  t('landing.features.bilingualDark'),
+                ].map((label) => (
+                  <span key={label} className="bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 text-[#1B4332] dark:text-emerald-400 text-sm font-medium px-3.5 py-2 rounded-full">
+                    {label}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── STATS ─────────────────────────────────────────── */}
+      {/* ── VALUES ────────────────────────────────────────── */}
       <section className="bg-[#1B4332] py-16">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-3 gap-8 text-center">
-            {statsItems.map(({ value, label }) => (
-              <div key={label}>
-                <p className="text-4xl font-extrabold text-white mb-1">{value}</p>
-                <p className="text-green-300 text-sm">{label}</p>
+          <h2 className="text-2xl font-bold text-white text-center mb-10">{t('landing.values.title')}</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            {valueItems.map(({ icon, label }) => (
+              <div key={label} className="flex flex-col items-center">
+                <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-3">
+                  {icon}
+                </div>
+                <p className="text-green-100 text-sm font-medium leading-relaxed">{label}</p>
               </div>
             ))}
           </div>

@@ -566,9 +566,9 @@
       "subtitle": "Transform your Hifz goals into daily habits. A serene, disciplined tracker that brings focus and peace to your memorization journey.",
       "cta": "Start Memorizing Free →",
       "seeHow": "See How It Works",
-      "joinedBy": "Joined by",
-      "students": "10,000+",
-      "studentsGlobal": "students globally",
+      "trust1": "100% free",
+      "trust2": "Arabic & English",
+      "trust3": "Light & dark mode",
       "cardGoalLabel": "Current Goal",
       "cardGoalTitle": "Surah Al-Mulk",
       "cardStreak": "🔥 14 Day Streak",
@@ -582,7 +582,20 @@
     },
     "features": {
       "title": "Designed for Deep Focus",
-      "subtitle": "Everything you need to memorize, review, and retain the Quran",
+      "subtitle": "Everything you need to read, memorize, review, and retain the Quran",
+      "libraryBadge": "✦ Flagship feature",
+      "libraryTitle": "The Quran Library",
+      "libraryDesc": "More than a tracker — a complete mushaf at your fingertips. Read every page, listen to renowned reciters, and study the meaning of each verse, all in one place.",
+      "libraryRead": "Read the mushaf",
+      "libraryReadDesc": "Browse all 604 pages in authentic Uthmani script with full tashkeel.",
+      "libraryListen": "Listen to recitation",
+      "libraryListenDesc": "Follow along with crisp audio from several renowned reciters.",
+      "libraryTafsir": "Explore the tafsir",
+      "libraryTafsirDesc": "Read verse-by-verse explanations from multiple trusted tafsir editions.",
+      "libraryPage": "Page 562",
+      "libraryReciter": "Mishary Al-Afasy",
+      "libraryTafsirLabel": "Tafsir · Ibn Kathir",
+      "libraryTafsirSnippet": "Exalted is Allah, to whom belongs all sovereignty over the heavens and the earth…",
       "personalizedTitle": "Personalized Plans",
       "personalizedDesc": "Set your pace based on your schedule. Whether it's half a page or 5 pages a day.",
       "reviewTitle": "Smart Review",
@@ -590,15 +603,24 @@
       "reviewRetention": "Retention Strength",
       "progressTitle": "Track Progress",
       "progressDesc": "Visualize your journey through all 30 Juz. See exactly how much you've accomplished and how far you have to go.",
-      "motivateTitle": "Stay Motivated",
-      "motivateDesc": "Build consistent habits with daily streaks, achievements, and gentle reminders.",
+      "motivateTitle": "Achievements & Streaks",
+      "motivateDesc": "Stay motivated with daily streaks and unlock badges for milestones like finishing a Surah or a Juz.",
       "streakBadge": "14 Day Streak",
-      "juzBadge": "Juz 30 Completed"
+      "juzBadge": "Juz 30 Completed",
+      "achievementBadge": "100 Pages Milestone",
+      "bilingualTitle": "Arabic & English, Light & Dark",
+      "bilingualDesc": "Use the entire app in fluent Arabic with full right-to-left layout, or in English — and switch between a calm light theme and a restful dark mode whenever you like.",
+      "bilingualRtl": "Full RTL Arabic",
+      "bilingualEnglish": "English interface",
+      "bilingualLight": "Light mode",
+      "bilingualDark": "Dark mode"
     },
-    "stats": {
-      "students": "Active Students",
-      "ayahs": "Ayahs Memorized",
-      "rating": "Average Rating"
+    "values": {
+      "title": "Why Quran Tracker",
+      "spacedRepetition": "Grounded in the science of spaced repetition",
+      "free": "Free and open to use",
+      "bilingual": "Works fully in Arabic and English",
+      "theming": "Light & dark mode"
     },
     "howItWorks": {
       "title": "How It Works",
@@ -615,7 +637,7 @@
       "items": [
         { "q": "Is Quran Tracker free to use?", "a": "Yes, completely free. All core features — personalized plans, spaced repetition reviews, and progress tracking — are available at no cost." },
         { "q": "How does the smart review system work?", "a": "Pages are scheduled for revision based on how recently you memorized them. Newer pages appear more often, with intervals growing as your retention strengthens — grounded in the Ebbinghaus Forgetting Curve." },
-        { "q": "Can I track specific Surahs or page ranges?", "a": "Yes. During onboarding and in Settings you can select memorized content by Juz or by custom page ranges." },
+        { "q": "Can I track specific Surahs or page ranges?", "a": "Yes. During onboarding and in Settings you can select memorized content by Juz, by Surah, or by custom page ranges." },
         { "q": "What happens if I miss a day?", "a": "No penalties. Your daily plan stays the same — missed review pages simply join the next cycle. Consistency matters more than perfection." }
       ]
     },
