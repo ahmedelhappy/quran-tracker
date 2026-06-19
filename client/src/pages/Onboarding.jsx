@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { progressAPI, authAPI } from '../services/api';
-import { FiPlus, FiX, FiPause } from 'react-icons/fi';
+import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
@@ -143,10 +143,10 @@ export default function Onboarding() {
   const [rangeErrors, setRangeErrors] = useState([{}]);
   const [dailyPages, setDailyPages] = useState(1);
   const [reviewIntensity, setReviewIntensity] = useState('standard');
+  const [fixedReviewValue, setFixedReviewValue] = useState(5);
   const [offDays, setOffDays] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
-  const [pauseOnStart, setPauseOnStart] = useState(false);
 
   const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
   const selectedCount = selectedPages.length;
@@ -235,11 +235,10 @@ export default function Onboarding() {
     try {
       await progressAPI.completeOnboarding({ memorizedPages: selectedPages, dailyNewPages: dailyPages });
       await authAPI.updateProfile({
-        reviewIntensity,
         offDays,
-        ...(pauseOnStart && selectedPages.length > 0
-          ? { pauseNewMemorization: true, pausedFromOnboarding: true }
-          : {}),
+        ...(reviewIntensity === 'fixed'
+          ? { cycleReviewCount: fixedReviewValue, recentReviewCount: null }
+          : { reviewIntensity, cycleReviewCount: null, recentReviewCount: null }),
       });
       await refreshUser();
       navigate('/dashboard');
@@ -284,6 +283,14 @@ export default function Onboarding() {
           <div>
             <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.alreadyMemorized')}</h1>
             <p className="text-[#404944] dark:text-gray-400">{t('onboarding.alreadyMemorizedHint')}</p>
+          </div>
+
+          {/* Quick guide to the three selection tabs + combine note */}
+          <div className="rounded-lg bg-[#f0f3ff] dark:bg-gray-700/40 border border-[#dce2f3] dark:border-gray-600 px-4 py-3 text-xs text-[#404944] dark:text-gray-300 space-y-1.5">
+            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byJuz')}</span> — {t('onboarding.tabGuideByJuz')}</p>
+            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.bySurah')}</span> — {t('onboarding.tabGuideBySurah')}</p>
+            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byRange')}</span> — {t('onboarding.tabGuideByRange')}</p>
+            <p className="pt-1 text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.tabGuideCombine')}</p>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -464,26 +471,6 @@ export default function Onboarding() {
           </div>
         </section>
 
-        {/* Estimate banner */}
-        {estimateDisplay && (
-          <section className="bg-[#f0f3ff] dark:bg-gray-800 rounded-xl p-6 border border-[#bfc9c3]/50 dark:border-gray-700 flex items-start md:items-center gap-6 flex-col md:flex-row">
-            <div className="w-12 h-12 rounded-full bg-[#fe932c]/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-[#904d00] text-xl">🚩</span>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.estimatedCompletion')}</h3>
-              <p className="text-[#404944] dark:text-gray-300">
-                {t('onboarding.estimateText', {
-                  pages: dailyPages,
-                  juz: Math.round(remaining / 20),
-                  value: estimateDisplay.value,
-                  unit: t(estimateDisplay.unitKey),
-                })}
-              </p>
-            </div>
-          </section>
-        )}
-
         {/* Navigation */}
         <div className="mt-auto pt-6 flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700">
           <button
@@ -543,7 +530,7 @@ export default function Onboarding() {
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
           <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h3>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.reviewIntensityDesc')}</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
               const estimate = estimateReviewPages(selectedCount, divisor);
               return (
@@ -569,7 +556,37 @@ export default function Onboarding() {
               </label>
               );
             })}
+            {/* Fourth option — fixed page count (mirrors Settings) */}
+            <label className="cursor-pointer">
+              <input type="radio" name="intensity" value="fixed" checked={reviewIntensity === 'fixed'}
+                onChange={() => setReviewIntensity('fixed')} className="sr-only" />
+              <div className={`p-4 rounded-xl border-2 transition-all h-full ${
+                reviewIntensity === 'fixed'
+                  ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
+                  : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30'
+              }`}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className={`font-medium ${reviewIntensity === 'fixed' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeFixed')}</span>
+                  <span className={`text-sm ${reviewIntensity === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}`}>
+                    {reviewIntensity === 'fixed' ? '●' : '○'}
+                  </span>
+                </div>
+                <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('onboarding.fixedReviewDesc')}</p>
+              </div>
+            </label>
           </div>
+
+          {reviewIntensity === 'fixed' && (
+            <div className="mt-4 flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('onboarding.fixedReviewLabel')}</p>
+                <p className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.fixedReviewHint')}</p>
+              </div>
+              <input type="number" min="1" max="40" value={fixedReviewValue}
+                onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 40) setFixedReviewValue(n); }}
+                className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
+            </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
@@ -646,7 +663,7 @@ export default function Onboarding() {
           {[
             { labelKey: 'onboarding.alreadyMemorizedStat', value: `${approxJuz} ${t('progress.juz')}` },
             { labelKey: 'onboarding.dailyNew',             value: `${dailyPages} ${t(dailyPages !== 1 ? 'onboarding.pagesPerDay' : 'onboarding.pagePerDay')}` },
-            { labelKey: 'dashboard.review',                value: t(INTENSITY_OPTIONS.find(o => o.value === reviewIntensity)?.labelKey ?? 'settings.intensityStandard') },
+            { labelKey: 'dashboard.review',                value: reviewIntensity === 'fixed' ? t('dashboard.reviewCount', { count: fixedReviewValue }) : t(INTENSITY_OPTIONS.find(o => o.value === reviewIntensity)?.labelKey ?? 'settings.intensityStandard') },
             { labelKey: 'onboarding.offDaysStat',          value: offDayLabel },
           ].map(({ labelKey, value }) => (
             <div key={labelKey} className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-4 text-center sacred-shadow">
@@ -675,35 +692,6 @@ export default function Onboarding() {
             ))}
           </div>
         </div>
-
-        {selectedCount > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-5 sacred-shadow">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
-                  <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5 leading-relaxed max-w-md">{t('settings.pauseMemDesc')}</p>
-                </div>
-              </div>
-              <Tooltip label={t('settings.pauseMemTitle')} className="mt-0.5">
-                <button
-                  onClick={() => setPauseOnStart(p => !p)}
-                  aria-label={t('settings.pauseMemTitle')}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                    pauseOnStart ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
-                  }`}
-                >
-                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                    pauseOnStart ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
-                  }`} />
-                </button>
-              </Tooltip>
-            </div>
-          </div>
-        )}
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
