@@ -511,7 +511,26 @@
     "tafsir": "Tafsir",
     "tafsirTitle": "Tafsir of the verse",
     "tafsirEdition": "Tafsir book",
-    "tafsirError": "Could not load the tafsir"
+    "tafsirError": "Could not load the tafsir",
+    "memorize": {
+      "title": "Memorize mode",
+      "enter": "Memorize mode",
+      "enterHint": "A focused, guided session to commit this page to memory — listen, understand, then test yourself.",
+      "exit": "Exit memorize mode",
+      "exitShort": "Exit",
+      "testSelf": "Test myself",
+      "showText": "Show text",
+      "testSelfHint": "Hide the text and recite from memory; tap any verse to check it piece by piece.",
+      "revealAll": "Reveal all",
+      "hideAll": "Hide all",
+      "tapToReveal": "Recite from memory, then tap a covered verse to reveal and check it.",
+      "method": "Memorization steps",
+      "fullGuide": "Open the full guide",
+      "markThisPage": "Mark this page memorized",
+      "memorizedDone": "This page is memorized",
+      "nextPage": "Next page",
+      "undo": "Mark as not memorized"
+    }
   },
   "footer": {
     "contactSupport": "Contact Support",

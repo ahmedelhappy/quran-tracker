@@ -3,12 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
-  FiBookOpen, FiChevronLeft, FiChevronRight, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
+  FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
+  FiTarget, FiEye, FiEyeOff, FiArrowRight, FiHelpCircle, FiCheckSquare, FiSquare,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
+import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { progressAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
@@ -42,6 +44,17 @@ export default function Library() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPage = clampPage(searchParams.get('page') ?? 1);
   const [pageInput, setPageInput] = useState(String(currentPage));
+
+  // ── Memorize mode: a focused, guided session reflected in the URL so it
+  // deep-links and survives refresh. The reader itself is unchanged; this
+  // only re-frames the sidebar and layers self-testing on top of the text.
+  const memorizeMode = searchParams.get('mode') === 'memorize';
+  const [testSelf, setTestSelf] = useState(false);          // hide text for active recall
+  const [revealAll, setRevealAll] = useState(false);
+  const [revealedSet, setRevealedSet] = useState(() => new Set()); // verses peeked one by one
+  const [checkedSteps, setCheckedSteps] = useState(() => new Set()); // ephemeral method ticks
+  const [methodOpen, setMethodOpen] = useState(true);
+  const [howToOpen, setHowToOpen] = useState(false);
 
   const [ayahs, setAyahs] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
@@ -116,6 +129,21 @@ export default function Library() {
     };
   }, [currentPage, stopAudio]);
 
+  // Page change: start a fresh self-test (everything concealed again)
+  useEffect(() => {
+    setRevealAll(false);
+    setRevealedSet(new Set());
+  }, [currentPage]);
+
+  // Leaving memorize mode: drop the self-test so the reader shows normally
+  useEffect(() => {
+    if (!memorizeMode) {
+      setTestSelf(false);
+      setRevealAll(false);
+      setRevealedSet(new Set());
+    }
+  }, [memorizeMode]);
+
   // Drive the single <audio> element: load + play current ayah
   useEffect(() => {
     const el = audioRef.current;
@@ -169,8 +197,27 @@ export default function Library() {
 
   const goToPage = (n) => {
     const page = clampPage(n);
-    if (page !== currentPage) setSearchParams({ page: String(page) }, { replace: true });
+    if (page === currentPage) return;
+    // Preserve memorize mode across page navigation so the session continues.
+    const params = { page: String(page) };
+    if (memorizeMode) params.mode = 'memorize';
+    setSearchParams(params, { replace: true });
   };
+
+  // ── Memorize mode controls ───────────────────────────────
+  const enterMemorize = () => setSearchParams({ page: String(currentPage), mode: 'memorize' }, { replace: true });
+  const exitMemorize = () => setSearchParams({ page: String(currentPage) }, { replace: true });
+
+  // A verse is hidden while self-testing until it's peeked (or "Reveal all").
+  const isConcealed = (index) => memorizeMode && testSelf && !revealAll && !revealedSet.has(index);
+  const revealVerse = (index) => setRevealedSet(prev => new Set(prev).add(index));
+  const hideAllVerses = () => { setRevealAll(false); setRevealedSet(new Set()); };
+  const toggleTestSelf = () => { setTestSelf(v => !v); hideAllVerses(); };
+  const toggleStep = (i) => setCheckedSteps(prev => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
 
   const handlePageInputKey = (e) => { if (e.key === 'Enter') goToPage(pageInput); };
   const handlePageInputBlur = () => {
@@ -279,6 +326,11 @@ export default function Library() {
     : '';
   const memorizedCount = memorizedPages.size;
   const selectedAyah = selectedIndex != null ? ayahs[selectedIndex] : null;
+  const pageMemorized = memorizedPages.has(currentPage);
+
+  // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
+  const methodSteps = t('howTo.steps', { returnObjects: true });
+  const stepList = Array.isArray(methodSteps) ? methodSteps : [];
 
   const verseRef = (ayah) =>
     `${isArabic ? (SURAH_PAGES.find(s => s.number === ayah.surah.number)?.arabic ?? ayah.surah.name) : ayah.surah.englishName} · ${t('library.verseLabel', { n: fmtNum(ayah.numberInSurah) })}`;
@@ -300,6 +352,24 @@ export default function Library() {
 
           {/* ── Sidebar ───────────────────────────────────── */}
           <aside className="w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-28 lg:self-start">
+
+            {/* Memorize-mode header + exit */}
+            {memorizeMode && (
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-[#004f35]/5 dark:bg-emerald-900/20 border border-[#004f35]/15 dark:border-emerald-800/30 px-3 py-2.5">
+                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-[#003527] dark:text-emerald-300">
+                  <FiTarget className="w-4 h-4 text-[#004f35] dark:text-emerald-400" />
+                  {t('library.memorize.title')}
+                </span>
+                <Tooltip label={t('library.memorize.exit')}>
+                  <button
+                    onClick={exitMemorize}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#707974] dark:text-gray-300 hover:text-[#003527] dark:hover:text-gray-100 rounded-lg px-2 py-1 hover:bg-white/60 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <FiX className="w-3.5 h-3.5" /> {t('library.memorize.exitShort')}
+                  </button>
+                </Tooltip>
+              </div>
+            )}
 
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
@@ -343,71 +413,195 @@ export default function Library() {
                   ✓ {t('library.memorizedBadge')}
                 </span>
               )}
-              {/* Quick edit: mark/unmark this page as memorized without leaving the reader */}
-              <button
-                onClick={toggleMemorized}
-                disabled={savingMemorized}
-                className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  memorizedPages.has(currentPage)
-                    ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                    : 'bg-[#004f35] text-white hover:bg-[#003527]'
-                }`}
-              >
-                {memorizedPages.has(currentPage) ? (
-                  t('library.undoMemorized')
-                ) : (
-                  <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
-                )}
-              </button>
+              {/* Quick edit: mark/unmark this page as memorized without leaving the reader.
+                  In memorize mode the prominent CTA below replaces this. */}
+              {!memorizeMode && (
+                <button
+                  onClick={toggleMemorized}
+                  disabled={savingMemorized}
+                  className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    pageMemorized
+                      ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                      : 'bg-[#004f35] text-white hover:bg-[#003527]'
+                  }`}
+                >
+                  {pageMemorized ? (
+                    t('library.undoMemorized')
+                  ) : (
+                    <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
+                  )}
+                </button>
+              )}
             </div>
 
-            {/* Jump to Juz */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
-              <select
-                value={currentJuz}
-                onChange={e => goToPage(JUZ_START_PAGES[Number(e.target.value) - 1])}
-                className={selectCls}
-              >
-                {JUZ_START_PAGES.map((_, i) => (
-                  <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: fmtNum(i + 1) })}</option>
-                ))}
-              </select>
-            </div>
+            {memorizeMode ? (
+              <>
+                {/* ── Self-test (active recall) ── */}
+                <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
+                  <button
+                    onClick={toggleTestSelf}
+                    className={`w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors ${
+                      testSelf
+                        ? 'bg-[#004f35] text-white hover:bg-[#003527]'
+                        : 'border border-[#004f35]/30 dark:border-emerald-500/30 text-[#004f35] dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                    }`}
+                  >
+                    {testSelf
+                      ? <><FiEye className="w-3.5 h-3.5" /> {t('library.memorize.showText')}</>
+                      : <><FiEyeOff className="w-3.5 h-3.5" /> {t('library.memorize.testSelf')}</>}
+                  </button>
+                  <p className="text-xs text-[#707974] dark:text-gray-500 leading-relaxed">{t('library.memorize.testSelfHint')}</p>
+                  {testSelf && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setRevealAll(true)}
+                        className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                      >
+                        {t('library.memorize.revealAll')}
+                      </button>
+                      <button
+                        onClick={hideAllVerses}
+                        className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                      >
+                        {t('library.memorize.hideAll')}
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-            {/* Jump to Surah */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
-              <select
-                value={sidebarSurah?.number ?? ''}
-                onChange={e => {
-                  const s = SURAH_PAGES.find(x => x.number === Number(e.target.value));
-                  if (s) goToPage(s.start);
-                }}
-                className={selectCls}
-              >
-                {SURAH_PAGES.map(s => (
-                  <option key={s.number} value={s.number}>
-                    {fmtNum(s.number)}. {isArabic ? s.arabic : s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                {/* ── Mark memorized CTA + continue ── */}
+                <div className="flex flex-col gap-2">
+                  {pageMemorized ? (
+                    <>
+                      <span className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
+                        ✓ {t('library.memorize.memorizedDone')}
+                      </span>
+                      <button
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage >= 604}
+                        className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {t('library.memorize.nextPage')} <FiArrowRight className="w-4 h-4 rtl:rotate-180" />
+                      </button>
+                      <button
+                        onClick={toggleMemorized}
+                        disabled={savingMemorized}
+                        className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors disabled:opacity-50"
+                      >
+                        {t('library.memorize.undo')}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={toggleMemorized}
+                      disabled={savingMemorized}
+                      className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-3 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
+                    >
+                      <FiCheck className="w-4 h-4" /> {t('library.memorize.markThisPage')}
+                    </button>
+                  )}
+                </div>
 
-            {/* Stats */}
-            <div className="text-sm text-[#707974] dark:text-gray-500">
-              {t('library.pagesMemorizedStat', { count: memorizedCount })}
-            </div>
+                {/* ── Method checklist (ephemeral ticks) ── */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => setMethodOpen(o => !o)}
+                    className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
+                  >
+                    {t('library.memorize.method')}
+                    <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {methodOpen && (
+                    <>
+                      <ol className="flex flex-col gap-0.5">
+                        {stepList.map((step, i) => (
+                          <li key={i}>
+                            <button
+                              onClick={() => toggleStep(i)}
+                              className="w-full flex items-start gap-2 text-start py-0.5 group"
+                            >
+                              {checkedSteps.has(i)
+                                ? <FiCheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                                : <FiSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#b0b6bd] dark:text-gray-500 group-hover:text-[#707974] dark:group-hover:text-gray-400 transition-colors" />}
+                              <span className={`text-xs leading-snug ${checkedSteps.has(i) ? 'line-through text-[#a0a6ab] dark:text-gray-600' : 'text-[#404944] dark:text-gray-300'}`}>
+                                {step.title}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                      <button
+                        onClick={() => setHowToOpen(true)}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 mt-0.5 w-max"
+                      >
+                        <FiHelpCircle className="w-3.5 h-3.5" /> {t('library.memorize.fullGuide')}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Enter memorize mode */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={enterMemorize}
+                    className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors"
+                  >
+                    <FiTarget className="w-4 h-4" /> {t('library.memorize.enter')}
+                  </button>
+                  <p className="text-xs text-[#707974] dark:text-gray-500 leading-relaxed">{t('library.memorize.enterHint')}</p>
+                </div>
+
+                {/* Jump to Juz */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
+                  <select
+                    value={currentJuz}
+                    onChange={e => goToPage(JUZ_START_PAGES[Number(e.target.value) - 1])}
+                    className={selectCls}
+                  >
+                    {JUZ_START_PAGES.map((_, i) => (
+                      <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: fmtNum(i + 1) })}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Jump to Surah */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
+                  <select
+                    value={sidebarSurah?.number ?? ''}
+                    onChange={e => {
+                      const s = SURAH_PAGES.find(x => x.number === Number(e.target.value));
+                      if (s) goToPage(s.start);
+                    }}
+                    className={selectCls}
+                  >
+                    {SURAH_PAGES.map(s => (
+                      <option key={s.number} value={s.number}>
+                        {fmtNum(s.number)}. {isArabic ? s.arabic : s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Stats */}
+                <div className="text-sm text-[#707974] dark:text-gray-500">
+                  {t('library.pagesMemorizedStat', { count: memorizedCount })}
+                </div>
+              </>
+            )}
           </aside>
 
           {/* ── Mushaf column ─────────────────────────────── */}
           <div className="flex-1 flex flex-col gap-4 min-w-0">
 
-            {/* Discoverability cue: the per-verse listen/tafsir actions only
-                appear after a tap, so tell the user up front. */}
+            {/* Discoverability cue: in self-test the tap reveals a hidden verse;
+                otherwise the per-verse listen/tafsir actions appear after a tap. */}
             <p className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
               <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-              {t('hints.libraryVerseTap')}
+              {memorizeMode && testSelf ? t('library.memorize.tapToReveal') : t('hints.libraryVerseTap')}
             </p>
 
             {/* Mushaf page card */}
@@ -453,24 +647,36 @@ export default function Library() {
                       }
                       return (
                         <p key={block.key} className="mushaf-text text-[#1f1505] dark:text-[#f3e9d2]">
-                          {block.items.map(({ index, ayah, text }) => (
-                            <span
-                              key={ayah.number}
-                              onClick={() => setSelectedIndex(prev => prev === index ? null : index)}
-                              className={`cursor-pointer transition-colors rounded px-0.5 -mx-0.5 box-decoration-clone ${
-                                playingIndex === index
-                                  ? 'bg-emerald-200/70 dark:bg-emerald-700/40'
-                                  : selectedIndex === index
-                                    ? 'bg-amber-200/70 dark:bg-amber-600/30'
-                                    : 'hover:bg-emerald-100/60 dark:hover:bg-emerald-800/20'
-                              }`}
-                            >
-                              {text}
-                              <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                                ﴿{toArabicDigits(ayah.numberInSurah)}﴾
+                          {block.items.map(({ index, ayah, text }) => {
+                            const concealed = isConcealed(index);
+                            return (
+                              <span
+                                key={ayah.number}
+                                onClick={() => {
+                                  // While testing, the first tap peeks at a hidden verse;
+                                  // afterwards a tap selects it for the listen/tafsir actions.
+                                  if (concealed) { revealVerse(index); return; }
+                                  setSelectedIndex(prev => prev === index ? null : index);
+                                }}
+                                className={`cursor-pointer transition-colors rounded px-0.5 -mx-0.5 box-decoration-clone ${
+                                  playingIndex === index
+                                    ? 'bg-emerald-200/70 dark:bg-emerald-700/40'
+                                    : selectedIndex === index
+                                      ? 'bg-amber-200/70 dark:bg-amber-600/30'
+                                      : 'hover:bg-emerald-100/60 dark:hover:bg-emerald-800/20'
+                                }`}
+                              >
+                                {/* Blur (not hide) the words so the line shape stays as a memory cue */}
+                                <span className={concealed ? 'blur-[6px] opacity-50 select-none' : 'transition-[filter,opacity] duration-300'}>
+                                  {text}
+                                </span>
+                                {/* Ayah-number marker stays sharp as an anchor */}
+                                <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
+                                  ﴿{toArabicDigits(ayah.numberInSurah)}﴾
+                                </span>
                               </span>
-                            </span>
-                          ))}
+                            );
+                          })}
                         </p>
                       );
                     })}
@@ -733,6 +939,9 @@ export default function Library() {
           </div>
         </>
       )}
+
+      {/* Full 7-step method, reused from the dashboard guide */}
+      <HowToMemorizeModal isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
 
       <Footer />
     </div>
