@@ -209,6 +209,8 @@
     "showAllSurahs": "Show all",
     "showLessSurahs": "Show less",
     "memorizeMap": "Memorization Map",
+    "showDetailedMap": "Show detailed map",
+    "showCompactMap": "Show compact view",
     "notMemorized": "Not memorized",
     "mapPageMemorized": "Page {{page}} — memorized",
     "mapPageNot": "Page {{page}} — not yet",

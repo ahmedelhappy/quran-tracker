@@ -209,6 +209,8 @@
     "showAllSurahs": "عرض الكل",
     "showLessSurahs": "عرض أقل",
     "memorizeMap": "خريطة الحفظ",
+    "showDetailedMap": "عرض الخريطة التفصيلية",
+    "showCompactMap": "عرض مختصر",
     "notMemorized": "غير محفوظة",
     "mapPageMemorized": "صفحة {{page}} — محفوظة",
     "mapPageNot": "صفحة {{page}} — لم تُحفظ بعد",
