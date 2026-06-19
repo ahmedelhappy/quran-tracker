@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -8,27 +8,108 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiChevronDown, FiChevronUp, FiEdit2 } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
+// Sun..Sat rows; labels only on Mon/Wed/Fri like GitHub's contribution graph.
+const WEEKDAY_LABEL_KEYS = ['', 'settings.dayMon', '', 'settings.dayWed', '', 'settings.dayFri', ''];
 
-function buildHeatmap(createdAt, fullHistory = false) {
-  const cells = [];
-  const today = new Date();
-  const from = createdAt ? new Date(createdAt) : new Date();
-  if (!createdAt) from.setDate(from.getDate() - 89);
+const toISODate = (d) => d.toISOString().split('T')[0];
+const levelForCount = (c) => (c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 2 : c <= 4 ? 3 : 4);
 
-  const daysDiff = Math.ceil((today - from) / 86400000);
-  const days = fullHistory ? daysDiff + 1 : Math.min(daysDiff + 1, 183);
+const toUTCMidnight = (date) => {
+  const d = new Date(date);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+};
 
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    cells.push({ date: d.toISOString().split('T')[0], level: 0 });
+// Build a GitHub-style contribution grid: an array of week-columns, each a 7-cell
+// (Sun→Sat) array. Cells are null for days outside the range (padding). All date
+// math is in UTC so cell dates line up exactly with the server's date keys.
+function buildContributionWeeks(createdAt, byDate = {}, fullHistory = false) {
+  const today = toUTCMidnight(new Date());
+
+  let start;
+  if (fullHistory && createdAt) {
+    start = toUTCMidnight(createdAt);
+  } else {
+    start = new Date(today);
+    start.setUTCDate(start.getUTCDate() - 7 * 25); // ~26 weeks
+    if (createdAt) {
+      const c = toUTCMidnight(createdAt);
+      if (c > start) start = c;
+    }
   }
-  return cells;
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay()); // align to Sunday
+
+  const weeks = [];
+  let week = [];
+  for (let d = new Date(start); d <= today; d.setUTCDate(d.getUTCDate() + 1)) {
+    const ds = toISODate(d);
+    const count = byDate[ds] || 0;
+    week.push({ date: ds, count, level: levelForCount(count) });
+    if (week.length === 7) { weeks.push(week); week = []; }
+  }
+  if (week.length) { while (week.length < 7) week.push(null); weeks.push(week); }
+  return weeks;
+}
+
+// GitHub-style contribution graph (weeks as columns, weekday rows, month labels).
+function ContributionGraph({ weeks, locale }) {
+  const { t } = useTranslation();
+  const monthLabels = useMemo(() => {
+    // Month of each week's first real day (-1 if the column is all padding).
+    const firstMonths = weeks.map(week => {
+      const real = week.find(c => c);
+      return real ? new Date(real.date + 'T00:00:00Z').getUTCMonth() : -1;
+    });
+    return weeks.map((week, i) => {
+      const m = firstMonths[i];
+      if (m === -1 || (i > 0 && firstMonths[i - 1] === m)) return '';
+      const real = week.find(c => c);
+      return new Date(real.date + 'T00:00:00Z').toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' });
+    });
+  }, [weeks, locale]);
+
+  return (
+    <div dir="ltr" className="overflow-x-auto pb-1">
+      <div className="inline-flex flex-col gap-[3px]">
+        {/* Month labels */}
+        <div className="flex gap-[3px] ps-7">
+          {weeks.map((_, i) => (
+            <div key={i} className="w-3 text-[10px] leading-none text-[#4A4A4A] dark:text-gray-500 whitespace-nowrap overflow-visible">
+              {monthLabels[i]}
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-[3px]">
+          {/* Weekday labels */}
+          <div className="flex flex-col gap-[3px] w-6 shrink-0 pe-1">
+            {WEEKDAY_LABEL_KEYS.map((k, i) => (
+              <div key={i} className="h-3 text-[9px] leading-3 text-[#4A4A4A] dark:text-gray-500 text-end">
+                {k ? t(k) : ''}
+              </div>
+            ))}
+          </div>
+          {/* Week columns */}
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-[3px]">
+              {week.map((cell, di) => cell ? (
+                <div
+                  key={di}
+                  title={`${cell.date} · ${t('progress.pagesCount', { count: cell.count })}`}
+                  className={`w-3 h-3 rounded-sm ${HEAT_COLORS[cell.level]}`}
+                />
+              ) : (
+                <div key={di} className="w-3 h-3" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const Skeleton = ({ h = 'h-4', w = 'w-full', rounded = 'rounded' }) => (
@@ -58,6 +139,7 @@ const ACHIEVEMENTS = [
 
 export default function Progress() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -109,15 +191,10 @@ export default function Progress() {
   const surahInProgress = surahStats.filter(s => s.pct > 0 && s.pct < 100).length;
   const surahNotStarted = surahStats.filter(s => s.pct === 0).length;
 
-  const heatmap = useMemo(() => {
-    const cells = buildHeatmap(user?.createdAt, showFullHistory);
-    const byDate = overallStats?.memorizedByDate || {};
-    cells.forEach(cell => {
-      const count = byDate[cell.date] || 0;
-      cell.level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count <= 4 ? 3 : 4;
-    });
-    return cells;
-  }, [user?.createdAt, overallStats, showFullHistory]);
+  const weeks = useMemo(
+    () => buildContributionWeeks(user?.createdAt, overallStats?.memorizedByDate || {}, showFullHistory),
+    [user?.createdAt, overallStats, showFullHistory]
+  );
 
   const chartData = useMemo(() => {
     const byDate = overallStats?.memorizedByDate;
@@ -237,44 +314,30 @@ export default function Progress() {
                 <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.activityStreak')}</h2>
                 {loading ? (
                   <div className="space-y-2">
-                    <Skeleton h="h-16" />
+                    <Skeleton h="h-24" />
                     <Skeleton h="h-4" w="w-32" />
-                  </div>
-                ) : !hasActivity ? (
-                  <div className="flex flex-col items-center justify-center py-6 text-center">
-                    <div className="flex flex-wrap gap-0.5 mb-3 opacity-30">
-                      {heatmap.slice(0, 90).map((cell, i) => (
-                        <div key={i} className="w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-700" />
-                      ))}
-                    </div>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 italic">{t('progress.activityPlaceholder')}</p>
                   </div>
                 ) : (
                   <>
-                    <div className={showFullHistory ? 'overflow-x-auto' : ''}>
-                      <div className={`flex gap-0.5 mb-3 ${showFullHistory ? 'flex-nowrap' : 'flex-wrap'}`}>
-                        {heatmap.map((cell, i) => (
-                          <div
-                            key={i}
-                            title={cell.date}
-                            className={`w-2.5 h-2.5 rounded-sm shrink-0 ${HEAT_COLORS[cell.level] ?? HEAT_COLORS[0]}`}
-                          />
+                    <ContributionGraph weeks={weeks} locale={isArabic ? 'ar-SA' : 'en-US'} />
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+                      <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
+                        <span>{t('progress.less')}</span>
+                        {HEAT_COLORS.map((c, i) => (
+                          <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
                         ))}
+                        <span>{t('progress.more')}</span>
                       </div>
+                      <button
+                        onClick={() => setShowFullHistory(prev => !prev)}
+                        className="text-xs text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors"
+                      >
+                        {showFullHistory ? t('progress.collapse') : t('progress.viewFullHistory')}
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
-                      <span>{t('progress.less')}</span>
-                      {HEAT_COLORS.map((c, i) => (
-                        <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
-                      ))}
-                      <span>{t('progress.more')}</span>
-                    </div>
-                    <button
-                      onClick={() => setShowFullHistory(prev => !prev)}
-                      className="mt-2 text-xs text-[#4A4A4A] dark:text-gray-400 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors"
-                    >
-                      {showFullHistory ? t('progress.collapse') : t('progress.viewFullHistory')}
-                    </button>
+                    {!hasActivity && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 italic mt-2">{t('progress.activityPlaceholder')}</p>
+                    )}
                   </>
                 )}
               </div>
@@ -294,26 +357,36 @@ export default function Progress() {
                 <Skeleton h="h-64" />
               ) : (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                     {JUZ_RANGES.map(({ juz, start, end }) => {
                       const total = end - start + 1;
                       let count = 0;
                       for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
                       const pct = Math.round((count / total) * 100);
+                      const complete = pct === 100;
                       return (
-                        <div key={juz} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-3">
-                          <div className="flex items-center justify-between gap-2 mb-2">
+                        <div
+                          key={juz}
+                          className={`rounded-xl border p-3 transition-colors ${
+                            complete
+                              ? 'border-emerald-300 dark:border-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-900/15'
+                              : 'border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2.5">
                             <span className="text-sm font-bold text-[#1A1A1A] dark:text-gray-100">{t('settings.cycleStartJuz', { juz })}</span>
-                            <span className="text-[11px] font-medium text-[#4A4A4A] dark:text-gray-400">{count} / {total} · {pct}%</span>
+                            <span className={`text-[11px] font-semibold tabular-nums ${complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#4A4A4A] dark:text-gray-400'}`}>
+                              {count}/{total} · {pct}%
+                            </span>
                           </div>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="grid grid-cols-10 gap-1">
                             {Array.from({ length: total }, (_, i) => start + i).map(page => {
                               const done = memorizedSet.has(page);
                               return (
                                 <div
                                   key={page}
                                   title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
-                                  className={`w-5 h-5 sm:w-4 sm:h-4 xl:w-3.5 xl:h-3.5 rounded-sm shrink-0 ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                  className={`aspect-square rounded-[3px] ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
                                 />
                               );
                             })}
@@ -323,7 +396,7 @@ export default function Progress() {
                     })}
                   </div>
 
-                  {/* Juz summary + edit link */}
+                  {/* Juz summary + prominent edit CTA */}
                   <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-6">
                       {[
@@ -337,12 +410,12 @@ export default function Progress() {
                         </div>
                       ))}
                     </div>
-                    <Link
-                      to="/settings?tab=memorization"
-                      className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#1B4332] dark:hover:text-emerald-400 transition-colors underline-offset-2 hover:underline"
+                    <button
+                      onClick={() => navigate('/settings?tab=memorization&edit=1')}
+                      className="inline-flex items-center gap-2 bg-[#1B4332] hover:bg-[#143728] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors shrink-0"
                     >
-                      {t('progress.editInSettings')}
-                    </Link>
+                      <FiEdit2 className="w-4 h-4" /> {t('progress.editMyPages')}
+                    </button>
                   </div>
                 </>
               )}
