@@ -402,14 +402,14 @@ export default function Progress() {
                                   {count}/{total} · {pct}%
                                 </span>
                               </div>
-                              <div className="grid grid-cols-10 gap-1">
+                              <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}>
                                 {Array.from({ length: total }, (_, i) => start + i).map(page => {
                                   const done = memorizedSet.has(page);
                                   return (
                                     <div
                                       key={page}
                                       title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
-                                      className={`aspect-square rounded-[3px] ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                      className={`aspect-square rounded-xs ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
                                     />
                                   );
                                 })}
