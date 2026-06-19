@@ -681,9 +681,21 @@ exports.getWeekPlan = async (req, res) => {
 
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
+    const todayString = getDateString(today);
+
+    // Today already consumes its own new pages from the unmemorized list, so the
+    // projection for the next days must start AFTER them — otherwise tomorrow (or the
+    // next active day) repeats today's page instead of advancing to the next one.
+    const isTodayOffDay = offDays.includes(today.getUTCDay());
+    const todayNewTarget = (isHafiz || user.pauseNewMemorization || isTodayOffDay)
+      ? 0
+      : computeNewPageTargetForDate(dailyNewPages, planStart, today);
+    const newPagesCompletedToday = allMemorizedPages.filter(
+      p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+    ).length;
 
     const plan = [];
-    let cumulativeNew = 0;
+    let cumulativeNew = Math.max(0, todayNewTarget - newPagesCompletedToday);
     const pageNumsForMeta = [];
 
     for (let i = 1; i <= 6; i++) {

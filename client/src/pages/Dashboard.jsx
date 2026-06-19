@@ -369,15 +369,12 @@ export default function Dashboard() {
   };
 
   const stats = data?.stats;
-  const activeJuz = juzData.find(j => j.percentage > 0 && !j.isComplete) || null;
-  const juzPct = activeJuz?.percentage ?? (juzData.some(j => j.isComplete) ? 100 : 0);
   const completedJuz = juzData.filter(j => j.isComplete).length;
-  const totalJuz = juzData.length > 0
-    ? activeJuz
-      ? (completedJuz + activeJuz.percentage / 100).toFixed(1)
-      : String(completedJuz)
-    : '0';
-  const pagesToHifz = stats ? `${stats.totalMemorized} / 604` : '— / 604';
+  // The Juz the user is currently working through = lowest-numbered incomplete Juz.
+  const currentJuzObj = juzData.find(j => !j.isComplete) || null;
+  const currentJuzNumber = currentJuzObj?.juzNumber ?? null; // null only when all 30 are complete
+  const currentJuzPct = currentJuzObj?.percentage ?? (juzData.length > 0 ? 100 : 0);
+  const memorizedPagesStat = stats ? `${stats.totalMemorized} / 604` : '— / 604';
 
   const missedDay = (() => {
     if (!user?.lastActiveDate) return false;
@@ -563,12 +560,21 @@ export default function Dashboard() {
                 <><Sk h="h-16" w="w-16" /><Sk h="h-3" w="w-16" /><Sk h="h-5" w="w-20" /></>
               ) : (
                 <>
-                  <JuzRing pct={juzPct} />
+                  <JuzRing pct={currentJuzPct} />
                   <div className="flex items-center gap-1 mt-2 mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.juzProgress')}</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.currentJuzLabel')}</span>
                     <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
                   </div>
-                  <div className="text-sm font-semibold text-[#003527] dark:text-gray-100">{totalJuz} / 30</div>
+                  <Tooltip label={juzData.length === 0 ? '' : currentJuzNumber ? t('dashboard.currentJuzTooltip', { juz: currentJuzNumber }) : t('dashboard.currentJuzAllDone')}>
+                    <div className="text-sm font-semibold text-[#003527] dark:text-gray-100 cursor-default">
+                      {juzData.length === 0 ? '—' : currentJuzNumber ? t('dashboard.currentJuzValue', { juz: currentJuzNumber }) : '30 / 30'}
+                    </div>
+                  </Tooltip>
+                  {juzData.length > 0 && currentJuzNumber && (
+                    <div className="text-[10px] text-[#404944]/70 dark:text-gray-500 uppercase tracking-widest font-bold mt-1">
+                      {t('dashboard.juzCompleteCount', { done: completedJuz })}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -579,9 +585,8 @@ export default function Dashboard() {
               ) : (
                 <>
                   <FiList className="w-8 h-8 text-[#fe932c] mb-2" />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">{t('dashboard.pagesToHifz')}</div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{pagesToHifz}</div>
-                  <div className="text-[10px] text-[#404944]/70 dark:text-gray-500 uppercase tracking-widest font-bold mt-1">{t('dashboard.remaining')}</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">{t('dashboard.memorizedPages')}</div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{memorizedPagesStat}</div>
                 </>
               )}
             </div>
