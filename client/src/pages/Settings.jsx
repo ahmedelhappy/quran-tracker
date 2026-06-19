@@ -10,7 +10,7 @@ import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
@@ -40,14 +40,6 @@ const JUZ_RANGES = [
   {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
   {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
 ];
-
-function juzHealthColor(daysAgo) {
-  if (daysAgo === null) return { bg: 'bg-[#e7eefe] dark:bg-gray-700', text: 'text-[#bfc9c3]', ring: '' };
-  if (daysAgo < 7)  return { bg: 'bg-emerald-600', text: 'text-white', ring: 'ring-emerald-400' };
-  if (daysAgo < 14) return { bg: 'bg-emerald-400', text: 'text-white', ring: 'ring-emerald-300' };
-  if (daysAgo < 30) return { bg: 'bg-amber-400', text: 'text-white', ring: 'ring-amber-300' };
-  return { bg: 'bg-red-500', text: 'text-white', ring: 'ring-red-400' };
-}
 
 function toPageRanges(sortedPages) {
   if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
@@ -712,6 +704,17 @@ export default function Settings() {
     progressAPI.getTodayTasks().then(res => setTodayStats(res.data.data.stats)).catch(() => {});
   }, []);
 
+  // Auto-open the Edit Progress modal when arriving from the Progress page CTA.
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') {
+      setEditProgressOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('edit');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     setProfileDirty((user?.name ?? '') !== profileName && profileName.trim().length > 0);
   }, [profileName, user]);
@@ -1122,28 +1125,6 @@ export default function Settings() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
-                    <div>
-                      <p className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('settings.pauseMemTitle')}</p>
-                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
-                        {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
-                      </p>
-                    </div>
-                    <Tooltip label={t('tooltips.pauseToggle')}>
-                      <button
-                        onClick={togglePause}
-                        disabled={pauseSaving}
-                        aria-label={t('settings.pauseMemTitle')}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-                          isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
-                        }`}
-                      >
-                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                          isPaused ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
-                        }`} />
-                      </button>
-                    </Tooltip>
-                  </div>
                 </div>
 
                 {/* ── Group: Review ─────────────────────────────── */}
@@ -1157,27 +1138,36 @@ export default function Settings() {
                   </div>
 
                   <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewSettingsDesc')}</p>
-                  <div className="flex flex-col gap-2 mb-5">
+
+                  {/* One unified selector: three presets + Fixed number, side by side */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                    {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
+                      const estimate = estimateReviewPages(todayStats?.totalMemorized, divisor);
+                      const selected = reviewMode === 'intensity' && intensity === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => { setReviewMode('intensity'); setIntensity(value); }}
+                          className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
+                            selected
+                              ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
+                              : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`font-medium ${selected ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
+                            <span className={selected ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
+                          </div>
+                          {estimate != null && (
+                            <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
+                          )}
+                          <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
+                        </button>
+                      );
+                    })}
                     <button
-                      onClick={() => setReviewMode('intensity')}
-                      className={`p-4 rounded-xl border-2 text-start transition-all ${
-                        reviewMode === 'intensity'
-                          ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
-                          : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className={`font-medium text-sm ${reviewMode === 'intensity' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeIntensity')}</span>
-                        <span className={reviewMode === 'intensity' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'intensity' ? '●' : '○'}</span>
-                      </div>
-                      <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('settings.modeIntensityDesc')}</p>
-                    </button>
-                    <div className="relative flex items-center">
-                      <div className="flex-1 border-t border-[#dce2f3] dark:border-gray-700" />
-                      <span className="mx-3 text-xs font-medium text-[#707974] dark:text-gray-500">{t('settings.orDivider')}</span>
-                      <div className="flex-1 border-t border-[#dce2f3] dark:border-gray-700" />
-                    </div>
-                    <button
+                      type="button"
                       onClick={() => {
                         if (reviewMode === 'intensity') {
                           setRecentReviewValue(Math.min(Math.ceil((dailyPages || 1) * 3), 6));
@@ -1185,67 +1175,32 @@ export default function Settings() {
                         }
                         setReviewMode('fixed');
                       }}
-                      className={`p-4 rounded-xl border-2 text-start transition-all ${
+                      className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
                         reviewMode === 'fixed'
                           ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
                           : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
                       }`}
                     >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className={`font-medium text-sm ${reviewMode === 'fixed' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeFixed')}</span>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className={`font-medium ${reviewMode === 'fixed' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeFixed')}</span>
                         <span className={reviewMode === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'fixed' ? '●' : '○'}</span>
                       </div>
                       <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('settings.modeFixedDesc')}</p>
                     </button>
                   </div>
 
-                  {reviewMode === 'intensity' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
-                        const estimate = estimateReviewPages(todayStats?.totalMemorized, divisor);
-                        return (
-                        <label key={value} className="cursor-pointer">
-                          <input type="radio" name="settings-intensity" value={value}
-                            checked={intensity === value} onChange={() => setIntensity(value)} className="sr-only" />
-                          <div className={`p-4 rounded-xl border-2 transition-all h-full ${
-                            intensity === value
-                              ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
-                              : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30'
-                          }`}>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className={`font-medium ${intensity === value ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
-                              <span className={intensity === value ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{intensity === value ? '●' : '○'}</span>
-                            </div>
-                            {estimate != null && (
-                              <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
-                            )}
-                            <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
-                          </div>
-                        </label>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <p className="text-xs text-[#707974] dark:text-gray-400 mb-5 leading-relaxed">{t('settings.modeIntensityDesc')}</p>
+
+                  {/* Fixed number reveals a single page-count input; recent-pages lives in Advanced */}
                   {reviewMode === 'fixed' && (
-                    <div className="space-y-3 mb-6">
-                      <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
-                          <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
-                        </div>
-                        <input type="number" min="0" max="20" value={recentReviewValue}
-                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
-                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
+                    <div className="flex items-center justify-between gap-4 p-4 mb-6 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
+                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
                       </div>
-                      <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
-                          <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
-                        </div>
-                        <input type="number" min="0" max="40" value={cycleReviewValue}
-                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n); }}
-                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
-                      </div>
+                      <input type="number" min="0" max="40" value={cycleReviewValue}
+                        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n); }}
+                        className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                     </div>
                   )}
 
@@ -1289,7 +1244,63 @@ export default function Settings() {
                   </button>
 
                   {showAdvanced && (
-                  <div className="mt-5">
+                  <div className="mt-5 space-y-8">
+
+                  {/* Review-only mode (moved into Advanced) */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
+                        <FiPause className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
+                      </div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.pauseMemTitle')}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                      <div className="min-w-0">
+                        <p className="text-xs text-[#707974] dark:text-gray-400 leading-relaxed">
+                          {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
+                        </p>
+                        <p className="text-xs text-[#003527] dark:text-emerald-400 mt-1">{t('settings.pauseMemSwitchBack')}</p>
+                      </div>
+                      <Tooltip label={t('tooltips.pauseToggle')}>
+                        <button
+                          onClick={togglePause}
+                          disabled={pauseSaving}
+                          aria-label={t('settings.pauseMemTitle')}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                            isPaused ? 'bg-[#003527]' : 'bg-[#bfc9c3] dark:bg-gray-500'
+                          }`}
+                        >
+                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                            isPaused ? 'translate-x-5 rtl:-translate-x-5' : 'translate-x-0'
+                          }`} />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  </div>
+
+                  {/* Recent days pages number (moved into Advanced) — applies to Fixed number mode */}
+                  {reviewMode === 'fixed' && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-6 h-6 rounded-md bg-[#fe932c]/15 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                          <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
+                        </div>
+                        <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.recentReviewLabel')}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
+                          <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
+                        </div>
+                        <input type="number" min="0" max="20" value={recentReviewValue}
+                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
+                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Review Cycle Start Point */}
+                  <div>
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-6 h-6 rounded-md bg-[#003527]/10 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
                       <FiMapPin className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
@@ -1317,22 +1328,6 @@ export default function Settings() {
                         <FiRotateCcw className="w-3 h-3" /> {t('settings.cycleStartClear')}
                       </button>
                     )}
-                  </div>
-
-                  {/* Health color legend — applies to the By Juz view */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
-                    <span className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('settings.healthLegendTitle')}:</span>
-                    {[
-                      { color: 'bg-emerald-600', label: t('settings.healthFresh') },
-                      { color: 'bg-emerald-400', label: t('settings.healthGood') },
-                      { color: 'bg-amber-400',   label: t('settings.healthDue') },
-                      { color: 'bg-red-500',     label: t('settings.healthOverdue') },
-                    ].map(({ color, label }) => (
-                      <span key={label} className="flex items-center gap-1.5 text-[11px] text-[#707974] dark:text-gray-400">
-                        <span className={`w-2.5 h-2.5 rounded-sm ${color} inline-block shrink-0`} />
-                        {label}
-                      </span>
-                    ))}
                   </div>
 
                   {/* Picker sub-tabs */}
@@ -1365,23 +1360,19 @@ export default function Settings() {
                           return { ...juz, firstMemPage };
                         });
                       })().map(juz => {
-                        const { bg, text } = juzHealthColor(juz.oldestReviewDaysAgo);
                         const isSelected = cycleStartPage !== null
                           && cycleStartPage >= juz.startPage && cycleStartPage <= juz.endPage;
                         return (
                           <button key={juz.juzNumber}
                             onClick={() => saveCycleStart(juz.firstMemPage)}
                             disabled={cycleStartSaving}
-                            className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-bold transition-all border-2 hover:scale-105 ${
+                            className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
                               isSelected
-                                ? `${bg} ${text} border-[#fe932c] ring-2 ring-[#fe932c]/40`
-                                : `${bg} ${text} border-transparent hover:border-[#fe932c]/60`
+                                ? 'bg-[#003527] text-white border-[#003527]'
+                                : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                             } disabled:opacity-60`}
                           >
                             <span>{juz.juzNumber}</span>
-                            {juz.oldestReviewDaysAgo != null && (
-                              <span className="text-[8px] opacity-80 leading-none">{juz.oldestReviewDaysAgo}d</span>
-                            )}
                           </button>
                         );
                       })}
@@ -1439,6 +1430,7 @@ export default function Settings() {
                       <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleStartPageHint')}</p>
                     </div>
                   )}
+                  </div>
                   </div>
                   )}
                 </div>
