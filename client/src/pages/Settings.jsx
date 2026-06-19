@@ -8,9 +8,10 @@ import { authAPI, progressAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
+import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
@@ -669,11 +670,13 @@ export default function Settings() {
 
   const [resetModal, setResetModal]   = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
+  const [howToOpen, setHowToOpen]     = useState(false);
 
   const sidebarItems = [
     { id: 'profile',      label: t('settings.profile'),      icon: <FiUser className="w-5 h-5" /> },
     { id: 'memorization', label: t('settings.memorization'), icon: <FiBook className="w-5 h-5" /> },
     { id: 'appearance',   label: t('settings.theme'),        icon: <FiMonitor className="w-5 h-5" /> },
+    { id: 'help',         label: t('settings.help'),         icon: <FiHelpCircle className="w-5 h-5" /> },
   ];
 
   useEffect(() => {
@@ -1484,6 +1487,47 @@ export default function Settings() {
               </section>
             )}
 
+            {/* ── Help & Guides ───────────────────────────── */}
+            {activeSection === 'help' && (
+              <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow">
+                <div className="flex items-center gap-3 mb-2 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
+                  <FiHelpCircle className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.helpTitle')}</h2>
+                </div>
+                <p className="text-sm text-[#404944] dark:text-gray-400 mb-6 mt-4">{t('settings.helpDesc')}</p>
+
+                <div className="flex flex-col gap-3">
+                  {/* How to memorize a page */}
+                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.showGuide')}</p>
+                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.showGuideDesc')}</p>
+                    </div>
+                    <button
+                      onClick={() => setHowToOpen(true)}
+                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <FiHelpCircle className="w-4 h-4" /> {t('settings.showGuide')}
+                    </button>
+                  </div>
+
+                  {/* Replay the dashboard tour */}
+                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayTour')}</p>
+                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayTourDesc')}</p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/dashboard?tour=1')}
+                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <FiPlay className="w-4 h-4" /> {t('settings.replayTour')}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
           </div>
         </div>
       </main>
@@ -1545,6 +1589,8 @@ export default function Settings() {
         confirmText={t('settings.deleteConfirm')}
         isDanger
       />
+
+      <HowToMemorizeModal isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
     </div>
   );
 }

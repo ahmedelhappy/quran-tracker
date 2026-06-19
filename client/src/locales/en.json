@@ -140,6 +140,38 @@
       "Write out verses by hand to engage multiple senses in memorization."
     ]
   },
+  "howTo": {
+    "title": "How to memorize a page",
+    "intro": "Use the Listen button on a page to open the reader, where you can listen and read the tafsir; come back and mark the page done when you can recite it.",
+    "open": "How to memorize",
+    "openCard": "How to memorize this page",
+    "close": "Got it",
+    "steps": [
+      { "title": "Listen first", "body": "Play the page from a reciter a few times while following along with the text, to get the correct pronunciation (tajweed) into your ear." },
+      { "title": "Understand it", "body": "Read the tafsir so the words carry meaning, not just sound." },
+      { "title": "Break it up", "body": "Memorize a few lines (or one ayah) at a time, never the whole page at once." },
+      { "title": "Repeat aloud", "body": "Say each small piece out loud until it flows smoothly." },
+      { "title": "Test yourself", "body": "Cover the text and recite the piece from memory; peek only to fix a slip, then test again. This self-testing is the most important step for long-term memory." },
+      { "title": "Connect", "body": "Join the pieces together, and link the start of the new page to the end of the previous one." },
+      { "title": "Recite & mark done", "body": "Recite the whole page from memory, then mark it memorized. Tip: review it again before sleep and after Fajr — the app then schedules it for spaced review." }
+    ]
+  },
+  "tour": {
+    "newMemTitle": "Today's new memorization",
+    "newMemBody": "These are the new pages to memorize today.",
+    "listenTitle": "Listen & read",
+    "listenBody": "Tap to open the reader and listen to the page + read its tafsir.",
+    "reviewTitle": "Daily review",
+    "reviewBody": "Pages you've memorized before, due for review today.",
+    "streakTitle": "Your streak",
+    "streakBody": "Keep your daily streak going.",
+    "settingsTitle": "Settings",
+    "settingsBody": "Adjust your daily goal or edit your memorized pages here.",
+    "next": "Next",
+    "back": "Back",
+    "done": "Done",
+    "progress": "{{current}} of {{total}}"
+  },
   "progress": {
     "title": "My Progress",
     "totalMemorized": "Total Memorized",
@@ -326,6 +358,13 @@
     "syncTabNote": "Selections are synced when you switch tabs",
     "rangeStart": "Start (1–604)",
     "rangeEnd": "End (1–604)",
+    "help": "Help",
+    "helpTitle": "Help & Guides",
+    "helpDesc": "Revisit the walkthrough or the page-memorization method anytime.",
+    "showGuide": "How to memorize a page",
+    "showGuideDesc": "The 7-step method for committing a page to memory.",
+    "replayTour": "Replay the dashboard tour",
+    "replayTourDesc": "Take the quick guided walkthrough of the dashboard again.",
     "password": {
       "title": "Change Password",
       "current": "Current Password",

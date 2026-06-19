@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -8,16 +8,20 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2 } from 'react-icons/fi';
+import HowToMemorizeModal from '../components/HowToMemorizeModal';
+import { startDashboardTour } from '../components/dashboardTour';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget } from 'react-icons/fi';
 import { formatSurahNames } from '../utils/surahDisplay';
 
-// Ghost icon button: open the Library at this page to listen while reviewing
-const ListenButton = ({ pageNumber, compact = false }) => {
+// Ghost icon button: open the Library at this page to listen while reviewing.
+// `tourAnchor` tags this button as the guided-tour "Listen" target.
+const ListenButton = ({ pageNumber, compact = false, tourAnchor = false }) => {
   const { t } = useTranslation();
   return (
     <Tooltip label={t('tooltips.listen')}>
       <Link
         to={`/library?page=${pageNumber}`}
+        {...(tourAnchor ? { 'data-tour': 'listen' } : {})}
         className={`${compact ? 'w-7 h-7' : 'w-8 h-8'} rounded-full flex items-center justify-center text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 hover:bg-[#004f35]/5 dark:hover:bg-emerald-900/20 transition-colors shrink-0`}
       >
         <FiVolume2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
@@ -55,7 +59,7 @@ const JuzRing = ({ pct = 0 }) => {
 const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded bg-[#e7eefe] dark:bg-gray-700 animate-pulse`} />;
 
 // ── Task card ────────────────────────────────────────────
-const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo, badge }) => {
+const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo, badge, onHowTo, tourAnchor = false }) => {
   const { t, i18n } = useTranslation();
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
@@ -88,9 +92,28 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
                 {badge}
               </span>
             )}
-            <ListenButton pageNumber={page.pageNumber} />
+            <ListenButton pageNumber={page.pageNumber} tourAnchor={tourAnchor} />
           </div>
           <p className="text-sm text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>
+          {isNew && (
+            <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+              {/* Open this page in the Library's guided memorize session */}
+              <Link
+                to={`/library?page=${page.pageNumber}&mode=memorize`}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 transition-colors"
+              >
+                <FiTarget className="w-3.5 h-3.5" /> {t('library.memorize.enter')}
+              </Link>
+              {onHowTo && (
+                <button
+                  onClick={onHowTo}
+                  className="inline-flex items-center gap-1 text-xs text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 transition-colors"
+                >
+                  <FiHelpCircle className="w-3.5 h-3.5" /> {t('howTo.openCard')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {done ? (
@@ -266,9 +289,14 @@ export default function Dashboard() {
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [juzData, setJuzData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [howToOpen, setHowToOpen] = useState(false);
+  const tourRef = useRef(null);
+  const tourTimeoutRef = useRef(null);
+  const tourCheckedRef = useRef(false);
   const [completedKeys, setCompletedKeys] = useState(new Set());
   const [markingKeys, setMarkingKeys] = useState(new Set());
   const [tipOpen, setTipOpen] = useState(false);
@@ -303,6 +331,65 @@ export default function Dashboard() {
         setLoading(false);
       }
     })();
+  }, []);
+
+  // First-run onboarding helpers: run the guided tour once, then show the
+  // "how to memorize" guide once. Both are gated by localStorage flags so the
+  // resting UI never re-triggers them; `?tour=1` (from Settings → Replay) forces
+  // the tour regardless. The work is deferred behind a short timer so the
+  // dashboard has painted before spotlighting. A one-shot guard latches only once
+  // the timer fires, and the cleanup here just cancels a *pending* timer — it must
+  // NOT destroy a running tour, because `data` changing again (e.g. React
+  // StrictMode's dev double-fetch) re-runs this effect and would otherwise tear
+  // the live tour down. Destroying on real unmount is handled separately below.
+  useEffect(() => {
+    if (loading || !data || tourCheckedRef.current) return;
+
+    const showGuideOnce = () => {
+      if (!localStorage.getItem('seenMemorizeGuide')) {
+        localStorage.setItem('seenMemorizeGuide', '1');
+        setHowToOpen(true);
+      }
+    };
+
+    const launchTour = (chainGuide) => {
+      const tour = startDashboardTour({
+        t,
+        onDone: () => {
+          localStorage.setItem('seenDashboardTour', '1');
+          tourRef.current = null;
+          if (chainGuide) showGuideOnce();
+        },
+      });
+      tourRef.current = tour;
+      if (!tour && chainGuide) showGuideOnce(); // no targets present
+    };
+
+    tourTimeoutRef.current = setTimeout(() => {
+      tourCheckedRef.current = true;
+      const forceTour = searchParams.get('tour') === '1';
+      if (forceTour) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('tour');
+        setSearchParams(next, { replace: true });
+        launchTour(false);
+      } else if (!localStorage.getItem('seenDashboardTour')) {
+        launchTour(true);
+      } else {
+        showGuideOnce();
+      }
+    }, 350);
+
+    // Only cancel a still-pending launch; never destroy an already-running tour here.
+    return () => clearTimeout(tourTimeoutRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, data]);
+
+  // Tear down the tour only when the dashboard actually unmounts (e.g. the user
+  // navigates away mid-walkthrough), so it isn't left orphaned over the next page.
+  useEffect(() => () => {
+    tourRef.current?.destroy?.();
+    tourRef.current = null;
   }, []);
 
   const loadWeekPlan = async () => {
@@ -520,7 +607,7 @@ export default function Dashboard() {
                 : null;
               if (streak === 0) {
                 return (
-                  <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[#707974] dark:text-gray-500 bg-[#f0f3ff] dark:bg-gray-700/50 w-max">
+                  <div data-tour="streak" className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[#707974] dark:text-gray-500 bg-[#f0f3ff] dark:bg-gray-700/50 w-max">
                     <FiZap className="w-4 h-4" />
                     <span className="text-xs font-medium">{t('dashboard.streakStart')}</span>
                     <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
@@ -529,6 +616,7 @@ export default function Dashboard() {
               }
               return (
                 <div
+                  data-tour="streak"
                   title={lastActive ? t('dashboard.streakLastActive', { date: lastActive }) : undefined}
                   className="mt-6 inline-flex items-center gap-2 bg-[#b0f0d6]/20 dark:bg-emerald-900/20 px-4 py-2 rounded-full text-[#064e3b] dark:text-emerald-400 w-max cursor-default"
                 >
@@ -616,6 +704,13 @@ export default function Dashboard() {
               }`}
             >
               <FiList className="w-4 h-4" />{t('dashboard.thisWeek')}
+            </button>
+            <button
+              onClick={() => setHowToOpen(true)}
+              className="ms-auto -mb-px inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 transition-colors"
+            >
+              <FiHelpCircle className="w-4 h-4" />
+              <span className="hidden sm:inline">{t('howTo.open')}</span>
             </button>
           </div>
 
@@ -738,7 +833,9 @@ export default function Dashboard() {
                 {/* New Memorization column — hidden for Hafiz users */}
                 {!isHafiz && (
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between gap-2">
+                  {/* Tour anchors on this compact header row, not the full-height
+                      column, so the popover tucks right under the heading. */}
+                  <div className="flex items-center justify-between gap-2" data-tour="new-mem">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
@@ -795,10 +892,11 @@ export default function Dashboard() {
                       {(data?.newPages ?? []).length === 0 && !showContinuation ? (
                         <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noNewToday')}</p>
                       ) : (
-                        (data?.newPages ?? []).map(p => (
+                        (data?.newPages ?? []).map((p, idx) => (
                           <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
                             done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
-                            onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete} />
+                            onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete}
+                            onHowTo={() => setHowToOpen(true)} tourAnchor={idx === 0} />
                         ))
                       )}
                     </>
@@ -809,7 +907,9 @@ export default function Dashboard() {
                 {/* Review column — hidden entirely when nothing to review */}
                 {(allReviewPages.length > 0 || isHafiz) && (
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
+                  {/* Tour anchors on this compact header row, not the full-height
+                      column, so the popover tucks right under the heading. */}
+                  <div className="flex items-center justify-between gap-2" data-tour="review">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h4>
@@ -920,6 +1020,8 @@ export default function Dashboard() {
       </main>
 
       <Footer />
+
+      <HowToMemorizeModal isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
     </div>
   );
 }

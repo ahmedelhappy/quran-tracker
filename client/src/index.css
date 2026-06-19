@@ -88,3 +88,72 @@ html[lang='ar'] body {
     opacity: 1;
   }
 }
+
+/* ── Guided tour (driver.js) — themed to match the app ───────────────── */
+.driver-popover.qt-tour {
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 12px 40px rgba(6, 78, 59, 0.18);
+  max-width: 320px;
+  background-color: #ffffff;
+  color: #404944;
+}
+/* Inherit the app font stack so Arabic renders in Noto Sans Arabic */
+.driver-popover.qt-tour,
+.driver-popover.qt-tour * { font-family: inherit; }
+.driver-popover.qt-tour .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #003527;
+}
+.driver-popover.qt-tour .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #404944;
+}
+.driver-popover.qt-tour .driver-popover-progress-text {
+  font-size: 0.72rem;
+  color: #707974;
+}
+.driver-popover.qt-tour .driver-popover-close-btn { color: #9aa3a0; }
+.driver-popover.qt-tour .driver-popover-close-btn:hover { color: #003527; }
+.driver-popover.qt-tour .driver-popover-footer button {
+  text-shadow: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.driver-popover.qt-tour .driver-popover-next-btn {
+  background-color: #003527;
+  color: #ffffff;
+  border: 1px solid #003527;
+}
+.driver-popover.qt-tour .driver-popover-next-btn:hover { background-color: #064e3b; }
+.driver-popover.qt-tour .driver-popover-prev-btn {
+  background-color: transparent;
+  color: #404944;
+  border: 1px solid #bfc9c3;
+}
+
+/* Dark mode */
+.dark .driver-popover.qt-tour { background-color: #1f2937; color: #d1d5db; }
+.dark .driver-popover.qt-tour .driver-popover-title { color: #f3f4f6; }
+.dark .driver-popover.qt-tour .driver-popover-description { color: #d1d5db; }
+.dark .driver-popover.qt-tour .driver-popover-progress-text { color: #9ca3af; }
+.dark .driver-popover.qt-tour .driver-popover-close-btn { color: #9ca3af; }
+.dark .driver-popover.qt-tour .driver-popover-close-btn:hover { color: #f3f4f6; }
+.dark .driver-popover.qt-tour .driver-popover-prev-btn { color: #d1d5db; border-color: #4b5563; }
+.dark .driver-popover.qt-tour .driver-popover-prev-btn:hover { background-color: rgba(255, 255, 255, 0.06); }
+/* Recolor only the visible arrow edge per side so it matches the dark popover */
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-bottom { border-bottom-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-top { border-top-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-left { border-left-color: #1f2937; }
+.dark .driver-popover.qt-tour .driver-popover-arrow-side-right { border-right-color: #1f2937; }
+
+/* RTL: mirror the corner close button and the inter-button spacing */
+html[dir="rtl"] .driver-popover.qt-tour .driver-popover-close-btn { right: auto; left: 0; }
+html[dir="rtl"] .driver-popover.qt-tour .driver-popover-navigation-btns button + button {
+  margin-left: 0;
+  margin-right: 4px;
+}

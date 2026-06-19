@@ -83,6 +83,7 @@ const Navbar = () => {
           <Tooltip label={t('tooltips.settings')}>
             <Link
               to="/settings?tab=memorization"
+              data-tour="settings"
               className={`w-8 h-8 flex items-center justify-center transition-colors ${isActive('/settings') ? 'text-[#064e3b] dark:text-emerald-400' : 'text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
             >
               <FiSettings className="w-5 h-5" />
