@@ -25,6 +25,34 @@ import 'driver.js/dist/driver.css';
 // so the tour never points at an empty spotlight.
 const isVisible = (el) => !!el && el.getClientRects().length > 0;
 
+// Keep the highlighted target centered in the viewport so driver measures the popover
+// against on-screen geometry — no manual scrolling needed. Two problems make this
+// non-trivial; both are handled here (the reader has no scrollable sub-container, it
+// is window scroll plus a sticky bar, so a plain scrollIntoView reaches the target):
+//
+//  1. driver's built-in scroll honours the page's `scroll-behavior: smooth`
+//     (index.css), so it would place the popover while that scroll is still animating,
+//     against stale coordinates. An INSTANT jump in `onHighlightStarted` (which runs
+//     BEFORE driver scrolls and before it places the popover) ignores scroll-behavior
+//     and makes driver's own scroll a no-op, so the two never fight.
+//  2. driver adds `.driver-active-element` to the target AFTER onHighlightStarted, and
+//     driver.css forces `overflow:hidden` on that element's parent. That un-sticks a
+//     `position:sticky` target — the reader's `sticky bottom` audio bar — dropping it
+//     to the bottom of its (tall) column, off-screen. So we re-center on the next
+//     frame, once the class has landed and the bar has settled into its final spot.
+const centerTarget = (el) => {
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+  requestAnimationFrame(() => el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }));
+};
+
+// driver positions the popover during the highlight transition — for the first step,
+// before the next-frame re-center above. Re-place it once the target has settled so it
+// sits against the final on-screen geometry. Guarded: the tour may be gone by then.
+const refreshPopover = (driver) => {
+  requestAnimationFrame(() => { try { driver.refresh(); } catch { /* tour torn down */ } });
+};
+
 const buildSteps = (blueprint, t) =>
   blueprint
     .filter(({ sel }) => isVisible(document.querySelector(sel)))
@@ -54,6 +82,8 @@ const makeDriver = ({ t, steps, single = false, onDone }) => {
     doneBtnText: single ? t('tour.gotIt') : t('tour.done'),
     progressText: t('tour.progress'),
     steps,
+    onHighlightStarted: (el) => centerTarget(el),
+    onHighlighted: (_el, _step, { driver }) => refreshPopover(driver),
     onDestroyed: () => { onDone?.(); },
   });
   tour.drive();
