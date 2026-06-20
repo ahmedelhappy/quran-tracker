@@ -480,6 +480,29 @@ export default function Dashboard() {
     ...cycleReviewPages.map(p => ({ ...p, isRecent: false })),
   ];
 
+  // Live review breakdown — the user reviews cycle pages + recently-memorized
+  // pages today, so the honest total is the combined list length (what the
+  // Review section header already shows), not the cycle-only target.
+  const reviewCycleCount = cycleReviewPages.length;
+  const reviewRecentCount = recentPages.length;
+  const reviewTotalCount = allReviewPages.length;
+  const reviewBreakdown =
+    reviewCycleCount > 0 && reviewRecentCount > 0
+      ? t('hints.reviewBoth', { cycle: reviewCycleCount, recent: reviewRecentCount })
+      : reviewCycleCount > 0
+        ? t('hints.reviewCycleOnly', { cycle: reviewCycleCount })
+        : reviewRecentCount > 0
+          ? t('hints.reviewRecentOnly', { recent: reviewRecentCount })
+          : '';
+  // Stat-card hint: explains why the total may exceed the cycle target they set.
+  const dailyReviewHintText = reviewBreakdown
+    ? t('hints.dailyReviewHint', { breakdown: reviewBreakdown })
+    : t('hints.dailyReviewNone');
+  // Review-heading hint: keep the concept, then append today's live split.
+  const reviewHeadingHintText = reviewBreakdown
+    ? `${t('hints.review')} ${t('hints.reviewToday', { breakdown: reviewBreakdown })}`
+    : t('hints.review');
+
   const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
   const revPending = allReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
 
@@ -637,8 +660,11 @@ export default function Dashboard() {
               ) : (
                 <>
                   <FiBook className="w-8 h-8 text-[#004f35] dark:text-emerald-400 mb-2" />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400 mb-1">{t('dashboard.dailyReview')}</div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats?.dailyReviewTarget ?? 0} {t('dashboard.pages')}</div>
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.dailyReview')}</span>
+                    <InfoHint text={dailyReviewHintText} label={t('dashboard.dailyReview')} size="xs" />
+                  </div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{reviewTotalCount} {t('dashboard.pages')}</div>
                 </>
               )}
             </div>
@@ -913,7 +939,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
                       <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h4>
-                      <InfoHint text={t('hints.review')} label={t('dashboard.review')} />
+                      <InfoHint text={reviewHeadingHintText} label={t('dashboard.review')} />
                       <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: allReviewPages.length })}</span>
                     </div>
                     {revPending.length > 0 && (
