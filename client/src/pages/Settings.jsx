@@ -991,7 +991,7 @@ export default function Settings() {
 
                 <section className="bg-white dark:bg-gray-800 rounded-xl p-6 sacred-shadow border-2 border-red-100 dark:border-red-900/30">
                   <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">{t('settings.danger')}</h2>
-                  <div className="flex items-center justify-between gap-4 py-3 border-b border-[#dce2f3] dark:border-gray-700">
+                  <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 py-3 border-b border-[#dce2f3] dark:border-gray-700">
                     <div>
                       <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.resetProgress')}</p>
                       <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.resetProgressDesc')}</p>
@@ -1000,7 +1000,7 @@ export default function Settings() {
                       {t('settings.resetData')}
                     </button>
                   </div>
-                  <div className="flex items-center justify-between gap-4 pt-3">
+                  <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pt-3">
                     <div>
                       <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.deleteAccount')}</p>
                       <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.deleteAccountDesc')}</p>
@@ -1498,42 +1498,42 @@ export default function Settings() {
 
                 <div className="flex flex-col gap-3">
                   {/* How to memorize a page */}
-                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.showGuide')}</p>
                       <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.showGuideDesc')}</p>
                     </div>
                     <button
                       onClick={() => setHowToOpen(true)}
-                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                      className="shrink-0 w-full sm:w-auto inline-flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
                     >
                       <FiHelpCircle className="w-4 h-4" /> {t('settings.showGuide')}
                     </button>
                   </div>
 
                   {/* Replay the dashboard tour */}
-                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayTour')}</p>
                       <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayTourDesc')}</p>
                     </div>
                     <button
                       onClick={() => navigate('/dashboard?tour=1')}
-                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                      className="shrink-0 w-full sm:w-auto inline-flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
                     >
                       <FiPlay className="w-4 h-4" /> {t('settings.replayTour')}
                     </button>
                   </div>
 
                   {/* Replay the Library tour */}
-                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayLibraryTour')}</p>
                       <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayLibraryTourDesc')}</p>
                     </div>
                     <button
                       onClick={() => navigate('/library?tour=1')}
-                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                      className="shrink-0 w-full sm:w-auto inline-flex items-center justify-center sm:justify-start gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
                     >
                       <FiPlay className="w-4 h-4" /> {t('settings.replayLibraryTour')}
                     </button>

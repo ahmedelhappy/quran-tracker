@@ -65,10 +65,10 @@ const LandingNavbar = ({ activeSection }) => {
           >
             {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
           </button>
-          <Link to="/login" className="text-sm font-medium text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">
+          <Link to="/login" className="text-sm font-medium whitespace-nowrap text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors">
             {t('landing.navbar.login')}
           </Link>
-          <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#2D6A4F] transition-colors">
+          <Link to="/register" className="bg-[#1B4332] text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg whitespace-nowrap hover:bg-[#2D6A4F] transition-colors">
             {t('landing.navbar.getStarted')}
           </Link>
         </div>
@@ -139,13 +139,13 @@ const Landing = () => {
             <div className="flex flex-wrap gap-3">
               <Link
                 to="/register"
-                className="bg-[#1B4332] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#2D6A4F] transition-colors"
+                className="bg-[#1B4332] text-white px-6 py-3 rounded-lg font-semibold whitespace-nowrap hover:bg-[#2D6A4F] transition-colors"
               >
                 {t('landing.hero.cta')}
               </Link>
               <a
                 href="#how-it-works"
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1A1A1A] dark:text-gray-200 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1A1A1A] dark:text-gray-200 px-6 py-3 rounded-lg font-semibold whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
               >
                 <span className="w-6 h-6 rounded-full bg-[#1B4332] flex items-center justify-center flex-shrink-0">
                   <FiPlay className="w-3 h-3 text-white ms-0.5" />
@@ -445,11 +445,11 @@ const Landing = () => {
       <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A] dark:text-gray-400">
           <span>{t('landing.footer.copyright')}</span>
-          <div className="flex gap-5">
-            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.privacy')}</a>
-            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.terms')}</a>
-            <Link to="/about" className="hover:text-[#1B4332] transition-colors">{t('footer.about')}</Link>
-            <a href="#" className="hover:text-[#1B4332] transition-colors">{t('landing.footer.contact')}</a>
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
+            <a href="#" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('landing.footer.privacy')}</a>
+            <a href="#" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('landing.footer.terms')}</a>
+            <Link to="/about" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('footer.about')}</Link>
+            <a href="#" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('landing.footer.contact')}</a>
           </div>
         </div>
       </footer>
