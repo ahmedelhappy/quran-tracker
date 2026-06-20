@@ -65,6 +65,47 @@ describe('Progress API — spaced repetition', () => {
     assert.deepEqual(res.body.data.reviewPages.map(p => p.pageNumber), [1, 2, 3]);
   });
 
+  test('a custom cycle start page rotates to the last page then wraps to page 1', async () => {
+    const user = await createUser({
+      planStartDate: new Date(),
+      pauseNewMemorization: true, // isolate the review queue from new pages
+      cycleReviewCount: 3,        // fixed batch of 3 per day
+      recentReviewCount: 0,       // ignore the recent-memorization bucket
+      cycleReviewStartPage: 8,    // start near the end of the 1..10 range
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // Ten cycle pages, all memorized and last reviewed long ago (before planStart),
+    // so they share a review date and the rotation — not the date — sets the order.
+    for (let p = 1; p <= 10; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(50), lastReviewedDate: daysAgo(40) });
+    }
+
+    // Simulate consecutive days: take each day's batch, then "age" it by writing a
+    // progressively more recent (but still past) lastReviewedDate so the next call
+    // surfaces the next-stale batch — exactly how real day-to-day use advances.
+    const batchPerDay = [];
+    for (let day = 1; day <= 4; day++) {
+      const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+      assert.equal(res.status, 200);
+      const batch = res.body.data.reviewPages.map(p => p.pageNumber);
+      batchPerDay.push(batch);
+      await UserProgress.updateMany(
+        { userId: user._id, pageNumber: { $in: batch } },
+        { $set: { lastReviewedDate: daysAgo(40 - day) } }
+      );
+    }
+
+    // Day 1 begins at the custom start page and reaches the last memorized page (10) —
+    // NOT page 1, which is where the default oldest-first order would have started.
+    assert.deepEqual(batchPerDay[0], [8, 9, 10]);
+    // After the end of the range the cycle wraps around to page 1 and keeps going.
+    assert.deepEqual(batchPerDay[1], [1, 2, 3]);
+    assert.deepEqual(batchPerDay[2], [4, 5, 6]);
+    // The lap finishes on page 7, then immediately restarts at the start page (8).
+    assert.deepEqual(batchPerDay[3], [7, 8, 9]);
+  });
+
   test('an off-day returns empty task arrays unless ignoreOffDay is set', async () => {
     const todayUtcDay = new Date().getUTCDay();
     const user = await createUser({

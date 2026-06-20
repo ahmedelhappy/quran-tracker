@@ -343,11 +343,20 @@ exports.getTodayTasks = async (req, res) => {
 
     if (user.cycleReviewStartPage) {
       const startPg = user.cycleReviewStartPage;
+      // Staleness drives the rotation: oldest lastReviewedDate first. Reviewing a
+      // batch today makes those pages the freshest, so they sink and the next-stale
+      // batch surfaces tomorrow — that is what advances the cycle day to day. Pages
+      // that are equally stale (e.g. a fresh lap where everything shares a review
+      // date, or onboarding pages with the same date) are tie-broken by a rotated
+      // page index so they follow S → highest memorized page → 1 → S-1, which also
+      // makes the cycle wrap past the end back to page 1. Never-reviewed pages ('')
+      // count as the most stale. lastReviewedDate stays in the sort by design.
+      const rotatedIndex = (pageNumber) => ((pageNumber - startPg) % 604 + 604) % 604;
       pagesForReview.sort((a, b) => {
-        const aGroup = a.pageNumber >= startPg ? 0 : 1;
-        const bGroup = b.pageNumber >= startPg ? 0 : 1;
-        if (aGroup !== bGroup) return aGroup - bGroup;
-        return a.pageNumber - b.pageNumber;
+        const aDay = a.lastReviewedDate ? getDateString(a.lastReviewedDate) : '';
+        const bDay = b.lastReviewedDate ? getDateString(b.lastReviewedDate) : '';
+        if (aDay !== bDay) return aDay < bDay ? -1 : 1;
+        return rotatedIndex(a.pageNumber) - rotatedIndex(b.pageNumber);
       });
     }
 
@@ -727,7 +736,12 @@ exports.getWeekPlan = async (req, res) => {
       }
 
       const projectedMemorized = Math.min(604, totalMemorized + cumulativeNew);
-      const reviewCount = computeDailyReviewTarget(projectedMemorized, reviewIntensity);
+      // Honor a fixed daily review count the same way getTodayTasks does, so the
+      // week projection matches today's number instead of falling back to the
+      // intensity formula (which made future days show the old intensity).
+      const reviewCount = (user.cycleReviewCount !== null && user.cycleReviewCount !== undefined)
+        ? user.cycleReviewCount
+        : computeDailyReviewTarget(projectedMemorized, reviewIntensity);
 
       plan.push({
         date: getDateString(date),
