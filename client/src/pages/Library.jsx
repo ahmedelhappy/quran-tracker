@@ -11,6 +11,7 @@ import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
+import { startLibraryTour, startMemorizeTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
@@ -90,6 +91,15 @@ export default function Library() {
   // Draggable verse action popover — dragged only via the grip handle
   const { ref: popoverRef, style: popoverDragStyle, dragHandlers: popoverDragHandlers } = useDraggable('versePopoverPos');
 
+  // ── Contextual onboarding (driver.js) ────────────────────
+  // One live tour at a time; `tourActiveRef` also blocks the verse coachmark
+  // from stacking on top of a running tour. The *-checked refs latch each
+  // walkthrough to one attempt per mount.
+  const tourRef = useRef(null);
+  const tourActiveRef = useRef(false);
+  const libTourCheckedRef = useRef(false);
+  const memTourCheckedRef = useRef(false);
+
   // Mount: memorized pages (for the badge + stat)
   useEffect(() => {
     progressAPI.getAllProgress().then(res => {
@@ -143,6 +153,91 @@ export default function Library() {
       setRevealedSet(new Set());
     }
   }, [memorizeMode]);
+
+  // First-visit reader tour — only in the normal reader (memorize mode has its
+  // own tour below), gated by `seenLibraryTour`. `?tour=1` (Settings → Replay)
+  // forces it and is then stripped from the URL. Deferred a beat so the reader
+  // has painted before spotlighting. The cleanup only cancels a still-pending
+  // launch; an already-running tour is torn down on real unmount, so React
+  // StrictMode's dev double-run can't kill a live tour.
+  useEffect(() => {
+    if (memorizeMode || libTourCheckedRef.current) return;
+    const forceTour = searchParams.get('tour') === '1';
+    if (!forceTour && localStorage.getItem('seenLibraryTour')) {
+      libTourCheckedRef.current = true;
+      return;
+    }
+    const id = setTimeout(() => {
+      libTourCheckedRef.current = true;
+      if (forceTour) {
+        const next = new URLSearchParams(searchParams);
+        next.delete('tour');
+        setSearchParams(next, { replace: true });
+      }
+      const tour = startLibraryTour({
+        t,
+        onDone: () => {
+          localStorage.setItem('seenLibraryTour', '1');
+          tourActiveRef.current = false;
+          tourRef.current = null;
+        },
+      });
+      if (tour) { tourRef.current = tour; tourActiveRef.current = true; }
+      else localStorage.setItem('seenLibraryTour', '1');
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memorizeMode]);
+
+  // First memorize-mode entry — a short tour of only the controls it adds,
+  // gated by `seenMemorizeModeTour`. Mode-exclusive with the reader tour above,
+  // so the two never stack.
+  useEffect(() => {
+    if (!memorizeMode || memTourCheckedRef.current) return;
+    if (localStorage.getItem('seenMemorizeModeTour')) {
+      memTourCheckedRef.current = true;
+      return;
+    }
+    const id = setTimeout(() => {
+      memTourCheckedRef.current = true;
+      const tour = startMemorizeTour({
+        t,
+        onDone: () => {
+          localStorage.setItem('seenMemorizeModeTour', '1');
+          tourActiveRef.current = false;
+          tourRef.current = null;
+        },
+      });
+      if (tour) { tourRef.current = tour; tourActiveRef.current = true; }
+      else localStorage.setItem('seenMemorizeModeTour', '1');
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memorizeMode]);
+
+  // Tear down a running tour only on real unmount (navigating away mid-tour).
+  useEffect(() => () => {
+    tourRef.current?.destroy?.();
+    tourRef.current = null;
+    tourActiveRef.current = false;
+  }, []);
+
+  // One-time coachmark the first time a verse is selected — highlights the
+  // Play + Tafsir buttons in the popover. Fires at most once ever (the flag is
+  // set up-front) and never while a tour is running (guards against stacking).
+  useEffect(() => {
+    if (selectedIndex == null || tourActiveRef.current) return;
+    if (localStorage.getItem('seenVerseActionsHint')) return;
+    const id = setTimeout(() => {
+      if (tourActiveRef.current || localStorage.getItem('seenVerseActionsHint')) return;
+      if (!document.querySelector('[data-tour="verse-actions"]')) return;
+      localStorage.setItem('seenVerseActionsHint', '1');
+      tourActiveRef.current = true;
+      startVerseActionsCoachmark({ t, onDone: () => { tourActiveRef.current = false; } });
+    }, 200);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIndex]);
 
   // Drive the single <audio> element: load + play current ayah
   useEffect(() => {
@@ -374,7 +469,7 @@ export default function Library() {
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" data-tour="lib-nav">
                 <Tooltip label={t('tooltips.prevPage')}>
                   <button
                     onClick={() => goToPage(currentPage - 1)}
@@ -440,6 +535,7 @@ export default function Library() {
                 <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
                   <button
                     onClick={toggleTestSelf}
+                    data-tour="mem-test"
                     className={`w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors ${
                       testSelf
                         ? 'bg-[#004f35] text-white hover:bg-[#003527]'
@@ -495,6 +591,7 @@ export default function Library() {
                     <button
                       onClick={toggleMemorized}
                       disabled={savingMemorized}
+                      data-tour="mem-mark"
                       className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-3 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
                     >
                       <FiCheck className="w-4 h-4" /> {t('library.memorize.markThisPage')}
@@ -546,6 +643,7 @@ export default function Library() {
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={enterMemorize}
+                    data-tour="lib-memorize"
                     className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors"
                   >
                     <FiTarget className="w-4 h-4" /> {t('library.memorize.enter')}
@@ -599,7 +697,7 @@ export default function Library() {
 
             {/* Discoverability cue: in self-test the tap reveals a hidden verse;
                 otherwise the per-verse listen/tafsir actions appear after a tap. */}
-            <p className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
+            <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
               <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
               {memorizeMode && testSelf ? t('library.memorize.tapToReveal') : t('hints.libraryVerseTap')}
             </p>
@@ -711,29 +809,32 @@ export default function Library() {
                 <span className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
                   {verseRef(selectedAyah)}
                 </span>
-                {(() => {
-                  const isThisPlaying = selectedIndex === playingIndex && isPlaying;
-                  return (
-                    <Tooltip label={isThisPlaying ? t('tooltips.pause') : t('tooltips.playFromHere')}>
-                      <button
-                        onClick={() => toggleSelectedVerse(selectedIndex)}
-                        className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
-                      >
-                        {isThisPlaying
-                          ? <FiPause className="w-3.5 h-3.5" />
-                          : <FiPlay className="w-3.5 h-3.5 ms-0.5 rtl:rotate-180" />}
-                      </button>
-                    </Tooltip>
-                  );
-                })()}
-                <Tooltip label={t('tooltips.verseTafsir')}>
-                  <button
-                    onClick={() => openTafsir(selectedIndex)}
-                    className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                  >
-                    <FiBookOpen className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
+                {/* Play + Tafsir actions — also the anchor for the one-time coachmark */}
+                <div className="flex items-center gap-2" data-tour="verse-actions">
+                  {(() => {
+                    const isThisPlaying = selectedIndex === playingIndex && isPlaying;
+                    return (
+                      <Tooltip label={isThisPlaying ? t('tooltips.pause') : t('tooltips.playFromHere')}>
+                        <button
+                          onClick={() => toggleSelectedVerse(selectedIndex)}
+                          className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
+                        >
+                          {isThisPlaying
+                            ? <FiPause className="w-3.5 h-3.5" />
+                            : <FiPlay className="w-3.5 h-3.5 ms-0.5 rtl:rotate-180" />}
+                        </button>
+                      </Tooltip>
+                    );
+                  })()}
+                  <Tooltip label={t('tooltips.verseTafsir')}>
+                    <button
+                      onClick={() => openTafsir(selectedIndex)}
+                      className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                    >
+                      <FiBookOpen className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
+                </div>
                 <Tooltip label={t('tooltips.close')}>
                   <button
                     onClick={() => setSelectedIndex(null)}
@@ -746,7 +847,7 @@ export default function Library() {
             )}
 
             {/* ── Sticky audio bar ───────────────────────── */}
-            <div className="sticky bottom-3 z-20 w-full max-w-[650px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+            <div data-tour="lib-audio" className="sticky bottom-3 z-20 w-full max-w-[650px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
                   <button

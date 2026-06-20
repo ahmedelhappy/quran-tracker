@@ -170,7 +170,26 @@
     "next": "Next",
     "back": "Back",
     "done": "Done",
+    "gotIt": "Got it",
     "progress": "{{current}} of {{total}}"
+  },
+  "libraryTour": {
+    "navTitle": "Move through the Mushaf",
+    "navBody": "Step between pages with the arrows, or type a page number to jump straight to it.",
+    "audioTitle": "Listen to the page",
+    "audioBody": "Press play to hear the whole page, and pick your favourite reciter from the menu.",
+    "verseTitle": "Tap a verse",
+    "verseBody": "Tap any verse to play it on its own or read its tafsir.",
+    "memorizeTitle": "Memorize mode",
+    "memorizeBody": "Start a focused session that helps you test yourself and commit the page to memory.",
+    "memTestTitle": "Test yourself",
+    "memTestBody": "Hide the words to recall them from memory, then switch back to show the text.",
+    "memRevealTitle": "Tap to reveal",
+    "memRevealBody": "While testing, tap a blurred verse to peek at it whenever you get stuck.",
+    "memMarkTitle": "Mark it memorized",
+    "memMarkBody": "Once you can recite the page, mark it memorized to add it to your reviews.",
+    "coachTitle": "Verse actions",
+    "coachBody": "Play this verse, or read its tafsir."
   },
   "progress": {
     "title": "My Progress",
@@ -367,6 +386,8 @@
     "showGuideDesc": "The 7-step method for committing a page to memory.",
     "replayTour": "Replay the dashboard tour",
     "replayTourDesc": "Take the quick guided walkthrough of the dashboard again.",
+    "replayLibraryTour": "Replay the Library tour",
+    "replayLibraryTourDesc": "Take the guided walkthrough of the Mushaf reader again.",
     "password": {
       "title": "Change Password",
       "current": "Current Password",

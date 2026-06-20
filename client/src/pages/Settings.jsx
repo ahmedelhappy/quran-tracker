@@ -1524,6 +1524,20 @@ export default function Settings() {
                       <FiPlay className="w-4 h-4" /> {t('settings.replayTour')}
                     </button>
                   </div>
+
+                  {/* Replay the Library tour */}
+                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayLibraryTour')}</p>
+                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayLibraryTourDesc')}</p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/library?tour=1')}
+                      className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium text-sm hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <FiPlay className="w-4 h-4" /> {t('settings.replayLibraryTour')}
+                    </button>
+                  </div>
                 </div>
               </section>
             )}
