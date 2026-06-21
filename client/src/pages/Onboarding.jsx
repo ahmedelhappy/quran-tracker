@@ -67,23 +67,21 @@ function formatEstimate(days) {
   return { value: years, unitKey: years === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
 }
 
-function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
+// Expand the range rows into the set of pages they cover.
+function rangesToPages(pageRanges) {
   const pages = new Set();
-  JUZ_RANGES.forEach(({ juz, start, end }) => {
-    if (selectedJuz.has(juz)) {
-      for (let p = start; p <= end; p++) pages.add(p);
-    }
-  });
-  selectedSurahs.forEach(num => {
-    const s = SURAH_PAGES.find(x => x.number === num);
-    if (s) for (let p = s.start; p <= s.end; p++) pages.add(p);
-  });
   pageRanges.forEach(({ start, end }) => {
     const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s < e)
+    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
       for (let p = s; p <= e; p++) pages.add(p);
   });
-  return Array.from(pages).sort((a, b) => a - b);
+  return pages;
+}
+
+// Is every page in [start, end] present in the selected set?
+function isCovered(selected, start, end) {
+  for (let p = start; p <= end; p++) if (!selected.has(p)) return false;
+  return true;
 }
 
 function validateRanges(pageRanges) {
@@ -94,7 +92,7 @@ function validateRanges(pageRanges) {
       errors[i].start = 'common.validationRange';
     if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
       errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start >= r.end)
+    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
       errors[i].end = 'common.validationEndGreater';
     parsed.forEach((other, j) => {
       if (i === j) return;
@@ -135,8 +133,9 @@ export default function Onboarding() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
-  const [selectedJuz, setSelectedJuz] = useState(new Set());
-  const [selectedSurahs, setSelectedSurahs] = useState(new Set());
+  // Single source of truth: the set of page numbers the user has marked memorized.
+  // The Juz / Surah / Range tabs are just different views/editors over this set.
+  const [selectedPages, setSelectedPages] = useState(new Set());
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
@@ -148,8 +147,9 @@ export default function Onboarding() {
   const [submitting, setSubmitting] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
 
-  const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
-  const selectedCount = selectedPages.length;
+  const selectedCount = selectedPages.size;
+  const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
+  const selectedSurahCount = SURAH_PAGES.filter(s => isCovered(selectedPages, s.start, s.end)).length;
 
   // Client-side estimate
   const activeDays = 7 - offDays.length;
@@ -158,17 +158,16 @@ export default function Onboarding() {
   const estimatedDays = effectiveDaily > 0 ? Math.ceil(remaining / effectiveDaily) : null;
   const estimateDisplay = formatEstimate(estimatedDays);
 
-  const toggleJuz = (n) => setSelectedJuz(prev => {
+  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
+  const toggleRange = (start, end) => setSelectedPages(prev => {
     const next = new Set(prev);
-    next.has(n) ? next.delete(n) : next.add(n);
+    const covered = isCovered(next, start, end);
+    for (let p = start; p <= end; p++) { if (covered) next.delete(p); else next.add(p); }
     return next;
   });
 
-  const toggleSurah = (n) => setSelectedSurahs(prev => {
-    const next = new Set(prev);
-    next.has(n) ? next.delete(n) : next.add(n);
-    return next;
-  });
+  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
+  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -180,8 +179,8 @@ export default function Onboarding() {
     );
   });
 
-  const allJuzSelected = selectedJuz.size === JUZ_RANGES.length;
-  const selectAll = () => setSelectedJuz(allJuzSelected ? new Set() : new Set(JUZ_RANGES.map(j => j.juz)));
+  const allJuzSelected = selectedJuzCount === JUZ_RANGES.length;
+  const selectAll = () => setSelectedPages(allJuzSelected ? new Set() : new Set(Array.from({ length: 604 }, (_, i) => i + 1)));
 
   const toggleOffDay = (d) =>
     setOffDays(prev => {
@@ -189,25 +188,12 @@ export default function Onboarding() {
       return prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d];
     });
 
+  // Tabs are views over one canonical set, so switching only re-renders. The Range
+  // tab keeps editable text rows, so we regenerate them from the set when entering it.
   const handleTabSwitch = (newMode) => {
     if (newMode === selectionMode) return;
-    const currentPages = new Set(computeSelectedPages(selectedJuz, selectedSurahs, pageRanges));
-    if (newMode === 'juz') {
-      setSelectedJuz(new Set(
-        JUZ_RANGES.filter(({ start, end }) => {
-          for (let p = start; p <= end; p++) if (!currentPages.has(p)) return false;
-          return true;
-        }).map(({ juz }) => juz)
-      ));
-    } else if (newMode === 'surah') {
-      setSelectedSurahs(new Set(
-        SURAH_PAGES.filter(s => {
-          for (let p = s.start; p <= s.end; p++) if (!currentPages.has(p)) return false;
-          return true;
-        }).map(s => s.number)
-      ));
-    } else if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(currentPages));
+    if (newMode === 'range') {
+      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
       setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
       setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
     }
@@ -219,13 +205,16 @@ export default function Onboarding() {
     setRangeErrors(e => [...e, {}]);
   };
   const removeRange = (i) => {
-    setPageRanges(r => r.filter((_, idx) => idx !== i));
+    const updated = pageRanges.filter((_, idx) => idx !== i);
+    setPageRanges(updated);
     setRangeErrors(e => e.filter((_, idx) => idx !== i));
+    setSelectedPages(rangesToPages(updated));
   };
   const updateRange = (i, key, val) => {
     const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
     setPageRanges(updated);
     setRangeErrors(validateRanges(updated));
+    setSelectedPages(rangesToPages(updated));
   };
 
   const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
@@ -233,7 +222,7 @@ export default function Onboarding() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await progressAPI.completeOnboarding({ memorizedPages: selectedPages, dailyNewPages: dailyPages });
+      await progressAPI.completeOnboarding({ memorizedPages: Array.from(selectedPages).sort((a, b) => a - b), dailyNewPages: dailyPages });
       await authAPI.updateProfile({
         offDays,
         ...(reviewIntensity === 'fixed'
@@ -322,12 +311,12 @@ export default function Onboarding() {
           {selectionMode === 'juz' && (
             <div>
               <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                {JUZ_RANGES.map(({ juz }) => (
+                {JUZ_RANGES.map(({ juz, start, end }) => (
                   <button
                     key={juz}
                     onClick={() => toggleJuz(juz)}
                     className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
-                      selectedJuz.has(juz)
+                      isCovered(selectedPages, start, end)
                         ? 'bg-[#003527] text-white border-[#003527]'
                         : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                     }`}
@@ -337,8 +326,8 @@ export default function Onboarding() {
                 ))}
               </div>
               <div className="flex items-center justify-between mt-2">
-                {selectedJuz.size > 0 && (
-                  <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuz.size })}</p>
+                {selectedJuzCount > 0 && (
+                  <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuzCount })}</p>
                 )}
                 <button onClick={selectAll} className="ms-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
                   {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
@@ -357,12 +346,14 @@ export default function Onboarding() {
                 className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
               />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                {filteredSurahs.map(s => (
+                {filteredSurahs.map(s => {
+                  const surahSelected = isCovered(selectedPages, s.start, s.end);
+                  return (
                   <button
                     key={s.number}
                     onClick={() => toggleSurah(s.number)}
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
-                      selectedSurahs.has(s.number)
+                      surahSelected
                         ? 'bg-[#003527] text-white border-[#003527]'
                         : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                     }`}
@@ -370,14 +361,15 @@ export default function Onboarding() {
                     <span className="text-xs font-medium leading-tight">
                       {s.number}. {isArabic ? s.arabic : s.name}
                     </span>
-                    <span className={`text-[10px] mt-0.5 leading-tight ${selectedSurahs.has(s.number) ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                    <span className={`text-[10px] mt-0.5 leading-tight ${surahSelected ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
                       {isArabic ? s.name : s.arabic}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
-              {selectedSurahs.size > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahs.size })}</p>
+              {selectedSurahCount > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahCount })}</p>
               )}
             </div>
           )}
@@ -431,7 +423,7 @@ export default function Onboarding() {
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                {t('onboarding.totalSelectedAll', { pages: selectedCount, juz: selectedJuz.size, surah: selectedSurahs.size })}
+                {t('onboarding.totalSelectedAll', { pages: selectedCount, juz: selectedJuzCount, surah: selectedSurahCount })}
               </p>
             </div>
           )}

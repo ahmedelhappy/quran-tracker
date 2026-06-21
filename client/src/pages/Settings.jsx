@@ -62,21 +62,15 @@ function toPageRanges(sortedPages) {
   return ranges;
 }
 
-function computeSelectedPages(selectedJuz, selectedSurahs, pageRanges) {
+// Expand the editable range rows into the set of pages they cover.
+function rangesToPages(pageRanges) {
   const pages = new Set();
-  JUZ_RANGES.forEach(({ juz, start, end }) => {
-    if (selectedJuz.has(juz)) { for (let p = start; p <= end; p++) pages.add(p); }
-  });
-  selectedSurahs.forEach(num => {
-    const s = SURAH_PAGES.find(x => x.number === num);
-    if (s) for (let p = s.start; p <= s.end; p++) pages.add(p);
-  });
   pageRanges.forEach(({ start, end }) => {
     const s = parseInt(start, 10), e = parseInt(end, 10);
     if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
       for (let p = s; p <= e; p++) pages.add(p);
   });
-  return Array.from(pages).sort((a, b) => a - b);
+  return pages;
 }
 
 function validateRanges(pageRanges) {
@@ -100,102 +94,45 @@ function validateRanges(pageRanges) {
 }
 
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedPageNums }) {
-  const [selectedJuz, setSelectedJuz] = useState(new Set());
-  const [removedJuz, setRemovedJuz] = useState(new Set());
-  const [selectedSurahs, setSelectedSurahs] = useState(new Set());
-  const [removedSurahs, setRemovedSurahs] = useState(new Set());
+function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
+  // Single source of truth: the set of page numbers currently marked memorized.
+  // The Juz / Surah / Range tabs are just different views/editors over this one set.
+  const [selectedPages, setSelectedPages] = useState(new Set());
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [rangeErrors, setRangeErrors] = useState([{}]);
-  const [deletedRangeRows, setDeletedRangeRows] = useState([]);
   const [pendingDeleteIdx, setPendingDeleteIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
 
-  const memorizedSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
-
-  const surahMemPercent = (surah) => {
-    let count = 0;
-    for (let p = surah.start; p <= surah.end; p++)
-      if (memorizedSet.has(p)) count++;
-    return Math.round((count / (surah.end - surah.start + 1)) * 100);
-  };
+  // Pages memorized when the modal opened — lets us flag (in red) anything the user removes.
+  const origSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
+  const countIn = (set, start, end) => { let c = 0; for (let p = start; p <= end; p++) if (set.has(p)) c++; return c; };
 
   useEffect(() => {
-    if (isOpen && currentJuzData) {
-      const memorized = new Set(currentJuzData.filter(j => j.isComplete).map(j => j.juzNumber));
-      setSelectedJuz(memorized);
-      setRemovedJuz(new Set());
-      setRemovedSurahs(new Set());
+    if (isOpen) {
+      setSelectedPages(new Set(memorizedPageNums));
       setSelectionMode('juz');
       setSurahSearch('');
       const initRanges = toPageRanges(memorizedPageNums);
       setPageRanges(initRanges);
       setRangeErrors(initRanges.map(() => ({})));
-      setDeletedRangeRows([]);
       setPendingDeleteIdx(null);
+    }
+  }, [isOpen, memorizedPageNums]);
 
-      const mSet = new Set(memorizedPageNums);
-      const preSelectedSurahs = new Set(
-        SURAH_PAGES
-          .filter(surah => {
-            for (let p = surah.start; p <= surah.end; p++) {
-              if (!mSet.has(p)) return false;
-            }
-            return true;
-          })
-          .map(s => s.number)
-      );
-      setSelectedSurahs(preSelectedSurahs);
-    }
-  }, [isOpen, currentJuzData, memorizedPageNums]);
-
-  const toggleJuz = (n) => {
-    const juzInfo = currentJuzData?.find(j => j.juzNumber === n);
-    if (!juzInfo || juzInfo.memorizedPages === 0) {
-      setSelectedJuz(prev => { const next = new Set(prev); next.has(n) ? next.delete(n) : next.add(n); return next; });
-      return;
-    }
-    const isSelected = selectedJuz.has(n);
-    const isRemoved = removedJuz.has(n);
-    if (!isSelected && !isRemoved) {
-      setSelectedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
-    } else if (isSelected) {
-      setSelectedJuz(prev => { const next = new Set(prev); next.delete(n); return next; });
-      setRemovedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
-    } else {
-      setRemovedJuz(prev => { const next = new Set(prev); next.delete(n); return next; });
-      if (juzInfo.isComplete) {
-        setSelectedJuz(prev => { const next = new Set(prev); next.add(n); return next; });
-      }
-    }
-  };
-
-  const toggleSurah = (n) => {
-    const surah = SURAH_PAGES.find(s => s.number === n);
-    const pct = surah ? surahMemPercent(surah) : 0;
-    if (pct === 0) {
-      setSelectedSurahs(prev => { const next = new Set(prev); next.has(n) ? next.delete(n) : next.add(n); return next; });
-      return;
-    }
-    const isSelected = selectedSurahs.has(n);
-    const isRemoved = removedSurahs.has(n);
-    if (!isSelected && !isRemoved) {
-      setSelectedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
-    } else if (isSelected) {
-      setSelectedSurahs(prev => { const next = new Set(prev); next.delete(n); return next; });
-      setRemovedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
-    } else {
-      setRemovedSurahs(prev => { const next = new Set(prev); next.delete(n); return next; });
-      if (pct === 100) {
-        setSelectedSurahs(prev => { const next = new Set(prev); next.add(n); return next; });
-      }
-    }
-  };
+  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
+  const toggleRange = (start, end) => setSelectedPages(prev => {
+    const next = new Set(prev);
+    const full = countIn(next, start, end) === (end - start + 1);
+    for (let p = start; p <= end; p++) { if (full) next.delete(p); else next.add(p); }
+    return next;
+  });
+  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
+  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -208,92 +145,52 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
   });
 
   const addRange = () => { setPageRanges(r => [...r, { start: '', end: '' }]); setRangeErrors(e => [...e, {}]); };
-  const removeRange = (i) => { setPageRanges(r => r.filter((_, idx) => idx !== i)); setRangeErrors(e => e.filter((_, idx) => idx !== i)); };
+  const removeRange = (i) => {
+    const updated = pageRanges.filter((_, idx) => idx !== i);
+    setPageRanges(updated);
+    setRangeErrors(e => e.filter((_, idx) => idx !== i));
+    setSelectedPages(rangesToPages(updated));
+  };
   const updateRange = (i, key, val) => {
     const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
     setPageRanges(updated);
     setRangeErrors(validateRanges(updated));
+    setSelectedPages(rangesToPages(updated));
   };
 
+  // Tabs are views over one canonical set, so switching only re-renders. The Range
+  // tab keeps editable text rows, so we regenerate them from the set when entering it.
   const handleTabSwitch = (newMode) => {
     if (newMode === selectionMode) return;
-    const currentPages = new Set(computeSelectedPages(selectedJuz, selectedSurahs, pageRanges));
-    if (newMode === 'juz') {
-      const derived = new Set(
-        JUZ_RANGES.filter(({ start, end }) => {
-          for (let p = start; p <= end; p++) if (!currentPages.has(p)) return false;
-          return true;
-        }).map(({ juz }) => juz)
-      );
-      setSelectedJuz(derived);
-      setRemovedJuz(new Set());
-    } else if (newMode === 'surah') {
-      const derived = new Set(
-        SURAH_PAGES.filter(s => {
-          for (let p = s.start; p <= s.end; p++) if (!currentPages.has(p)) return false;
-          return true;
-        }).map(s => s.number)
-      );
-      setSelectedSurahs(derived);
-      setRemovedSurahs(new Set());
-    } else if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(currentPages).sort((a, b) => a - b));
+    if (newMode === 'range') {
+      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
       setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
       setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
-      setDeletedRangeRows([]);
+      setPendingDeleteIdx(null);
     }
+    setSurahSearch('');
     setSelectionMode(newMode);
   };
 
-  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
-  const selectedPages = computeSelectedPages(selectedJuz, selectedSurahs, pageRanges);
+  const restoreOriginal = () => {
+    setSelectedPages(new Set(memorizedPageNums));
+    setSelectionMode('juz');
+    setSurahSearch('');
+    const initRanges = toPageRanges(memorizedPageNums);
+    setPageRanges(initRanges);
+    setRangeErrors(initRanges.map(() => ({})));
+    setPendingDeleteIdx(null);
+  };
 
-  const preservedPages = useMemo(() => {
-    const result = new Set();
-    JUZ_RANGES.forEach(({ juz, start, end }) => {
-      const isSelected = selectedJuz.has(juz);
-      const isRemoved = removedJuz.has(juz);
-      const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
-      const isPartial = juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
-      if (isPartial && !isSelected && !isRemoved) {
-        for (let p = start; p <= end; p++) {
-          if (memorizedSet.has(p)) result.add(p);
-        }
-      }
-    });
-    SURAH_PAGES.forEach(surah => {
-      const isSelected = selectedSurahs.has(surah.number);
-      const isRemoved = removedSurahs.has(surah.number);
-      const pct = surahMemPercent(surah);
-      if (pct > 0 && pct < 100 && !isSelected && !isRemoved) {
-        for (let p = surah.start; p <= surah.end; p++) {
-          if (memorizedSet.has(p)) result.add(p);
-        }
-      }
-    });
-    return result;
-  }, [selectedJuz, removedJuz, selectedSurahs, removedSurahs, currentJuzData, memorizedSet]);
+  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
+  const selectedCount = selectedPages.size;
+  const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
+  const fullSurahCount = SURAH_PAGES.filter(s => countIn(selectedPages, s.start, s.end) === (s.end - s.start + 1)).length;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const removedPageSet = new Set();
-      removedJuz.forEach(juz => {
-        const r = JUZ_RANGES.find(x => x.juz === juz);
-        if (r) for (let p = r.start; p <= r.end; p++) removedPageSet.add(p);
-      });
-      removedSurahs.forEach(num => {
-        const s = SURAH_PAGES.find(x => x.number === num);
-        if (s) for (let p = s.start; p <= s.end; p++) removedPageSet.add(p);
-      });
-      deletedRangeRows.forEach(({ start, end }) => {
-        const s = parseInt(start, 10), e = parseInt(end, 10);
-        if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
-          for (let p = s; p <= e; p++) removedPageSet.add(p);
-      });
-      const finalPages = Array.from(new Set([...selectedPages, ...preservedPages]))
-        .filter(p => !removedPageSet.has(p))
-        .sort((a, b) => a - b);
+      const finalPages = Array.from(selectedPages).sort((a, b) => a - b);
       await progressAPI.updateMemorized({ memorizedPages: finalPages });
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
@@ -342,22 +239,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                 </button>
               ))}
               <button
-                onClick={() => {
-                  const allComplete = new Set(currentJuzData?.filter(j => j.isComplete).map(j => j.juzNumber) ?? []);
-                  setSelectedJuz(allComplete);
-                  setRemovedJuz(new Set());
-                  const allCompleteSurahs = new Set(SURAH_PAGES.filter(surah => {
-                    for (let p = surah.start; p <= surah.end; p++) if (!memorizedSet.has(p)) return false;
-                    return true;
-                  }).map(s => s.number));
-                  setSelectedSurahs(allCompleteSurahs);
-                  setRemovedSurahs(new Set());
-                  const initRanges = toPageRanges(memorizedPageNums);
-                  setPageRanges(initRanges);
-                  setRangeErrors(initRanges.map(() => ({})));
-                  setDeletedRangeRows([]);
-                  setPendingDeleteIdx(null);
-                }}
+                onClick={restoreOriginal}
                 className="ms-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
                 {t('settings.restore')}
@@ -368,18 +250,19 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
           {selectionMode === 'juz' && (
             <div>
               <div className="grid grid-cols-5 gap-2">
-                {JUZ_RANGES.map(({ juz }) => {
-                  const juzInfo = currentJuzData?.find(j => j.juzNumber === juz);
-                  const isSelected = selectedJuz.has(juz);
-                  const isRemoved = removedJuz.has(juz);
-                  const isPartial = !isSelected && !isRemoved && juzInfo && juzInfo.memorizedPages > 0 && !juzInfo.isComplete;
-                  const isCompleteDeselected = !isSelected && !isRemoved && juzInfo?.isComplete;
+                {JUZ_RANGES.map(({ juz, start, end }) => {
+                  const size = end - start + 1;
+                  const sel = countIn(selectedPages, start, end);
+                  const isFull = sel === size;
+                  const isPartial = sel > 0 && !isFull;
+                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
+                  const pct = Math.round((sel / size) * 100);
                   return (
                     <button
                       key={juz}
                       onClick={() => toggleJuz(juz)}
                       className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
-                        isSelected
+                        isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isRemoved
                             ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
@@ -389,9 +272,9 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                       }`}
                     >
                       <span>{juz}</span>
-                      {(isSelected || isPartial || isRemoved || isCompleteDeselected) && (
-                        <span className={`text-[9px] leading-none ${isCompleteDeselected ? 'opacity-30' : 'opacity-80'}`}>
-                          {isSelected || isCompleteDeselected ? '100' : isRemoved ? '0' : juzInfo.percentage}%
+                      {(isFull || isPartial || isRemoved) && (
+                        <span className="text-[9px] leading-none opacity-80">
+                          {isFull ? '100' : isRemoved ? '0' : pct}%
                         </span>
                       )}
                     </button>
@@ -399,7 +282,7 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                 })}
               </div>
               <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {selectedJuz.size > 0 ? t('settings.juzSelected', { count: selectedJuz.size }) : t('settings.noJuzSelected')}
+                {fullJuzCount > 0 ? t('settings.juzSelected', { count: fullJuzCount }) : t('settings.noJuzSelected')}
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
             </div>
@@ -416,16 +299,18 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
               />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {filteredSurahs.map(s => {
-                  const pct = surahMemPercent(s);
-                  const isSelected = selectedSurahs.has(s.number);
-                  const isRemoved = removedSurahs.has(s.number);
-                  const isPartial = !isSelected && !isRemoved && pct > 0 && pct < 100;
+                  const size = s.end - s.start + 1;
+                  const sel = countIn(selectedPages, s.start, s.end);
+                  const isFull = sel === size;
+                  const isPartial = sel > 0 && !isFull;
+                  const isRemoved = sel === 0 && countIn(origSet, s.start, s.end) > 0;
+                  const pct = Math.round((sel / size) * 100);
                   return (
                     <button
                       key={s.number}
                       onClick={() => toggleSurah(s.number)}
                       className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors ${
-                        isSelected
+                        isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isRemoved
                             ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
@@ -434,23 +319,23 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                               : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
                       }`}
                     >
-                      {(isSelected || isPartial || isRemoved) && (
+                      {(isFull || isPartial || isRemoved) && (
                         <span className="absolute top-1 end-1 text-[9px] leading-none opacity-80">
-                          {isSelected ? '100' : isRemoved ? '0' : pct}%
+                          {isFull ? '100' : isRemoved ? '0' : pct}%
                         </span>
                       )}
                       <span className="text-xs font-medium leading-tight line-clamp-2 w-full">
                         {s.number}. {isArabic ? s.arabic : s.name}
                       </span>
-                      <span className={`text-[10px] mt-0.5 leading-tight line-clamp-1 w-full ${isSelected ? 'text-white/70' : isRemoved ? 'text-red-600/70 dark:text-red-300/70' : isPartial ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                      <span className={`text-[10px] mt-0.5 leading-tight line-clamp-1 w-full ${isFull ? 'text-white/70' : isRemoved ? 'text-red-600/70 dark:text-red-300/70' : isPartial ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
                         {isArabic ? s.name : s.arabic}
                       </span>
                     </button>
                   );
                 })}
               </div>
-              {selectedSurahs.size > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahs.size })}</p>
+              {fullSurahCount > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: fullSurahCount })}</p>
               )}
             </div>
           )}
@@ -490,7 +375,6 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
                           </button>
                           <button
                             onClick={() => {
-                              setDeletedRangeRows(prev => [...prev, { start: r.start, end: r.end }]);
                               removeRange(i);
                               setPendingDeleteIdx(null);
                             }}
@@ -513,16 +397,11 @@ function EditProgressModal({ isOpen, onClose, onSave, currentJuzData, memorizedP
             </div>
           )}
 
-          {(selectedPages.length > 0 || preservedPages.size > 0) && (
+          {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                {t('settings.pagesSelected', { count: selectedPages.length })}
+                {t('settings.pagesSelected', { count: selectedCount })}
               </p>
-              {preservedPages.size > 0 && (
-                <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">
-                  {t('settings.preservedNote', { count: preservedPages.size })}
-                </p>
-              )}
             </div>
           )}
         </div>
@@ -1581,7 +1460,6 @@ export default function Settings() {
           setMemorizedJuz(juzRes.data.data);
           setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
         }).catch(() => {})}
-        currentJuzData={memorizedJuz}
         memorizedPageNums={memorizedPageNums}
       />
 
