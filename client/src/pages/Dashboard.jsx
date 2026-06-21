@@ -222,31 +222,29 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
   const dateLabel = formatDate(day.date, i18n.language);
 
   const getNewStr = () => {
-    if (isToday) {
-      const pages = todayData?.newPages ?? [];
-      if (pages.length === 0) return '—';
-      const p = pages[0];
-      const surah = formatSurahNames(p, isAr);
-      const pageStr = t('dashboard.fmtPage', { num: p.pageNumber });
-      return surah ? `${pageStr} · ${surah}` : pageStr;
+    const infos = isToday
+      ? (todayData?.newPages ?? [])
+      : (day?.newPagesInfo ?? (day?.newPageInfo ? [day.newPageInfo] : []));
+    if (infos.length === 0) {
+      const count = isToday ? 0 : (day?.newPagesCount ?? 0);
+      return count > 0 ? t('dashboard.reviewCount', { count }) : '—';
     }
-    const count = day?.newPagesCount ?? 0;
-    if (count === 0) return '—';
-    const infos = day?.newPagesInfo ?? (day?.newPageInfo ? [day.newPageInfo] : []);
-    if (infos.length > 0) {
-      const p = infos[0];
-      const surah = formatSurahNames(p, isAr);
-      const pageStr = t('dashboard.fmtPage', { num: p.pageNumber });
-      return surah ? `${pageStr} · ${surah}` : pageStr;
-    }
-    return t('dashboard.reviewCount', { count });
+    // Show every page assigned that day, not just the first.
+    const nums = infos.map(p => p.pageNumber);
+    const pageStr = nums.length === 1
+      ? t('dashboard.fmtPage', { num: nums[0] })
+      : t('dashboard.fmtPagesMulti', { nums: nums.join(isAr ? '، ' : ', ') });
+    const firstSurah = formatSurahNames(infos[0], isAr);
+    const sameSurah = infos.every(p => formatSurahNames(p, isAr) === firstSurah);
+    return sameSurah && firstSurah ? `${pageStr} · ${firstSurah}` : pageStr;
   };
 
-  const recentCount = isToday ? (todayData?.recentReviewPages?.length ?? 0) : 0;
-  const cycleCount = isToday
-    ? (todayData?.reviewPages?.length ?? 0)
+  // Today shows the stable daily total (it does not shrink as pages are ticked
+  // off); future days use the projected cycle-plus-recent count from the server.
+  const reviewCount = isToday
+    ? (todayData?.stats?.dailyReviewTotal
+        ?? ((todayData?.reviewPages?.length ?? 0) + (todayData?.recentReviewPages?.length ?? 0)))
     : (day?.reviewPagesCount ?? 0);
-  const reviewCount = recentCount + cycleCount;
   const newStr = getNewStr();
 
   return (
@@ -480,12 +478,12 @@ export default function Dashboard() {
     ...cycleReviewPages.map(p => ({ ...p, isRecent: false })),
   ];
 
-  // Live review breakdown — the user reviews cycle pages + recently-memorized
-  // pages today, so the honest total is the combined list length (what the
-  // Review section header already shows), not the cycle-only target.
-  const reviewCycleCount = cycleReviewPages.length;
-  const reviewRecentCount = recentPages.length;
-  const reviewTotalCount = allReviewPages.length;
+  // Daily review breakdown — the stable per-day targets (cycle pages + recently
+  // memorized pages), not the live list lengths, so the stat card and its hint
+  // show the everyday review load and don't count down to zero as pages are done.
+  const reviewCycleCount = stats?.cycleReviewTarget ?? 0;
+  const reviewRecentCount = stats?.recentReviewTarget ?? 0;
+  const reviewTotalCount = stats?.dailyReviewTotal ?? (reviewCycleCount + reviewRecentCount);
   const reviewBreakdown =
     reviewCycleCount > 0 && reviewRecentCount > 0
       ? t('hints.reviewBoth', { cycle: reviewCycleCount, recent: reviewRecentCount })
