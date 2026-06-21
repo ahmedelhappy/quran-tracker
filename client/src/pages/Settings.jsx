@@ -29,6 +29,10 @@ const estimateReviewPages = (memorized, divisor) =>
 
 const DAILY_OPTIONS = [0.5, 1, 2, 5];
 
+// The recent-review count the server computes when the user hasn't set one — used
+// as the input's default so it shows the number actually in effect on any preset.
+const autoRecentPages = (dailyNewPages) => Math.max(3, Math.min(Math.ceil((dailyNewPages || 1) * 3), 6));
+
 const JUZ_RANGES = [
   {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
   {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
@@ -653,9 +657,9 @@ export default function Settings() {
   const [todayStats, setTodayStats]   = useState(null);
 
   const [reviewMode, setReviewMode] = useState(
-    (user?.recentReviewCount != null || user?.cycleReviewCount != null) ? 'fixed' : 'intensity'
+    user?.cycleReviewCount != null ? 'fixed' : 'intensity'
   );
-  const [recentReviewValue, setRecentReviewValue] = useState(user?.recentReviewCount ?? 3);
+  const [recentReviewValue, setRecentReviewValue] = useState(user?.recentReviewCount ?? autoRecentPages(user?.dailyNewPages));
   const [cycleReviewValue, setCycleReviewValue] = useState(user?.cycleReviewCount ?? 5);
   const customPagesInputRef = useRef(null);
 
@@ -688,8 +692,8 @@ export default function Settings() {
       setCustomInputText(DAILY_OPTIONS.includes(user.dailyNewPages ?? 1) ? '' : String(user.dailyNewPages ?? 1.5));
       setIntensity(user.reviewIntensity ?? 'standard');
       setOffDays(user.offDays ?? []);
-      setReviewMode((user.recentReviewCount != null || user.cycleReviewCount != null) ? 'fixed' : 'intensity');
-      setRecentReviewValue(user.recentReviewCount ?? 3);
+      setReviewMode(user.cycleReviewCount != null ? 'fixed' : 'intensity');
+      setRecentReviewValue(user.recentReviewCount ?? autoRecentPages(user.dailyNewPages));
       setCycleReviewValue(user.cycleReviewCount ?? 5);
       setIsPaused(user.pauseNewMemorization ?? false);
       setCycleStartPage(user.cycleReviewStartPage ?? null);
@@ -724,16 +728,14 @@ export default function Settings() {
 
   useEffect(() => {
     if (!user) return;
-    const userReviewMode = (user.recentReviewCount != null || user.cycleReviewCount != null) ? 'fixed' : 'intensity';
+    const userReviewMode = user.cycleReviewCount != null ? 'fixed' : 'intensity';
     const changed =
       dailyPages !== (user.dailyNewPages ?? 1) ||
       JSON.stringify([...offDays].sort()) !== JSON.stringify([...(user.offDays ?? [])].sort()) ||
       reviewMode !== userReviewMode ||
+      recentReviewValue !== (user.recentReviewCount ?? autoRecentPages(user.dailyNewPages)) ||
       (reviewMode === 'intensity' && intensity !== (user.reviewIntensity ?? 'standard')) ||
-      (reviewMode === 'fixed' && (
-        recentReviewValue !== (user.recentReviewCount ?? 3) ||
-        cycleReviewValue !== (user.cycleReviewCount ?? 5)
-      ));
+      (reviewMode === 'fixed' && cycleReviewValue !== (user.cycleReviewCount ?? 5));
     setPlanDirty(changed);
   }, [dailyPages, offDays, reviewMode, intensity, recentReviewValue, cycleReviewValue, user]);
 
@@ -817,9 +819,10 @@ export default function Settings() {
       await authAPI.updateProfile({
         dailyNewPages: dailyPages,
         offDays,
+        recentReviewCount: recentReviewValue,
         ...(reviewMode === 'intensity'
-          ? { reviewIntensity: intensity, recentReviewCount: null, cycleReviewCount: null }
-          : { recentReviewCount: recentReviewValue, cycleReviewCount: cycleReviewValue }
+          ? { reviewIntensity: intensity, cycleReviewCount: null }
+          : { cycleReviewCount: cycleReviewValue }
         ),
       });
       await refreshUser();
@@ -846,8 +849,8 @@ export default function Settings() {
       setCustomInputText(DAILY_OPTIONS.includes(user?.dailyNewPages ?? 1) ? '' : String(user?.dailyNewPages ?? 1.5));
       setIntensity(user?.reviewIntensity ?? 'standard');
       setOffDays(user?.offDays ?? []);
-      setReviewMode((user?.recentReviewCount != null || user?.cycleReviewCount != null) ? 'fixed' : 'intensity');
-      setRecentReviewValue(user?.recentReviewCount ?? 3);
+      setReviewMode(user?.cycleReviewCount != null ? 'fixed' : 'intensity');
+      setRecentReviewValue(user?.recentReviewCount ?? autoRecentPages(user?.dailyNewPages));
       setCycleReviewValue(user?.cycleReviewCount ?? 5);
     }
   };
@@ -1173,7 +1176,6 @@ export default function Settings() {
                       type="button"
                       onClick={() => {
                         if (reviewMode === 'intensity') {
-                          setRecentReviewValue(Math.min(Math.ceil((dailyPages || 1) * 3), 6));
                           setCycleReviewValue(todayStats?.dailyReviewTarget ?? 5);
                         }
                         setReviewMode('fixed');
@@ -1281,26 +1283,24 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Recent days pages number (moved into Advanced) — applies to Fixed number mode */}
-                  {reviewMode === 'fixed' && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-6 h-6 rounded-md bg-[#fe932c]/15 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-                          <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
-                        </div>
-                        <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.recentReviewLabel')}</p>
+                  {/* Recent review pages per day — applies to every review mode */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-6 h-6 rounded-md bg-[#fe932c]/15 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                        <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
                       </div>
-                      <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
-                          <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
-                        </div>
-                        <input type="number" min="0" max="20" value={recentReviewValue}
-                          onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
-                          className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
-                      </div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.recentReviewLabel')}</p>
                     </div>
-                  )}
+                    <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
+                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
+                      </div>
+                      <input type="number" min="0" max="20" value={recentReviewValue}
+                        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
+                        className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
+                    </div>
+                  </div>
 
                   {/* Review Cycle Start Point */}
                   <div>
