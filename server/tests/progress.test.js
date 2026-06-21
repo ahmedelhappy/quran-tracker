@@ -173,6 +173,28 @@ describe('Progress API — spaced repetition', () => {
     assert.equal(after.body.data.stats.dailyReviewTotal, 3); // daily target stayed put
   });
 
+  test('the recent-review bucket honors a custom count beyond the old day window', async () => {
+    const user = await createUser({
+      planStartDate: daysAgo(15),
+      pauseNewMemorization: true, // isolate from new pages
+      cycleReviewCount: 0,        // silence the cycle bucket
+      recentReviewCount: 8,       // want up to 8 recently memorized pages
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // 10 pages each memorized on a different day of active plan use (after planStart).
+    // Page 10 is the most recent, page 1 the oldest.
+    for (let p = 1; p <= 10; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(11 - p), lastReviewedDate: null });
+    }
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    // The 8 most recently memorized pages show — not just the last few days' worth.
+    assert.equal(res.body.data.recentReviewPages.length, 8);
+    assert.deepEqual(res.body.data.recentReviewPages.map(p => p.pageNumber), [3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
   test('an off-day returns empty task arrays unless ignoreOffDay is set', async () => {
     const todayUtcDay = new Date().getUTCDay();
     const user = await createUser({

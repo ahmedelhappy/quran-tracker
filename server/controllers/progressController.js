@@ -96,22 +96,18 @@ const buildProgressSummary = async (user) => {
       : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
 
     const planStartDateString = getDateString(user.planStartDate || user.createdAt);
-    const activeDatesSet = new Set();
-    for (const p of allMemorizedPages) {
-      for (const d of [p.memorizedDate, p.lastReviewedDate]) {
-        if (!d) continue;
-        const ds = getDateString(d);
-        if (ds !== todayString && ds >= planStartDateString) activeDatesSet.add(ds);
-      }
-    }
-    const lastThreeActiveDays = new Set(Array.from(activeDatesSet).sort().reverse().slice(0, 3));
-    const recentEligibleNums = new Set(
-      allMemorizedPages
-        .filter(p => p.memorizedDate && lastThreeActiveDays.has(getDateString(p.memorizedDate)))
-        .map(p => p.pageNumber)
-    );
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const recentPool = allMemorizedPages
+      .filter(p => p.memorizedDate
+        && getDateString(p.memorizedDate) !== todayString
+        && getDateString(p.memorizedDate) >= planStartDateString)
+      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
+      .slice(0, maxRecent);
+    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
 
-    // Cycle bucket: memorized pages not memorized today and not owned by recent window.
+    // Cycle bucket: memorized pages not memorized today and not owned by recent pool.
     const pagesForReview = allMemorizedPages.filter(
       p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
         && !recentEligibleNums.has(p.pageNumber)
@@ -124,17 +120,10 @@ const buildProgressSummary = async (user) => {
     ).length;
     const cycleDue = Math.min(Math.max(0, dailyReviewTarget - cycleCompletedToday), cyclePending);
 
-    // Recent bucket: pages memorized within the last three active days, not done today.
-    const recentPending = allMemorizedPages.filter(p =>
-      p.memorizedDate
-      && getDateString(p.memorizedDate) !== todayString
-      && lastThreeActiveDays.has(getDateString(p.memorizedDate))
-      && !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString)
+    // Recent bucket: the recent pool, minus any already reviewed today.
+    const recentDue = recentPool.filter(p =>
+      !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString)
     ).length;
-    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
-      ? user.recentReviewCount
-      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
-    const recentDue = Math.min(maxRecent, recentPending);
 
     reviewsDueToday = cycleDue + recentDue;
   }
@@ -305,33 +294,26 @@ exports.getTodayTasks = async (req, res) => {
       }
     }
 
-    // --- RECENT ACTIVE DAYS (computed first — needed to exclude from cycle) ---
-    // "Active day" = any day the user memorized or reviewed on or after planStartDate.
-    // Onboarding pages (memorizedDate = yesterday, before planStartDate = today) are
-    // excluded automatically. Brand-new users have no active days → empty Recent Review.
+    // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
+    // The recent bucket is the user's most recently memorized pages during active
+    // plan use: memorizedDate on or after planStartDate (so onboarding pages, dated
+    // before the plan started, are excluded) and not today's. We take the N newest,
+    // where N is the "recent pages per day" setting — taking the N most recent rather
+    // than a fixed day-window means raising the setting actually surfaces more pages.
+    // Brand-new users (planStart today) have none yet → empty Recent Review.
     const planStartDateString = getDateString(user.planStartDate || user.createdAt);
-    const activeDatesSet = new Set();
-    for (const p of allMemorizedPages) {
-      if (p.memorizedDate) {
-        const d = getDateString(p.memorizedDate);
-        if (d !== todayString && d >= planStartDateString) activeDatesSet.add(d);
-      }
-      if (p.lastReviewedDate) {
-        const d = getDateString(p.lastReviewedDate);
-        if (d !== todayString && d >= planStartDateString) activeDatesSet.add(d);
-      }
-    }
-    const lastThreeActiveDays = new Set(
-      Array.from(activeDatesSet).sort().reverse().slice(0, 3)
-    );
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+    const recentPool = allMemorizedPages
+      .filter(p => p.memorizedDate
+        && getDateString(p.memorizedDate) !== todayString
+        && getDateString(p.memorizedDate) >= planStartDateString)
+      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
+      .slice(0, maxRecent);
 
-    // Pages whose memorizedDate falls in the recent window belong to recent review.
-    // Cycle review skips them so no page appears in both sections at once.
-    const recentEligibleNums = new Set(
-      allMemorizedPages
-        .filter(p => p.memorizedDate && lastThreeActiveDays.has(getDateString(p.memorizedDate)))
-        .map(p => p.pageNumber)
-    );
+    // Cycle review skips the recent pool so no page appears in both sections at once.
+    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
 
     // --- CYCLE REVIEW PAGES ---
     // Excludes: pages memorized today, pages owned by the recent review window.
@@ -374,21 +356,10 @@ exports.getTodayTasks = async (req, res) => {
     const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
 
     // --- RECENT REVIEW PAGES ---
-    const recentCandidates = allMemorizedPages.filter(p => {
-      if (!p.memorizedDate) return false;
-      if (getDateString(p.memorizedDate) === todayString) return false;
-      if (!lastThreeActiveDays.has(getDateString(p.memorizedDate))) return false;
-      if (p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString) return false;
-      return true;
-    });
-
-    recentCandidates.sort((a, b) => a.pageNumber - b.pageNumber);
-
-    // Cap: custom override or formula (minimum 3)
-    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
-      ? user.recentReviewCount
-      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
-    const cappedRecentPages = recentCandidates.slice(0, maxRecent);
+    // The recent pool, minus any already reviewed today, shown in page order.
+    const cappedRecentPages = recentPool
+      .filter(p => !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString))
+      .sort((a, b) => a.pageNumber - b.pageNumber);
 
     // --- CONSTANT DAILY REVIEW TARGETS ---
     // How many pages the day STARTED with for each bucket, independent of how many
@@ -396,13 +367,8 @@ exports.getTodayTasks = async (req, res) => {
     // "this is your daily load" number instead of counting down to zero as the user
     // ticks pages off. Recent counts the recent-window pages due today (including any
     // already reviewed); cycle is the target capped by how many cycle pages exist.
-    const recentDueTodayCount = allMemorizedPages.filter(p =>
-      p.memorizedDate
-      && getDateString(p.memorizedDate) !== todayString
-      && lastThreeActiveDays.has(getDateString(p.memorizedDate))
-    ).length;
     const cycleReviewTarget = Math.min(dailyReviewTarget, pagesForReview.length);
-    const recentReviewTarget = Math.min(maxRecent, recentDueTodayCount);
+    const recentReviewTarget = recentPool.length;
     const dailyReviewTotal = cycleReviewTarget + recentReviewTarget;
 
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
