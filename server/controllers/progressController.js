@@ -390,6 +390,21 @@ exports.getTodayTasks = async (req, res) => {
       : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
     const cappedRecentPages = recentCandidates.slice(0, maxRecent);
 
+    // --- CONSTANT DAILY REVIEW TARGETS ---
+    // How many pages the day STARTED with for each bucket, independent of how many
+    // are already done — so the dashboard's "Daily Review" stat reads a stable
+    // "this is your daily load" number instead of counting down to zero as the user
+    // ticks pages off. Recent counts the recent-window pages due today (including any
+    // already reviewed); cycle is the target capped by how many cycle pages exist.
+    const recentDueTodayCount = allMemorizedPages.filter(p =>
+      p.memorizedDate
+      && getDateString(p.memorizedDate) !== todayString
+      && lastThreeActiveDays.has(getDateString(p.memorizedDate))
+    ).length;
+    const cycleReviewTarget = Math.min(dailyReviewTarget, pagesForReview.length);
+    const recentReviewTarget = Math.min(maxRecent, recentDueTodayCount);
+    const dailyReviewTotal = cycleReviewTarget + recentReviewTarget;
+
     // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
     let continuationPageNum = null;
     if (targetNewPages === 0 && !isHafiz) {
@@ -491,6 +506,7 @@ exports.getTodayTasks = async (req, res) => {
           cycleReviewCount: user.cycleReviewCount ?? null,
           newPagesCompletedToday, reviewsCompletedToday,
           targetNewPages, dailyReviewTarget,
+          cycleReviewTarget, recentReviewTarget, dailyReviewTotal,
           newMemorizationComplete, reviewComplete, todayComplete,
           isHafiz, estimatedDays,
         },
@@ -707,6 +723,17 @@ exports.getWeekPlan = async (req, res) => {
     let cumulativeNew = Math.max(0, todayNewTarget - newPagesCompletedToday);
     const pageNumsForMeta = [];
 
+    // Estimate the "recently memorized" review pages each projected day will also
+    // carry (pages memorized over the last up to 3 active days), so the week tab's
+    // total matches today's cycle-plus-recent figure instead of showing cycle only.
+    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+      ? user.recentReviewCount
+      : Math.max(3, Math.min(Math.ceil(dailyNewPages * 3), 6));
+    const recentNewWindow = [];
+    if (!isHafiz && !user.pauseNewMemorization && !isTodayOffDay && todayNewTarget > 0) {
+      recentNewWindow.push(todayNewTarget);
+    }
+
     for (let i = 1; i <= 6; i++) {
       const date = new Date(today);
       date.setUTCDate(today.getUTCDate() + i);
@@ -739,20 +766,24 @@ exports.getWeekPlan = async (req, res) => {
       // Honor a fixed daily review count the same way getTodayTasks does, so the
       // week projection matches today's number instead of falling back to the
       // intensity formula (which made future days show the old intensity).
-      const reviewCount = (user.cycleReviewCount !== null && user.cycleReviewCount !== undefined)
+      const cycleTarget = (user.cycleReviewCount !== null && user.cycleReviewCount !== undefined)
         ? user.cycleReviewCount
         : computeDailyReviewTarget(projectedMemorized, reviewIntensity);
+      // Recent reviews = pages memorized over the last up to 3 active days, capped.
+      const recentTarget = isHafiz ? 0 : Math.min(maxRecent, recentNewWindow.reduce((a, b) => a + b, 0));
 
       plan.push({
         date: getDateString(date),
         dayName: DAY_NAMES[dayOfWeek],
         isOffDay: false,
         newPagesCount: newTarget,
-        reviewPagesCount: reviewCount,
+        reviewPagesCount: cycleTarget + recentTarget,
         newPagesForDay,
       });
 
       cumulativeNew += newTarget;
+      recentNewWindow.push(newTarget);
+      while (recentNewWindow.length > 3) recentNewWindow.shift();
     }
 
     // Fetch metadata for new pages in the plan

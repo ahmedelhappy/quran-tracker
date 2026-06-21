@@ -278,6 +278,18 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    // Picking a NEW custom review-cycle start point resets the review recency so
+    // the cycle does a clean sweep from that point forward — covering every page
+    // in order — instead of skipping pages that happen to have been reviewed
+    // recently. Only fires when the start point actually changes to a new page.
+    let resetReviewCycle = false;
+    if (updateData.cycleReviewStartPage) {
+      const current = await User.findById(userId).select('cycleReviewStartPage');
+      if (!current || current.cycleReviewStartPage !== updateData.cycleReviewStartPage) {
+        resetReviewCycle = true;
+      }
+    }
+
     // Update user
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -290,6 +302,13 @@ exports.updateProfile = async (req, res) => {
         success: false,
         message: 'User not found'
       });
+    }
+
+    if (resetReviewCycle) {
+      await UserProgress.updateMany(
+        { userId, status: 'memorized' },
+        { $set: { lastReviewedDate: null } }
+      );
     }
 
     res.status(200).json({

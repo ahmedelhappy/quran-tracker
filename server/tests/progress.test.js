@@ -106,6 +106,73 @@ describe('Progress API — spaced repetition', () => {
     assert.deepEqual(batchPerDay[3], [7, 8, 9]);
   });
 
+  test('setting a custom cycle start page forgets old review recency and sweeps from there', async () => {
+    const user = await createUser({
+      planStartDate: new Date(),
+      pauseNewMemorization: true, // isolate the review queue from new pages
+      cycleReviewCount: 3,        // fixed batch of 3 per day
+      recentReviewCount: 0,       // ignore the recent-memorization bucket
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // Pages 1..10 memorized long ago. Pages 1..7 were reviewed just yesterday
+    // (fresh), pages 8..10 long ago (stale). With no start point the cycle would
+    // begin at the stale end and skip the freshly-reviewed 5, 6, 7.
+    for (let p = 1; p <= 10; p++) {
+      const lastReviewedDate = p <= 7 ? daysAgo(1) : daysAgo(40);
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(50), lastReviewedDate });
+    }
+
+    // Pick a custom start point at page 5.
+    const put = await request(app)
+      .put('/api/auth/profile')
+      .set('Authorization', auth)
+      .send({ cycleReviewStartPage: 5 });
+    assert.equal(put.status, 200);
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    // A clean forward sweep from the start point — the recently reviewed 5, 6, 7
+    // are NOT skipped, proving the old review recency was forgotten.
+    assert.deepEqual(res.body.data.reviewPages.map(p => p.pageNumber), [5, 6, 7]);
+
+    // The recency really was cleared in the database.
+    const stillReviewed = await UserProgress.countDocuments({
+      userId: user._id, status: 'memorized', lastReviewedDate: { $ne: null },
+    });
+    assert.equal(stillReviewed, 0);
+  });
+
+  test('the daily review total stays constant as pages are completed', async () => {
+    const user = await createUser({
+      planStartDate: new Date(),
+      pauseNewMemorization: true,
+      cycleReviewCount: 3,
+      recentReviewCount: 0,
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    for (let p = 1; p <= 5; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(10 - p) });
+    }
+
+    const before = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(before.status, 200);
+    assert.equal(before.body.data.stats.cycleReviewTarget, 3);
+    assert.equal(before.body.data.stats.recentReviewTarget, 0);
+    assert.equal(before.body.data.stats.dailyReviewTotal, 3);
+    const firstPage = before.body.data.reviewPages[0].pageNumber;
+
+    // Complete one review — the live list shrinks but the daily target must not.
+    await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: firstPage, type: 'review' });
+
+    const after = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(after.status, 200);
+    assert.equal(after.body.data.reviewPages.length, 2);     // live list went down
+    assert.equal(after.body.data.stats.dailyReviewTotal, 3); // daily target stayed put
+  });
+
   test('an off-day returns empty task arrays unless ignoreOffDay is set', async () => {
     const todayUtcDay = new Date().getUTCDay();
     const user = await createUser({
