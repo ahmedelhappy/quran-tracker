@@ -330,7 +330,7 @@
     "reviewLimitsTitle": "Daily Review Limits",
     "reviewLimitsDesc": "Override the automatic calculation, or leave on Auto.",
     "recentReviewLabel": "Recent pages per day",
-    "recentReviewHint": "Pages memorized in the last 3 days",
+    "recentReviewHint": "Your most recently memorized pages",
     "cycleReviewLabel": "Review pages per day",
     "cycleReviewHint": "How many pages to review each day",
     "cycleReviewAutoHint": "Based on intensity",

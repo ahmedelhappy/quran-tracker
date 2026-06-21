@@ -330,7 +330,7 @@
     "reviewLimitsTitle": "حدود المراجعة اليومية",
     "reviewLimitsDesc": "تجاوز الحساب التلقائي، أو اتركه على تلقائي.",
     "recentReviewLabel": "صفحات المراجعة الحديثة يومياً",
-    "recentReviewHint": "الصفحات المحفوظة خلال آخر 3 أيام",
+    "recentReviewHint": "أحدث الصفحات التي حفظتها",
     "cycleReviewLabel": "صفحات المراجعة يومياً",
     "cycleReviewHint": "عدد الصفحات التي تراجعها كل يوم",
     "cycleReviewAutoHint": "حسب الشدة",
