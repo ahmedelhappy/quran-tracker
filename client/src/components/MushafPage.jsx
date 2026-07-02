@@ -64,9 +64,17 @@ export default function MushafPage({
   return (
     <div ref={rootRef} className={`mushaf-page${ornamental ? ' is-ornamental' : ''}`}>
       {lines.map((line) => {
+        // Each row is pinned to its true printed line number (1..15). Ornamental
+        // pages 1–2 aren't a 15-line grid — they flow centred, so no row pinning.
+        const rowStyle = ornamental ? undefined : { gridRow: line.lineNumber };
+        if (line.type === 'blank') {
+          // A genuinely empty printed row — a reserved slot, nothing to draw. Kept
+          // (not dropped) so the lines above and below stay on their real rows.
+          return ornamental ? null : <div key={`e-${line.lineNumber}`} className="mushaf-blank" style={rowStyle} aria-hidden="true" />;
+        }
         if (line.type === 'surah') {
           return (
-            <div key={`s-${line.lineNumber}`} className="mushaf-surah-line">
+            <div key={`s-${line.lineNumber}`} className="mushaf-surah-line" style={rowStyle}>
               <div className="mushaf-surah-frame" role="img" aria-label={`سورة ${surahName(line.surahNumber)}`}>
                 <span className="mushaf-surah-glyph">{`${String(line.surahNumber).padStart(3, '0')}surah`}</span>
               </div>
@@ -75,13 +83,13 @@ export default function MushafPage({
         }
         if (line.type === 'basmala') {
           return (
-            <div key={`b-${line.lineNumber}`} className="mushaf-surah-line">
+            <div key={`b-${line.lineNumber}`} className="mushaf-surah-line" style={rowStyle}>
               <BasmalaGlyph className="mushaf-basmala-glyph" />
             </div>
           );
         }
         return (
-          <div key={`l-${line.lineNumber}`} className={`mushaf-line${line.centered ? ' is-centered' : ''}`}>
+          <div key={`l-${line.lineNumber}`} className={`mushaf-line${line.centered ? ' is-centered' : ''}`} style={rowStyle}>
             {line.words.map((w) => {
               const concealed = isConcealed?.(w.verseKey) && w.charType === 'word';
               const cls =

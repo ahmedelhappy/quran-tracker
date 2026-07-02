@@ -439,11 +439,16 @@ export default function Library() {
   const sidebarSurah = SURAH_PAGES.find(s =>
     firstSurahNumber ? s.number === firstSurahNumber : (s.start <= currentPage && currentPage <= s.end)
   ) ?? SURAH_PAGES.find(s => s.start <= currentPage && currentPage <= s.end);
-  const currentSurahName = firstSurahNumber
-    ? (isArabic
-        ? (SURAH_PAGES.find(s => s.number === firstSurahNumber)?.arabic ?? '')
-        : (SURAH_PAGES.find(s => s.number === firstSurahNumber)?.name ?? ''))
-    : '';
+  // The surah's display name, honouring the EN/AR toggle.
+  const surahLabelFor = (surahNumber) => {
+    const s = SURAH_PAGES.find(x => x.number === surahNumber);
+    return isArabic ? (s?.arabic ?? '') : (s?.name ?? '');
+  };
+  // Every distinct surah actually on a page, in reading order — multi-surah
+  // pages (e.g. the short-surah pages near the end) list them all, joined by ' · '.
+  const pageSurahLabels = (pageVerses) =>
+    [...new Set((pageVerses ?? []).map((v) => v.surahNumber))].map(surahLabelFor).join(' · ');
+  const currentSurahName = pageSurahLabels(pagesData[0]?.verses);
   const memorizedCount = memorizedPages.size;
 
   const selectedAudioIndex = useMemo(
@@ -458,10 +463,6 @@ export default function Library() {
   const methodSteps = t('howTo.steps', { returnObjects: true });
   const stepList = Array.isArray(methodSteps) ? methodSteps : [];
 
-  const surahLabelFor = (surahNumber) => {
-    const s = SURAH_PAGES.find(x => x.number === surahNumber);
-    return isArabic ? (s?.arabic ?? '') : (s?.name ?? '');
-  };
   const verseRef = (verse) =>
     `${surahLabelFor(verse.surahNumber)} · ${t('library.verseLabel', { n: fmtNum(verse.ayahNumber) })}`;
 
@@ -473,7 +474,7 @@ export default function Library() {
   // mirror a printed mushaf page's furniture.
   const renderPageCard = (pd) => {
     const pageJuz = JUZ_START_PAGES.reduce((j, s, i) => (s <= pd.page ? i + 1 : j), 1);
-    const pageSurah = surahLabelFor(pd.verses?.[0]?.surahNumber);
+    const pageSurah = pageSurahLabels(pd.verses);
     return (
       <div
         key={pd.page}
@@ -481,8 +482,8 @@ export default function Library() {
       >
         <div className="px-3 py-3 sm:px-4 sm:py-4 flex flex-col">
           {/* Running head — surah (outer) · juz (toward the spine) */}
-          <div className="flex items-center justify-between mb-2 px-1.5 text-[11px] font-semibold tracking-wide text-amber-900/55 dark:text-amber-200/35 select-none" dir="rtl">
-            <span className="truncate max-w-[62%]">{pageSurah}</span>
+          <div className="flex items-center justify-between gap-2 mb-2 px-1.5 text-[11px] font-semibold tracking-wide text-amber-900/55 dark:text-amber-200/35 select-none" dir="rtl">
+            <span className="min-w-0 leading-tight">{pageSurah}</span>
             <span className="shrink-0">{t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}</span>
           </div>
           {/* Fixed-size framed page, uniformly scaled to fit the column */}

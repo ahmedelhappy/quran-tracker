@@ -123,40 +123,60 @@ html[lang='ar'] body {
   padding: 12px;
 }
 .mushaf-page {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 6px;
+  /* Exactly 15 equal-height rows, one per printed line. The frame's inner text
+     box is a fixed 800px (852 − 2×14 border − 2×12 padding), so each slot is a
+     fixed 800/15 px. minmax(0, …) forbids any row growing to fit its content —
+     a too-tall row is impossible by construction; content that would exceed a
+     slot is clipped, never allowed to push the page past the frame. */
+  --mushaf-slot: calc((852px - 28px - 24px) / 15);   /* = 800/15 ≈ 53.33px */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(15, minmax(0, 1fr));    /* 15 equal rows = 15 slots */
   width: 100%;
   height: 100%;
   direction: rtl;
-  overflow: visible;
+  overflow: hidden;
   --mushaf-fs: 32px;
   --mushaf-ink: #2a241b;        /* soft warm charcoal — not a harsh black */
   --mushaf-mark: #9a7b22;       /* gold ayah medallions */
 }
 .dark .mushaf-page { --mushaf-ink: #ecdfc0; --mushaf-mark: #d8b25a; }
-.mushaf-page.is-ornamental { justify-content: center; }
+/* Pages 1–2 are the ornamental opening spread — a short, vertically-centred
+   block rather than a full 15-line grid. */
+.mushaf-page.is-ornamental {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35em;
+}
+/* A reserved-but-empty printed row: holds its grid slot, draws nothing. */
+.mushaf-blank { grid-column: 1; }
 
 /* Ayah-end medallions render gold, like the printed mushaf, while the body
    text stays ink. (QCF glyphs are monochrome outlines, so `color` themes them.) */
 .mushaf-word--mark { color: var(--mushaf-mark); }
 
 .mushaf-line {
+  grid-column: 1;
+  align-self: center;        /* centre the single text line within its slot */
   display: block;
-  min-width: 0;              /* keep the line box = page width so an over-wide
+  min-width: 0;              /* keep the line box = column width so an over-wide
                                line overflows (and gets shrunk) instead of
-                               widening the flex item to its content */
+                               widening the grid item to its content */
+  overflow: hidden;          /* a slot can never be breached, even before shrink */
   white-space: nowrap;
   text-align: center;
   font-size: var(--mushaf-fs);
-  line-height: 1.55;
+  line-height: var(--mushaf-slot);   /* one line box = one slot: no gap tricks */
   font-weight: 400;
   color: var(--mushaf-ink);
   transform-origin: center;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+/* Ornamental pages flow rather than grid, so fall back to a proportional
+   line-height and let flexbox space the short block. */
+.mushaf-page.is-ornamental .mushaf-line { line-height: 1.9; align-self: auto; overflow: visible; }
 
 .mushaf-word {
   cursor: pointer;
@@ -178,13 +198,24 @@ html[lang='ar'] body {
   filter: blur(6px);
   opacity: 0.5;
   user-select: none;
-  transition: filter 0.3s ease, opacity 0.3s ease;
+  transition: filter 0.15s ease, opacity 0.15s ease;
 }
+/* Desktop peek: hovering a single word un-blurs ONLY that word (a click still
+   reveals the whole verse). Pure CSS so it costs no React re-render per word. */
+.mushaf-word:hover > .mushaf-concealed { filter: none; opacity: 1; }
 
 /* Surah-name plate and basmala line (the API omits these — rebuilt by us).
    Frame echoes the reader's own page-card styling (cream + amber/gold border)
    per the app's existing branding, rather than inventing a new palette. */
-.mushaf-surah-line { display: flex; justify-content: center; align-items: center; padding: 0.18em 0; }
+.mushaf-surah-line {
+  grid-column: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;         /* let the slot, not the plate, set the row height */
+  padding: 0;
+  overflow: hidden;      /* plate/basmala are sized to fit, this is the backstop */
+}
 /* Surah-name plate: the dark gold-ruled cartouche of the Madinah print —
    deep ground, a double gold keyline, gilt name, and a rub-el-hizb floret at
    each end. */
@@ -195,7 +226,8 @@ html[lang='ar'] body {
   justify-content: center;
   width: 100%;
   max-width: none;
-  padding: 0.26em 2.1em;
+  max-height: 100%;        /* never taller than its single line slot */
+  padding: 0.14em 2.1em;
   border-radius: 3px;
   background: linear-gradient(180deg, #2a956f, #1a7152);
   box-shadow:
@@ -224,15 +256,16 @@ html[lang='ar'] body {
 .mushaf-surah-frame::after { left: 0.5em; }
 .mushaf-surah-glyph {
   font-family: 'QCF_SurahNames', serif;
-  font-size: calc(var(--mushaf-fs) * 1.22);
+  font-size: calc(var(--mushaf-fs) * 1.12);
   font-weight: 400;
-  line-height: 1.3;
+  line-height: 1;          /* plate height driven by the glyph, kept within a slot */
   color: #f3e2b3;
 }
 .mushaf-basmala-glyph {
   display: block;
   width: calc(var(--mushaf-fs) * 6.4);
   height: auto;
+  max-height: 100%;        /* never taller than its single line slot */
   color: var(--mushaf-ink);
 }
 .mushaf-basmala-glyph path { fill: currentColor; }

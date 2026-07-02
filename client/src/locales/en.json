@@ -592,7 +592,7 @@
       "testSelfHint": "Hide the text and recite from memory; tap any verse to check it piece by piece.",
       "revealAll": "Reveal all",
       "hideAll": "Hide all",
-      "tapToReveal": "Recite from memory, then tap a covered verse to reveal and check it.",
+      "tapToReveal": "Recite from memory, then check yourself: hover a word to peek at it on desktop, or tap a covered verse to reveal it fully.",
       "method": "Memorization steps",
       "fullGuide": "Open the full guide",
       "markThisPage": "Mark this page memorized",

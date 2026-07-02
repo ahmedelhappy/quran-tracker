@@ -104,11 +104,15 @@ const buildLines = (page, verses) => {
     }
   }
 
+  // Emit all 15 rows, in order, so the renderer can place every line at its true
+  // printed row. Genuinely blank lines (the print leaves some rows empty) are
+  // kept as `blank` slots — dropping them would let the remaining lines drift
+  // upward and lose their vertical registration with the printed page.
   const lines = [];
   for (let L = 1; L <= TOTAL_LINES; L++) {
     if (lineWords.has(L)) lines.push({ lineNumber: L, type: 'ayah', words: lineWords.get(L) });
     else if (headers.has(L)) lines.push({ lineNumber: L, ...headers.get(L) });
-    // genuinely blank lines are dropped — vertical layout distributes the rest
+    else lines.push({ lineNumber: L, type: 'blank' });
   }
 
   // Centre short lines so words aren't stretched across the page: the ornamental
