@@ -4,27 +4,27 @@ import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
-  FiTarget, FiEye, FiEyeOff, FiArrowRight, FiHelpCircle, FiCheckSquare, FiSquare,
+  FiTarget, FiEye, FiEyeOff, FiArrowRight, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
+import MushafPage from '../components/MushafPage';
 import { startLibraryTour, startMemorizeTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
-  fetchPageText,
   fetchPageTafsir,
   fetchAyahTafsir,
   getAyahAudioUrl,
-  splitBasmala,
   toArabicDigits,
   RECITERS,
   DEFAULT_RECITER,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
+import { fetchMushafPage, ensurePageFont, mushafFontFamily } from '../services/mushafApi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { useDraggable } from '../hooks/useDraggable';
 
@@ -35,6 +35,11 @@ const JUZ_START_PAGES = [
 ];
 
 const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
+
+// The ayah's plain Uthmani text (basmala excluded), used for the legible
+// tafsir-panel preview. Taken verse-level from the API — word-level text is no
+// longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
+const verseText = (verse) => verse.textUthmani ?? '';
 
 export default function Library() {
   const { t, i18n } = useTranslation();
@@ -52,12 +57,18 @@ export default function Library() {
   const memorizeMode = searchParams.get('mode') === 'memorize';
   const [testSelf, setTestSelf] = useState(false);          // hide text for active recall
   const [revealAll, setRevealAll] = useState(false);
-  const [revealedSet, setRevealedSet] = useState(() => new Set()); // verses peeked one by one
+  const [revealedSet, setRevealedSet] = useState(() => new Set()); // verseKeys peeked one by one
   const [checkedSteps, setCheckedSteps] = useState(() => new Set()); // ephemeral method ticks
   const [methodOpen, setMethodOpen] = useState(true);
   const [howToOpen, setHowToOpen] = useState(false);
 
-  const [ayahs, setAyahs] = useState([]);
+  // ── View mode: single page or two-page spread (spread needs width, so it's
+  // only honoured on large screens and never in the focused memorize session).
+  const [view, setView] = useState(() => (localStorage.getItem('mushafView') === 'double' ? 'double' : 'single'));
+  const [isWide, setIsWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  const twoPage = view === 'double' && isWide && !memorizeMode;
+
+  const [pagesData, setPagesData] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -69,14 +80,14 @@ export default function Library() {
     const saved = localStorage.getItem('reciter');
     return RECITERS.some(r => r.id === saved) ? saved : DEFAULT_RECITER;
   });
-  const [playingIndex, setPlayingIndex] = useState(null);
+  const [playingIndex, setPlayingIndex] = useState(null); // index into the combined `verses`
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioBuffering, setAudioBuffering] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef(null);
 
-  // ── Verse selection + tafsir state ──────────────────────
-  const [selectedIndex, setSelectedIndex] = useState(null);
+  // ── Verse selection + tafsir state (verses addressed by stable verseKey) ──
+  const [selectedVerseKey, setSelectedVerseKey] = useState(null);
   const [tafsirOpen, setTafsirOpen] = useState(false);
   const [tafsirIndex, setTafsirIndex] = useState(null);
   const [tafsirEdition, setTafsirEdition] = useState(() => {
@@ -92,13 +103,44 @@ export default function Library() {
   const { ref: popoverRef, style: popoverDragStyle, dragHandlers: popoverDragHandlers } = useDraggable('versePopoverPos');
 
   // ── Contextual onboarding (driver.js) ────────────────────
-  // One live tour at a time; `tourActiveRef` also blocks the verse coachmark
-  // from stacking on top of a running tour. The *-checked refs latch each
-  // walkthrough to one attempt per mount.
   const tourRef = useRef(null);
   const tourActiveRef = useRef(false);
   const libTourCheckedRef = useRef(false);
   const memTourCheckedRef = useRef(false);
+
+  // The pages currently on screen (the spread is anchored to the right/odd page).
+  const visiblePages = useMemo(() => {
+    if (!twoPage) return [currentPage];
+    const right = currentPage % 2 === 1 ? currentPage : currentPage - 1;
+    const left = right + 1;
+    return left <= 604 ? [right, left] : [right];
+  }, [twoPage, currentPage]);
+
+  // All verses on screen, in reading order, each tagged with the page it sits on.
+  // A verse straddling a page break is returned for both pages — keep the first
+  // so the audio/tafsir list has no duplicate verseKeys across the spread.
+  const verses = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    pagesData.forEach((pd) =>
+      pd.verses.forEach((v) => {
+        if (seen.has(v.verseKey)) return;
+        seen.add(v.verseKey);
+        out.push({ ...v, page: pd.page });
+      })
+    );
+    return out;
+  }, [pagesData]);
+
+  useEffect(() => { localStorage.setItem('mushafView', view); }, [view]);
+
+  // Track the lg breakpoint so the spread only ever renders where it fits.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e) => setIsWide(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Mount: memorized pages (for the badge + stat)
   useEffect(() => {
@@ -108,18 +150,23 @@ export default function Library() {
     }).catch(() => {});
   }, []);
 
-  // Page change: fetch mushaf text
+  // Page / view change: load each visible page's word data + its glyph font.
   useEffect(() => {
     let cancelled = false;
     setPageInput(String(currentPage));
     setPageLoading(true);
     setPageError(false);
-    fetchPageText(currentPage)
-      .then(data => { if (!cancelled) setAyahs(data); })
+    Promise.all(
+      visiblePages.map(async (p) => {
+        const [data] = await Promise.all([fetchMushafPage(p), ensurePageFont(p)]);
+        return data;
+      })
+    )
+      .then((datas) => { if (!cancelled) setPagesData(datas); })
       .catch(() => { if (!cancelled) setPageError(true); })
       .finally(() => { if (!cancelled) setPageLoading(false); });
     return () => { cancelled = true; };
-  }, [currentPage, reloadKey]);
+  }, [visiblePages, currentPage, reloadKey]);
 
   const stopAudio = useCallback(() => {
     const el = audioRef.current;
@@ -129,15 +176,14 @@ export default function Library() {
     setAudioBuffering(false);
   }, []);
 
-  // Page change / unmount: stop audio, clear selection, close tafsir
+  // Page / view change: stop audio, clear selection, close tafsir (verse
+  // indices shift when the on-screen verse set changes).
   useEffect(() => {
-    return () => {
-      stopAudio();
-      setSelectedIndex(null);
-      setTafsirOpen(false);
-      setTafsirIndex(null);
-    };
-  }, [currentPage, stopAudio]);
+    stopAudio();
+    setSelectedVerseKey(null);
+    setTafsirOpen(false);
+    setTafsirIndex(null);
+  }, [currentPage, view, stopAudio]);
 
   // Page change: start a fresh self-test (everything concealed again)
   useEffect(() => {
@@ -156,10 +202,7 @@ export default function Library() {
 
   // First-visit reader tour — only in the normal reader (memorize mode has its
   // own tour below), gated by `seenLibraryTour`. `?tour=1` (Settings → Replay)
-  // forces it and is then stripped from the URL. Deferred a beat so the reader
-  // has painted before spotlighting. The cleanup only cancels a still-pending
-  // launch; an already-running tour is torn down on real unmount, so React
-  // StrictMode's dev double-run can't kill a live tour.
+  // forces it and is then stripped from the URL.
   useEffect(() => {
     if (memorizeMode || libTourCheckedRef.current) return;
     const forceTour = searchParams.get('tour') === '1';
@@ -189,9 +232,7 @@ export default function Library() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memorizeMode]);
 
-  // First memorize-mode entry — a short tour of only the controls it adds,
-  // gated by `seenMemorizeModeTour`. Mode-exclusive with the reader tour above,
-  // so the two never stack.
+  // First memorize-mode entry — a short tour of only the controls it adds.
   useEffect(() => {
     if (!memorizeMode || memTourCheckedRef.current) return;
     if (localStorage.getItem('seenMemorizeModeTour')) {
@@ -223,10 +264,9 @@ export default function Library() {
   }, []);
 
   // One-time coachmark the first time a verse is selected — highlights the
-  // Play + Tafsir buttons in the popover. Fires at most once ever (the flag is
-  // set up-front) and never while a tour is running (guards against stacking).
+  // Play + Tafsir buttons in the popover.
   useEffect(() => {
-    if (selectedIndex == null || tourActiveRef.current) return;
+    if (selectedVerseKey == null || tourActiveRef.current) return;
     if (localStorage.getItem('seenVerseActionsHint')) return;
     const id = setTimeout(() => {
       if (tourActiveRef.current || localStorage.getItem('seenVerseActionsHint')) return;
@@ -237,26 +277,26 @@ export default function Library() {
     }, 200);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIndex]);
+  }, [selectedVerseKey]);
 
   // Drive the single <audio> element: load + play current ayah
   useEffect(() => {
     const el = audioRef.current;
-    if (!el || playingIndex == null || !ayahs[playingIndex]) return;
+    if (!el || playingIndex == null || !verses[playingIndex]) return;
     setAudioError(false);
-    el.src = getAyahAudioUrl(reciter, ayahs[playingIndex].number);
+    el.src = getAyahAudioUrl(reciter, verses[playingIndex].id);
     if (isPlaying) {
       el.play().catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playingIndex, reciter, ayahs]);
+  }, [playingIndex, reciter, verses]);
 
   useEffect(() => {
     localStorage.setItem('reciter', reciter);
   }, [reciter]);
 
   const playAyah = (index) => {
-    if (index < 0 || index >= ayahs.length) return;
+    if (index < 0 || index >= verses.length) return;
     setAudioError(false);
     if (index === playingIndex) {
       const el = audioRef.current;
@@ -283,20 +323,32 @@ export default function Library() {
   };
 
   const handleEnded = () => {
-    if (playingIndex != null && playingIndex < ayahs.length - 1) {
+    if (playingIndex != null && playingIndex < verses.length - 1) {
       setPlayingIndex(playingIndex + 1);
     } else {
       stopAudio();
     }
   };
 
+  const pageStep = twoPage ? 2 : 1;
+  const maxPage = twoPage ? 603 : 604;
+
   const goToPage = (n) => {
-    const page = clampPage(n);
+    let page = clampPage(n);
+    // In the spread, anchor navigation to the right (odd) page of the pair.
+    if (twoPage && page % 2 === 0) page = Math.max(1, page - 1);
     if (page === currentPage) return;
-    // Preserve memorize mode across page navigation so the session continues.
     const params = { page: String(page) };
     if (memorizeMode) params.mode = 'memorize';
     setSearchParams(params, { replace: true });
+  };
+
+  const setViewMode = (mode) => {
+    setView(mode);
+    // Snap onto the right (odd) page so the new spread pairs correctly.
+    if (mode === 'double' && isWide && currentPage % 2 === 0) {
+      setSearchParams({ page: String(Math.max(1, currentPage - 1)) }, { replace: true });
+    }
   };
 
   // ── Memorize mode controls ───────────────────────────────
@@ -304,8 +356,12 @@ export default function Library() {
   const exitMemorize = () => setSearchParams({ page: String(currentPage) }, { replace: true });
 
   // A verse is hidden while self-testing until it's peeked (or "Reveal all").
-  const isConcealed = (index) => memorizeMode && testSelf && !revealAll && !revealedSet.has(index);
-  const revealVerse = (index) => setRevealedSet(prev => new Set(prev).add(index));
+  const isConcealed = useCallback(
+    (verseKey) => memorizeMode && testSelf && !revealAll && !revealedSet.has(verseKey),
+    [memorizeMode, testSelf, revealAll, revealedSet]
+  );
+  const revealVerse = useCallback((verseKey) => setRevealedSet(prev => new Set(prev).add(verseKey)), []);
+  const selectVerse = useCallback((verseKey) => setSelectedVerseKey(prev => (prev === verseKey ? null : verseKey)), []);
   const hideAllVerses = () => { setRevealAll(false); setRevealedSet(new Set()); };
   const toggleTestSelf = () => { setTestSelf(v => !v); hideAllVerses(); };
   const toggleStep = (i) => setCheckedSteps(prev => {
@@ -322,9 +378,6 @@ export default function Library() {
   };
 
   // ── Mark / unmark the current page as memorized ──────────
-  // This always marks/unmarks the FULL page (the app has no half-page mode),
-  // so there's no half-index to track here. Optimistically flip the local
-  // set + count, then reconcile with the server, rolling back on error.
   const toggleMemorized = async () => {
     if (savingMemorized) return;
     const prevPages = memorizedPages;
@@ -336,13 +389,9 @@ export default function Library() {
     setMemorizedPages(nextPages);
     try {
       if (adding) {
-        // memorizedDate is set server-side by the 'new' handler.
         await progressAPI.markComplete({ pageNumber: currentPage, type: 'new' });
         showToast(t('library.markedToast', { n: fmtNum(currentPage) }), 'success');
       } else {
-        // Replace the memorized set instead of calling `uncomplete`: that route
-        // only undoes pages memorized *today*, so it 400s on older/onboarded
-        // pages. updateMemorized deletes the dropped page regardless of date.
         await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
         showToast(t('library.unmarkedToast', { n: fmtNum(currentPage) }), 'success');
       }
@@ -355,25 +404,25 @@ export default function Library() {
   };
 
   // ── Tafsir loading ───────────────────────────────────────
-  const tafsirAyah = tafsirIndex != null ? ayahs[tafsirIndex] : null;
+  const tafsirVerse = tafsirIndex != null ? verses[tafsirIndex] : null;
 
   useEffect(() => {
-    if (!tafsirOpen || !tafsirAyah) return;
+    if (!tafsirOpen || !tafsirVerse) return;
     let cancelled = false;
     const ed = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
     setTafsirLoading(true);
     setTafsirError(false);
     setTafsirText('');
     const load = ed.source === 'page'
-      ? fetchPageTafsir(currentPage, ed.edition).then(list =>
-          list.find(a => a.number === tafsirAyah.number)?.text ?? '')
-      : fetchAyahTafsir(ed.slug, tafsirAyah.surah.number, tafsirAyah.numberInSurah);
+      ? fetchPageTafsir(tafsirVerse.page, ed.edition).then(list =>
+          list.find(a => a.number === tafsirVerse.id)?.text ?? '')
+      : fetchAyahTafsir(ed.slug, tafsirVerse.surahNumber, tafsirVerse.ayahNumber);
     load
       .then(text => { if (!cancelled) setTafsirText(text); })
       .catch(() => { if (!cancelled) setTafsirError(true); })
       .finally(() => { if (!cancelled) setTafsirLoading(false); });
     return () => { cancelled = true; };
-  }, [tafsirOpen, tafsirAyah, tafsirEdition, currentPage, tafsirReloadKey]);
+  }, [tafsirOpen, tafsirVerse, tafsirEdition, tafsirReloadKey]);
 
   useEffect(() => {
     localStorage.setItem('tafsirEdition', tafsirEdition);
@@ -385,53 +434,90 @@ export default function Library() {
   };
 
   // ── Derived data ─────────────────────────────────────────
-  const blocks = useMemo(() => {
-    const out = [];
-    let run = null;
-    ayahs.forEach((ayah, index) => {
-      const { basmala, text } = splitBasmala(ayah);
-      if (ayah.numberInSurah === 1) {
-        run = null;
-        out.push({ type: 'surah', key: `s-${ayah.surah.number}`, surah: ayah.surah });
-      }
-      if (basmala) {
-        run = null;
-        out.push({ type: 'basmala', key: `b-${ayah.surah.number}`, text: basmala });
-      }
-      if (!run) {
-        run = { type: 'run', key: `r-${ayah.number}`, items: [] };
-        out.push(run);
-      }
-      run.items.push({ index, ayah, text });
-    });
-    return out;
-  }, [ayahs]);
-
   const currentJuz = JUZ_START_PAGES.reduce((juz, start, i) => (start <= currentPage ? i + 1 : juz), 1);
-  const firstSurah = ayahs[0]?.surah ?? null;
+  const firstSurahNumber = pagesData[0]?.verses?.[0]?.surahNumber ?? null;
   const sidebarSurah = SURAH_PAGES.find(s =>
-    firstSurah ? s.number === firstSurah.number : (s.start <= currentPage && currentPage <= s.end)
+    firstSurahNumber ? s.number === firstSurahNumber : (s.start <= currentPage && currentPage <= s.end)
   ) ?? SURAH_PAGES.find(s => s.start <= currentPage && currentPage <= s.end);
-  const currentSurahName = firstSurah
+  const currentSurahName = firstSurahNumber
     ? (isArabic
-        // API name already carries the "سورة" prefix; use the bare name from
-        // SURAH_PAGES so the "سورة" label isn't repeated.
-        ? (SURAH_PAGES.find(s => s.number === firstSurah.number)?.arabic ?? firstSurah.name)
-        : firstSurah.englishName)
+        ? (SURAH_PAGES.find(s => s.number === firstSurahNumber)?.arabic ?? '')
+        : (SURAH_PAGES.find(s => s.number === firstSurahNumber)?.name ?? ''))
     : '';
   const memorizedCount = memorizedPages.size;
-  const selectedAyah = selectedIndex != null ? ayahs[selectedIndex] : null;
+
+  const selectedAudioIndex = useMemo(
+    () => (selectedVerseKey != null ? verses.findIndex(v => v.verseKey === selectedVerseKey) : -1),
+    [verses, selectedVerseKey]
+  );
+  const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
+  const playingVerseKey = playingIndex != null ? verses[playingIndex]?.verseKey ?? null : null;
   const pageMemorized = memorizedPages.has(currentPage);
 
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
   const stepList = Array.isArray(methodSteps) ? methodSteps : [];
 
-  const verseRef = (ayah) =>
-    `${isArabic ? (SURAH_PAGES.find(s => s.number === ayah.surah.number)?.arabic ?? ayah.surah.name) : ayah.surah.englishName} · ${t('library.verseLabel', { n: fmtNum(ayah.numberInSurah) })}`;
+  const surahLabelFor = (surahNumber) => {
+    const s = SURAH_PAGES.find(x => x.number === surahNumber);
+    return isArabic ? (s?.arabic ?? '') : (s?.name ?? '');
+  };
+  const verseRef = (verse) =>
+    `${surahLabelFor(verse.surahNumber)} · ${t('library.verseLabel', { n: fmtNum(verse.ayahNumber) })}`;
 
   const selectCls =
     'w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500';
+
+  // One bordered mushaf page card (used for both single and the spread halves).
+  // The top running head (surah · juz) and the centred page number at the foot
+  // mirror a printed mushaf page's furniture.
+  const renderPageCard = (pd) => {
+    const pageJuz = JUZ_START_PAGES.reduce((j, s, i) => (s <= pd.page ? i + 1 : j), 1);
+    const pageSurah = surahLabelFor(pd.verses?.[0]?.surahNumber);
+    return (
+      <div
+        key={pd.page}
+        className="flex-1 min-w-0 rounded-2xl ring-1 ring-amber-200/60 dark:ring-amber-900/30 bg-[#f7f0da] dark:bg-[#1f1b14] shadow-xl dark:shadow-black/40 overflow-hidden"
+      >
+        <div className="px-3 py-3 sm:px-4 sm:py-4 flex flex-col">
+          {/* Running head — surah (outer) · juz (toward the spine) */}
+          <div className="flex items-center justify-between mb-2 px-1.5 text-[11px] font-semibold tracking-wide text-amber-900/55 dark:text-amber-200/35 select-none" dir="rtl">
+            <span className="truncate max-w-[62%]">{pageSurah}</span>
+            <span className="shrink-0">{t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}</span>
+          </div>
+          {/* Fixed-size framed page, uniformly scaled to fit the column */}
+          <div className="mushaf-canvas">
+            <div className="mushaf-frame">
+              <MushafPage
+                pageData={pd}
+                fontFamily={mushafFontFamily(pd.page)}
+                selectedVerseKey={selectedVerseKey}
+                playingVerseKey={playingVerseKey}
+                isConcealed={isConcealed}
+                onSelectVerse={selectVerse}
+                onRevealVerse={revealVerse}
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-center text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
+            {fmtNum(pd.page)}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const skeletonCard = (key) => (
+    <div key={key} className="flex-1 min-w-0 rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#f7f0da] dark:bg-[#1f1b14] shadow-xl dark:shadow-black/40 overflow-hidden">
+      <div className="border border-amber-100 dark:border-amber-950/60 m-2 rounded-xl px-5 py-6 sm:px-8 sm:py-8 min-h-[60vh]">
+        <div className="flex flex-col gap-4 animate-pulse pt-2" dir="rtl">
+          {Array(12).fill(0).map((_, i) => (
+            <div key={i} className="h-6 rounded bg-amber-100/70 dark:bg-gray-700/60" style={{ width: `${88 + (i % 3) * 4}%` }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#FFFDF5] dark:bg-gray-900 sacred-pattern flex flex-col">
@@ -472,7 +558,7 @@ export default function Library() {
               <div className="flex items-center gap-2" data-tour="lib-nav">
                 <Tooltip label={t('tooltips.prevPage')}>
                   <button
-                    onClick={() => goToPage(currentPage - 1)}
+                    onClick={() => goToPage(currentPage - pageStep)}
                     disabled={currentPage <= 1}
                     className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
@@ -484,8 +570,8 @@ export default function Library() {
                 </span>
                 <Tooltip label={t('tooltips.nextPage')}>
                   <button
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage >= 604}
+                    onClick={() => goToPage(currentPage + pageStep)}
+                    disabled={currentPage >= maxPage}
                     className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
                     <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
@@ -503,13 +589,34 @@ export default function Library() {
                 className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
                 placeholder={t('library.gotoPagePlaceholder')}
               />
+
+              {/* Single / two-page spread toggle (large screens only) */}
+              {!memorizeMode && (
+                <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
+                  <button
+                    onClick={() => setViewMode('single')}
+                    className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
+                      view === 'single' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <FiFile className="w-3.5 h-3.5" /> {t('library.view.single')}
+                  </button>
+                  <button
+                    onClick={() => setViewMode('double')}
+                    className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
+                      view === 'double' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
+                  </button>
+                </div>
+              )}
+
               {memorizedPages.has(currentPage) && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-2.5 py-1 rounded-full w-max">
                   ✓ {t('library.memorizedBadge')}
                 </span>
               )}
-              {/* Quick edit: mark/unmark this page as memorized without leaving the reader.
-                  In memorize mode the prominent CTA below replaces this. */}
               {!memorizeMode && (
                 <button
                   onClick={toggleMemorized}
@@ -693,95 +800,44 @@ export default function Library() {
           </aside>
 
           {/* ── Mushaf column ─────────────────────────────── */}
-          <div className="flex-1 flex flex-col gap-4 min-w-0">
+          {/* w-full so that when the layout stacks (below lg) the column fills the
+              row — `items-start` otherwise shrinks it to content width and pins it
+              to the start edge, leaving the page card off-centre on narrow screens. */}
+          <div className="flex-1 w-full flex flex-col gap-4 min-w-0">
 
-            {/* Discoverability cue: in self-test the tap reveals a hidden verse;
-                otherwise the per-verse listen/tafsir actions appear after a tap. */}
+            {/* Discoverability cue */}
             <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
               <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
               {memorizeMode && testSelf ? t('library.memorize.tapToReveal') : t('hints.libraryVerseTap')}
             </p>
 
-            {/* Mushaf page card */}
-            <div className="w-full max-w-[650px] mx-auto rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#fdf8ec] dark:bg-[#1f1b14] shadow-xl dark:shadow-black/40 overflow-hidden">
-              <div className="border border-amber-100 dark:border-amber-950/60 m-2 rounded-xl px-5 py-6 sm:px-8 sm:py-8 min-h-[60vh]">
-                {pageLoading ? (
-                  <div className="flex flex-col gap-4 animate-pulse pt-2" dir="rtl">
-                    {Array(10).fill(0).map((_, i) => (
-                      <div key={i} className="h-6 rounded bg-amber-100/70 dark:bg-gray-700/60" style={{ width: `${88 + (i % 3) * 4}%` }} />
-                    ))}
-                  </div>
-                ) : pageError ? (
-                  <div className="h-64 flex flex-col items-center justify-center gap-3 text-center">
-                    <FiAlertCircle className="w-10 h-10 text-[#707974] dark:text-gray-500" />
-                    <p className="text-sm font-medium text-[#404944] dark:text-gray-400">{t('library.loadError')}</p>
-                    <button
-                      onClick={() => setReloadKey(k => k + 1)}
-                      className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
-                    >
-                      {t('common.retry')}
-                    </button>
-                  </div>
-                ) : (
-                  <div dir="rtl">
-                    {blocks.map(block => {
-                      if (block.type === 'surah') {
-                        return (
-                          <div key={block.key} className="my-4 rounded-xl border-2 border-emerald-800/30 dark:border-emerald-500/30 bg-emerald-900/5 dark:bg-emerald-500/5 px-4 py-2.5 flex items-center justify-center gap-3">
-                            <span className="text-emerald-800/50 dark:text-emerald-400/50 select-none">۞</span>
-                            <span className="mushaf-surah-name text-xl sm:text-2xl text-emerald-900 dark:text-emerald-300">
-                              {block.surah.name}
-                            </span>
-                            <span className="text-emerald-800/50 dark:text-emerald-400/50 select-none">۞</span>
-                          </div>
-                        );
-                      }
-                      if (block.type === 'basmala') {
-                        return (
-                          <p key={block.key} className="mushaf-basmala text-[#1f1505] dark:text-[#f3e9d2] my-2">
-                            {block.text}
-                          </p>
-                        );
-                      }
-                      return (
-                        <p key={block.key} className="mushaf-text text-[#1f1505] dark:text-[#f3e9d2]">
-                          {block.items.map(({ index, ayah, text }) => {
-                            const concealed = isConcealed(index);
-                            return (
-                              <span
-                                key={ayah.number}
-                                onClick={() => {
-                                  // While testing, the first tap peeks at a hidden verse;
-                                  // afterwards a tap selects it for the listen/tafsir actions.
-                                  if (concealed) { revealVerse(index); return; }
-                                  setSelectedIndex(prev => prev === index ? null : index);
-                                }}
-                                className={`cursor-pointer transition-colors rounded px-0.5 -mx-0.5 box-decoration-clone ${
-                                  playingIndex === index
-                                    ? 'bg-emerald-200/70 dark:bg-emerald-700/40'
-                                    : selectedIndex === index
-                                      ? 'bg-amber-200/70 dark:bg-amber-600/30'
-                                      : 'hover:bg-emerald-100/60 dark:hover:bg-emerald-800/20'
-                                }`}
-                              >
-                                {/* Blur (not hide) the words so the line shape stays as a memory cue */}
-                                <span className={concealed ? 'blur-[6px] opacity-50 select-none' : 'transition-[filter,opacity] duration-300'}>
-                                  {text}
-                                </span>
-                                {/* Ayah-number marker stays sharp as an anchor */}
-                                <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                                  ﴿{toArabicDigits(ayah.numberInSurah)}﴾
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </p>
-                      );
-                    })}
-                  </div>
-                )}
+            {/* Mushaf page(s) */}
+            {pageLoading ? (
+              <div className={twoPage ? 'w-full flex gap-3 items-stretch' : 'w-full max-w-[700px] mx-auto'} style={twoPage ? { direction: 'rtl' } : undefined}>
+                {(twoPage ? visiblePages : [currentPage]).map((p) => skeletonCard(p))}
               </div>
-            </div>
+            ) : pageError ? (
+              <div className="w-full max-w-[700px] mx-auto rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#fdf8ec] dark:bg-[#1f1b14] shadow-xl">
+                <div className="h-64 flex flex-col items-center justify-center gap-3 text-center px-6">
+                  <FiAlertCircle className="w-10 h-10 text-[#707974] dark:text-gray-500" />
+                  <p className="text-sm font-medium text-[#404944] dark:text-gray-400">{t('library.loadError')}</p>
+                  <button
+                    onClick={() => setReloadKey(k => k + 1)}
+                    className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {t('common.retry')}
+                  </button>
+                </div>
+              </div>
+            ) : twoPage ? (
+              <div className="w-full flex gap-3 items-stretch" style={{ direction: 'rtl' }}>
+                {pagesData.map(renderPageCard)}
+              </div>
+            ) : (
+              <div className="w-full max-w-[700px] mx-auto">
+                {pagesData[0] && renderPageCard(pagesData[0])}
+              </div>
+            )}
 
             {/* Page info bar */}
             <p className="text-sm text-[#707974] dark:text-gray-500 text-center">
@@ -791,7 +847,7 @@ export default function Library() {
             </p>
 
             {/* Verse action popover — draggable only via the grip handle */}
-            {selectedAyah && (
+            {selectedVerse && (
               <div
                 ref={popoverRef}
                 style={popoverDragStyle}
@@ -807,16 +863,16 @@ export default function Library() {
                   </span>
                 </Tooltip>
                 <span className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
-                  {verseRef(selectedAyah)}
+                  {verseRef(selectedVerse)}
                 </span>
                 {/* Play + Tafsir actions — also the anchor for the one-time coachmark */}
                 <div className="flex items-center gap-2" data-tour="verse-actions">
                   {(() => {
-                    const isThisPlaying = selectedIndex === playingIndex && isPlaying;
+                    const isThisPlaying = selectedAudioIndex === playingIndex && isPlaying;
                     return (
                       <Tooltip label={isThisPlaying ? t('tooltips.pause') : t('tooltips.playFromHere')}>
                         <button
-                          onClick={() => toggleSelectedVerse(selectedIndex)}
+                          onClick={() => toggleSelectedVerse(selectedAudioIndex)}
                           className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
                         >
                           {isThisPlaying
@@ -828,7 +884,7 @@ export default function Library() {
                   })()}
                   <Tooltip label={t('tooltips.verseTafsir')}>
                     <button
-                      onClick={() => openTafsir(selectedIndex)}
+                      onClick={() => openTafsir(selectedAudioIndex)}
                       className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
                     >
                       <FiBookOpen className="w-3.5 h-3.5" />
@@ -837,7 +893,7 @@ export default function Library() {
                 </div>
                 <Tooltip label={t('tooltips.close')}>
                   <button
-                    onClick={() => setSelectedIndex(null)}
+                    onClick={() => setSelectedVerseKey(null)}
                     className="w-8 h-8 rounded-full text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
                     <FiX className="w-4 h-4" />
@@ -861,7 +917,7 @@ export default function Library() {
                 <Tooltip label={isPlaying ? t('tooltips.pause') : t('tooltips.play')}>
                   <button
                     onClick={togglePlayPause}
-                    disabled={pageLoading || pageError || ayahs.length === 0}
+                    disabled={pageLoading || pageError || verses.length === 0}
                     className="w-11 h-11 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] disabled:opacity-40 transition-colors shrink-0"
                   >
                     {audioBuffering && isPlaying ? (
@@ -876,7 +932,7 @@ export default function Library() {
                 <Tooltip label={t('tooltips.nextVerse')}>
                   <button
                     onClick={() => playAyah(playingIndex == null ? 0 : playingIndex + 1)}
-                    disabled={pageLoading || pageError || ayahs.length === 0 || (playingIndex != null && playingIndex >= ayahs.length - 1)}
+                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex != null && playingIndex >= verses.length - 1)}
                     className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiSkipForward className="w-4 h-4 rtl:rotate-180" />
@@ -890,7 +946,7 @@ export default function Library() {
                   {audioError
                     ? <span className="text-[#ba1a1a] dark:text-red-400">{t('library.audioError')}</span>
                     : playingIndex != null
-                      ? t('library.verseOf', { current: fmtNum(playingIndex + 1), total: fmtNum(ayahs.length) })
+                      ? t('library.verseOf', { current: fmtNum(playingIndex + 1), total: fmtNum(verses.length) })
                       : t('library.listen')}
                 </p>
               </div>
@@ -924,7 +980,7 @@ export default function Library() {
       </main>
 
       {/* ── Tafsir panel: bottom sheet (mobile) / side panel (desktop) ── */}
-      {tafsirOpen && tafsirAyah && (
+      {tafsirOpen && tafsirVerse && (
         <>
           <div
             className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
@@ -952,8 +1008,8 @@ export default function Library() {
                 </Tooltip>
                 <Tooltip label={t('tooltips.nextVerse')}>
                   <button
-                    onClick={() => setTafsirIndex(i => Math.min(ayahs.length - 1, i + 1))}
-                    disabled={tafsirIndex >= ayahs.length - 1}
+                    onClick={() => setTafsirIndex(i => Math.min(verses.length - 1, i + 1))}
+                    disabled={tafsirIndex >= verses.length - 1}
                     className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
@@ -975,16 +1031,16 @@ export default function Library() {
               {/* The verse, mushaf-styled */}
               <div dir="rtl" className="rounded-xl bg-[#fdf8ec] dark:bg-[#1f1b14] border border-amber-200/70 dark:border-amber-900/40 px-4 py-3">
                 <p className="mushaf-text !text-xl text-[#1f1505] dark:text-[#f3e9d2]">
-                  {splitBasmala(tafsirAyah).text}
+                  {verseText(tafsirVerse)}
                   <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                    ﴿{toArabicDigits(tafsirAyah.numberInSurah)}﴾
+                    ﴿{toArabicDigits(tafsirVerse.ayahNumber)}﴾
                   </span>
                 </p>
               </div>
 
               {/* Surah · verse + play */}
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirAyah)}</p>
+                <p className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirVerse)}</p>
                 <button
                   onClick={() => playAyah(tafsirIndex)}
                   title={t('library.playThisVerse')}

@@ -555,6 +555,7 @@
     "markedToast": "Page {{n}} marked as memorized",
     "unmarkedToast": "Page {{n}} removed from memorized",
     "pageLabel": "Page",
+    "view": { "single": "1 page", "double": "2 pages" },
     "gotoPagePlaceholder": "Go to page…",
     "prevPage": "Previous page",
     "nextPage": "Next page",

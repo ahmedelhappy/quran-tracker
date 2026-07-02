@@ -555,6 +555,7 @@
     "markedToast": "تم تحديد الصفحة {{n}} كمحفوظة",
     "unmarkedToast": "تمت إزالة الصفحة {{n}} من المحفوظات",
     "pageLabel": "الصفحة",
+    "view": { "single": "صفحة", "double": "صفحتان" },
     "gotoPagePlaceholder": "اذهب إلى صفحة…",
     "prevPage": "الصفحة السابقة",
     "nextPage": "الصفحة التالية",

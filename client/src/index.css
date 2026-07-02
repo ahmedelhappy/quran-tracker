@@ -69,6 +69,174 @@ html[lang='ar'] body {
   font-family: 'Amiri Quran', 'Scheherazade New', serif;
 }
 
+/* Furniture fonts: sura_names draws the ornamental surah-name plate artwork as
+   a ligature keyed on the zero-padded surah number ("094" → full name glyph);
+   UthmanicHafs renders the basmala (the per-page QCF font carries no basmala
+   glyph — it's a blank line in the print, rebuilt by us). Both are plain
+   monochrome outlines, so `color` themes them like any other text. */
+@font-face {
+  font-family: 'QCF_SurahNames';
+  src: url('/fonts/quran/surah-names/v1/sura_names.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'UthmanicHafs';
+  src: url('/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.woff2') format('woff2');
+  font-display: swap;
+}
+
+/* ── Exact Madinah mushaf — QCF per-page glyph fonts (604 pages × 15 lines) ──
+   Each page is rendered with its own self-hosted woff2 (family QCF_P{n}).
+   The key fact about these fonts: every word's glyph already carries the exact
+   kashida (letter-stretch) the print designers drew for that line, so a full
+   line's natural rendered width is, by construction, a near-fixed multiple of
+   the font-size (~15x for QCF v1) — NOT something CSS needs to stretch to fit.
+   So lines are plain centered nowrap text, not flexbox-distributed; the only
+   real tuning knob is picking a font-size whose 15x naturally matches the
+   column width. Sizing uses container-query units so a page scales to its own
+   column (single page or either half of the two-page spread). */
+/* ── Fixed-canvas rendering ────────────────────────────────────────────────
+   Each page is laid out ONCE at a fixed internal size (524×800 text area, 32px
+   font) and the whole framed unit is uniformly scaled to fit its column with a
+   container-query transform. Text + frame scale as one rigid block, so a line
+   can never overflow the frame at any viewport width — the printed-mushaf model.
+   The internal width is sized to the widest *normal* line in the book (~16× the
+   font); the single rare wider line (p443) is shrunk to fit by MushafPage. */
+.mushaf-canvas {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 576 / 852;      /* the framed page: 524 text + padding + border */
+}
+.mushaf-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  width: 576px;
+  height: 852px;
+  transform-origin: top left;
+  transform: scale(calc(100cqw / 576px));
+  border: 14px solid transparent;
+  border-image: url('/mushaf-frame.svg') 20 round;
+  border-radius: 2px;
+  padding: 12px;
+}
+.mushaf-page {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  direction: rtl;
+  overflow: visible;
+  --mushaf-fs: 32px;
+  --mushaf-ink: #2a241b;        /* soft warm charcoal — not a harsh black */
+  --mushaf-mark: #9a7b22;       /* gold ayah medallions */
+}
+.dark .mushaf-page { --mushaf-ink: #ecdfc0; --mushaf-mark: #d8b25a; }
+.mushaf-page.is-ornamental { justify-content: center; }
+
+/* Ayah-end medallions render gold, like the printed mushaf, while the body
+   text stays ink. (QCF glyphs are monochrome outlines, so `color` themes them.) */
+.mushaf-word--mark { color: var(--mushaf-mark); }
+
+.mushaf-line {
+  display: block;
+  min-width: 0;              /* keep the line box = page width so an over-wide
+                               line overflows (and gets shrunk) instead of
+                               widening the flex item to its content */
+  white-space: nowrap;
+  text-align: center;
+  font-size: var(--mushaf-fs);
+  line-height: 1.55;
+  font-weight: 400;
+  color: var(--mushaf-ink);
+  transform-origin: center;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mushaf-word {
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 0 0.04em;
+  transition: background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mushaf-word.is-hover { background: rgba(16, 185, 129, 0.10); }
+.mushaf-word.is-selected { background: rgba(251, 191, 36, 0.45); }
+.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.32); }
+.dark .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.14); }
+.dark .mushaf-word.is-selected { background: rgba(217, 119, 6, 0.30); }
+.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.28); }
+
+/* Blur (not hide) a concealed verse during self-test so its shape is a cue */
+.mushaf-concealed {
+  filter: blur(6px);
+  opacity: 0.5;
+  user-select: none;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+/* Surah-name plate and basmala line (the API omits these — rebuilt by us).
+   Frame echoes the reader's own page-card styling (cream + amber/gold border)
+   per the app's existing branding, rather than inventing a new palette. */
+.mushaf-surah-line { display: flex; justify-content: center; align-items: center; padding: 0.18em 0; }
+/* Surah-name plate: the dark gold-ruled cartouche of the Madinah print —
+   deep ground, a double gold keyline, gilt name, and a rub-el-hizb floret at
+   each end. */
+.mushaf-surah-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: none;
+  padding: 0.26em 2.1em;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2a956f, #1a7152);
+  box-shadow:
+    inset 0 0 0 2px #1a7152,
+    inset 0 0 0 3px #c79a3a,
+    0 1px 3px rgba(18, 50, 36, 0.28);
+}
+.dark .mushaf-surah-frame {
+  background: linear-gradient(180deg, #1a6e50, #114e38);
+  box-shadow:
+    inset 0 0 0 2px #114e38,
+    inset 0 0 0 3px #c79a3a,
+    0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.mushaf-surah-frame::before,
+.mushaf-surah-frame::after {
+  content: '۞';
+  position: absolute;
+  font-size: 1.05em;
+  line-height: 1;
+  color: #e3c074;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.mushaf-surah-frame::before { right: 0.5em; }
+.mushaf-surah-frame::after { left: 0.5em; }
+.mushaf-surah-glyph {
+  font-family: 'QCF_SurahNames', serif;
+  font-size: calc(var(--mushaf-fs) * 1.22);
+  font-weight: 400;
+  line-height: 1.3;
+  color: #f3e2b3;
+}
+.mushaf-basmala-glyph {
+  display: block;
+  width: calc(var(--mushaf-fs) * 6.4);
+  height: auto;
+  color: var(--mushaf-ink);
+}
+.mushaf-basmala-glyph path { fill: currentColor; }
+
 /* Sacred geometric star pattern — used as page background texture */
 .sacred-pattern {
   background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23064e3b' fill-opacity='0.04'%3E%3Cpath d='M29 5.834V0h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 10.66V16h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 5.834zM0 31v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H16v2h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H0zm60 0h-5.586l4.127 4.127-1.414 1.414-4.127-4.127V38h-2v-5.586l-4.127 4.127-1.414-1.414 4.127-4.127H44v-2h5.586l-4.127-4.127 1.414-1.414 4.127 4.127V22h2v5.586l4.127-4.127 1.414 1.414-4.127 4.127H60v2zM29 65.834V60h2v5.834l4.127-4.127 1.414 1.414-4.127 4.127H38v2h-5.586l4.127 4.127-1.414 1.414L31 70.66V76h-2v-5.339l-4.127 4.127-1.414-1.414 4.127-4.127H22v-2h5.586l-4.127-4.127 1.414-1.414L29 65.834z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");

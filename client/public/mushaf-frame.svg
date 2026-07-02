@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <!-- Ornamental Madinah-style page frame, used via CSS border-image (9-slice).
+       Corners are drawn once; the four edges (the middle slices) tile with
+       `repeat: round`. Green guilloche band bounded by gold rules, gilt florets. -->
+  <defs>
+    <g id="dot">
+      <polygon points="0,-3.6 3.6,0 0,3.6 -3.6,0" fill="#e7c578"/>
+      <circle r="1.4" fill="#c8642a"/>
+    </g>
+    <g id="corner">
+      <polygon points="0,-6.5 6.5,0 0,6.5 -6.5,0" fill="#e7c578"/>
+      <polygon points="0,-3.4 3.4,0 0,3.4 -3.4,0" fill="#1a6e52"/>
+      <circle r="1.1" fill="#c8642a"/>
+    </g>
+  </defs>
+
+  <!-- green band (16px thick, hugging the outer edge) -->
+  <rect x="8" y="8" width="104" height="104" fill="none" stroke="#1a6e52" stroke-width="16"/>
+  <!-- outer + inner gold rules -->
+  <rect x="1.25" y="1.25" width="117.5" height="117.5" rx="1.5" fill="none" stroke="#b8902e" stroke-width="2"/>
+  <rect x="15.5" y="15.5" width="89" height="89" fill="none" stroke="#b8902e" stroke-width="2"/>
+
+  <!-- edge florets (period 20; live inside the tiling middle slice) -->
+  <use href="#dot" x="30" y="8"/>
+  <use href="#dot" x="50" y="8"/>
+  <use href="#dot" x="70" y="8"/>
+  <use href="#dot" x="90" y="8"/>
+  <use href="#dot" x="30" y="112"/>
+  <use href="#dot" x="50" y="112"/>
+  <use href="#dot" x="70" y="112"/>
+  <use href="#dot" x="90" y="112"/>
+  <use href="#dot" x="8" y="30"/>
+  <use href="#dot" x="8" y="50"/>
+  <use href="#dot" x="8" y="70"/>
+  <use href="#dot" x="8" y="90"/>
+  <use href="#dot" x="112" y="30"/>
+  <use href="#dot" x="112" y="50"/>
+  <use href="#dot" x="112" y="70"/>
+  <use href="#dot" x="112" y="90"/>
+
+  <!-- corner medallions -->
+  <use href="#corner" x="8" y="8"/>
+  <use href="#corner" x="112" y="8"/>
+  <use href="#corner" x="8" y="112"/>
+  <use href="#corner" x="112" y="112"/>
+</svg>
