@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom';
 const GAP = 8;      // distance between trigger and bubble
 const MARGIN = 8;   // keep this far from the viewport edge
 
-export default function Tooltip({ label, children, placement = 'top', className = '' }) {
+export default function Tooltip({ label, children, placement = 'top', className = '', suppressed = false }) {
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState(null);          // { top, left, place, arrow }
@@ -71,7 +71,7 @@ export default function Tooltip({ label, children, placement = 'top', className 
       onBlur={hide}
     >
       {trigger}
-      {open && label && createPortal(
+      {open && !suppressed && label && createPortal(
         <span
           ref={bubbleRef}
           role="tooltip"

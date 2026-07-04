@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
-  FiTarget, FiEye, FiEyeOff, FiArrowRight, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
+  FiTarget, FiEye, FiEyeOff, FiArrowLeft, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
+  FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -13,7 +14,7 @@ import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import MushafPage from '../components/MushafPage';
 import { startLibraryTour, startMemorizeTour, startVerseActionsCoachmark } from '../components/libraryTour';
-import { progressAPI } from '../services/api';
+import { progressAPI, bookmarksAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
   fetchPageTafsir,
@@ -41,6 +42,75 @@ const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
 // longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
 const verseText = (verse) => verse.textUthmani ?? '';
 
+// A page's reading order for the self-test watermark: every real glyph in
+// `pd.lines` (top line to bottom, right→left within a line — i.e. `pd.lines`
+// order, then each line's `words` array order, both already print order),
+// flattened to a 0-based index. `indexOf` maps a word (by verseKey:position,
+// unique within a page since a word physically lives on exactly one page) to
+// its index; `verseRanges` gives each verse's [first, last] index ON THIS PAGE
+// (a verse straddling a page break only counts the words that sit here).
+function buildPageOrder(pd) {
+  const indexOf = new Map();
+  const verseRanges = new Map();
+  let idx = 0;
+  pd.lines.forEach((line) => {
+    if (line.type !== 'ayah') return;
+    line.words.forEach((w) => {
+      indexOf.set(`${w.verseKey}:${w.position}`, idx);
+      const range = verseRanges.get(w.verseKey);
+      if (!range) verseRanges.set(w.verseKey, { first: idx, last: idx });
+      else range.last = idx;
+      idx++;
+    });
+  });
+  return { indexOf, verseRanges, total: idx };
+}
+
+// Direction-aware page-turn: when `flipKey` changes, the outgoing content (a
+// snapshot of the previous children) slides + fades out in the travel direction
+// while the incoming children slide in from the opposite side. The card/frame
+// never move — only this content box does — and it clips its own overflow.
+// First mount and reduced-motion (`animate=false`) swap instantly; the CSS also
+// no-ops the keyframes under prefers-reduced-motion as a belt-and-braces guard.
+function Flip({ flipKey, dir, animate, children }) {
+  const prevKeyRef = useRef(flipKey);
+  const prevNodeRef = useRef(children);
+  const [exiting, setExiting] = useState(null);   // { id, node, dir } | null
+  const [enterDir, setEnterDir] = useState(null); // 'fwd' | 'back' | null
+  const timerRef = useRef();
+
+  // Detect the turn synchronously (before paint) so the outgoing snapshot and
+  // the entering copy appear in the same frame — no flash between them.
+  useLayoutEffect(() => {
+    if (flipKey === prevKeyRef.current) return;
+    const fromNode = prevNodeRef.current;
+    prevKeyRef.current = flipKey;
+    if (!animate) { setExiting(null); setEnterDir(null); return; }
+    setExiting({ id: `${flipKey}-${Date.now()}`, node: fromNode, dir });
+    setEnterDir(dir);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => { setExiting(null); setEnterDir(null); }, 220);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flipKey]);
+
+  useEffect(() => { prevNodeRef.current = children; });
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const enterCls = enterDir === 'fwd' ? 'mushaf-enter-fwd' : enterDir === 'back' ? 'mushaf-enter-back' : '';
+  const exitCls = exiting?.dir === 'fwd' ? 'mushaf-exit-fwd' : exiting?.dir === 'back' ? 'mushaf-exit-back' : '';
+
+  return (
+    <div className="mushaf-flip">
+      {exiting && (
+        <div className={`mushaf-flip-layer mushaf-flip-exit ${exitCls}`} aria-hidden="true">
+          {exiting.node}
+        </div>
+      )}
+      <div className={`mushaf-flip-layer ${enterCls}`}>{children}</div>
+    </div>
+  );
+}
+
 export default function Library() {
   const { t, i18n } = useTranslation();
   const { showToast } = useToast();
@@ -55,18 +125,36 @@ export default function Library() {
   // deep-links and survives refresh. The reader itself is unchanged; this
   // only re-frames the sidebar and layers self-testing on top of the text.
   const memorizeMode = searchParams.get('mode') === 'memorize';
-  const [testSelf, setTestSelf] = useState(false);          // hide text for active recall
-  const [revealAll, setRevealAll] = useState(false);
-  const [revealedSet, setRevealedSet] = useState(() => new Set()); // verseKeys peeked one by one
+  // Self-test style: 'off' | 'hide' (blur everything, hover peeks a window) |
+  // 'cover' (text shown, hover blurs a window under the cursor).
+  const [selfTest, setSelfTest] = useState('off');
+  // Reading-position watermark per visible page number: a word is revealed iff
+  // its page-order index (top line to bottom, right→left within a line) is <=
+  // that page's watermark (default -1 = nothing revealed). The revealed region
+  // is always a clean prefix of the page — see revealVerse/hideVerse/revealThrough.
+  const [watermarks, setWatermarks] = useState({}); // { [pageNumber]: lastRevealedIndex }
   const [checkedSteps, setCheckedSteps] = useState(() => new Set()); // ephemeral method ticks
   const [methodOpen, setMethodOpen] = useState(true);
   const [howToOpen, setHowToOpen] = useState(false);
 
   // ── View mode: single page or two-page spread (spread needs width, so it's
-  // only honoured on large screens and never in the focused memorize session).
+  // only honoured on large screens — but works in the memorize session too).
   const [view, setView] = useState(() => (localStorage.getItem('mushafView') === 'double' ? 'double' : 'single'));
   const [isWide, setIsWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
-  const twoPage = view === 'double' && isWide && !memorizeMode;
+  const twoPage = view === 'double' && isWide;
+
+  // ── Focus mode: a distraction-free read that hides the sidebar + page header
+  // and centres the mushaf. A normal-reader feature only — memorize mode keeps
+  // its guided panel, so `focused` is always false there.
+  const [focusMode, setFocusMode] = useState(() => localStorage.getItem('mushafFocus') === '1');
+  const focused = focusMode && !memorizeMode;
+
+  // Page-turn animation: the last travel direction ('fwd' | 'back') drives which
+  // way the content slides; disabled entirely when the OS asks for reduced motion.
+  const turnDirRef = useRef('fwd');
+  const [reduceMotion] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  );
 
   const [pagesData, setPagesData] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
@@ -74,6 +162,16 @@ export default function Library() {
   const [reloadKey, setReloadKey] = useState(0);
   const [memorizedPages, setMemorizedPages] = useState(new Set());
   const [savingMemorized, setSavingMemorized] = useState(false);
+
+  // ── Bookmarks (account-saved, multiple per user) ────────
+  const [bookmarks, setBookmarks] = useState([]);
+  const [bookmarkLabel, setBookmarkLabel] = useState('');
+  const [savingBookmark, setSavingBookmark] = useState(false);
+
+  // The "tap a verse" cue retires once the reader has selected a verse (self-test
+  // keeps its own cue). The drag flag suppresses the popover's tooltip mid-drag.
+  const [seenVerseTap, setSeenVerseTap] = useState(() => localStorage.getItem('seenVerseTapCue') === '1');
+  const [handleDragging, setHandleDragging] = useState(false);
 
   // ── Audio state ─────────────────────────────────────────
   const [reciter, setReciter] = useState(() => {
@@ -132,7 +230,25 @@ export default function Library() {
     return out;
   }, [pagesData]);
 
+  // Each visible page's reading-order index (for the hide-mode watermark).
+  const pageOrders = useMemo(() => {
+    const map = new Map();
+    pagesData.forEach((pd) => map.set(pd.page, buildPageOrder(pd)));
+    return map;
+  }, [pagesData]);
+
+  // The page the reader most recently interacted with in a two-page spread —
+  // clicking a word, a footer tick, or anywhere on a page card sets it (see
+  // renderPageCard). Defaults to the right (first, anchor) page of the spread;
+  // single view always targets currentPage directly, so this is unused there.
+  const [activePage, setActivePage] = useState(visiblePages[0]);
+  useEffect(() => { setActivePage(visiblePages[0]); }, [visiblePages]);
+  // Bookmarks target this page: the active page of a spread, or simply the
+  // current page in single view (unchanged there).
+  const bookmarkTargetPage = twoPage ? activePage : currentPage;
+
   useEffect(() => { localStorage.setItem('mushafView', view); }, [view]);
+  useEffect(() => { localStorage.setItem('mushafFocus', focusMode ? '1' : '0'); }, [focusMode]);
 
   // Track the lg breakpoint so the spread only ever renders where it fits.
   useEffect(() => {
@@ -149,6 +265,23 @@ export default function Library() {
       setMemorizedPages(new Set(pages));
     }).catch(() => {});
   }, []);
+
+  // Mount: the user's saved bookmarks.
+  useEffect(() => {
+    bookmarksAPI.list().then(res => setBookmarks(res.data?.data ?? [])).catch(() => {});
+  }, []);
+
+  // While the popover grip is held, suppress its "drag to move" tooltip.
+  useEffect(() => {
+    if (!handleDragging) return;
+    const stop = () => setHandleDragging(false);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    return () => {
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+  }, [handleDragging]);
 
   // Page / view change: load each visible page's word data + its glyph font.
   useEffect(() => {
@@ -187,16 +320,14 @@ export default function Library() {
 
   // Page change: start a fresh self-test (everything concealed again)
   useEffect(() => {
-    setRevealAll(false);
-    setRevealedSet(new Set());
+    setWatermarks({});
   }, [currentPage]);
 
   // Leaving memorize mode: drop the self-test so the reader shows normally
   useEffect(() => {
     if (!memorizeMode) {
-      setTestSelf(false);
-      setRevealAll(false);
-      setRevealedSet(new Set());
+      setSelfTest('off');
+      setWatermarks({});
     }
   }, [memorizeMode]);
 
@@ -212,6 +343,8 @@ export default function Library() {
     }
     const id = setTimeout(() => {
       libTourCheckedRef.current = true;
+      // The tour walks the sidebar, so never run it behind focus mode.
+      setFocusMode(false);
       if (forceTour) {
         const next = new URLSearchParams(searchParams);
         next.delete('tour');
@@ -333,14 +466,74 @@ export default function Library() {
   const pageStep = twoPage ? 2 : 1;
   const maxPage = twoPage ? 603 : 604;
 
-  const goToPage = (n) => {
+  const goToPage = useCallback((n) => {
     let page = clampPage(n);
     // In the spread, anchor navigation to the right (odd) page of the pair.
     if (twoPage && page % 2 === 0) page = Math.max(1, page - 1);
     if (page === currentPage) return;
+    turnDirRef.current = page > currentPage ? 'fwd' : 'back'; // for the turn animation
     const params = { page: String(page) };
     if (memorizeMode) params.mode = 'memorize';
     setSearchParams(params, { replace: true });
+  }, [twoPage, currentPage, memorizeMode, setSearchParams]);
+
+  // Directional turns for a right-to-left book: "next" always moves forward
+  // (higher page number), "prev" back — independent of UI language. The pager,
+  // keyboard, edge-clicks and swipe all route through these two.
+  const goNext = useCallback(() => goToPage(currentPage + pageStep), [goToPage, currentPage, pageStep]);
+  const goPrev = useCallback(() => goToPage(currentPage - pageStep), [goToPage, currentPage, pageStep]);
+
+  // ── Keyboard page-turning + shortcuts ────────────────────
+  // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both
+  // UI languages. Escape peels back the top-most overlay; 'f' toggles focus mode.
+  // Ignored while typing in a field or while a driver.js tour owns the screen.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (tourActiveRef.current) return;
+      const el = e.target;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'PageDown':
+          e.preventDefault(); goNext(); break;
+        case 'ArrowRight':
+        case 'PageUp':
+          e.preventDefault(); goPrev(); break;
+        case 'Escape':
+          if (tafsirOpen) setTafsirOpen(false);
+          else if (selectedVerseKey != null) setSelectedVerseKey(null);
+          else if (focused) setFocusMode(false);
+          break;
+        case 'f':
+        case 'F':
+          if (!memorizeMode) { e.preventDefault(); setFocusMode((v) => !v); }
+          break;
+        default: break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [goNext, goPrev, tafsirOpen, selectedVerseKey, focused, memorizeMode]);
+
+  // ── Touch swipe to turn the page (physical RTL book) ─────
+  // Swipe right → next, swipe left → prev, but only when the horizontal move
+  // clearly dominates (so vertical scrolling is never hijacked) and no tour runs.
+  const touchStartRef = useRef(null);
+  const onTouchStart = (e) => {
+    if (tourActiveRef.current) { touchStartRef.current = null; return; }
+    const p = e.touches[0];
+    touchStartRef.current = { x: p.clientX, y: p.clientY };
+  };
+  const onTouchEnd = (e) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || tourActiveRef.current) return;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - start.x;
+    const dy = p.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0) goNext(); else goPrev();
   };
 
   const setViewMode = (mode) => {
@@ -355,15 +548,74 @@ export default function Library() {
   const enterMemorize = () => setSearchParams({ page: String(currentPage), mode: 'memorize' }, { replace: true });
   const exitMemorize = () => setSearchParams({ page: String(currentPage) }, { replace: true });
 
-  // A verse is hidden while self-testing until it's peeked (or "Reveal all").
-  const isConcealed = useCallback(
-    (verseKey) => memorizeMode && testSelf && !revealAll && !revealedSet.has(verseKey),
-    [memorizeMode, testSelf, revealAll, revealedSet]
-  );
-  const revealVerse = useCallback((verseKey) => setRevealedSet(prev => new Set(prev).add(verseKey)), []);
-  const selectVerse = useCallback((verseKey) => setSelectedVerseKey(prev => (prev === verseKey ? null : verseKey)), []);
-  const hideAllVerses = () => { setRevealAll(false); setRevealedSet(new Set()); };
-  const toggleTestSelf = () => { setTestSelf(v => !v); hideAllVerses(); };
+  // The active conceal style for the page ('hide' | 'cover' | null when off).
+  const concealMode = memorizeMode && selfTest !== 'off' ? selfTest : null;
+
+  // 1st click of the hide-mode cycle: reveal the WHOLE verse — the watermark
+  // advances to its last word on EVERY visible page it has words on, so a verse
+  // straddling the spread reveals its portion on each half.
+  const revealVerse = useCallback((verseKey) => {
+    setWatermarks((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      pageOrders.forEach((order, page) => {
+        const range = order.verseRanges.get(verseKey);
+        if (!range) return;
+        if (range.last > (next[page] ?? -1)) { next[page] = range.last; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+  }, [pageOrders]);
+
+  // 3rd click of the cycle: hide this verse and everything after it by winding
+  // the watermark back to just before its first word (on each page it's on).
+  const hideVerse = useCallback((verseKey) => {
+    setWatermarks((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      pageOrders.forEach((order, page) => {
+        const range = order.verseRanges.get(verseKey);
+        if (!range) return;
+        const val = range.first - 1;
+        if ((next[page] ?? -1) !== val) { next[page] = val; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+    setSelectedVerseKey(prev => (prev === verseKey ? null : prev));
+  }, [pageOrders]);
+
+  // Drag-reveal: advance the watermark to the furthest word made visible during
+  // the drag. MushafPage calls this with the peek window's forward edge on
+  // every word entered, so the last call before release already covers
+  // "the peek window at the moment of release" — nothing shown mid-drag re-hides.
+  const revealThrough = useCallback((verseKey, position) => {
+    const key = `${verseKey}:${position}`;
+    setWatermarks((prev) => {
+      for (const [page, order] of pageOrders) {
+        const idx = order.indexOf.get(key);
+        if (idx == null) continue;
+        return idx > (prev[page] ?? -1) ? { ...prev, [page]: idx } : prev;
+      }
+      return prev;
+    });
+  }, [pageOrders]);
+
+  const selectVerse = useCallback((verseKey) => {
+    setSelectedVerseKey(prev => (prev === verseKey ? null : verseKey));
+    setSeenVerseTap(true);
+    localStorage.setItem('seenVerseTapCue', '1'); // the "tap a verse" cue has served its purpose
+  }, []);
+
+  // "Hide all": collapse every visible page's watermark back to the start.
+  const hideAllVerses = () => setWatermarks({});
+  // "Reveal all": push every visible page's watermark to its last word.
+  const revealAllVisible = () => {
+    const next = {};
+    pageOrders.forEach((order, page) => { next[page] = order.total - 1; });
+    setWatermarks(next);
+  };
+  // Switching style starts a clean test (nothing revealed yet).
+  const setSelfTestMode = (m) => { setSelfTest(m); setWatermarks({}); };
   const toggleStep = (i) => setCheckedSteps(prev => {
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);
@@ -377,29 +629,85 @@ export default function Library() {
     else goToPage(n);
   };
 
-  // ── Mark / unmark the current page as memorized ──────────
-  const toggleMemorized = async () => {
-    if (savingMemorized) return;
+  // ── Mark / unmark pages as memorized (spread-aware) ──────────
+  // One optimistic update covers every page passed and is rolled back as a unit
+  // if the request fails. Adding uses markComplete per page (it also registers
+  // the memorization event + streak); removing replaces the whole set in one call.
+  const markPagesMemorized = async (pages) => {
+    const toAdd = pages.filter((p) => !memorizedPages.has(p));
+    if (savingMemorized || toAdd.length === 0) return;
     const prevPages = memorizedPages;
-    const adding = !prevPages.has(currentPage);
     const nextPages = new Set(prevPages);
-    if (adding) nextPages.add(currentPage); else nextPages.delete(currentPage);
-
+    toAdd.forEach((p) => nextPages.add(p));
     setSavingMemorized(true);
     setMemorizedPages(nextPages);
     try {
-      if (adding) {
-        await progressAPI.markComplete({ pageNumber: currentPage, type: 'new' });
-        showToast(t('library.markedToast', { n: fmtNum(currentPage) }), 'success');
-      } else {
-        await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
-        showToast(t('library.unmarkedToast', { n: fmtNum(currentPage) }), 'success');
-      }
+      await Promise.all(toAdd.map((p) => progressAPI.markComplete({ pageNumber: p, type: 'new' })));
+      const sorted = [...toAdd].sort((a, b) => a - b);
+      showToast(
+        sorted.length === 1
+          ? t('library.markedToast', { n: fmtNum(sorted[0]) })
+          : t('library.markedToastSpread', { from: fmtNum(sorted[0]), to: fmtNum(sorted[sorted.length - 1]) }),
+        'success'
+      );
     } catch {
-      setMemorizedPages(prevPages); // roll back the optimistic change
+      setMemorizedPages(prevPages); // roll back the optimistic change together
       showToast(t('common.error'), 'error');
     } finally {
       setSavingMemorized(false);
+    }
+  };
+
+  const unmarkPagesMemorized = async (pages) => {
+    const toRemove = pages.filter((p) => memorizedPages.has(p));
+    if (savingMemorized || toRemove.length === 0) return;
+    const prevPages = memorizedPages;
+    const nextPages = new Set(prevPages);
+    toRemove.forEach((p) => nextPages.delete(p));
+    setSavingMemorized(true);
+    setMemorizedPages(nextPages);
+    try {
+      await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
+      const sorted = [...toRemove].sort((a, b) => a - b);
+      showToast(
+        sorted.length === 1
+          ? t('library.unmarkedToast', { n: fmtNum(sorted[0]) })
+          : t('library.unmarkedToastSpread', { from: fmtNum(sorted[0]), to: fmtNum(sorted[sorted.length - 1]) }),
+        'success'
+      );
+    } catch {
+      setMemorizedPages(prevPages); // roll back the optimistic change together
+      showToast(t('common.error'), 'error');
+    } finally {
+      setSavingMemorized(false);
+    }
+  };
+
+  // ── Bookmarks ────────────────────────────────────────────
+  const addBookmark = async () => {
+    if (savingBookmark) return;
+    setSavingBookmark(true);
+    try {
+      const label = bookmarkLabel.trim();
+      const res = await bookmarksAPI.add({ pageNumber: bookmarkTargetPage, ...(label ? { label } : {}) });
+      setBookmarks(prev => [...prev, res.data.data].sort((a, b) => a.pageNumber - b.pageNumber));
+      setBookmarkLabel('');
+      showToast(t('library.bookmarks.added', { n: fmtNum(bookmarkTargetPage) }), 'success');
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setSavingBookmark(false);
+    }
+  };
+
+  const removeBookmark = async (id) => {
+    const prev = bookmarks;
+    setBookmarks(prev.filter(b => b._id !== id)); // optimistic
+    try {
+      await bookmarksAPI.remove(id);
+    } catch {
+      setBookmarks(prev); // roll back
+      showToast(t('common.error'), 'error');
     }
   };
 
@@ -457,7 +765,48 @@ export default function Library() {
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
   const playingVerseKey = playingIndex != null ? verses[playingIndex]?.verseKey ?? null : null;
-  const pageMemorized = memorizedPages.has(currentPage);
+  // In the spread the CTA/badge cover BOTH visible pages, so "memorized" means
+  // every page on screen is done. Marking fills in whichever halves aren't yet.
+  const allVisibleMemorized = visiblePages.every((p) => memorizedPages.has(p));
+  const markVisibleMemorized = () => markPagesMemorized(visiblePages);
+  const unmarkVisibleMemorized = () => unmarkPagesMemorized(visiblePages);
+  const toggleVisibleMemorized = () => (allVisibleMemorized ? unmarkVisibleMemorized() : markVisibleMemorized());
+  const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
+  // The bookmark (if any) already saved for the active/current page — when set,
+  // the add control swaps for this bookmark's own remove affordance.
+  const targetBookmark = bookmarks.find(b => b.pageNumber === bookmarkTargetPage) ?? null;
+
+  // Per-page "mark memorized" control (a done row with undo, or a mark button),
+  // shared by the memorize spread and the normal-reader spread.
+  const renderPageMarkControl = (p, { tour = false } = {}) => (
+    memorizedPages.has(p) ? (
+      <div
+        key={p}
+        className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <FiCheckCircle className="w-3.5 h-3.5" /> {t('library.memorize.pageDone', { n: fmtNum(p) })}
+        </span>
+        <button
+          onClick={() => unmarkPagesMemorized([p])}
+          disabled={savingMemorized}
+          className="text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2 disabled:opacity-50"
+        >
+          {t('library.memorize.undo')}
+        </button>
+      </div>
+    ) : (
+      <button
+        key={p}
+        onClick={() => markPagesMemorized([p])}
+        disabled={savingMemorized}
+        data-tour={tour && p === visiblePages[0] ? 'mem-mark' : undefined}
+        className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
+      >
+        <FiCheck className="w-4 h-4" /> {t('library.memorize.markPage', { n: fmtNum(p) })}
+      </button>
+    )
+  );
 
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
@@ -471,38 +820,85 @@ export default function Library() {
 
   // One bordered mushaf page card (used for both single and the spread halves).
   // The top running head (surah · juz) and the centred page number at the foot
-  // mirror a printed mushaf page's furniture.
-  const renderPageCard = (pd) => {
+  // mirror a printed mushaf page's furniture. `slot` is a stable key (0/1) so the
+  // card persists across page turns — letting the inner content crossfade.
+  const renderPageCard = (pd, slot = 0) => {
     const pageJuz = JUZ_START_PAGES.reduce((j, s, i) => (s <= pd.page ? i + 1 : j), 1);
     const pageSurah = pageSurahLabels(pd.verses);
+    // Word concealment is page-scoped: the same verse can be at a different
+    // reveal point on each half of a spread, since each page has its own watermark.
+    const order = pageOrders.get(pd.page);
+    const watermark = watermarks[pd.page] ?? -1;
+    const isConcealedHere = (verseKey, position) => {
+      if (concealMode !== 'hide' || !order) return false;
+      const idx = order.indexOf.get(`${verseKey}:${position}`);
+      return idx != null && idx > watermark;
+    };
     return (
       <div
-        key={pd.page}
+        key={slot}
+        onClick={() => setActivePage(pd.page)}
         className="flex-1 min-w-0 rounded-2xl ring-1 ring-amber-200/60 dark:ring-amber-900/30 bg-[#f7f0da] dark:bg-[#1f1b14] shadow-xl dark:shadow-black/40 overflow-hidden"
       >
         <div className="px-3 py-3 sm:px-4 sm:py-4 flex flex-col">
-          {/* Running head — surah (outer) · juz (toward the spine) */}
+          {/* Running head — surah (outer) · juz (toward the spine), with a
+              bookmark ribbon when this page is bookmarked. */}
           <div className="flex items-center justify-between gap-2 mb-2 px-1.5 text-[11px] font-semibold tracking-wide text-amber-900/55 dark:text-amber-200/35 select-none" dir="rtl">
-            <span className="min-w-0 leading-tight">{pageSurah}</span>
+            <span className="min-w-0 leading-tight flex items-center gap-1.5">
+              {bookmarkedPages.has(pd.page) && (
+                <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400 fill-current" aria-label={t('library.bookmarks.marked')} />
+              )}
+              {pageSurah}
+            </span>
             <span className="shrink-0">{t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}</span>
           </div>
-          {/* Fixed-size framed page, uniformly scaled to fit the column */}
+          {/* Fixed-size framed page, uniformly scaled to fit the column. The turn
+              animation lives INSIDE the frame so the frame itself never moves. */}
           <div className="mushaf-canvas">
             <div className="mushaf-frame">
-              <MushafPage
-                pageData={pd}
-                fontFamily={mushafFontFamily(pd.page)}
-                selectedVerseKey={selectedVerseKey}
-                playingVerseKey={playingVerseKey}
-                isConcealed={isConcealed}
-                onSelectVerse={selectVerse}
-                onRevealVerse={revealVerse}
-              />
+              <Flip flipKey={pd.page} dir={turnDirRef.current} animate={!reduceMotion}>
+                <MushafPage
+                  pageData={pd}
+                  fontFamily={mushafFontFamily(pd.page)}
+                  selectedVerseKey={selectedVerseKey}
+                  playingVerseKey={playingVerseKey}
+                  concealMode={concealMode}
+                  isConcealed={isConcealedHere}
+                  onSelectVerse={selectVerse}
+                  onRevealVerse={revealVerse}
+                  onRevealThrough={revealThrough}
+                  onHideVerse={hideVerse}
+                />
+              </Flip>
             </div>
           </div>
-          <p className="mt-2 text-center text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
-            {fmtNum(pd.page)}
-          </p>
+          {/* Page number + an interactive per-page memorized toggle, so each half
+              of a spread can be marked/unmarked on its own. */}
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
+            {(() => {
+              const done = memorizedPages.has(pd.page);
+              const label = done
+                ? t('library.removePage', { n: fmtNum(pd.page) })
+                : t('library.markPage', { n: fmtNum(pd.page) });
+              return (
+                <Tooltip label={label}>
+                  <button
+                    type="button"
+                    onClick={() => (done ? unmarkPagesMemorized([pd.page]) : markPagesMemorized([pd.page]))}
+                    disabled={savingMemorized}
+                    aria-label={label}
+                    aria-pressed={done}
+                    className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {done
+                      ? <FiCheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      : <FiCircle className="w-4 h-4 text-amber-800/45 dark:text-amber-200/35" />}
+                  </button>
+                </Tooltip>
+              );
+            })()}
+            <span>{fmtNum(pd.page)}</span>
+          </div>
         </div>
       </div>
     );
@@ -525,14 +921,35 @@ export default function Library() {
       <Navbar />
 
       <main className="grow w-full max-w-7xl mx-auto px-6 pt-28 pb-12">
-        {/* Page header — orient a first-time visitor */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[#003527] dark:text-gray-100">{t('nav.library')}</h1>
-          <p className="text-sm text-[#404944] dark:text-gray-400 mt-1">{t('library.subtitle')}</p>
-        </div>
+        {/* Page header — orient a first-time visitor (hidden in focus mode) */}
+        {!focused && (
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-[#003527] dark:text-gray-100">{t('nav.library')}</h1>
+            <p className="text-sm text-[#404944] dark:text-gray-400 mt-1">{t('library.subtitle')}</p>
+          </div>
+        )}
+
+        {/* Floating exit for focus mode — the sidebar toggle is hidden, so this
+            (plus Escape / 'f') is how you leave. The fixed position lives on the
+            Tooltip wrapper (logical start-*), so it sits on the SAME side the
+            sidebar occupies — the start side, left in EN / right in AR — and the
+            bubble anchors to it (opening down, toward the page centre). */}
+        {focused && (
+          <Tooltip label={t('library.focus.exit')} placement="bottom" className="fixed top-24 start-6 z-40">
+            <button
+              onClick={() => setFocusMode(false)}
+              aria-label={t('library.focus.exit')}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/95 dark:bg-gray-800/95 backdrop-blur border border-[#dce2f3] dark:border-gray-700 shadow-lg px-3 py-2 text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:bg-white dark:hover:bg-gray-700 transition-colors"
+            >
+              <FiMinimize2 className="w-4 h-4" /> {t('library.focus.exit')}
+            </button>
+          </Tooltip>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-          {/* ── Sidebar ───────────────────────────────────── */}
+          {/* ── Sidebar (hidden in focus mode) ────────────── */}
+          {!focused && (
           <aside className="w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-28 lg:self-start">
 
             {/* Memorize-mode header + exit */}
@@ -556,26 +973,32 @@ export default function Library() {
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
-              <div className="flex items-center gap-2" data-tour="lib-nav">
-                <Tooltip label={t('tooltips.prevPage')}>
+              {/* dir=ltr pins the physical layout: the LEFT button always turns
+                  forward (next page) and the RIGHT goes back, in both UI
+                  languages — the mushaf is a right-to-left book, so forward is
+                  always leftward. */}
+              <div className="flex items-center gap-2" data-tour="lib-nav" dir="ltr">
+                <Tooltip label={t('library.nextPageKey')}>
                   <button
-                    onClick={() => goToPage(currentPage - pageStep)}
-                    disabled={currentPage <= 1}
+                    onClick={goNext}
+                    disabled={currentPage >= maxPage}
+                    aria-label={t('library.nextPage')}
                     className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
-                    <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
+                    <FiChevronLeft className="w-4 h-4" />
                   </button>
                 </Tooltip>
                 <span className="flex-1 text-center text-sm font-semibold text-[#1A1A1A] dark:text-gray-100">
                   {fmtNum(currentPage)} / {fmtNum(604)}
                 </span>
-                <Tooltip label={t('tooltips.nextPage')}>
+                <Tooltip label={t('library.prevPageKey')}>
                   <button
-                    onClick={() => goToPage(currentPage + pageStep)}
-                    disabled={currentPage >= maxPage}
+                    onClick={goPrev}
+                    disabled={currentPage <= 1}
+                    aria-label={t('library.prevPage')}
                     className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
-                    <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
+                    <FiChevronRight className="w-4 h-4" />
                   </button>
                 </Tooltip>
               </div>
@@ -591,49 +1014,64 @@ export default function Library() {
                 placeholder={t('library.gotoPagePlaceholder')}
               />
 
-              {/* Single / two-page spread toggle (large screens only) */}
+              {/* Single / two-page spread toggle + focus toggle (large screens
+                  only). The spread works in memorize mode too; focus mode is a
+                  normal-reader feature, so its button is hidden while memorizing. */}
+              <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
+                <button
+                  onClick={() => setViewMode('single')}
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
+                    view === 'single' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <FiFile className="w-3.5 h-3.5" /> {t('library.view.single')}
+                </button>
+                <button
+                  onClick={() => setViewMode('double')}
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
+                    view === 'double' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
+                </button>
+              </div>
               {!memorizeMode && (
-                <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
-                  <button
-                    onClick={() => setViewMode('single')}
-                    className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
-                      view === 'single' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <FiFile className="w-3.5 h-3.5" /> {t('library.view.single')}
-                  </button>
-                  <button
-                    onClick={() => setViewMode('double')}
-                    className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
-                      view === 'double' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
-                  </button>
-                </div>
+                <button
+                  onClick={() => setFocusMode(true)}
+                  className="hidden lg:inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg border border-[#dce2f3] dark:border-gray-600 px-3 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                >
+                  <FiMaximize2 className="w-3.5 h-3.5" /> {t('library.focus.enter')}
+                </button>
               )}
 
-              {memorizedPages.has(currentPage) && (
+              {!twoPage && allVisibleMemorized && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-2.5 py-1 rounded-full w-max">
                   ✓ {t('library.memorizedBadge')}
                 </span>
               )}
               {!memorizeMode && (
-                <button
-                  onClick={toggleMemorized}
-                  disabled={savingMemorized}
-                  className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    pageMemorized
-                      ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                      : 'bg-[#004f35] text-white hover:bg-[#003527]'
-                  }`}
-                >
-                  {pageMemorized ? (
-                    t('library.undoMemorized')
-                  ) : (
-                    <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
-                  )}
-                </button>
+                twoPage ? (
+                  // Spread: one control per visible page (matches the memorize spread).
+                  <div className="flex flex-col gap-2 mt-0.5">
+                    {visiblePages.map((p) => renderPageMarkControl(p))}
+                  </div>
+                ) : (
+                  <button
+                    onClick={toggleVisibleMemorized}
+                    disabled={savingMemorized}
+                    className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      allVisibleMemorized
+                        ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                        : 'bg-[#004f35] text-white hover:bg-[#003527]'
+                    }`}
+                  >
+                    {allVisibleMemorized ? (
+                      t('library.undoMemorized')
+                    ) : (
+                      <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
+                    )}
+                  </button>
+                )
               )}
             </div>
 
@@ -641,24 +1079,41 @@ export default function Library() {
               <>
                 {/* ── Self-test (active recall) ── */}
                 <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
-                  <button
-                    onClick={toggleTestSelf}
+                  {/* Label + tappable explainer (the how-it-works text lives here now). */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
+                      {t('library.memorize.selfTestLabel')}
+                    </span>
+                    <InfoHint text={t(`library.memorize.hint.${selfTest}`)} label={t('library.memorize.selfTestLabel')} size="xs" />
+                  </div>
+                  {/* Segmented control: pick a testing style (or turn it off). */}
+                  <div
+                    className="grid grid-cols-3 gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1"
+                    role="group"
+                    aria-label={t('library.memorize.selfTestLabel')}
                     data-tour="mem-test"
-                    className={`w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors ${
-                      testSelf
-                        ? 'bg-[#004f35] text-white hover:bg-[#003527]'
-                        : 'border border-[#004f35]/30 dark:border-emerald-500/30 text-[#004f35] dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-                    }`}
                   >
-                    {testSelf
-                      ? <><FiEye className="w-3.5 h-3.5" /> {t('library.memorize.showText')}</>
-                      : <><FiEyeOff className="w-3.5 h-3.5" /> {t('library.memorize.testSelf')}</>}
-                  </button>
-                  <p className="text-xs text-[#707974] dark:text-gray-500 leading-relaxed">{t('library.memorize.testSelfHint')}</p>
-                  {testSelf && (
+                    {['off', 'hide', 'cover'].map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setSelfTestMode(m)}
+                        aria-pressed={selfTest === m}
+                        className={`inline-flex items-center justify-center gap-1 text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
+                          selfTest === m
+                            ? 'bg-[#004f35] text-white'
+                            : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {m === 'hide' && <FiEyeOff className="w-3.5 h-3.5" />}
+                        {m === 'cover' && <FiEye className="w-3.5 h-3.5" />}
+                        {t(`library.memorize.mode.${m}`)}
+                      </button>
+                    ))}
+                  </div>
+                  {selfTest === 'hide' && (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setRevealAll(true)}
+                        onClick={revealAllVisible}
                         className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
                       >
                         {t('library.memorize.revealAll')}
@@ -673,22 +1128,37 @@ export default function Library() {
                   )}
                 </div>
 
-                {/* ── Mark memorized CTA + continue ── */}
+                {/* ── Mark memorized CTA + continue ──
+                    Spread: one control per visible page (own done-state + undo).
+                    Single: the original layout, unchanged. */}
                 <div className="flex flex-col gap-2">
-                  {pageMemorized ? (
+                  {twoPage ? (
+                    <>
+                      {visiblePages.map((p) => renderPageMarkControl(p, { tour: true }))}
+                      {allVisibleMemorized && (
+                        <button
+                          onClick={goNext}
+                          disabled={currentPage >= maxPage}
+                          className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
+                        </button>
+                      )}
+                    </>
+                  ) : allVisibleMemorized ? (
                     <>
                       <span className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
                         ✓ {t('library.memorize.memorizedDone')}
                       </span>
                       <button
-                        onClick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage >= 604}
+                        onClick={goNext}
+                        disabled={currentPage >= maxPage}
                         className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
-                        {t('library.memorize.nextPage')} <FiArrowRight className="w-4 h-4 rtl:rotate-180" />
+                        {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={toggleMemorized}
+                        onClick={unmarkVisibleMemorized}
                         disabled={savingMemorized}
                         className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors disabled:opacity-50"
                       >
@@ -697,7 +1167,7 @@ export default function Library() {
                     </>
                   ) : (
                     <button
-                      onClick={toggleMemorized}
+                      onClick={markVisibleMemorized}
                       disabled={savingMemorized}
                       data-tour="mem-mark"
                       className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-3 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
@@ -747,16 +1217,16 @@ export default function Library() {
               </>
             ) : (
               <>
-                {/* Enter memorize mode */}
-                <div className="flex flex-col gap-2">
+                {/* Enter memorize mode (the "what is this" text lives in the InfoHint) */}
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={enterMemorize}
                     data-tour="lib-memorize"
-                    className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors"
                   >
                     <FiTarget className="w-4 h-4" /> {t('library.memorize.enter')}
                   </button>
-                  <p className="text-xs text-[#707974] dark:text-gray-500 leading-relaxed">{t('library.memorize.enterHint')}</p>
+                  <InfoHint text={t('library.memorize.enterHint')} label={t('library.memorize.enter')} />
                 </div>
 
                 {/* Jump to Juz */}
@@ -792,6 +1262,77 @@ export default function Library() {
                   </select>
                 </div>
 
+                {/* Bookmarks */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.bookmarks.title')}</span>
+                  {targetBookmark ? (
+                    // The active/current page is already bookmarked — swap the
+                    // add control for this bookmark's own state + remove action.
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
+                      <span className="inline-flex items-center gap-1.5 min-w-0">
+                        <FiBookmark className="w-3.5 h-3.5 shrink-0 fill-current" />
+                        <span className="truncate">{targetBookmark.label || t('library.bookmarks.pageLabel', { n: fmtNum(bookmarkTargetPage) })}</span>
+                      </span>
+                      <button
+                        onClick={() => removeBookmark(targetBookmark._id)}
+                        className="shrink-0 text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2"
+                      >
+                        {t('library.bookmarks.remove')}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={bookmarkLabel}
+                        onChange={e => setBookmarkLabel(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
+                        maxLength={50}
+                        placeholder={t('library.bookmarks.labelPlaceholder')}
+                        className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                      />
+                      <Tooltip label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}>
+                        <button
+                          onClick={addBookmark}
+                          disabled={savingBookmark}
+                          aria-label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}
+                          className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <FiPlus className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
+                  {bookmarks.length === 0 ? (
+                    <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
+                      {bookmarks.map(b => (
+                        <li key={b._id} className="flex items-center gap-1">
+                          <button
+                            onClick={() => goToPage(b.pageNumber)}
+                            className={`flex-1 min-w-0 inline-flex items-center gap-1.5 text-start text-xs rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
+                              b.pageNumber === bookmarkTargetPage ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
+                            }`}
+                          >
+                            <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                            <span className="truncate">{b.label || t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) })}</span>
+                            {b.label && <span className="shrink-0 text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(b.pageNumber)}</span>}
+                          </button>
+                          <Tooltip label={t('library.bookmarks.remove')}>
+                            <button
+                              onClick={() => removeBookmark(b._id)}
+                              aria-label={t('library.bookmarks.remove')}
+                              className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                              <FiTrash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
                 {/* Stats */}
                 <div className="text-sm text-[#707974] dark:text-gray-500">
                   {t('library.pagesMemorizedStat', { count: memorizedCount })}
@@ -799,46 +1340,91 @@ export default function Library() {
               </>
             )}
           </aside>
+          )}
 
           {/* ── Mushaf column ─────────────────────────────── */}
           {/* w-full so that when the layout stacks (below lg) the column fills the
               row — `items-start` otherwise shrinks it to content width and pins it
-              to the start edge, leaving the page card off-centre on narrow screens. */}
-          <div className="flex-1 w-full flex flex-col gap-4 min-w-0">
+              to the start edge, leaving the page card off-centre on narrow screens.
+              In focus mode the sidebar is gone, so cap + centre the reading column. */}
+          <div className={`flex-1 w-full flex flex-col gap-4 min-w-0${focused ? ' lg:max-w-5xl lg:mx-auto' : ''}`}>
 
-            {/* Discoverability cue */}
-            <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
-              <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-              {memorizeMode && testSelf ? t('library.memorize.tapToReveal') : t('hints.libraryVerseTap')}
-            </p>
-
-            {/* Mushaf page(s) */}
-            {pageLoading ? (
-              <div className={twoPage ? 'w-full flex gap-3 items-stretch' : 'w-full max-w-[700px] mx-auto'} style={twoPage ? { direction: 'rtl' } : undefined}>
-                {(twoPage ? visiblePages : [currentPage]).map((p) => skeletonCard(p))}
-              </div>
-            ) : pageError ? (
-              <div className="w-full max-w-[700px] mx-auto rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#fdf8ec] dark:bg-[#1f1b14] shadow-xl">
-                <div className="h-64 flex flex-col items-center justify-center gap-3 text-center px-6">
-                  <FiAlertCircle className="w-10 h-10 text-[#707974] dark:text-gray-500" />
-                  <p className="text-sm font-medium text-[#404944] dark:text-gray-400">{t('library.loadError')}</p>
-                  <button
-                    onClick={() => setReloadKey(k => k + 1)}
-                    className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
-                  >
-                    {t('common.retry')}
-                  </button>
-                </div>
-              </div>
-            ) : twoPage ? (
-              <div className="w-full flex gap-3 items-stretch" style={{ direction: 'rtl' }}>
-                {pagesData.map(renderPageCard)}
-              </div>
-            ) : (
-              <div className="w-full max-w-[700px] mx-auto">
-                {pagesData[0] && renderPageCard(pagesData[0])}
-              </div>
+            {/* Discoverability cue — the self-test hint stays while testing; the
+                plain "tap a verse" cue retires once the reader has selected one. */}
+            {(concealMode || !seenVerseTap) && (
+              <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
+                <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                {concealMode ? t(`library.memorize.hint.${concealMode}`) : t('hints.libraryVerseTap')}
+              </p>
             )}
+
+            {/* Mushaf page(s) — the relative wrapper hosts the floating edge
+                arrows (they fade in on hover of this viewport) and the swipe
+                target. In single view it hugs the card; in the spread it spans
+                the full row so the arrows flank the whole spread. */}
+            <div
+              className={`mushaf-viewport relative w-full mx-auto${twoPage ? '' : ' max-w-[760px]'}`}
+              onTouchStart={onTouchStart}
+              onTouchEnd={onTouchEnd}
+            >
+              {/* Edge hot-zones: LEFT turns forward, RIGHT turns back (RTL book).
+                  Pure affordance — hidden on touch (swipe covers that), sit in the
+                  margin outside the text frame, and step aside at the book's ends. */}
+              {pagesData.length > 0 && !pageError && (
+                <>
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    disabled={currentPage >= maxPage}
+                    aria-label={t('library.nextPage')}
+                    className="mushaf-edge-zone mushaf-edge-zone--next"
+                  >
+                    <FiChevronLeft className="w-6 h-6" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    disabled={currentPage <= 1}
+                    aria-label={t('library.prevPage')}
+                    className="mushaf-edge-zone mushaf-edge-zone--prev"
+                  >
+                    <FiChevronRight className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+              {pageError ? (
+                <div className="w-full max-w-[700px] mx-auto rounded-2xl border-2 border-amber-200/70 dark:border-amber-900/40 bg-[#fdf8ec] dark:bg-[#1f1b14] shadow-xl">
+                  <div className="h-64 flex flex-col items-center justify-center gap-3 text-center px-6">
+                    <FiAlertCircle className="w-10 h-10 text-[#707974] dark:text-gray-500" />
+                    <p className="text-sm font-medium text-[#404944] dark:text-gray-400">{t('library.loadError')}</p>
+                    <button
+                      onClick={() => setReloadKey(k => k + 1)}
+                      className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
+                    >
+                      {t('common.retry')}
+                    </button>
+                  </div>
+                </div>
+              ) : pagesData.length === 0 ? (
+                // First load only — on later turns we keep the current content
+                // (dimmed) so the page-turn animation has something to leave from.
+                <div className={twoPage ? 'w-full flex gap-3 items-stretch' : 'w-full max-w-[700px] mx-auto'} style={twoPage ? { direction: 'rtl' } : undefined}>
+                  {(twoPage ? visiblePages : [currentPage]).map((p) => skeletonCard(p))}
+                </div>
+              ) : (
+                <div className={`transition-opacity duration-200${pageLoading ? ' opacity-60' : ''}`} aria-busy={pageLoading || undefined}>
+                  {twoPage ? (
+                    <div className="w-full flex gap-3 items-stretch" style={{ direction: 'rtl' }}>
+                      {pagesData.map(renderPageCard)}
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-[700px] mx-auto">
+                      {renderPageCard(pagesData[0], 0)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Page info bar */}
             <p className="text-sm text-[#707974] dark:text-gray-500 text-center">
@@ -854,9 +1440,10 @@ export default function Library() {
                 style={popoverDragStyle}
                 className="sticky bottom-20 z-30 mx-auto bg-white dark:bg-gray-800 rounded-full border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex items-center gap-2 select-none"
               >
-                <Tooltip label={t('tooltips.dragHandle')}>
+                <Tooltip label={t('tooltips.dragHandle')} suppressed={handleDragging}>
                   <span
                     {...popoverDragHandlers}
+                    onPointerDown={(e) => { setHandleDragging(true); popoverDragHandlers.onPointerDown(e); }}
                     aria-label={t('tooltips.dragHandle')}
                     className="flex items-center justify-center w-6 h-8 rounded-full text-[#b0b6bd] dark:text-gray-500 hover:text-[#707974] dark:hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none"
                   >

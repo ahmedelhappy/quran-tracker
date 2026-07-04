@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { SURAH_PAGES } from '../data/surahPages';
 import BasmalaGlyph from './BasmalaGlyph';
 
@@ -7,25 +7,105 @@ const surahName = (n) => SURAH_PAGES.find((s) => s.number === n)?.arabic ?? '';
 // One printed mushaf page: 15 lines of pre-spaced QCF glyphs plus the surah-name
 // plates and basmala lines. Purely presentational — selection/audio/self-test
 // state is owned by the reader and passed down; words are addressed by their
-// stable `verseKey` (+ `position`), the same anchor future bookmarks/notes use.
+// stable `verseKey` (+ `position`).
+//
+// Self-test styles (`concealMode`):
+//   'hide'  — every word blurred, revealed as a PREFIX of the page's reading
+//             order (the reader owns the watermark; `isConcealed(verseKey,
+//             position)` answers per word). Hovering peeks a small WINDOW
+//             (hovered glyph ±2, line-scoped) on top of that. A mouse DRAG
+//             across words asks the reader to advance the watermark through
+//             them (`onRevealThrough`) — permanent. A plain click cycles the
+//             verse: reveal → select → hide+deselect. On touch, a tap reveals.
+//   'cover' — text visible; hovering blurs the NEXT ~5 words in reading order
+//             (to the LEFT of the cursor on the line) so you can point at the
+//             word you're reciting. Transient. On touch, a tap blurs the verse ~2s.
+//   null    — normal reading (hover highlights the verse for the actions).
 export default function MushafPage({
   pageData,
   fontFamily,
   selectedVerseKey,
   playingVerseKey,
+  concealMode,
   isConcealed,
   onSelectVerse,
   onRevealVerse,
+  onRevealThrough,
+  onHideVerse,
 }) {
-  const [hoverVerse, setHoverVerse] = useState(null);
+  const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
+  const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
+  const tapTimerRef = useRef(null);
+  const dragRef = useRef(null);                           // active mouse drag { word, x, y, moved }
+  const suppressClickRef = useRef(false);                 // swallow the click after a handled mouse press
   const { lines, ornamental } = pageData;
   const rootRef = useRef(null);
 
+  // Touch screens have no hover — in "cover" mode a tap stands in for it.
+  const noHover = useMemo(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none)').matches,
+    []
+  );
+
+  // A page/mode change starts a clean slate (React's "adjust state on prop
+  // change" pattern — no extra paint, no effect).
+  const resetKey = `${pageData.page}|${concealMode ?? ''}`;
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (seenKey !== resetKey) {
+    setSeenKey(resetKey);
+    setHoverWord(null);
+    setTapBlurVerse(null);
+  }
+  useEffect(() => { clearTimeout(tapTimerRef.current); dragRef.current = null; }, [pageData, concealMode]);
+  useEffect(() => () => clearTimeout(tapTimerRef.current), []);
+
+  const inPeek = (ln, idx) => hoverWord && hoverWord.line === ln && Math.abs(idx - hoverWord.index) <= 2;
+  // Cover blurs the words AHEAD in reading order (next slots, visually to the
+  // left of the cursor on the same line); the hovered word and those already
+  // read (to its right) stay clear.
+  const inCoverBlur = (ln, idx) => hoverWord && hoverWord.line === ln && idx > hoverWord.index && idx <= hoverWord.index + 5;
+
+  const handleWordClick = (w) => {
+    if (concealMode === 'hide') {
+      // Three-state cycle per verse: reveal → select → hide + deselect. Gated
+      // on THIS word's own concealed state (the watermark can leave a verse
+      // partially revealed after a drag stopped mid-verse).
+      if (isConcealed?.(w.verseKey, w.position)) onRevealVerse?.(w.verseKey);
+      else if (w.verseKey === selectedVerseKey) onHideVerse?.(w.verseKey);
+      else onSelectVerse?.(w.verseKey);
+      return;
+    }
+    if (concealMode === 'cover' && noHover && w.charType === 'word') {
+      // Touch stand-in for hover: briefly blur this verse.
+      clearTimeout(tapTimerRef.current);
+      setTapBlurVerse(w.verseKey);
+      tapTimerRef.current = setTimeout(() => setTapBlurVerse(null), 2000);
+      return;
+    }
+    onSelectVerse?.(w.verseKey);
+  };
+
+  // A mouse press that stays on one word is a click (handled by onClick); a press
+  // that drags across words reveals them (onPointerEnter). On release we clear the
+  // drag and, after a real drag, swallow the trailing click. Touch never starts a
+  // drag here, so it can't fight the page-turn swipe.
+  useEffect(() => {
+    const onUp = (e) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (d && e.pointerType === 'mouse' && d.moved) suppressClickRef.current = true;
+    };
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, []);
+
   // Fixed-canvas safety net: the canvas width fits every *normal* line, but a
   // handful of unusually wide lines exist in the print (e.g. p443). After the
-  // page's glyph font is applied, shrink only the lines that would overflow —
-  // a horizontal squeeze of a few percent, imperceptible and lossless (vs.
-  // clipping). Runs once per page; selection/hover don't change line widths.
+  // page's glyph font is applied, shrink only the lines that would overflow.
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -40,14 +120,10 @@ export default function MushafPage({
         words.forEach((w) => { const b = w.getBoundingClientRect(); left = Math.min(left, b.left); right = Math.max(right, b.right); });
         const contentW = right - left;
         const boxW = line.getBoundingClientRect().width; // fixed canvas line width (scaled)
-        // Shrink the font of an over-wide line so it fits; text-align re-centers
-        // it cleanly (a transform would mis-centre RTL overflow). Base font 32px.
         if (contentW > boxW + 0.5) line.style.fontSize = `${(32 * boxW / contentW).toFixed(2)}px`;
       });
     };
     (async () => {
-      // Line widths depend on THIS page's glyph font, which can finish loading
-      // after document.fonts.ready — wait for it (poll), then measure once.
       try {
         const face = fontFamily ? `32px "${fontFamily}"` : null;
         for (let i = 0; i < 60 && !cancelled; i++) {
@@ -62,14 +138,16 @@ export default function MushafPage({
   }, [pageData, fontFamily]);
 
   return (
-    <div ref={rootRef} className={`mushaf-page${ornamental ? ' is-ornamental' : ''}`}>
+    <div
+      ref={rootRef}
+      className={`mushaf-page${ornamental ? ' is-ornamental' : ''}`}
+      onMouseLeave={() => setHoverWord(null)}
+    >
       {lines.map((line) => {
         // Each row is pinned to its true printed line number (1..15). Ornamental
         // pages 1–2 aren't a 15-line grid — they flow centred, so no row pinning.
         const rowStyle = ornamental ? undefined : { gridRow: line.lineNumber };
         if (line.type === 'blank') {
-          // A genuinely empty printed row — a reserved slot, nothing to draw. Kept
-          // (not dropped) so the lines above and below stay on their real rows.
           return ornamental ? null : <div key={`e-${line.lineNumber}`} className="mushaf-blank" style={rowStyle} aria-hidden="true" />;
         }
         if (line.type === 'surah') {
@@ -90,14 +168,17 @@ export default function MushafPage({
         }
         return (
           <div key={`l-${line.lineNumber}`} className={`mushaf-line${line.centered ? ' is-centered' : ''}`} style={rowStyle}>
-            {line.words.map((w) => {
-              const concealed = isConcealed?.(w.verseKey) && w.charType === 'word';
+            {line.words.map((w, i) => {
+              const concealed = concealMode === 'cover'
+                ? w.charType === 'word' && (inCoverBlur(line.lineNumber, i) || w.verseKey === tapBlurVerse)
+                : isConcealed?.(w.verseKey, w.position) && w.charType === 'word' && !inPeek(line.lineNumber, i);
+              const hovered = !concealMode && hoverWord?.verseKey === w.verseKey;
               const cls =
                 w.verseKey === playingVerseKey
                   ? ' is-playing'
                   : w.verseKey === selectedVerseKey
                     ? ' is-selected'
-                    : w.verseKey === hoverVerse
+                    : hovered
                       ? ' is-hover'
                       : '';
               return (
@@ -105,13 +186,27 @@ export default function MushafPage({
                   key={`${w.verseKey}-${w.position}`}
                   className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}`}
                   style={fontFamily ? { fontFamily } : undefined}
-                  onMouseEnter={() => setHoverVerse(w.verseKey)}
-                  onMouseLeave={() => setHoverVerse((h) => (h === w.verseKey ? null : h))}
+                  onPointerDown={(e) => {
+                    suppressClickRef.current = false; // fresh interaction
+                    if (e.pointerType !== 'mouse') return; // desktop pointer only
+                    dragRef.current = { word: w, x: e.clientX, y: e.clientY, moved: false };
+                  }}
+                  onPointerEnter={(e) => {
+                    setHoverWord({ line: line.lineNumber, index: i, verseKey: w.verseKey });
+                    const d = dragRef.current;
+                    if (d && e.pointerType === 'mouse' && concealMode === 'hide') {
+                      d.moved = true;
+                      // Advance through the peek window's forward edge (same line),
+                      // not just the dragged-over word — so nothing that was
+                      // visible mid-drag (via the peek) re-hides on release.
+                      const fwdIdx = Math.min(i + 2, line.words.length - 1);
+                      const fwdWord = line.words[fwdIdx];
+                      onRevealThrough?.(fwdWord.verseKey, fwdWord.position);
+                    }
+                  }}
                   onClick={() => {
-                    // While self-testing, the first tap peeks at a hidden verse;
-                    // otherwise a tap selects it for the listen/tafsir actions.
-                    if (isConcealed?.(w.verseKey)) onRevealVerse?.(w.verseKey);
-                    else onSelectVerse?.(w.verseKey);
+                    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                    handleWordClick(w);
                   }}
                 >
                   <span className={concealed ? 'mushaf-concealed' : undefined}>{w.glyph}</span>

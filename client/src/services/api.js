@@ -50,6 +50,13 @@ export const progressAPI = {
   getWeekPlan: () => API.get('/progress/week'),
 };
 
+// Page bookmarks (account-saved, multiple per user)
+export const bookmarksAPI = {
+  list: () => API.get('/bookmarks'),
+  add: (data) => API.post('/bookmarks', data),
+  remove: (id) => API.delete(`/bookmarks/${id}`),
+};
+
 export const chatAPI = {
   sendMessage: (messages) => API.post('/chat', { messages }),
 };

@@ -178,12 +178,34 @@ html[lang='ar'] body {
    line-height and let flexbox space the short block. */
 .mushaf-page.is-ornamental .mushaf-line { line-height: 1.9; align-self: auto; overflow: visible; }
 
+/* ── Page-turn animation ────────────────────────────────────────────────────
+   Lives INSIDE the frame so the decorative frame/card never move. The box fills
+   the frame's text area and clips its own overflow, so the sliding content
+   disappears under the frame edge. RTL book: forward exits toward the right and
+   the incoming page arrives from the left; back is mirrored. */
+.mushaf-flip { position: relative; height: 100%; overflow: hidden; }
+.mushaf-flip-layer { height: 100%; }
+.mushaf-flip-exit { position: absolute; inset: 0; pointer-events: none; }
+@keyframes mushaf-enter-fwd { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes mushaf-enter-back { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes mushaf-exit-fwd { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(24px); } }
+@keyframes mushaf-exit-back { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(-24px); } }
+.mushaf-enter-fwd { animation: mushaf-enter-fwd 180ms ease-out; }
+.mushaf-enter-back { animation: mushaf-enter-back 180ms ease-out; }
+.mushaf-exit-fwd { animation: mushaf-exit-fwd 180ms ease-out forwards; }
+.mushaf-exit-back { animation: mushaf-exit-back 180ms ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .mushaf-enter-fwd, .mushaf-enter-back, .mushaf-exit-fwd, .mushaf-exit-back { animation: none; }
+}
+
 .mushaf-word {
   cursor: pointer;
   border-radius: 5px;
   padding: 0 0.04em;
   transition: background-color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;         /* dragging to reveal must not select glyph text */
+  -webkit-user-select: none;
 }
 
 .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.10); }
@@ -193,16 +215,16 @@ html[lang='ar'] body {
 .dark .mushaf-word.is-selected { background: rgba(217, 119, 6, 0.30); }
 .dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.28); }
 
-/* Blur (not hide) a concealed verse during self-test so its shape is a cue */
+/* Blur (not hide) a concealed word during self-test so its shape stays a cue.
+   Which words are concealed is computed per-word in MushafPage (the hovered
+   5-word WINDOW peeks in 'hide' mode / blurs in 'cover' mode); the smooth
+   transition makes the window glide as the cursor slides along the line. */
 .mushaf-concealed {
   filter: blur(6px);
   opacity: 0.5;
   user-select: none;
   transition: filter 0.15s ease, opacity 0.15s ease;
 }
-/* Desktop peek: hovering a single word un-blurs ONLY that word (a click still
-   reveals the whole verse). Pure CSS so it costs no React re-render per word. */
-.mushaf-word:hover > .mushaf-concealed { filter: none; opacity: 1; }
 
 /* Surah-name plate and basmala line (the API omits these — rebuilt by us).
    Frame echoes the reader's own page-card styling (cream + amber/gold border)
@@ -269,6 +291,48 @@ html[lang='ar'] body {
   color: var(--mushaf-ink);
 }
 .mushaf-basmala-glyph path { fill: currentColor; }
+
+/* ── Edge page-turn arrows ───────────────────────────────────────────────────
+   Circular carousel-style arrows floating just outside the page card(s): the
+   LEFT turns forward (next page), the RIGHT turns back — the mushaf is a
+   right-to-left book. They straddle the outer edge with a subtle backdrop so
+   they read on any background, sit at the vertical centre, fade in on hover of
+   the whole viewport, and are absent on touch (swipe covers that use). */
+.mushaf-edge-zone {
+  position: absolute;
+  top: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(0, 79, 53, 0.12);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #004f35;
+  box-shadow: 0 2px 10px rgba(6, 78, 59, 0.18);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background-color 0.15s ease;
+}
+.dark .mushaf-edge-zone {
+  border-color: rgba(52, 211, 153, 0.18);
+  background: rgba(31, 27, 20, 0.92);
+  color: #34d399;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.mushaf-edge-zone--next { left: 0; transform: translate(-50%, -50%); }   /* left side → forward */
+.mushaf-edge-zone--prev { right: 0; transform: translate(50%, -50%); }   /* right side → back */
+/* Fade in when the reader hovers anywhere over the page viewport. */
+.mushaf-viewport:hover .mushaf-edge-zone { opacity: 1; }
+.mushaf-edge-zone:hover { background: #fff; }
+.dark .mushaf-edge-zone:hover { background: #241f17; }
+.mushaf-edge-zone:focus-visible { opacity: 1; outline: 2px solid #004f35; outline-offset: 2px; }
+.mushaf-edge-zone:disabled { opacity: 0 !important; cursor: default; pointer-events: none; }
+@media (pointer: coarse) {
+  .mushaf-edge-zone { display: none; }
+}
 
 /* Sacred geometric star pattern — used as page background texture */
 .sacred-pattern {
