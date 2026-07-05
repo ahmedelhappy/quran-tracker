@@ -12,11 +12,13 @@ const surahName = (n) => SURAH_PAGES.find((s) => s.number === n)?.arabic ?? '';
 // Self-test styles (`concealMode`):
 //   'hide'  — every word blurred, revealed as a PREFIX of the page's reading
 //             order (the reader owns the watermark; `isConcealed(verseKey,
-//             position)` answers per word). Hovering peeks a small WINDOW
-//             (hovered glyph ±2, line-scoped) on top of that. A mouse DRAG
-//             across words asks the reader to advance the watermark through
-//             them (`onRevealThrough`) — permanent. A plain click cycles the
-//             verse: reveal → select → hide+deselect. On touch, a tap reveals.
+//             position)` answers per word). Hovering peeks ONLY the word
+//             directly under the cursor — never its neighbours, so the reader
+//             still has to recall the rest themselves. A mouse DRAG across
+//             words asks the reader to advance the watermark through them
+//             (`onRevealThrough`) one word at a time — permanent. A plain
+//             click cycles the verse: reveal → select → hide+deselect. On
+//             touch, a tap reveals.
 //   'cover' — text visible; hovering blurs the NEXT ~5 words in reading order
 //             (to the LEFT of the cursor on the line) so you can point at the
 //             word you're reciting. Transient. On touch, a tap blurs the verse ~2s.
@@ -59,7 +61,9 @@ export default function MushafPage({
   useEffect(() => { clearTimeout(tapTimerRef.current); dragRef.current = null; }, [pageData, concealMode]);
   useEffect(() => () => clearTimeout(tapTimerRef.current), []);
 
-  const inPeek = (ln, idx) => hoverWord && hoverWord.line === ln && Math.abs(idx - hoverWord.index) <= 2;
+  // Hide-mode peek: ONLY the word directly under the cursor (no neighbours —
+  // peeking ahead would hand the reader words they're meant to recall).
+  const inPeek = (ln, idx) => hoverWord && hoverWord.line === ln && idx === hoverWord.index;
   // Cover blurs the words AHEAD in reading order (next slots, visually to the
   // left of the cursor on the same line); the hovered word and those already
   // read (to its right) stay clear.
@@ -196,12 +200,8 @@ export default function MushafPage({
                     const d = dragRef.current;
                     if (d && e.pointerType === 'mouse' && concealMode === 'hide') {
                       d.moved = true;
-                      // Advance through the peek window's forward edge (same line),
-                      // not just the dragged-over word — so nothing that was
-                      // visible mid-drag (via the peek) re-hides on release.
-                      const fwdIdx = Math.min(i + 2, line.words.length - 1);
-                      const fwdWord = line.words[fwdIdx];
-                      onRevealThrough?.(fwdWord.verseKey, fwdWord.position);
+                      // Advance the watermark to exactly the word under the cursor.
+                      onRevealThrough?.(w.verseKey, w.position);
                     }
                   }}
                   onClick={() => {

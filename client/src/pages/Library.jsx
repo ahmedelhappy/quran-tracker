@@ -121,6 +121,15 @@ export default function Library() {
   const currentPage = clampPage(searchParams.get('page') ?? 1);
   const [pageInput, setPageInput] = useState(String(currentPage));
 
+  // Whether the URL already named a page when Library first mounted — captured
+  // once so an explicit ?page (dashboard links, bookmarks, deep links) always
+  // wins, and so this doesn't re-fire on later in-app navigation (goToPage
+  // always writes an explicit page, so there's never a "default" to resolve
+  // again). Gates the page-content fetch below until the default (if any) is
+  // resolved, so we never briefly load page 1 before jumping to the real target.
+  const hadExplicitPageRef = useRef(searchParams.has('page'));
+  const [pageResolved, setPageResolved] = useState(hadExplicitPageRef.current);
+
   // ── Memorize mode: a focused, guided session reflected in the URL so it
   // deep-links and survives refresh. The reader itself is unchanged; this
   // only re-frames the sidebar and layers self-testing on top of the text.
@@ -258,13 +267,43 @@ export default function Library() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  // Mount: memorized pages (for the badge + stat)
+  // Mount: memorized pages (for the badge + stat), and — when the URL didn't
+  // name a page — resolve the default landing page from this same fetch (no
+  // extra request): the first page not yet memorized, i.e. where a new-
+  // memorization session would pick up. Falls back to the last page the
+  // reader had open (persisted below), then page 1, if everything is
+  // memorized or this fetch fails. Resolved with `replace` so a refresh keeps
+  // landing on the resolved page rather than re-resolving (or worse, snapping
+  // back to page 1) every time.
   useEffect(() => {
+    const fallbackPage = () => {
+      const last = Number(localStorage.getItem('lastMushafPage'));
+      return last >= 1 && last <= 604 ? last : 1;
+    };
+    const landOn = (target) => {
+      const params = { page: String(target) };
+      if (searchParams.get('mode') === 'memorize') params.mode = 'memorize';
+      setSearchParams(params, { replace: true });
+      setPageResolved(true);
+    };
     progressAPI.getAllProgress().then(res => {
       const pages = res.data?.data?.memorizedPages ?? [];
-      setMemorizedPages(new Set(pages));
-    }).catch(() => {});
+      const memorized = new Set(pages);
+      setMemorizedPages(memorized);
+      if (hadExplicitPageRef.current) return;
+      let nextNew = null;
+      for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
+      landOn(nextNew ?? fallbackPage());
+    }).catch(() => {
+      if (!hadExplicitPageRef.current) landOn(fallbackPage());
+    });
+    // Mount-only: resolves once against the URL/localStorage as they stood at
+    // that moment; every later navigation writes an explicit page itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Remember the last page opened, as a fallback default landing page.
+  useEffect(() => { localStorage.setItem('lastMushafPage', String(currentPage)); }, [currentPage]);
 
   // Mount: the user's saved bookmarks.
   useEffect(() => {
@@ -284,7 +323,10 @@ export default function Library() {
   }, [handleDragging]);
 
   // Page / view change: load each visible page's word data + its glyph font.
+  // Held until the default-page resolution above (if any) completes, so we
+  // never briefly fetch page 1 before jumping to the resolved target.
   useEffect(() => {
+    if (!pageResolved) return;
     let cancelled = false;
     setPageInput(String(currentPage));
     setPageLoading(true);
@@ -299,7 +341,7 @@ export default function Library() {
       .catch(() => { if (!cancelled) setPageError(true); })
       .finally(() => { if (!cancelled) setPageLoading(false); });
     return () => { cancelled = true; };
-  }, [visiblePages, currentPage, reloadKey]);
+  }, [visiblePages, currentPage, reloadKey, pageResolved]);
 
   const stopAudio = useCallback(() => {
     const el = audioRef.current;
