@@ -39,6 +39,19 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Snapshot of currentStreak/lastActiveDate from just before the first
+    // streak-affecting action of the current active day, so an undo that
+    // removes the day's only completion can restore the streak exactly —
+    // otherwise marking then undoing a page would keep the streak bump,
+    // making streaks farmable. Null is a valid restored value for prevActiveDate.
+    prevStreak: {
+      type: Number,
+      default: null,
+    },
+    prevActiveDate: {
+      type: Date,
+      default: null,
+    },
     onboardingComplete: {
       type: Boolean,
       default: false,

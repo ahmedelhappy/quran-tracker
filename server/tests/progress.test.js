@@ -272,4 +272,108 @@ describe('Progress API — spaced repetition', () => {
     // Same-day new completion is deleted entirely.
     assert.equal(await UserProgress.findOne({ userId: user._id, pageNumber: 1 }), null);
   });
+
+  test('undo restores the streak: fresh user nets to zero after mark then undo', async () => {
+    const user = await createUser({ currentStreak: 0, lastActiveDate: null });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const markRes = await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    assert.equal(markRes.body.data.newStreak, 1);
+
+    const undoRes = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    assert.equal(undoRes.status, 200);
+    assert.equal(undoRes.body.data.currentStreak, 0);
+
+    const refreshed = await User.findById(user._id);
+    assert.equal(refreshed.currentStreak, 0);
+    assert.equal(refreshed.lastActiveDate, null);
+  });
+
+  test('undo restores the streak: continuing user reverts to the prior streak and date', async () => {
+    const yesterday = daysAgo(1);
+    const user = await createUser({ currentStreak: 5, lastActiveDate: yesterday });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const markRes = await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    assert.equal(markRes.body.data.newStreak, 6);
+
+    const undoRes = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    assert.equal(undoRes.body.data.currentStreak, 5);
+
+    const refreshed = await User.findById(user._id);
+    assert.equal(refreshed.currentStreak, 5);
+    assert.equal(refreshed.lastActiveDate.getTime(), yesterday.getTime());
+  });
+
+  test('undo only restores the streak once every completion today is undone', async () => {
+    const yesterday = daysAgo(1);
+    const user = await createUser({ currentStreak: 5, lastActiveDate: yesterday });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    const secondMark = await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 2, type: 'new' });
+    // Same-day second completion doesn't double-increment.
+    assert.equal(secondMark.body.data.newStreak, 6);
+
+    const firstUndo = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    // Page 2 is still completed today, so the streak bump survives.
+    assert.equal(firstUndo.body.data.currentStreak, 6);
+
+    const secondUndo = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 2, type: 'new' });
+    // No completions left today — now it restores.
+    assert.equal(secondUndo.body.data.currentStreak, 5);
+
+    const refreshed = await User.findById(user._id);
+    assert.equal(refreshed.currentStreak, 5);
+    assert.equal(refreshed.lastActiveDate.getTime(), yesterday.getTime());
+  });
+
+  test('re-marking after a full undo increments the streak again', async () => {
+    const yesterday = daysAgo(1);
+    const user = await createUser({ currentStreak: 5, lastActiveDate: yesterday });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+
+    const afterUndo = await User.findById(user._id);
+    assert.equal(afterUndo.currentStreak, 5);
+    assert.equal(afterUndo.lastActiveDate.getTime(), yesterday.getTime());
+
+    const remarkRes = await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new' });
+    assert.equal(remarkRes.body.data.newStreak, 6);
+
+    const afterRemark = await User.findById(user._id);
+    assert.equal(afterRemark.currentStreak, 6);
+  });
+
+  test('undo restores the streak after undoing a review-type completion', async () => {
+    const yesterday = daysAgo(1);
+    const user = await createUser({ currentStreak: 5, lastActiveDate: yesterday, planStartDate: daysAgo(30) });
+    await addMemorizedPage(user._id, 1, { memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10), reviewCount: 1 });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const markRes = await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'review' });
+    assert.equal(markRes.body.data.newStreak, 6);
+
+    const undoRes = await request(app).post('/api/progress/uncomplete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'review' });
+    assert.equal(undoRes.body.data.currentStreak, 5);
+
+    const refreshed = await User.findById(user._id);
+    assert.equal(refreshed.currentStreak, 5);
+    assert.equal(refreshed.lastActiveDate.getTime(), yesterday.getTime());
+  });
 });

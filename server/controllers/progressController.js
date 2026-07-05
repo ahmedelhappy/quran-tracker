@@ -45,6 +45,40 @@ const isStreakContinued = (lastActiveDate, offDays) => {
   return true;
 };
 
+// After an undo, restore the streak if the user has no completions left today.
+// Marking a page then undoing it must net to zero effect on the streak —
+// otherwise streaks are farmable. Only restores when lastActiveDate is still
+// today (i.e. today's tick came from the completion just undone, whether
+// directly or transitively via an off-day/view-only tick); prevStreak/
+// prevActiveDate are always kept as a matched pair from the same moment, so
+// restoring both together can never leave the fields incoherent.
+const reconcileStreakAfterUndo = async (userId) => {
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+
+  const remainingToday = await UserProgress.findOne({
+    userId,
+    $or: [
+      { memorizedDate: { $gte: todayStart, $lt: tomorrowStart } },
+      { lastReviewedDate: { $gte: todayStart, $lt: tomorrowStart } },
+    ],
+  });
+
+  const user = await User.findById(userId);
+  const todayString = getDateString(new Date());
+  const lastActiveIsToday = user.lastActiveDate && getDateString(user.lastActiveDate) === todayString;
+
+  if (!remainingToday && lastActiveIsToday) {
+    const restoredStreak = user.prevStreak ?? 0;
+    const restoredDate = user.prevActiveDate ?? null;
+    await User.findByIdAndUpdate(userId, { currentStreak: restoredStreak, lastActiveDate: restoredDate });
+    return restoredStreak;
+  }
+  return user.currentStreak || 0;
+};
+
 // Fetches QuranMetadata for an array of page numbers in one query
 const getMetadataMap = async (pageNumbers) => {
   if (!pageNumbers.length) return {};
@@ -219,9 +253,15 @@ exports.getTodayTasks = async (req, res) => {
 
       // Preserve streak on off-days: bump lastActiveDate without incrementing the count.
       // Guard: never tick for a user who has never been active (null lastActiveDate).
+      // Snapshot the pre-tick streak/date (same as markPageComplete) so a later
+      // undo that leaves the user with no completions today can restore it.
       if (user.lastActiveDate && getDateString(user.lastActiveDate) !== todayString
           && isStreakContinued(user.lastActiveDate, offDays)) {
-        await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+        await User.findByIdAndUpdate(userId, {
+          lastActiveDate: new Date(),
+          prevStreak: user.currentStreak || 0,
+          prevActiveDate: user.lastActiveDate,
+        });
       }
 
       return res.status(200).json({
@@ -447,7 +487,13 @@ exports.getTodayTasks = async (req, res) => {
     if (isViewOnlyComplete && user.lastActiveDate
         && getDateString(user.lastActiveDate) !== todayString
         && isStreakContinued(user.lastActiveDate, offDays)) {
-      await User.findByIdAndUpdate(userId, { lastActiveDate: new Date() });
+      // Snapshot the pre-tick streak/date (same as markPageComplete) so a later
+      // undo that leaves the user with no completions today can restore it.
+      await User.findByIdAndUpdate(userId, {
+        lastActiveDate: new Date(),
+        prevStreak: user.currentStreak || 0,
+        prevActiveDate: user.lastActiveDate,
+      });
     }
 
     res.status(200).json({
@@ -527,6 +573,11 @@ exports.markPageComplete = async (req, res) => {
     const todayString = getDateString(now);
     const offDays = user.offDays || [];
 
+    // The first streak-affecting action of the day — snapshot the pre-update
+    // streak/date so an undo later today (that leaves no completions left) can
+    // restore exactly this, rather than the streak bump surviving the undo.
+    const isFirstActionToday = !user.lastActiveDate || getDateString(user.lastActiveDate) !== todayString;
+
     let newStreak = user.currentStreak || 0;
     if (!user.lastActiveDate) {
       newStreak = 1;
@@ -538,7 +589,12 @@ exports.markPageComplete = async (req, res) => {
       newStreak = 1;
     }
 
-    await User.findByIdAndUpdate(userId, { lastActiveDate: now, currentStreak: newStreak });
+    const streakUpdate = { lastActiveDate: now, currentStreak: newStreak };
+    if (isFirstActionToday) {
+      streakUpdate.prevStreak = user.currentStreak || 0;
+      streakUpdate.prevActiveDate = user.lastActiveDate || null;
+    }
+    await User.findByIdAndUpdate(userId, streakUpdate);
 
     res.status(200).json({
       success: true,
@@ -598,7 +654,13 @@ exports.unmarkPageComplete = async (req, res) => {
       return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
     }
 
-    res.status(200).json({ success: true, message: `Page ${pageNumber} completion undone` });
+    const currentStreak = await reconcileStreakAfterUndo(userId);
+
+    res.status(200).json({
+      success: true,
+      message: `Page ${pageNumber} completion undone`,
+      data: { currentStreak },
+    });
   } catch (error) {
     console.error('UnmarkPageComplete error:', error);
     res.status(500).json({ success: false, message: 'Error undoing completion', error: error.message });
@@ -887,6 +949,8 @@ exports.resetProgress = async (req, res) => {
     await User.findByIdAndUpdate(userId, {
       currentStreak: 0,
       lastActiveDate: null,
+      prevStreak: null,
+      prevActiveDate: null,
       planStartDate: new Date(),
     });
 

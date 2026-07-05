@@ -421,8 +421,14 @@ export default function Dashboard() {
   const undoComplete = async (pageNumber, type) => {
     const key = `${type}-${pageNumber}`;
     try {
-      await progressAPI.uncomplete({ pageNumber, type });
+      const res = await progressAPI.uncomplete({ pageNumber, type });
       setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+      // The server may have just restored the streak (this was the day's last
+      // completion) — reflect that in the stats chip without a full refetch.
+      const restoredStreak = res.data?.data?.currentStreak;
+      if (restoredStreak !== undefined) {
+        setData(prev => prev ? { ...prev, stats: { ...prev.stats, currentStreak: restoredStreak } } : prev);
+      }
       showToast(t('dashboard.undone'), 'info');
     } catch {
       showToast(t('dashboard.failedUndo'), 'error');
