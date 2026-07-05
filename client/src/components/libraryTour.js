@@ -5,10 +5,11 @@ import 'driver.js/dist/driver.css';
  * Contextual guidance for the Library reader, built on the same driver.js setup
  * and `.qt-tour` theme as the dashboard tour (see components/dashboardTour.js).
  *
- * Three entry points, each gated by its own localStorage flag in Library.jsx so
+ * Two entry points, each gated by its own localStorage flag in Library.jsx so
  * the resting UI never re-triggers them:
- *   - startLibraryTour       — first-visit spotlight of the reader (4 steps)
- *   - startMemorizeTour      — first ?mode=memorize entry, only the new controls
+ *   - startLibraryTour       — first-visit spotlight of the whole reader (self-test
+ *                              and the per-page mark tick included — there is no
+ *                              separate mode to tour anymore)
  *   - startVerseActionsCoachmark — one-time hint on the verse popover buttons
  *
  * Positioning follows the dashboard lesson: every step anchors to a SMALL, stable
@@ -90,24 +91,17 @@ const makeDriver = ({ t, steps, single = false, onDone }) => {
   return tour;
 };
 
-/** First-visit walkthrough of the reader. */
+/**
+ * First-visit walkthrough of the reader — sidebar navigation, self-testing,
+ * listening, tapping a verse, and marking a page done, in that on-screen order.
+ */
 export function startLibraryTour({ t, onDone } = {}) {
   const steps = buildSteps([
-    { sel: '[data-tour="lib-nav"]',      titleKey: 'libraryTour.navTitle',      bodyKey: 'libraryTour.navBody',      side: 'bottom', align: 'start' },
-    { sel: '[data-tour="lib-audio"]',    titleKey: 'libraryTour.audioTitle',    bodyKey: 'libraryTour.audioBody',    side: 'top',    align: 'start' },
-    { sel: '[data-tour="lib-verse"]',    titleKey: 'libraryTour.verseTitle',    bodyKey: 'libraryTour.verseBody',    side: 'bottom', align: 'start' },
-    { sel: '[data-tour="lib-memorize"]', titleKey: 'libraryTour.memorizeTitle', bodyKey: 'libraryTour.memorizeBody', side: 'bottom', align: 'start' },
-  ], t);
-  if (steps.length === 0) { onDone?.(); return undefined; }
-  return makeDriver({ t, steps, onDone });
-}
-
-/** First memorize-mode entry — only the controls memorize mode adds. */
-export function startMemorizeTour({ t, onDone } = {}) {
-  const steps = buildSteps([
-    { sel: '[data-tour="mem-test"]',  titleKey: 'libraryTour.memTestTitle',   bodyKey: 'libraryTour.memTestBody',   side: 'bottom', align: 'start' },
-    { sel: '[data-tour="lib-verse"]', titleKey: 'libraryTour.memRevealTitle', bodyKey: 'libraryTour.memRevealBody', side: 'bottom', align: 'start' },
-    { sel: '[data-tour="mem-mark"]',  titleKey: 'libraryTour.memMarkTitle',   bodyKey: 'libraryTour.memMarkBody',   side: 'top',    align: 'start' },
+    { sel: '[data-tour="lib-nav"]',   titleKey: 'libraryTour.navTitle',   bodyKey: 'libraryTour.navBody',   side: 'bottom', align: 'start' },
+    { sel: '[data-tour="lib-test"]',  titleKey: 'libraryTour.testTitle',  bodyKey: 'libraryTour.testBody',  side: 'bottom', align: 'start' },
+    { sel: '[data-tour="lib-audio"]', titleKey: 'libraryTour.audioTitle', bodyKey: 'libraryTour.audioBody', side: 'top',    align: 'start' },
+    { sel: '[data-tour="lib-verse"]', titleKey: 'libraryTour.verseTitle', bodyKey: 'libraryTour.verseBody', side: 'bottom', align: 'start' },
+    { sel: '[data-tour="lib-mark"]',  titleKey: 'libraryTour.markTitle',  bodyKey: 'libraryTour.markBody',  side: 'top',    align: 'start' },
   ], t);
   if (steps.length === 0) { onDone?.(); return undefined; }
   return makeDriver({ t, steps, onDone });

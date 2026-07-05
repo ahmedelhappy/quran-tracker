@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
-  FiTarget, FiEye, FiEyeOff, FiArrowLeft, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
+  FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
@@ -13,7 +13,7 @@ import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import MushafPage from '../components/MushafPage';
-import { startLibraryTour, startMemorizeTour, startVerseActionsCoachmark } from '../components/libraryTour';
+import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
@@ -130,12 +130,9 @@ export default function Library() {
   const hadExplicitPageRef = useRef(searchParams.has('page'));
   const [pageResolved, setPageResolved] = useState(hadExplicitPageRef.current);
 
-  // ── Memorize mode: a focused, guided session reflected in the URL so it
-  // deep-links and survives refresh. The reader itself is unchanged; this
-  // only re-frames the sidebar and layers self-testing on top of the text.
-  const memorizeMode = searchParams.get('mode') === 'memorize';
   // Self-test style: 'off' | 'hide' (blur everything, hover peeks a window) |
-  // 'cover' (text shown, hover blurs a window under the cursor).
+  // 'cover' (text shown, hover blurs a window under the cursor). Always
+  // available in the reader — there is no separate "memorize mode" anymore.
   const [selfTest, setSelfTest] = useState('off');
   // Reading-position watermark per visible page number: a word is revealed iff
   // its page-order index (top line to bottom, right→left within a line) is <=
@@ -143,7 +140,7 @@ export default function Library() {
   // is always a clean prefix of the page — see revealVerse/hideVerse/revealThrough.
   const [watermarks, setWatermarks] = useState({}); // { [pageNumber]: lastRevealedIndex }
   const [checkedSteps, setCheckedSteps] = useState(() => new Set()); // ephemeral method ticks
-  const [methodOpen, setMethodOpen] = useState(true);
+  const [methodOpen, setMethodOpen] = useState(false); // collapsed by default
   const [howToOpen, setHowToOpen] = useState(false);
 
   // ── View mode: single page or two-page spread (spread needs width, so it's
@@ -153,10 +150,9 @@ export default function Library() {
   const twoPage = view === 'double' && isWide;
 
   // ── Focus mode: a distraction-free read that hides the sidebar + page header
-  // and centres the mushaf. A normal-reader feature only — memorize mode keeps
-  // its guided panel, so `focused` is always false there.
+  // and centres the mushaf.
   const [focusMode, setFocusMode] = useState(() => localStorage.getItem('mushafFocus') === '1');
-  const focused = focusMode && !memorizeMode;
+  const focused = focusMode;
 
   // Page-turn animation: the last travel direction ('fwd' | 'back') drives which
   // way the content slides; disabled entirely when the OS asks for reduced motion.
@@ -213,7 +209,6 @@ export default function Library() {
   const tourRef = useRef(null);
   const tourActiveRef = useRef(false);
   const libTourCheckedRef = useRef(false);
-  const memTourCheckedRef = useRef(false);
 
   // The pages currently on screen (the spread is anchored to the right/odd page).
   const visiblePages = useMemo(() => {
@@ -281,9 +276,7 @@ export default function Library() {
       return last >= 1 && last <= 604 ? last : 1;
     };
     const landOn = (target) => {
-      const params = { page: String(target) };
-      if (searchParams.get('mode') === 'memorize') params.mode = 'memorize';
-      setSearchParams(params, { replace: true });
+      setSearchParams({ page: String(target) }, { replace: true });
       setPageResolved(true);
     };
     progressAPI.getAllProgress().then(res => {
@@ -365,19 +358,12 @@ export default function Library() {
     setWatermarks({});
   }, [currentPage]);
 
-  // Leaving memorize mode: drop the self-test so the reader shows normally
+  // First-visit reader tour (self-test and the per-page mark tick are folded
+  // in alongside the original nav/audio/verse steps — there's no separate
+  // "memorize mode" tour anymore), gated by `seenLibraryTour`. `?tour=1`
+  // (Settings → Replay) forces it and is then stripped from the URL. Mount-only.
   useEffect(() => {
-    if (!memorizeMode) {
-      setSelfTest('off');
-      setWatermarks({});
-    }
-  }, [memorizeMode]);
-
-  // First-visit reader tour — only in the normal reader (memorize mode has its
-  // own tour below), gated by `seenLibraryTour`. `?tour=1` (Settings → Replay)
-  // forces it and is then stripped from the URL.
-  useEffect(() => {
-    if (memorizeMode || libTourCheckedRef.current) return;
+    if (libTourCheckedRef.current) return;
     const forceTour = searchParams.get('tour') === '1';
     if (!forceTour && localStorage.getItem('seenLibraryTour')) {
       libTourCheckedRef.current = true;
@@ -405,31 +391,7 @@ export default function Library() {
     }, 350);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memorizeMode]);
-
-  // First memorize-mode entry — a short tour of only the controls it adds.
-  useEffect(() => {
-    if (!memorizeMode || memTourCheckedRef.current) return;
-    if (localStorage.getItem('seenMemorizeModeTour')) {
-      memTourCheckedRef.current = true;
-      return;
-    }
-    const id = setTimeout(() => {
-      memTourCheckedRef.current = true;
-      const tour = startMemorizeTour({
-        t,
-        onDone: () => {
-          localStorage.setItem('seenMemorizeModeTour', '1');
-          tourActiveRef.current = false;
-          tourRef.current = null;
-        },
-      });
-      if (tour) { tourRef.current = tour; tourActiveRef.current = true; }
-      else localStorage.setItem('seenMemorizeModeTour', '1');
-    }, 350);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memorizeMode]);
+  }, []);
 
   // Tear down a running tour only on real unmount (navigating away mid-tour).
   useEffect(() => () => {
@@ -514,10 +476,8 @@ export default function Library() {
     if (twoPage && page % 2 === 0) page = Math.max(1, page - 1);
     if (page === currentPage) return;
     turnDirRef.current = page > currentPage ? 'fwd' : 'back'; // for the turn animation
-    const params = { page: String(page) };
-    if (memorizeMode) params.mode = 'memorize';
-    setSearchParams(params, { replace: true });
-  }, [twoPage, currentPage, memorizeMode, setSearchParams]);
+    setSearchParams({ page: String(page) }, { replace: true });
+  }, [twoPage, currentPage, setSearchParams]);
 
   // Directional turns for a right-to-left book: "next" always moves forward
   // (higher page number), "prev" back — independent of UI language. The pager,
@@ -549,14 +509,14 @@ export default function Library() {
           break;
         case 'f':
         case 'F':
-          if (!memorizeMode) { e.preventDefault(); setFocusMode((v) => !v); }
+          e.preventDefault(); setFocusMode((v) => !v);
           break;
         default: break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, selectedVerseKey, focused, memorizeMode]);
+  }, [goNext, goPrev, tafsirOpen, selectedVerseKey, focused]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -586,12 +546,8 @@ export default function Library() {
     }
   };
 
-  // ── Memorize mode controls ───────────────────────────────
-  const enterMemorize = () => setSearchParams({ page: String(currentPage), mode: 'memorize' }, { replace: true });
-  const exitMemorize = () => setSearchParams({ page: String(currentPage) }, { replace: true });
-
   // The active conceal style for the page ('hide' | 'cover' | null when off).
-  const concealMode = memorizeMode && selfTest !== 'off' ? selfTest : null;
+  const concealMode = selfTest !== 'off' ? selfTest : null;
 
   // 1st click of the hide-mode cycle: reveal the WHOLE verse — the watermark
   // advances to its last word on EVERY visible page it has words on, so a verse
@@ -794,10 +750,6 @@ export default function Library() {
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
   const playingVerseKey = playingIndex != null ? verses[playingIndex]?.verseKey ?? null : null;
-  // In the spread the passive badge covers BOTH visible pages, so "memorized"
-  // means every page on screen is done (each page's own status is also shown
-  // by its own check button on the page card).
-  const allVisibleMemorized = visiblePages.every((p) => memorizedPages.has(p));
   const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
   // The bookmark (if any) already saved for the active/current page — when set,
   // the add control swaps for this bookmark's own remove affordance.
@@ -883,7 +835,7 @@ export default function Library() {
                     disabled={savingMemorized}
                     aria-label={label}
                     aria-pressed={done}
-                    data-tour="mem-mark"
+                    data-tour="lib-mark"
                     className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {done
@@ -948,24 +900,6 @@ export default function Library() {
           {!focused && (
           <aside className="w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-28 lg:self-start">
 
-            {/* Memorize-mode header + exit */}
-            {memorizeMode && (
-              <div className="flex items-center justify-between gap-2 rounded-xl bg-[#004f35]/5 dark:bg-emerald-900/20 border border-[#004f35]/15 dark:border-emerald-800/30 px-3 py-2.5">
-                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-[#003527] dark:text-emerald-300">
-                  <FiTarget className="w-4 h-4 text-[#004f35] dark:text-emerald-400" />
-                  {t('library.memorize.title')}
-                </span>
-                <Tooltip label={t('library.memorize.exit')}>
-                  <button
-                    onClick={exitMemorize}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#707974] dark:text-gray-300 hover:text-[#003527] dark:hover:text-gray-100 rounded-lg px-2 py-1 hover:bg-white/60 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <FiX className="w-3.5 h-3.5" /> {t('library.memorize.exitShort')}
-                  </button>
-                </Tooltip>
-              </div>
-            )}
-
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
@@ -1010,9 +944,7 @@ export default function Library() {
                 placeholder={t('library.gotoPagePlaceholder')}
               />
 
-              {/* Single / two-page spread toggle + focus toggle (large screens
-                  only). The spread works in memorize mode too; focus mode is a
-                  normal-reader feature, so its button is hidden while memorizing. */}
+              {/* Single / two-page spread toggle + focus toggle (large screens only). */}
               <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
                 <button
                   onClick={() => setViewMode('single')}
@@ -1031,257 +963,211 @@ export default function Library() {
                   <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
                 </button>
               </div>
-              {!memorizeMode && (
-                <button
-                  onClick={() => setFocusMode(true)}
-                  className="hidden lg:inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg border border-[#dce2f3] dark:border-gray-600 px-3 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
-                >
-                  <FiMaximize2 className="w-3.5 h-3.5" /> {t('library.focus.enter')}
-                </button>
-              )}
+              <button
+                onClick={() => setFocusMode(true)}
+                className="hidden lg:inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg border border-[#dce2f3] dark:border-gray-600 px-3 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+              >
+                <FiMaximize2 className="w-3.5 h-3.5" /> {t('library.focus.enter')}
+              </button>
+            </div>
 
-              {/* Passive status only — the per-page check button on each page
-                  card (below the mushaf) is the only mark/unmark control. */}
-              {allVisibleMemorized && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-2.5 py-1 rounded-full w-max">
-                  ✓ {t('library.memorizedBadge')}
+            {/* ── Self-test (active recall) — always available ── */}
+            <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
+              {/* Label + tappable explainer (the how-it-works text lives here). */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
+                  {t('library.selfTest.label')}
                 </span>
+                <InfoHint text={t(`library.selfTest.hint.${selfTest}`)} label={t('library.selfTest.label')} size="xs" />
+              </div>
+              {/* Segmented control: pick a testing style (or turn it off). */}
+              <div
+                className="grid grid-cols-3 gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1"
+                role="group"
+                aria-label={t('library.selfTest.label')}
+                data-tour="lib-test"
+              >
+                {['off', 'hide', 'cover'].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSelfTestMode(m)}
+                    aria-pressed={selfTest === m}
+                    className={`inline-flex items-center justify-center gap-1 text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
+                      selfTest === m
+                        ? 'bg-[#004f35] text-white'
+                        : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {m === 'hide' && <FiEyeOff className="w-3.5 h-3.5" />}
+                    {m === 'cover' && <FiEye className="w-3.5 h-3.5" />}
+                    {t(`library.selfTest.mode.${m}`)}
+                  </button>
+                ))}
+              </div>
+              {selfTest === 'hide' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={revealAllVisible}
+                    className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                  >
+                    {t('library.selfTest.revealAll')}
+                  </button>
+                  <button
+                    onClick={hideAllVerses}
+                    className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                  >
+                    {t('library.selfTest.hideAll')}
+                  </button>
+                </div>
               )}
             </div>
 
-            {memorizeMode ? (
-              <>
-                {/* ── Self-test (active recall) ── */}
-                <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
-                  {/* Label + tappable explainer (the how-it-works text lives here now). */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
-                      {t('library.memorize.selfTestLabel')}
-                    </span>
-                    <InfoHint text={t(`library.memorize.hint.${selfTest}`)} label={t('library.memorize.selfTestLabel')} size="xs" />
-                  </div>
-                  {/* Segmented control: pick a testing style (or turn it off). */}
-                  <div
-                    className="grid grid-cols-3 gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1"
-                    role="group"
-                    aria-label={t('library.memorize.selfTestLabel')}
-                    data-tour="mem-test"
+            {/* ── Method checklist (ephemeral ticks), collapsed by default ── */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setMethodOpen(o => !o)}
+                className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
+              >
+                {t('library.method.title')}
+                <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {methodOpen && (
+                <>
+                  <ol className="flex flex-col gap-0.5">
+                    {stepList.map((step, i) => (
+                      <li key={i}>
+                        <button
+                          onClick={() => toggleStep(i)}
+                          className="w-full flex items-start gap-2 text-start py-0.5 group"
+                        >
+                          {checkedSteps.has(i)
+                            ? <FiCheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                            : <FiSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#b0b6bd] dark:text-gray-500 group-hover:text-[#707974] dark:group-hover:text-gray-400 transition-colors" />}
+                          <span className={`text-xs leading-snug ${checkedSteps.has(i) ? 'line-through text-[#a0a6ab] dark:text-gray-600' : 'text-[#404944] dark:text-gray-300'}`}>
+                            {step.title}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                  <button
+                    onClick={() => setHowToOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 mt-0.5 w-max"
                   >
-                    {['off', 'hide', 'cover'].map((m) => (
+                    <FiHelpCircle className="w-3.5 h-3.5" /> {t('library.method.fullGuide')}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Jump to Juz */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
+              <select
+                value={currentJuz}
+                onChange={e => goToPage(JUZ_START_PAGES[Number(e.target.value) - 1])}
+                className={selectCls}
+              >
+                {JUZ_START_PAGES.map((_, i) => (
+                  <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: fmtNum(i + 1) })}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Jump to Surah */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
+              <select
+                value={sidebarSurah?.number ?? ''}
+                onChange={e => {
+                  const s = SURAH_PAGES.find(x => x.number === Number(e.target.value));
+                  if (s) goToPage(s.start);
+                }}
+                className={selectCls}
+              >
+                {SURAH_PAGES.map(s => (
+                  <option key={s.number} value={s.number}>
+                    {fmtNum(s.number)}. {isArabic ? s.arabic : s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Bookmarks */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.bookmarks.title')}</span>
+              {targetBookmark ? (
+                // The active/current page is already bookmarked — swap the
+                // add control for this bookmark's own state + remove action.
+                <div className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    <FiBookmark className="w-3.5 h-3.5 shrink-0 fill-current" />
+                    <span className="truncate">{targetBookmark.label || t('library.bookmarks.pageLabel', { n: fmtNum(bookmarkTargetPage) })}</span>
+                  </span>
+                  <button
+                    onClick={() => removeBookmark(targetBookmark._id)}
+                    className="shrink-0 text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2"
+                  >
+                    {t('library.bookmarks.remove')}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={bookmarkLabel}
+                    onChange={e => setBookmarkLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
+                    maxLength={50}
+                    placeholder={t('library.bookmarks.labelPlaceholder')}
+                    className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                  />
+                  <Tooltip label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}>
+                    <button
+                      onClick={addBookmark}
+                      disabled={savingBookmark}
+                      aria-label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}
+                      className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <FiPlus className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+              {bookmarks.length === 0 ? (
+                <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
+              ) : (
+                <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
+                  {bookmarks.map(b => (
+                    <li key={b._id} className="flex items-center gap-1">
                       <button
-                        key={m}
-                        onClick={() => setSelfTestMode(m)}
-                        aria-pressed={selfTest === m}
-                        className={`inline-flex items-center justify-center gap-1 text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
-                          selfTest === m
-                            ? 'bg-[#004f35] text-white'
-                            : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                        onClick={() => goToPage(b.pageNumber)}
+                        className={`flex-1 min-w-0 inline-flex items-center gap-1.5 text-start text-xs rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
+                          b.pageNumber === bookmarkTargetPage ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
                         }`}
                       >
-                        {m === 'hide' && <FiEyeOff className="w-3.5 h-3.5" />}
-                        {m === 'cover' && <FiEye className="w-3.5 h-3.5" />}
-                        {t(`library.memorize.mode.${m}`)}
+                        <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                        <span className="truncate">{b.label || t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) })}</span>
+                        {b.label && <span className="shrink-0 text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(b.pageNumber)}</span>}
                       </button>
-                    ))}
-                  </div>
-                  {selfTest === 'hide' && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={revealAllVisible}
-                        className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
-                      >
-                        {t('library.memorize.revealAll')}
-                      </button>
-                      <button
-                        onClick={hideAllVerses}
-                        className="flex-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
-                      >
-                        {t('library.memorize.hideAll')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Passive status + continue ──
-                    Marking itself happens via the check button on each page
-                    card; this is just a status readout and page navigation. */}
-                <div className="flex flex-col gap-2">
-                  {allVisibleMemorized && (
-                    <span className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
-                      ✓ {t('library.memorize.memorizedDone')}
-                    </span>
-                  )}
-                  <button
-                    onClick={goNext}
-                    disabled={currentPage >= maxPage}
-                    className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* ── Method checklist (ephemeral ticks) ── */}
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => setMethodOpen(o => !o)}
-                    className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
-                  >
-                    {t('library.memorize.method')}
-                    <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {methodOpen && (
-                    <>
-                      <ol className="flex flex-col gap-0.5">
-                        {stepList.map((step, i) => (
-                          <li key={i}>
-                            <button
-                              onClick={() => toggleStep(i)}
-                              className="w-full flex items-start gap-2 text-start py-0.5 group"
-                            >
-                              {checkedSteps.has(i)
-                                ? <FiCheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-                                : <FiSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#b0b6bd] dark:text-gray-500 group-hover:text-[#707974] dark:group-hover:text-gray-400 transition-colors" />}
-                              <span className={`text-xs leading-snug ${checkedSteps.has(i) ? 'line-through text-[#a0a6ab] dark:text-gray-600' : 'text-[#404944] dark:text-gray-300'}`}>
-                                {step.title}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                      <button
-                        onClick={() => setHowToOpen(true)}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 mt-0.5 w-max"
-                      >
-                        <FiHelpCircle className="w-3.5 h-3.5" /> {t('library.memorize.fullGuide')}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Enter memorize mode (the "what is this" text lives in the InfoHint) */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={enterMemorize}
-                    data-tour="lib-memorize"
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors"
-                  >
-                    <FiTarget className="w-4 h-4" /> {t('library.memorize.enter')}
-                  </button>
-                  <InfoHint text={t('library.memorize.enterHint')} label={t('library.memorize.enter')} />
-                </div>
-
-                {/* Jump to Juz */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
-                  <select
-                    value={currentJuz}
-                    onChange={e => goToPage(JUZ_START_PAGES[Number(e.target.value) - 1])}
-                    className={selectCls}
-                  >
-                    {JUZ_START_PAGES.map((_, i) => (
-                      <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: fmtNum(i + 1) })}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Jump to Surah */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
-                  <select
-                    value={sidebarSurah?.number ?? ''}
-                    onChange={e => {
-                      const s = SURAH_PAGES.find(x => x.number === Number(e.target.value));
-                      if (s) goToPage(s.start);
-                    }}
-                    className={selectCls}
-                  >
-                    {SURAH_PAGES.map(s => (
-                      <option key={s.number} value={s.number}>
-                        {fmtNum(s.number)}. {isArabic ? s.arabic : s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Bookmarks */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.bookmarks.title')}</span>
-                  {targetBookmark ? (
-                    // The active/current page is already bookmarked — swap the
-                    // add control for this bookmark's own state + remove action.
-                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
-                      <span className="inline-flex items-center gap-1.5 min-w-0">
-                        <FiBookmark className="w-3.5 h-3.5 shrink-0 fill-current" />
-                        <span className="truncate">{targetBookmark.label || t('library.bookmarks.pageLabel', { n: fmtNum(bookmarkTargetPage) })}</span>
-                      </span>
-                      <button
-                        onClick={() => removeBookmark(targetBookmark._id)}
-                        className="shrink-0 text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2"
-                      >
-                        {t('library.bookmarks.remove')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={bookmarkLabel}
-                        onChange={e => setBookmarkLabel(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
-                        maxLength={50}
-                        placeholder={t('library.bookmarks.labelPlaceholder')}
-                        className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
-                      />
-                      <Tooltip label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}>
+                      <Tooltip label={t('library.bookmarks.remove')}>
                         <button
-                          onClick={addBookmark}
-                          disabled={savingBookmark}
-                          aria-label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}
-                          className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          onClick={() => removeBookmark(b._id)}
+                          aria-label={t('library.bookmarks.remove')}
+                          className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                         >
-                          <FiPlus className="w-4 h-4" />
+                          <FiTrash2 className="w-3.5 h-3.5" />
                         </button>
                       </Tooltip>
-                    </div>
-                  )}
-                  {bookmarks.length === 0 ? (
-                    <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
-                  ) : (
-                    <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
-                      {bookmarks.map(b => (
-                        <li key={b._id} className="flex items-center gap-1">
-                          <button
-                            onClick={() => goToPage(b.pageNumber)}
-                            className={`flex-1 min-w-0 inline-flex items-center gap-1.5 text-start text-xs rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
-                              b.pageNumber === bookmarkTargetPage ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
-                            }`}
-                          >
-                            <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-                            <span className="truncate">{b.label || t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) })}</span>
-                            {b.label && <span className="shrink-0 text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(b.pageNumber)}</span>}
-                          </button>
-                          <Tooltip label={t('library.bookmarks.remove')}>
-                            <button
-                              onClick={() => removeBookmark(b._id)}
-                              aria-label={t('library.bookmarks.remove')}
-                              className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                            >
-                              <FiTrash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </Tooltip>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-                {/* Stats */}
-                <div className="text-sm text-[#707974] dark:text-gray-500">
-                  {t('library.pagesMemorizedStat', { count: memorizedCount })}
-                </div>
-              </>
-            )}
+            {/* Stats */}
+            <div className="text-sm text-[#707974] dark:text-gray-500">
+              {t('library.pagesMemorizedStat', { count: memorizedCount })}
+            </div>
           </aside>
           )}
 
@@ -1297,7 +1183,7 @@ export default function Library() {
             {(concealMode || !seenVerseTap) && (
               <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
                 <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-                {concealMode ? t(`library.memorize.hint.${concealMode}`) : t('hints.libraryVerseTap')}
+                {concealMode ? t(`library.selfTest.hint.${concealMode}`) : t('hints.libraryVerseTap')}
               </p>
             )}
 

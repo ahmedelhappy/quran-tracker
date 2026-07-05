@@ -1,11 +1,17 @@
 # Code Guide — A Plain-Language Walkthrough
 
-**Who this is for:** you, the student developer, getting ready to explain and defend this
-project to professors. It assumes you know JavaScript basics but want to confidently
-explain *how the whole thing fits together* and *why* it was built this way.
+**Who this is for:** you, the developer — originally written for the graduation defense
+(now passed ✅), this guide's job today is different: it's your **study companion for
+learning full-stack development through this codebase**, and later, interview prep. It
+assumes JavaScript basics and explains *how the whole thing fits together* and *why* it
+was built this way.
+
+Start with [§0 — How to study this codebase](#0-how-to-study-this-codebase-a-5-day-path)
+if you're here to learn.
 
 This is a study guide, not marketing. Where something is an approximation or a known
-trade-off, it says so honestly — those are exactly the places professors probe.
+trade-off, it says so honestly — those are exactly the places interviewers (and
+professors) probe.
 
 Paths are written relative to this file (it lives in `docs/`), so the links are
 clickable. Frontend code is under [`../client/src/`](../client/src/), backend under
@@ -18,14 +24,76 @@ For the formal requirement-to-code mapping (FR/NFR table), see
 
 ## Table of contents
 
+0. [How to study this codebase (a 5-day path)](#0-how-to-study-this-codebase-a-5-day-path)
 1. [The big picture: how the pieces talk](#1-the-big-picture-how-the-pieces-talk)
 2. [The data models](#2-the-data-models)
 3. [Authentication, end to end](#3-authentication-end-to-end)
 4. [The core: how the daily plan is built](#4-the-core-how-the-daily-plan-is-built)
 5. [Frontend structure](#5-frontend-structure)
-6. [External integrations: Quran content & the AI assistant](#6-external-integrations)
-7. [Likely professor questions & answers](#7-likely-professor-questions--answers)
-8. [Glossary](#8-glossary)
+6. [The Library reader](#6-the-library-reader)
+7. [Onboarding & in-app guidance](#7-onboarding--in-app-guidance)
+8. [The Progress and Settings pages](#8-the-progress-and-settings-pages)
+9. [External integrations: Quran content & the AI assistant](#9-external-integrations)
+10. [Likely professor questions & answers](#10-likely-professor-questions--answers)
+11. [Glossary](#11-glossary)
+
+---
+
+## 0. How to study this codebase (a 5-day path)
+
+You know ~70% of React frontend and have backend clues; the goal is a working high-level
+mental model of a real MERN app in under a week, as the launchpad for a full-stack learning
+track. This codebase is a genuinely good syllabus: it has auth, a non-trivial scheduling
+algorithm, indexes, tests, i18n/RTL, and external API integration — all small enough to
+actually read.
+
+**Method (matters more than the schedule):**
+- **Predict, then verify.** Before opening a file, write one sentence guessing what it does
+  and how. Being wrong is the useful part.
+- **Read tests as documentation.** `server/tests/*.test.js` shows exactly how every endpoint
+  is *supposed* to behave — often clearer than the controller itself. Run `npm test` early.
+- **Replay history.** `git log --oneline` is the project's story. Pick a feature commit and
+  read its diff — you'll see how a feature actually lands across files.
+- **AI as explainer, not writer.** During the study week, ask AI to explain code you've
+  already tried to read — don't let it write anything. The point is building your model.
+- Keep a `questions.md` scratch file; most questions answer themselves by day 3 — the rest
+  are gold.
+
+**Day 1 — Run it, then trace ONE request end-to-end.** Start both apps (`server`: `npm run
+dev`, `client`: `npm run dev`). Then trace *login* through every layer, in this order:
+[Login.jsx](../client/src/pages/Login.jsx) → [AuthContext.jsx](../client/src/context/AuthContext.jsx)
+→ [api.js](../client/src/services/api.js) (interceptor) → [authRoutes.js](../server/routes/authRoutes.js)
+→ [authController.js](../server/controllers/authController.js) → [User.js](../server/models/User.js)
+(hash hook) → back. Watch the request in DevTools' Network tab. If you can narrate this
+round-trip cold, you understand "full stack" as an architecture.
+
+**Day 2 — Backend day.** Read the three data models (§2), then [middleware/auth.js](../server/middleware/auth.js),
+then [progressController.js](../server/controllers/progressController.js) with §4 of this
+guide open beside it — `getTodayTasks` is the hardest and most valuable read in the repo.
+Then read `server/tests/progress.test.js` and run the suite. Finish by breaking something on
+purpose (rename a field, watch which test fails) — nothing teaches structure faster.
+
+**Day 3 — React day.** [main.jsx](../client/src/main.jsx) → [App.jsx](../client/src/App.jsx)
+(providers + routes) → the three contexts (§5) → one simple page ([Progress.jsx](../client/src/pages/Progress.jsx))
+→ then [Dashboard.jsx](../client/src/pages/Dashboard.jsx) (the canonical fetch→state→render
+page, §5). Exercise: find one real usage each of `useState`, `useEffect`, `useMemo`,
+`useCallback`, `useRef` in the codebase and explain to yourself why *that* hook and not
+another.
+
+**Day 4 — The hard file + the presentation layer.** [Library.jsx](../client/src/pages/Library.jsx)
+with [mushafApi.js](../client/src/services/mushafApi.js) and
+[MushafPage.jsx](../client/src/components/MushafPage.jsx) (§6). Read the IMPROVEMENT_PLAN
+progress log first so you know how it evolved. Then skim [i18n.js](../client/src/i18n.js) +
+a locale file, and the Tailwind setup in [index.css](../client/src/index.css).
+
+**Day 5 — Prove it.** Build one tiny feature end-to-end *yourself* (AI allowed only for
+explanations): e.g. bookmark colors, or a `GET /api/progress/reviewed-this-week` endpoint +
+a small stat card. Touch model → route → controller → test → api.js → component. Write at
+least one backend test for it. If this takes you a full day, that's normal and it's the
+single highest-value day of the five.
+
+After that, continue improving the app via [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) — each
+stage you review and accept is itself a lesson.
 
 ---
 
@@ -79,12 +147,13 @@ route → middleware checks the token → a controller runs the logic and querie
 through Mongoose → the controller sends JSON back → the page updates its state and
 re-renders.
 
-In [app.js](../server/app.js) the three groups are mounted like this:
+In [app.js](../server/app.js) the route groups are mounted like this:
 
 ```js
 app.use('/api/auth', require('./routes/authRoutes'));      // register, login, profile
 app.use('/api/progress', require('./routes/progressRoutes')); // the memorization plan
 app.use('/api/chat', require('./routes/chatRoutes'));       // the AI assistant
+app.use('/api/bookmarks', require('./routes/bookmarkRoutes')); // saved page bookmarks
 ```
 
 There's also a `GET /health` endpoint returning `{ status: 'ok' }` — that's not for users,
@@ -117,6 +186,7 @@ One document per registered person. The fields worth knowing:
 | `cycleReviewStartPage` | Optional: where in the mushaf the cycle review should start from. |
 | `language` | `'en'` or `'ar'`. |
 | `pausedFromOnboarding` | Set when a user finished onboarding already knowing pages but chose to pause new memorization first — drives the "first cycle complete" celebration. |
+| `prevStreak`, `prevActiveDate` | A snapshot of the streak state taken at the day's *first* streak-affecting action. Exists so that undoing the day's only completion can honestly restore the streak — the old `lastActiveDate` isn't reconstructible once overwritten. |
 
 `timestamps: true` auto-adds `createdAt` / `updatedAt`.
 
@@ -158,6 +228,15 @@ more than one surah). This never changes per user; it's reference data.
 It's seeded once with [../server/seed/quranData.js](../server/seed/quranData.js)
 (`node seed/quranData.js`). Controllers join against it only to *label* pages for display
 — it holds no Quran text. The actual Arabic text and audio come from an external API (§6).
+
+### Bookmark — [../server/models/Bookmark.js](../server/models/Bookmark.js)
+
+The newest model: one document per saved page bookmark — `{ userId, pageNumber, label? }`,
+capped at 100 per user. Uniqueness is enforced by the database itself: a **unique**
+`{ userId, pageNumber }` index means one bookmark per page per user, and non-empty labels
+are checked unique per user case-insensitively (a Mongo *collation* query — worth reading in
+[bookmarkController.js](../server/controllers/bookmarkController.js) as a small, complete
+example of model + controller + routes + tests done end-to-end).
 
 ### How they relate
 
@@ -422,7 +501,7 @@ This is the canonical "fetch then render" pattern:
    placeholders (the `Sk` component); on failure it shows a toast.
 
 2. **Render from state.** The returned `data` drives everything: the stats "bento" cards
-   (streak chip, daily review target, Juz ring, pages-to-Hifz), and the **Today / This Week**
+   (streak chip, **current-Juz ring**, memorized-pages stat), and the **Today / This Week**
    tabs. New pages and review pages render as `TaskCard`s; recent-review pages get a "recent"
    badge.
 
@@ -440,18 +519,305 @@ Every page follows this rhythm: call a function from
 [../client/src/services/api.js](../client/src/services/api.js), store the JSON in state,
 render from state, and mutate through small POST/PUT calls.
 
+**Two stat-card details worth knowing, since they changed from a simpler first version:**
+
+- **Current-Juz ring**, not a 30-Juz fraction. `Dashboard.jsx` finds the first incomplete
+  Juz from `juzData` (`juzData.find(j => !j.isComplete)`) and shows *that* Juz's own
+  completion ring + number, with a tooltip naming it (`dashboard.currentJuzTooltip`). When
+  all 30 are done it shows `30 / 30`. This reads more usefully day-to-day than a single
+  blended "X% of the Quran" ring, which told the user little about *what to work on next*.
+- **Memorized-pages stat** (`stats.totalMemorized / 604`) is labeled plainly as "Memorized
+  pages" rather than an ambiguous "Pages to Hifz" — a small wording fix after user-testing
+  found the original label was read as a countdown rather than a running total.
+
+**The review column is a single unified list.** Recent-review and cycle-review pages are
+merged into one `allReviewPages` array (recent pages tagged `isRecent: true`) and rendered
+as one scrollable list with a small "Recent" badge distinguishing the two — there is no
+separate recent/cycle split in the UI, even though the server still computes them as two
+buckets (§4). This was a deliberate simplification: two visually separate review sections
+asked new users to understand the recent/cycle distinction before they'd done a single
+review.
+
+**The dashboard also drives the first-run tour and the memorize-method modal** — covered in
+[§7](#7-onboarding--in-app-guidance) rather than here, since the same pattern (driver.js +
+a localStorage flag) is shared with the Library page.
+
 ---
 
-## 6. External integrations
+## 6. The Library reader
+
+There is exactly **one reading mode** — an earlier version had a separate "memorize mode"
+toggled by `?mode=memorize`, but the self-test and method checklist it gated are useful on
+every visit, not just a dedicated session, so they were merged into the normal reader's
+sidebar. If you land on an old bookmarked `?mode=memorize` link, it still works: nothing in
+the code reads that param anymore, and `goToPage` rebuilds the URL's `page` param from
+scratch on the very next navigation, so the stale `mode` value quietly disappears.
+
+### How the exact mushaf rendering works
+
+The real 604-page mushaf can't be reproduced by flowing text — line breaks are baked into
+the print. [mushafApi.js](../client/src/services/mushafApi.js) does it the way quran.com
+does: **one tiny font per page** ("QCF" glyph fonts, self-hosted under
+`client/public/fonts/qcf/`, loaded on demand via the FontFace API) plus word data from the
+quran.com API saying which glyph sits on which of the page's **15 lines**.
+[MushafPage.jsx](../client/src/components/MushafPage.jsx) renders those 15 lines as a fixed
+CSS grid (`repeat(15, minmax(0,1fr))`) inside a fixed-size frame that is uniformly scaled to
+its column — so a line can never overflow at any screen size. Every word is a `<span>` keyed
+by `verseKey` (`"surah:ayah"`) + word `position`, which is the stable anchor that selection,
+audio, self-test, and (future) annotations all share.
+
+[../client/src/pages/Library.jsx](../client/src/pages/Library.jsx) is the mushaf reader
+(§9 covers where the Arabic text comes from). Its sidebar is a single flat sequence, in
+on-screen order: page navigation, self-test, the method checklist, jump to Juz, jump to
+Surah, bookmarks, then the pages-memorized stat. Nothing in it is conditional on a mode.
+
+### The self-test (active recall)
+
+A three-way segmented control sets `selfTest` to `'off' | 'hide' | 'cover'`, always visible
+in the sidebar (`data-tour="lib-test"`) — `'hide'` blurs everything and reveals a verse only
+when tapped; `'cover'` keeps the text visible but blurs a small window under the
+cursor/finger as you hover, so you can drill a page without ever fully hiding it. The active
+style derives the page's conceal behaviour:
+```js
+const concealMode = selfTest !== 'off' ? selfTest : null;
+```
+Concealment itself is **not** a simple boolean per word — it's a reading-order "watermark"
+per visible page: `watermarks[page]` holds the index (top line to bottom, right→left within
+a line) of the last word considered revealed, and a word is shown iff its index is `<=` that
+number. Tapping a verse (`revealVerse`) advances the watermark to the verse's last word;
+tapping an already-revealed verse a second time (`hideVerse`) winds the watermark back to
+just before it, hiding it and everything after. Dragging across words in `'cover'` mode
+calls `revealThrough` continuously, advancing the watermark to the furthest word the
+peek-window has touched — so releasing mid-drag never re-hides what was just shown. "Reveal
+all" / "Hide all" (`revealAllVisible` / `hideAllVerses`) push every visible page's watermark
+to its last word or reset it to `-1` in one step. Concealed words are **blurred, not
+hidden** — the line shape stays visible as a positional memory cue, which is closer to how a
+real Hifz self-test works (you recognize *where* a word sits on the page) than blanking the
+page entirely. This is **active recall** — research shows testing yourself on material
+(forcing retrieval) cements memory far better than passively re-reading it, which is the
+cognitive-science complement to the spaced-repetition scheduling in §4.
+
+### The method checklist
+
+Collapsed by default (`methodOpen` starts `false`), this is a collapsible list of the same 7
+memorization steps used in `HowToMemorizeModal` (§7), reused here as
+`t('howTo.steps', { returnObjects: true })` so the two surfaces never drift out of sync.
+Checking a step (`toggleStep`) just toggles an index into a local `checkedSteps` `Set` — it
+is **ephemeral, not persisted**: there's no server field for "did the user follow step 3." It
+exists purely to give the user something to tick off page by page, not as data the app
+tracks or scores. A "full guide" link reopens `HowToMemorizeModal` for the complete text.
+
+### Marking a page memorized
+
+The **only** memorized indicator is a small tick button in each page card's footer
+(`data-tour="lib-mark"`) — there's no separate badge or banner elsewhere on the page. It
+calls `markPageMemorized`/`unmarkPageMemorized`, which optimistically flip a local
+`memorizedPages` Set, then call `progressAPI.markComplete` (adding) or
+`progressAPI.updateMemorized` (removing — `/uncomplete` only undoes pages memorized *today*
+and would 400 on an older page), rolling back on failure. In two-page view each half of the
+spread has its own tick, so either page can be marked independently.
+
+### Focus mode, two-page view, and navigation
+
+**Focus mode** (`focusMode`, persisted to `localStorage['mushafFocus']`) hides the sidebar
+and page chrome for a distraction-free read; **view** (`single`/`double`, persisted to
+`localStorage['mushafView']`) switches to a two-page spread on wide screens
+(`twoPage = view === 'double' && isWide`), snapping to an odd anchor page so the spread
+always pairs correctly. Every page-change path funnels through one function, `goToPage`,
+which clamps to `1..604` and re-snaps for two-page view — so all of the following stay
+consistent with each other by construction: the prev/next pager buttons, the page-number
+input, `ArrowLeft`/`ArrowRight`/`PageDown`/`PageUp` keys (RTL book: left = forward), the
+floating edge-arrows (`mushaf-edge-zone--next`/`--prev`), touch swipe
+(`onTouchStart`/`onTouchEnd`), jump-to-Juz/Surah, bookmarks, and the page scrubber below.
+
+The **page scrubber** ([PageScrubber.jsx](../client/src/components/PageScrubber.jsx)) is a
+full-width `<input type="range">` above the audio bar for jumping around without typing. The
+mushaf is a right-to-left book regardless of UI language, so the track always reads page 1 at
+the right end and 604 at the left; rather than fight the browser's own RTL mirroring of a
+range input's native sides, the component pins `dir="ltr"` on the input and inverts the
+*value* mapping instead (`page = 605 - sliderValue`), so the visual orientation is identical
+in both UI languages. Small ticks mark the 30 Juz start pages. Dragging only updates a local
+preview and a floating bubble (page number + Juz, Arabic-Indic digits in AR) — the mushaf
+itself doesn't navigate, and so doesn't reload, until release (`onPointerUp`/
+`onPointerCancel`), at which point `goToPage` is called once, which already handles the
+two-page snap.
+
+### Bookmarks
+
+Account-saved, multiple per user, backed by the `Bookmark` model (§2) via
+[bookmarksAPI](../client/src/services/api.js) — add/remove/list against the current page,
+each with an optional label, listed in the sidebar for one-tap navigation.
+
+---
+
+## 7. Onboarding & in-app guidance
+
+New users don't read documentation — they need *contextual* nudges at the moment a feature
+becomes relevant. This app layers three guidance mechanisms on top of the existing pages
+rather than a separate "tutorial mode": guided **tours** (driver.js), an instructional
+**modal** (the 7-step method), and lightweight **tooltips/hints**. All three are gated so
+they show *once*.
+
+### The tours — driver.js
+
+[driver.js](https://driverjs.com) is a small library that draws a dimmed overlay with a
+cut-out "spotlight" around one DOM element at a time, plus a popover with title/body text
+and Next/Back/Close buttons — i.e. it does the overlay math, scroll-into-view, Esc-to-close,
+and click-outside-to-skip for you, so the app only supplies *which elements* and *what text*.
+
+Two tour builders, both following the same shape:
+
+- [dashboardTour.js](../client/src/components/dashboardTour.js) — `startDashboardTour({ t, onDone })`
+  walks 5 dashboard regions (new-memorization column, listen button, review column, streak
+  chip, settings link), each targeted by a stable `data-tour="…"` attribute, e.g.
+  `[data-tour="new-mem"]` on [Dashboard.jsx:838](../client/src/pages/Dashboard.jsx). Steps
+  whose target isn't currently in the DOM (the new-memorization column doesn't exist for a
+  Hafiz; the Settings link is desktop-only) are filtered out *before* the tour starts, so it
+  never spotlights an empty space.
+- [libraryTour.js](../client/src/components/libraryTour.js) — two entry points for the
+  Library page: `startLibraryTour` (first visit to the reader, 5 steps covering navigation,
+  self-test, listening, tapping a verse, and the per-page mark tick — there's no separate
+  mode to tour anymore) and `startVerseActionsCoachmark` (a single one-time highlight on the
+  verse popover's Play/Tafsir buttons — `showButtons: ['next', 'close']`, no Back, since it's
+  a hint, not a walkthrough). Steps additionally check the target is *laid out*
+  (`el.getClientRects().length > 0`), so a control hidden at the current viewport width
+  (e.g. a mobile-collapsed control) is skipped too.
+
+Both builders read the current theme (`document.documentElement.classList.contains('dark')`)
+to pick a more opaque overlay in dark mode, and apply a shared `.qt-tour` CSS class
+(in [index.css](../client/src/index.css)) so the popover matches the app's emerald palette
+and mirrors correctly under `dir="rtl"`.
+
+### The gating: each tour fires once, ever
+
+Every tour is gated by its own `localStorage` flag, checked before launching and set in the
+`onDone` callback:
+
+| Flag | Set when | Triggers |
+|---|---|---|
+| `seenDashboardTour` | dashboard tour finishes/closes | first dashboard visit, or `?tour=1` to force it |
+| `seenMemorizeGuide` | the How-To modal auto-opens once | chained right after the dashboard tour (or immediately if there's nothing to spotlight) |
+| `seenLibraryTour` | library reader tour finishes | first visit to `/library` |
+| `seenVerseActionsHint` | the coachmark is shown/dismissed | first time the verse popover appears, only if no tour is currently running |
+
+On [Dashboard.jsx:344–386](../client/src/pages/Dashboard.jsx), this chaining is explicit: the
+dashboard tour's `onDone` calls `showGuideOnce()`, which only opens
+`HowToMemorizeModal` if `seenMemorizeGuide` isn't set yet — so a brand-new user sees the tour,
+then (once) the how-to guide, in sequence, while a returning user sees neither. A
+`tourTimeoutRef` delays the check by 350ms so the tour doesn't fight the dashboard's own
+data-loading skeleton state. A ref-guarded effect destroys an in-flight tour only on real
+unmount (navigating away), not on every re-render.
+
+### `HowToMemorizeModal` — the 7-step method
+
+[HowToMemorizeModal.jsx](../client/src/components/HowToMemorizeModal.jsx) is a portal-rendered
+modal (`createPortal(..., document.body)`) teaching a recommended 7-step method for
+memorizing one page (read the steps from `t('howTo.steps')` so they stay bilingual). It's
+reused in three places: the one-time auto-open after the dashboard tour, an opt-in "Full
+guide" link from the Library's method checklist (§6), and presumably a help trigger
+elsewhere on Settings — one component, three entry points, so the method text only has to be
+written once.
+
+### Tooltip & InfoHint — the lightweight layer
+
+Two small always-available components round out the guidance, used throughout (not gated by
+localStorage — they're on-demand, not one-time):
+- [Tooltip.jsx](../client/src/components/Tooltip.jsx) — wraps an icon-only button and always
+  applies an `aria-label`, so icon buttons (listen, undo, mark-all) are both visually
+  labeled on hover *and* properly named for screen readers.
+- [InfoHint.jsx](../client/src/components/InfoHint.jsx) — a small "ⓘ" that reveals a
+  short explanation of a domain term (e.g. what "Juz" or "streak" means) inline, for users
+  who don't recognize the vocabulary yet.
+
+---
+
+## 8. The Progress and Settings pages
+
+### Progress: compact vs. detailed map
+
+[Progress.jsx](../client/src/pages/Progress.jsx) shows the 30-Juz "Memorization Map" in two
+densities, toggled by a single boolean:
+```js
+const [showDetailedMap, setShowDetailedMap] = useState(false);
+```
+**Compact** (the default) is a dense `grid-cols-5 sm:grid-cols-10` of small numbered tiles —
+one per Juz, colored by completion, with a `title` tooltip giving the exact count/percentage.
+**Detailed** expands to a `grid-cols-1 sm:grid-cols-2 xl:grid-cols-3` of larger cards, each
+showing the Juz's full "count/total · pct%" inline and (per a later fix) fitting each Juz's
+page range on one line instead of wrapping. Defaulting to compact was a deliberate
+declutter: the detailed view repeats information already visible elsewhere (Juz number,
+page count) at a cost in vertical space that most users don't need on every visit.
+
+### The GitHub-style contribution graph
+
+`buildContributionWeeks(createdAt, byDate, fullHistory)` turns the `memorizedByDate` map
+(returned by `GET /api/progress/all`, §4) into the week-column / weekday-row grid GitHub
+made familiar:
+```js
+function buildContributionWeeks(createdAt, byDate = {}, fullHistory = false) {
+  // builds Sunday-aligned week columns of {date, count, level} cells, in UTC,
+  // either ~26 weeks back or all the way to account creation (fullHistory)
+}
+```
+By default it shows roughly the last 26 weeks; a "View full history" toggle
+(`showFullHistory`, gated behind `canViewFullHistory` — only offered once the account is
+actually older than that 26-week window, since showing the toggle to a brand-new account
+would reveal an empty button) extends the start date back to `user.createdAt`. All date math
+is done in UTC (`toUTCMidnight`, `toISODate`) so the grid's day keys line up exactly with the
+server's `YYYY-MM-DD` date strings from §4 — the same UTC discipline as the backend.
+
+### The "Edit my pages" button
+
+A single CTA at the bottom of the Memorization Map (`FiEdit2` icon) routes to
+`/settings?tab=memorization&edit=1`, landing the user directly on Settings' memorized-pages
+editor instead of making them hunt for it — Progress is read-mostly (it visualizes state),
+so editing intentionally lives one click away on Settings rather than being duplicated here.
+
+### Settings: a simplified review-intensity selector
+
+The review-settings group in [Settings.jsx](../client/src/pages/Settings.jsx) presents four
+equal-weight cards in one row — `light` / `standard` / `strong` (the same three
+`reviewIntensity` presets `computeDailyReviewTarget` understands, §4) plus a fourth
+**"Fixed number"** card:
+```js
+const [reviewMode, setReviewMode] = useState(
+  (user?.recentReviewCount != null || user?.cycleReviewCount != null) ? 'fixed' : 'intensity'
+);
+```
+Picking a preset card sends `reviewIntensity` and clears both override fields
+(`recentReviewCount: null, cycleReviewCount: null`) so the server formula takes over again;
+picking "Fixed number" instead sends explicit `cycleReviewCount` (and, in Advanced,
+`recentReviewCount`) so the user pins an exact daily review count. Each preset card also
+shows a live estimate (`estimateReviewPages`) of how many pages that intensity would assign
+*today*, computed from the user's current memorized total — turning an abstract setting into
+a concrete number before they commit to it.
+
+### The Advanced section
+
+Three settings that most users never need to touch are tucked behind a collapsed
+`showAdvanced` toggle rather than shown by default: **pause new memorization** (review-only
+mode), the **recent-review count** override (only relevant in Fixed-number mode), and the
+**review-cycle start point** (`cycleReviewStartPage` — lets a user pick where in the mushaf
+the cycle-review rotation should resume from, e.g. after a long break). Burying these behind
+one disclosure toggle keeps the main Settings screen approachable for a first-time user while
+still giving power users full control — the same "advanced options collapsed by default"
+pattern as the compact/detailed map toggle above.
+
+---
+
+## 9. External integrations
 
 ### Quran content — [../client/src/services/quranApi.js](../client/src/services/quranApi.js)
 
-The app stores **no Quran text or audio itself**. It pulls them live from public sources,
-all called from the browser:
+The app stores **no Quran text or audio itself** (the QCF page *fonts* are self-hosted, but
+they're glyph shapes, not text). Content comes from public sources, all called from the
+browser:
 
-- **Page text** — `fetchPageText(pageNumber)` hits `api.alquran.cloud` for the
-  `quran-uthmani` edition (Uthmani script *with* full diacritics/tashkeel — that's the
-  Arabic-rendering requirement, NFR-07).
+- **Page text/layout** — now comes from the **quran.com API v4** via
+  [mushafApi.js](../client/src/services/mushafApi.js) (per-word glyph codes + line numbers —
+  the exact-mushaf pipeline described in §6, satisfying the tashkeel requirement NFR-07).
+  `quranApi.js`'s older `fetchPageText` (alquran.cloud `quran-uthmani`) remains only as a
+  text utility; the reader no longer renders from it.
 - **Audio** — `getAyahAudioUrl(reciterId, ayahNumber)` builds a URL on the
   `cdn.islamic.network` audio CDN. Five reciters are listed in `RECITERS`; the comment notes
   one reciter was dropped because the CDN returned 403 for it (a real, verified detail worth
@@ -488,7 +854,7 @@ A chatbot that answers Hifz/Islamic questions, powered by **Groq** running the
 
 ---
 
-## 7. Likely professor questions & answers
+## 10. Likely professor questions & answers
 
 **Q: Why MongoDB (a document database) instead of a SQL database?**
 The data is naturally document-shaped and the access patterns are user-scoped. The dominant
@@ -574,6 +940,30 @@ review target to a Hafiz-specific schedule (e.g. `standard` reviews 60 pages/day
 covers all 604 in a week). The dashboard shows a congratulations banner instead of a "new
 memorization" column.
 
+**Q: How does the onboarding tour work, and why driver.js instead of building it yourself?**
+[driver.js](https://driverjs.com) draws the dimmed-overlay-with-a-spotlight effect and
+handles scroll-into-view, Esc-to-close, and step navigation — all fiddly DOM/positioning
+work that would be its own small project to get right. The app only supplies *which*
+elements to highlight (via stable `data-tour="…"` attributes) and the title/body text per
+step (see [dashboardTour.js](../client/src/components/dashboardTour.js) and
+[libraryTour.js](../client/src/components/libraryTour.js)). Each tour filters its step list
+down to elements that actually exist *and* are laid out before launching, so it never
+spotlights empty space for a user missing that feature (e.g. a Hafiz has no "new
+memorization" column). Each tour is gated by its own one-time `localStorage` flag
+(`seenDashboardTour`, `seenLibraryTour`, …) so it never replays — except via the `?tour=1`
+escape hatch used for demoing it again.
+
+**Q: Why does the self-test live inside the normal Library page instead of a separate
+memorize screen?**
+An earlier version did split them — a `?mode=memorize` URL flag swapped the sidebar between
+"reading controls" and "memorize controls" on the same page. In practice the self-test and
+method checklist turned out to be useful on every visit, not just a dedicated session, so
+they were merged into one always-available sidebar (§6) rather than kept behind a mode
+switch. The one-reader design was kept either way: self-test, the method checklist, and the
+mark-done flow all share the existing page's audio playback, verse selection, tafsir panel,
+and RTL layout, instead of re-implementing them in a second component — avoiding two
+near-identical readers that would drift apart over time.
+
 **Q: Where would I point to prove a given requirement is met?**
 Use [FEATURES.md](FEATURES.md) — it maps every FR-01–13 and NFR-01–07 to a specific file and
 function. This guide explains the *how* and *why* behind those mappings.
@@ -594,7 +984,7 @@ function. This guide explains the *how* and *why* behind those mappings.
 
 ---
 
-## 8. Glossary
+## 11. Glossary
 
 Quick plain-language definitions of the terms used throughout this guide.
 

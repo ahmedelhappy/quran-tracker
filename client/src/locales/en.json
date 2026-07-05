@@ -72,6 +72,7 @@
     "showLess": "Show less",
     "wantMore": "Want to do more today?",
     "memorizeMore": "Memorize More",
+    "memorizeInLibrary": "Memorize in Library",
     "upcomingPages": "— upcoming pages",
     "reviewMore": "Review More",
     "additionalPages": "— additional pages",
@@ -175,19 +176,15 @@
   },
   "libraryTour": {
     "navTitle": "Move through the Mushaf",
-    "navBody": "Step between pages with the arrows, or type a page number to jump straight to it.",
+    "navBody": "Step between pages with the arrows, type a page number, or drag the scrubber below the page to jump straight to it.",
+    "testTitle": "Test yourself",
+    "testBody": "Hide all the words or just cover the ones near your cursor, then recall them from memory — tap a hidden verse to peek if you get stuck.",
     "audioTitle": "Listen to the page",
     "audioBody": "Press play to hear the whole page, and pick your favourite reciter from the menu.",
     "verseTitle": "Tap a verse",
     "verseBody": "Tap any verse to play it on its own or read its tafsir.",
-    "memorizeTitle": "Memorize mode",
-    "memorizeBody": "Start a focused session that helps you test yourself and commit the page to memory.",
-    "memTestTitle": "Test yourself",
-    "memTestBody": "Hide the words to recall them from memory, then switch back to show the text.",
-    "memRevealTitle": "Tap to reveal",
-    "memRevealBody": "While testing, tap a blurred verse to peek at it whenever you get stuck.",
-    "memMarkTitle": "Mark it memorized",
-    "memMarkBody": "Once you can recite the page, mark it memorized to add it to your reviews.",
+    "markTitle": "Mark it memorized",
+    "markBody": "Once you can recite the page, mark it memorized to add it to your reviews.",
     "coachTitle": "Verse actions",
     "coachBody": "Play this verse, or read its tafsir."
   },
@@ -549,7 +546,6 @@
   },
   "library": {
     "subtitle": "Read any page of the Quran, listen to the recitation, and explore the meaning.",
-    "memorizedBadge": "Memorized",
     "markedToast": "Page {{n}} marked as memorized",
     "unmarkedToast": "Page {{n}} removed from memorized",
     "markPage": "Mark page {{n}} as memorized",
@@ -574,6 +570,7 @@
     "prevPageKey": "Previous page (→ key)",
     "jumpToJuz": "Jump to Juz",
     "jumpToSurah": "Jump to Surah",
+    "scrubberLabel": "Drag to jump to a page",
     "loadError": "Could not load this page",
     "pagesMemorizedStat": "{{count}} / 604 pages memorized",
     "pageInfoLabel": "Page {{n}}",
@@ -594,13 +591,8 @@
     "tafsirTitle": "Tafsir of the verse",
     "tafsirEdition": "Tafsir book",
     "tafsirError": "Could not load the tafsir",
-    "memorize": {
-      "title": "Memorize mode",
-      "enter": "Memorize mode",
-      "enterHint": "A focused, guided session to commit this page to memory — listen, understand, then test yourself.",
-      "exit": "Exit memorize mode",
-      "exitShort": "Exit",
-      "selfTestLabel": "Self-test style",
+    "selfTest": {
+      "label": "Self-test style",
       "mode": { "off": "Off", "hide": "Hide all", "cover": "Cover cursor" },
       "hint": {
         "off": "Pick a self-test style to check your memory.",
@@ -608,11 +600,11 @@
         "cover": "The text stays visible — hover to blur a few words at the cursor and test your recall. On touch, tap a verse to hide it briefly."
       },
       "revealAll": "Reveal all",
-      "hideAll": "Hide all",
-      "method": "Memorization steps",
-      "fullGuide": "Open the full guide",
-      "memorizedDone": "This page is memorized",
-      "nextPage": "Next page"
+      "hideAll": "Hide all"
+    },
+    "method": {
+      "title": "Memorization steps",
+      "fullGuide": "Open the full guide"
     }
   },
   "footer": {

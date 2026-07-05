@@ -97,12 +97,12 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
           <p className="text-sm text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>
           {isNew && (
             <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-              {/* Open this page in the Library's guided memorize session */}
+              {/* Open this page in the Library to memorize it */}
               <Link
-                to={`/library?page=${page.pageNumber}&mode=memorize`}
+                to={`/library?page=${page.pageNumber}`}
                 className="inline-flex items-center gap-1 text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 transition-colors"
               >
-                <FiTarget className="w-3.5 h-3.5" /> {t('library.memorize.enter')}
+                <FiTarget className="w-3.5 h-3.5" /> {t('dashboard.memorizeInLibrary')}
               </Link>
               {onHowTo && (
                 <button
