@@ -422,3 +422,121 @@ html[dir="rtl"] .driver-popover.qt-tour .driver-popover-navigation-btns button +
   margin-left: 0;
   margin-right: 4px;
 }
+
+/* ── Page scrubber — fast jump across the 604-page mushaf ───────────────
+   The track's visual orientation (page 1 at the right, 604 at the left) comes
+   entirely from PageScrubber's numeric value inversion, not from `dir` or a
+   transform, so this CSS is identical for both UI languages. */
+.page-scrubber {
+  position: relative;
+  padding-top: 26px; /* room for the drag bubble above the track */
+}
+.page-scrubber-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+.page-scrubber-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 79, 53, 0.25);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.dark .page-scrubber-tick {
+  background: rgba(52, 211, 153, 0.3);
+}
+.page-scrubber-bubble {
+  position: absolute;
+  top: -6px;
+  transform: translate(-50%, -100%);
+  background: #003527;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 4px 10px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(6, 78, 59, 0.25);
+  pointer-events: none;
+  z-index: 5;
+}
+.page-scrubber-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #003527;
+}
+.dark .page-scrubber-bubble { background: #34d399; color: #003527; }
+.dark .page-scrubber-bubble::after { border-top-color: #34d399; }
+
+.page-scrubber-input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.page-scrubber-input:focus-visible { outline: none; }
+
+.page-scrubber-input::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #dce2f3;
+}
+.dark .page-scrubber-input::-webkit-slider-runnable-track { background: #374151; }
+.page-scrubber-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px; /* centers the 16px thumb on the 4px track */
+  border-radius: 9999px;
+  background: #004f35;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(6, 78, 59, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.page-scrubber-input:hover::-webkit-slider-thumb { transform: scale(1.15); }
+.page-scrubber-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(0, 79, 53, 0.25), 0 1px 4px rgba(6, 78, 59, 0.4);
+}
+.dark .page-scrubber-input::-webkit-slider-thumb { background: #34d399; border-color: #1f2937; }
+.dark .page-scrubber-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.3), 0 1px 4px rgba(6, 78, 59, 0.4);
+}
+
+.page-scrubber-input::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #dce2f3;
+}
+.dark .page-scrubber-input::-moz-range-track { background: #374151; }
+.page-scrubber-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #004f35;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(6, 78, 59, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.page-scrubber-input:hover::-moz-range-thumb { transform: scale(1.15); }
+.page-scrubber-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgba(0, 79, 53, 0.25), 0 1px 4px rgba(6, 78, 59, 0.4);
+}
+.dark .page-scrubber-input::-moz-range-thumb { background: #34d399; border-color: #1f2937; }
+.dark .page-scrubber-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.3), 0 1px 4px rgba(6, 78, 59, 0.4);
+}

@@ -13,6 +13,7 @@ import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import MushafPage from '../components/MushafPage';
+import PageScrubber from '../components/PageScrubber';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -1253,6 +1254,12 @@ export default function Library() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* ── Page scrubber — fast navigation without typing, tight
+                against the page card(s) so it's visible without scrolling ── */}
+            <div className="w-full max-w-[650px] mx-auto -mt-2">
+              <PageScrubber currentPage={currentPage} onNavigate={goToPage} fmtNum={fmtNum} />
             </div>
 
             {/* Page info bar */}
