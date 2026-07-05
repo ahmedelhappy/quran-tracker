@@ -8,6 +8,12 @@ import Tooltip from './Tooltip';
 // persists the choice (detector cache → localStorage 'lang') and App.jsx's
 // language effect updates document.documentElement.lang/dir. Logged-in users
 // additionally get the preference saved on their profile.
+//
+// The 'langExplicit' flag marks this as a deliberate choice (as opposed to the
+// language i18next merely fell back to) — AuthContext reads it to decide which
+// direction to sync in in on the next login/refresh: an explicit choice made
+// before the profile could be updated (e.g. toggled while logged out) is
+// pushed UP to the account rather than a stale saved value pulling it back.
 const LanguageToggle = ({ variant = 'icon', className = '' }) => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
@@ -17,6 +23,7 @@ const LanguageToggle = ({ variant = 'icon', className = '' }) => {
   const toggle = () => {
     i18n.changeLanguage(nextLang);
     localStorage.setItem('lang', nextLang);
+    localStorage.setItem('langExplicit', '1');
     if (user) {
       authAPI.updateProfile({ language: nextLang }).catch(() => {});
     }

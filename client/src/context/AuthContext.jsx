@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../services/api';
 import i18n from '../i18n';
 
@@ -20,15 +20,29 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Check if user is logged in on app load
-  useEffect(() => {
-    checkAuth();
+  // Reconcile the account's saved language with this device's UI language.
+  // A deliberate local choice (LanguageToggle sets 'langExplicit') always wins
+  // — if it hasn't reached the profile yet (e.g. toggled while logged out, so
+  // there was no account to save it to), push it up now instead of letting the
+  // account's stale/default value silently pull the UI back on this refresh.
+  // With no explicit local choice (a fresh device), adopt the account's saved
+  // preference instead.
+  const syncLanguage = useCallback((userData) => {
+    const explicitLocalLang = localStorage.getItem('langExplicit') === '1' ? localStorage.getItem('lang') : null;
+    if (explicitLocalLang) {
+      if (userData.language !== explicitLocalLang) {
+        authAPI.updateProfile({ language: explicitLocalLang }).catch(() => {});
+      }
+    } else if (userData.language && userData.language !== i18n.language) {
+      i18n.changeLanguage(userData.language);
+      localStorage.setItem('lang', userData.language);
+    }
   }, []);
 
   // Verify token and get user data
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('token');
-    
+
     if (!token) {
       setLoading(false);
       return;
@@ -38,9 +52,7 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.getMe();
       const userData = response.data.data;
       setUser(userData);
-      if (userData.language && userData.language !== i18n.language) {
-        i18n.changeLanguage(userData.language);
-      }
+      syncLanguage(userData);
     } catch (err) {
       console.log(err);
       localStorage.removeItem('token');
@@ -48,19 +60,25 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [syncLanguage]);
+
+  // Check if user is logged in on app load
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   // Register new user
   const register = async (name, email, password) => {
     try {
       setError(null);
       const response = await authAPI.register({ name, email, password });
-      
+
       const { token, ...userData } = response.data.data;
-      
+
       localStorage.setItem('token', token);
       setUser(userData);
-      
+      syncLanguage(userData);
+
       return { success: true };
     } catch (err) {
       const message = err.response?.data?.message || 'Registration failed';
@@ -74,14 +92,12 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const response = await authAPI.login({ email, password });
-      
+
       const { token, ...userData } = response.data.data;
-      
+
       localStorage.setItem('token', token);
       setUser(userData);
-      if (userData.language && userData.language !== i18n.language) {
-        i18n.changeLanguage(userData.language);
-      }
+      syncLanguage(userData);
 
       return { success: true };
     } catch (err) {

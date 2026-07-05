@@ -8,6 +8,7 @@ import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
+import LanguageToggle from '../components/LanguageToggle';
 import { SURAH_PAGES } from '../data/surahPages';
 
 function toPageRanges(sortedPages) {
@@ -111,8 +112,11 @@ const OnboardingHeader = ({ step }) => {
     <header className="w-full max-w-[800px] mx-auto px-6 py-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <Logo size="md" />
-        <div className="text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider">
-          {t('onboarding.stepOf', { step: displayStep })}
+        <div className="flex items-center gap-3">
+          <div className="text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider">
+            {t('onboarding.stepOf', { step: displayStep })}
+          </div>
+          <LanguageToggle variant="icon" />
         </div>
       </div>
       <div className="w-full h-2 bg-[#e2e8f8] dark:bg-gray-700 rounded-full overflow-hidden">
@@ -241,6 +245,11 @@ export default function Onboarding() {
   // ── STEP 1 — Welcome ──────────────────────────────────
   if (step === 1) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex items-center justify-center p-6">
+      {/* Floating, RTL-aware (logical start-*) so it sits at the same top
+          corner the rest of the app's controls do in either language. */}
+      <div className="fixed top-4 start-4 z-10">
+        <LanguageToggle variant="icon" />
+      </div>
       <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
         <div className="text-center space-y-4">
