@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
-  FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove, FiCheck,
+  FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
   FiTarget, FiEye, FiEyeOff, FiArrowLeft, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus,
 } from 'react-icons/fi';
@@ -671,54 +671,41 @@ export default function Library() {
     else goToPage(n);
   };
 
-  // ── Mark / unmark pages as memorized (spread-aware) ──────────
-  // One optimistic update covers every page passed and is rolled back as a unit
-  // if the request fails. Adding uses markComplete per page (it also registers
-  // the memorization event + streak); removing replaces the whole set in one call.
-  const markPagesMemorized = async (pages) => {
-    const toAdd = pages.filter((p) => !memorizedPages.has(p));
-    if (savingMemorized || toAdd.length === 0) return;
+  // ── Mark / unmark a single page as memorized ──────────
+  // The per-page check button on each page card is the only mark/unmark
+  // control, so this only ever acts on one page. One optimistic update, rolled
+  // back on failure. Adding uses markComplete (it also registers the
+  // memorization event + streak); removing replaces the whole set in one call.
+  const markPageMemorized = async (page) => {
+    if (savingMemorized || memorizedPages.has(page)) return;
     const prevPages = memorizedPages;
     const nextPages = new Set(prevPages);
-    toAdd.forEach((p) => nextPages.add(p));
+    nextPages.add(page);
     setSavingMemorized(true);
     setMemorizedPages(nextPages);
     try {
-      await Promise.all(toAdd.map((p) => progressAPI.markComplete({ pageNumber: p, type: 'new' })));
-      const sorted = [...toAdd].sort((a, b) => a - b);
-      showToast(
-        sorted.length === 1
-          ? t('library.markedToast', { n: fmtNum(sorted[0]) })
-          : t('library.markedToastSpread', { from: fmtNum(sorted[0]), to: fmtNum(sorted[sorted.length - 1]) }),
-        'success'
-      );
+      await progressAPI.markComplete({ pageNumber: page, type: 'new' });
+      showToast(t('library.markedToast', { n: fmtNum(page) }), 'success');
     } catch {
-      setMemorizedPages(prevPages); // roll back the optimistic change together
+      setMemorizedPages(prevPages); // roll back the optimistic change
       showToast(t('common.error'), 'error');
     } finally {
       setSavingMemorized(false);
     }
   };
 
-  const unmarkPagesMemorized = async (pages) => {
-    const toRemove = pages.filter((p) => memorizedPages.has(p));
-    if (savingMemorized || toRemove.length === 0) return;
+  const unmarkPageMemorized = async (page) => {
+    if (savingMemorized || !memorizedPages.has(page)) return;
     const prevPages = memorizedPages;
     const nextPages = new Set(prevPages);
-    toRemove.forEach((p) => nextPages.delete(p));
+    nextPages.delete(page);
     setSavingMemorized(true);
     setMemorizedPages(nextPages);
     try {
       await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
-      const sorted = [...toRemove].sort((a, b) => a - b);
-      showToast(
-        sorted.length === 1
-          ? t('library.unmarkedToast', { n: fmtNum(sorted[0]) })
-          : t('library.unmarkedToastSpread', { from: fmtNum(sorted[0]), to: fmtNum(sorted[sorted.length - 1]) }),
-        'success'
-      );
+      showToast(t('library.unmarkedToast', { n: fmtNum(page) }), 'success');
     } catch {
-      setMemorizedPages(prevPages); // roll back the optimistic change together
+      setMemorizedPages(prevPages); // roll back the optimistic change
       showToast(t('common.error'), 'error');
     } finally {
       setSavingMemorized(false);
@@ -807,48 +794,14 @@ export default function Library() {
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
   const playingVerseKey = playingIndex != null ? verses[playingIndex]?.verseKey ?? null : null;
-  // In the spread the CTA/badge cover BOTH visible pages, so "memorized" means
-  // every page on screen is done. Marking fills in whichever halves aren't yet.
+  // In the spread the passive badge covers BOTH visible pages, so "memorized"
+  // means every page on screen is done (each page's own status is also shown
+  // by its own check button on the page card).
   const allVisibleMemorized = visiblePages.every((p) => memorizedPages.has(p));
-  const markVisibleMemorized = () => markPagesMemorized(visiblePages);
-  const unmarkVisibleMemorized = () => unmarkPagesMemorized(visiblePages);
-  const toggleVisibleMemorized = () => (allVisibleMemorized ? unmarkVisibleMemorized() : markVisibleMemorized());
   const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
   // The bookmark (if any) already saved for the active/current page — when set,
   // the add control swaps for this bookmark's own remove affordance.
   const targetBookmark = bookmarks.find(b => b.pageNumber === bookmarkTargetPage) ?? null;
-
-  // Per-page "mark memorized" control (a done row with undo, or a mark button),
-  // shared by the memorize spread and the normal-reader spread.
-  const renderPageMarkControl = (p, { tour = false } = {}) => (
-    memorizedPages.has(p) ? (
-      <div
-        key={p}
-        className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg"
-      >
-        <span className="inline-flex items-center gap-1.5">
-          <FiCheckCircle className="w-3.5 h-3.5" /> {t('library.memorize.pageDone', { n: fmtNum(p) })}
-        </span>
-        <button
-          onClick={() => unmarkPagesMemorized([p])}
-          disabled={savingMemorized}
-          className="text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2 disabled:opacity-50"
-        >
-          {t('library.memorize.undo')}
-        </button>
-      </div>
-    ) : (
-      <button
-        key={p}
-        onClick={() => markPagesMemorized([p])}
-        disabled={savingMemorized}
-        data-tour={tour && p === visiblePages[0] ? 'mem-mark' : undefined}
-        className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
-      >
-        <FiCheck className="w-4 h-4" /> {t('library.memorize.markPage', { n: fmtNum(p) })}
-      </button>
-    )
-  );
 
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
@@ -926,10 +879,11 @@ export default function Library() {
                 <Tooltip label={label}>
                   <button
                     type="button"
-                    onClick={() => (done ? unmarkPagesMemorized([pd.page]) : markPagesMemorized([pd.page]))}
+                    onClick={() => (done ? unmarkPageMemorized(pd.page) : markPageMemorized(pd.page))}
                     disabled={savingMemorized}
                     aria-label={label}
                     aria-pressed={done}
+                    data-tour="mem-mark"
                     className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {done
@@ -1086,34 +1040,12 @@ export default function Library() {
                 </button>
               )}
 
-              {!twoPage && allVisibleMemorized && (
+              {/* Passive status only — the per-page check button on each page
+                  card (below the mushaf) is the only mark/unmark control. */}
+              {allVisibleMemorized && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-2.5 py-1 rounded-full w-max">
                   ✓ {t('library.memorizedBadge')}
                 </span>
-              )}
-              {!memorizeMode && (
-                twoPage ? (
-                  // Spread: one control per visible page (matches the memorize spread).
-                  <div className="flex flex-col gap-2 mt-0.5">
-                    {visiblePages.map((p) => renderPageMarkControl(p))}
-                  </div>
-                ) : (
-                  <button
-                    onClick={toggleVisibleMemorized}
-                    disabled={savingMemorized}
-                    className={`mt-0.5 w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                      allVisibleMemorized
-                        ? 'border border-[#dce2f3] dark:border-gray-600 text-[#707974] dark:text-gray-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                        : 'bg-[#004f35] text-white hover:bg-[#003527]'
-                    }`}
-                  >
-                    {allVisibleMemorized ? (
-                      t('library.undoMemorized')
-                    ) : (
-                      <><FiCheck className="w-3.5 h-3.5" /> {t('library.markMemorized')}</>
-                    )}
-                  </button>
-                )
               )}
             </div>
 
@@ -1170,53 +1102,22 @@ export default function Library() {
                   )}
                 </div>
 
-                {/* ── Mark memorized CTA + continue ──
-                    Spread: one control per visible page (own done-state + undo).
-                    Single: the original layout, unchanged. */}
+                {/* ── Passive status + continue ──
+                    Marking itself happens via the check button on each page
+                    card; this is just a status readout and page navigation. */}
                 <div className="flex flex-col gap-2">
-                  {twoPage ? (
-                    <>
-                      {visiblePages.map((p) => renderPageMarkControl(p, { tour: true }))}
-                      {allVisibleMemorized && (
-                        <button
-                          onClick={goNext}
-                          disabled={currentPage >= maxPage}
-                          className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
-                        </button>
-                      )}
-                    </>
-                  ) : allVisibleMemorized ? (
-                    <>
-                      <span className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
-                        ✓ {t('library.memorize.memorizedDone')}
-                      </span>
-                      <button
-                        onClick={goNext}
-                        disabled={currentPage >= maxPage}
-                        className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={unmarkVisibleMemorized}
-                        disabled={savingMemorized}
-                        className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors disabled:opacity-50"
-                      >
-                        {t('library.memorize.undo')}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={markVisibleMemorized}
-                      disabled={savingMemorized}
-                      data-tour="mem-mark"
-                      className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-bold rounded-xl px-3 py-3 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors sacred-shadow"
-                    >
-                      <FiCheck className="w-4 h-4" /> {t('library.memorize.markThisPage')}
-                    </button>
+                  {allVisibleMemorized && (
+                    <span className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
+                      ✓ {t('library.memorize.memorizedDone')}
+                    </span>
                   )}
+                  <button
+                    onClick={goNext}
+                    disabled={currentPage >= maxPage}
+                    className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-lg px-3 py-2.5 bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {t('library.memorize.nextPage')} <FiArrowLeft className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* ── Method checklist (ephemeral ticks) ── */}

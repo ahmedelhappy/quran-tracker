@@ -550,13 +550,8 @@
   "library": {
     "subtitle": "اقرأ أي صفحة من القرآن، واستمع إلى التلاوة، واستكشف المعنى.",
     "memorizedBadge": "محفوظة",
-    "markMemorized": "تحديدها كمحفوظة",
-    "markMemorizedSpread": "تحديد الصفحتين كمحفوظتين",
-    "undoMemorized": "محفوظة ✓ — اضغط للتراجع",
     "markedToast": "تم تحديد الصفحة {{n}} كمحفوظة",
-    "markedToastSpread": "تم تحديد الصفحات {{from}}–{{to}} كمحفوظة",
     "unmarkedToast": "تمت إزالة الصفحة {{n}} من المحفوظات",
-    "unmarkedToastSpread": "تمت إزالة الصفحات {{from}}–{{to}} من المحفوظات",
     "markPage": "تحديد الصفحة {{n}} كمحفوظة",
     "removePage": "إزالة الصفحة {{n}} من المحفوظات",
     "pageLabel": "الصفحة",
@@ -616,12 +611,8 @@
       "hideAll": "إخفاء الكل",
       "method": "خطوات الحفظ",
       "fullGuide": "افتح الدليل الكامل",
-      "markThisPage": "تمييز هذه الصفحة كمحفوظة",
-      "markPage": "تمييز الصفحة {{n}}",
-      "pageDone": "الصفحة {{n}} محفوظة",
       "memorizedDone": "تم حفظ هذه الصفحة",
-      "nextPage": "الصفحة التالية",
-      "undo": "إزالة من المحفوظ"
+      "nextPage": "الصفحة التالية"
     }
   },
   "footer": {

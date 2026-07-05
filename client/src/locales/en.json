@@ -550,13 +550,8 @@
   "library": {
     "subtitle": "Read any page of the Quran, listen to the recitation, and explore the meaning.",
     "memorizedBadge": "Memorized",
-    "markMemorized": "Mark as memorized",
-    "markMemorizedSpread": "Mark these pages",
-    "undoMemorized": "Memorized ✓ — tap to undo",
     "markedToast": "Page {{n}} marked as memorized",
-    "markedToastSpread": "Pages {{from}}–{{to}} marked as memorized",
     "unmarkedToast": "Page {{n}} removed from memorized",
-    "unmarkedToastSpread": "Pages {{from}}–{{to}} removed from memorized",
     "markPage": "Mark page {{n}} as memorized",
     "removePage": "Remove page {{n}} from memorized",
     "pageLabel": "Page",
@@ -616,12 +611,8 @@
       "hideAll": "Hide all",
       "method": "Memorization steps",
       "fullGuide": "Open the full guide",
-      "markThisPage": "Mark this page memorized",
-      "markPage": "Mark page {{n}}",
-      "pageDone": "Page {{n}} memorized",
       "memorizedDone": "This page is memorized",
-      "nextPage": "Next page",
-      "undo": "Mark as not memorized"
+      "nextPage": "Next page"
     }
   },
   "footer": {
