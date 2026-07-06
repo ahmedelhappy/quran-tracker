@@ -64,12 +64,23 @@ function ContributionGraph({ weeks, locale }) {
       const real = week.find(c => c);
       return real ? new Date(real.date + 'T00:00:00Z').getUTCMonth() : -1;
     });
-    return weeks.map((week, i) => {
-      const m = firstMonths[i];
-      if (m === -1 || (i > 0 && firstMonths[i - 1] === m)) return '';
-      const real = week.find(c => c);
-      return new Date(real.date + 'T00:00:00Z').toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' });
-    });
+    // Group consecutive week-columns into month segments so we know how many
+    // columns each month actually owns. A month that owns only one column skips
+    // its label entirely — otherwise the (wider) label text overflows into the
+    // next column and collides with the following month's label (e.g. "AprMay").
+    const labels = new Array(weeks.length).fill('');
+    let segStart = 0;
+    for (let i = 1; i <= firstMonths.length; i++) {
+      if (i === firstMonths.length || firstMonths[i] !== firstMonths[segStart]) {
+        const month = firstMonths[segStart];
+        if (month !== -1 && i - segStart >= 2) {
+          const real = weeks[segStart].find(c => c);
+          labels[segStart] = new Date(real.date + 'T00:00:00Z').toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' });
+        }
+        segStart = i;
+      }
+    }
+    return labels;
   }, [weeks, locale]);
 
   return (
