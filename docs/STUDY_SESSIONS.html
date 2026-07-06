@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quran Tracker — Defense Study Sessions</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --text: #e8e8ec;
+    --muted: #9aa0ac;
+    --accent: #34d399;
+    --accent2: #60a5fa;
+    --code-bg: #0b0d11;
+    --border: #2a2e38;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 1.2rem 1rem 4rem;
+  }
+  header.top {
+    padding: 1.5rem 0 1rem;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1rem;
+  }
+  header.top h1 {
+    font-size: 1.4rem;
+    margin: 0 0 .3rem;
+    color: var(--accent);
+  }
+  header.top p {
+    color: var(--muted);
+    margin: 0;
+    font-size: .92rem;
+  }
+  nav.toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .8rem 1rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  nav.toc summary {
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--accent2);
+  }
+  nav.toc ul { margin: .6rem 0 0; padding-left: 1.2rem; }
+  nav.toc li { margin: .35rem 0; }
+  nav.toc a { color: var(--text); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+
+  section.session {
+    margin-bottom: 2.6rem;
+    padding-top: .4rem;
+  }
+  .badge {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    padding: .25rem .6rem;
+    border-radius: 999px;
+    margin-bottom: .5rem;
+  }
+  .b1 { background: #1e3a32; color: #6ee7b7; }
+  .b2 { background: #1e2f3a; color: #93c5fd; }
+  .b3 { background: #3a2f1e; color: #fcd34d; }
+  .b4 { background: #2f1e3a; color: #d8b4fe; }
+  .b5 { background: #3a1e2f; color: #f9a8d4; }
+  .b6 { background: #1e3a2f; color: #86efac; }
+  .b7 { background: #3a1e1e; color: #fca5a5; }
+  .b8 { background: #1e2a3a; color: #7dd3fc; }
+
+  h2.session-title {
+    font-size: 1.25rem;
+    margin: 0 0 .9rem;
+    color: var(--text);
+  }
+  h3 {
+    font-size: 1.05rem;
+    color: var(--accent2);
+    margin: 1.5rem 0 .6rem;
+  }
+  p { margin: .6rem 0; }
+  .quote {
+    border-left: 3px solid var(--accent);
+    background: var(--card);
+    padding: .7rem 1rem;
+    border-radius: 0 8px 8px 0;
+    margin: .8rem 0;
+    font-style: italic;
+    color: #d1d5db;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .8rem;
+    overflow-x: auto;
+    font-size: .82rem;
+    margin: .7rem 0;
+  }
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    color: #a5d6ff;
+  }
+  pre code { color: #d4f5e0; }
+  p code, li code, td code {
+    background: var(--code-bg);
+    padding: .12rem .35rem;
+    border-radius: 5px;
+    font-size: .88em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: .8rem 0;
+    font-size: .88rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: .5rem .6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--card); color: var(--accent2); }
+  ul, ol { padding-left: 1.3rem; }
+  li { margin: .35rem 0; }
+  .recap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: 1rem 1.1rem;
+    margin-top: 1.4rem;
+  }
+  .recap h4 {
+    margin: 0 0 .5rem;
+    color: var(--accent);
+    font-size: .95rem;
+  }
+  .remaining {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--warn);
+    border-radius: 0 10px 10px 0;
+    padding: 1rem 1.1rem;
+    margin-top: .8rem;
+  }
+  .remaining h4 {
+    margin: 0 0 .5rem;
+    color: var(--warn);
+    font-size: .95rem;
+  }
+  .qa {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .8rem 1rem;
+    margin: .8rem 0;
+  }
+  .qa .q { color: var(--accent2); font-weight: 600; }
+  .filetree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: .78rem;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+  }
+  .filetree .comment { color: var(--muted); }
+  .filetree .star { color: var(--warn); }
+  hr.div {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.2rem 0;
+  }
+  .summary-box {
+    background: linear-gradient(135deg, #1e3a32, #1e2f3a);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem;
+    margin: 1rem 0;
+    font-size: .95rem;
+  }
+  .top-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    font-size: .82rem;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .map-table td:first-child { color: var(--accent2); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top" id="top">
+  <h1>🕋 Quran Tracker — Defense Study Guide</h1>
+  <p>7 study sessions + file structure reference. Read on your way, ask follow-ups anytime.</p>
+</header>
+
+<nav class="toc">
+  <details open>
+    <summary>📑 Table of contents</summary>
+    <ul>
+      <li><a href="#s1">Session 1 — The Big Picture</a></li>
+      <li><a href="#s2">Session 2 — The Data Models</a></li>
+      <li><a href="#s3">Session 3 — Authentication</a></li>
+      <li><a href="#s4">Session 4 — The Core Engine ⭐</a></li>
+      <li><a href="#s5">Session 5 — Frontend Structure</a></li>
+      <li><a href="#s6">Session 6 — Features (Library, Tours, AI)</a></li>
+      <li><a href="#s7">Session 7 — Defense Prep / Q&amp;A</a></li>
+      <li><a href="#filestruct">File Structure Reference</a></li>
+    </ul>
+  </details>
+</nav>
+
+<!-- SESSION 1 -->
+<section class="session" id="s1">
+  <span class="badge b1">Session 1 / 7</span>
+  <h2 class="session-title">The Big Picture</h2>
+
+  <div class="quote">"My project is two separate programs: a React frontend that runs in the browser, and an Express + MongoDB backend that runs on a server. They don't share any code — they only talk to each other over HTTP, exchanging JSON."</div>
+
+  <h3>The two halves</h3>
+  <p><strong>client/</strong> — React frontend, runs in the browser. Shows pages, buttons, cards; asks the backend for data.</p>
+  <p><strong>server/</strong> — Express backend, runs on a server machine. Receives requests, runs logic, talks to the database, sends answers back.</p>
+
+  <h3>The request lifecycle</h3>
+  <pre><code>BROWSER (React)                         SERVER (Express)         DATABASE
+Dashboard loads
+   │  "give me today's tasks"
+   ▼
+api.js (axios) ── GET /api/progress/today ──▶ Route matches URL
+   (attaches login token)                        │
+                                                  ▼
+                                          Middleware: logged in?
+                                                  │
+                                                  ▼
+                                          Controller runs logic ──▶ MongoDB
+                                                  │            ◀── (data)
+   ◀──────────── JSON reply ─────────────────────┘
+   ▼
+Page saves data, re-renders</code></pre>
+
+  <h3>The 4 backend layers</h3>
+  <table>
+    <tr><th>Layer</th><th>File</th><th>Job</th></tr>
+    <tr><td>Routes</td><td>server/routes/</td><td>Match URL → right function (the receptionist)</td></tr>
+    <tr><td>Middleware</td><td>server/middleware/auth.js</td><td>Checkpoint before the controller — "logged in?"</td></tr>
+    <tr><td>Controllers</td><td>server/controllers/</td><td>The actual business logic</td></tr>
+    <tr><td>Models</td><td>server/models/</td><td>Data shape + database queries</td></tr>
+  </table>
+  <p>Flow: <strong>Route → Middleware → Controller → Model → Database</strong>, then back out.</p>
+
+  <h3>The 3 route groups (app.js)</h3>
+  <pre><code>app.use('/api/auth',     ...)   // register, login, profile
+app.use('/api/progress', ...)   // the memorization plan (the heart)
+app.use('/api/chat',     ...)   // the AI assistant</code></pre>
+
+  <h3>app.js vs server.js</h3>
+  <p><strong>server.js</strong> — "start the engine." Connects to MongoDB, then <code>app.listen(PORT)</code>. ~15 lines. No routes/logic defined here.</p>
+  <p><strong>app.js</strong> — "assemble the app." Security middleware (cors, helmet, compression), the 3 route groups, the 404 catch-all. Exports the finished app for server.js to run.</p>
+  <div class="quote">app.js builds the app. server.js runs it. Split this way so app.js can be tested without a real DB connection or open port.</div>
+
+  <h3>Routes in app.js vs routes file</h3>
+  <p><strong>app.js</strong> routes by <em>prefix only</em>: "anything starting with <code>/api/progress</code> → hand off to progressRoutes.js." It's the building directory sign.</p>
+  <p><strong>progressRoutes.js</strong> defines the <em>specific</em> endpoints and which controller function handles each: <code>router.get('/today', getTodayTasks)</code>. These are the actual office doors.</p>
+  <p>Full URL = prefix (app.js) + path (routes file): <code>/api/progress</code> + <code>/today</code> = <code>/api/progress/today</code>.</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>Two independent programs talking over HTTP/JSON</li>
+      <li>The request lifecycle: page → api.js → route → middleware → controller → model → DB → back</li>
+      <li>The 4 backend layers + 3 route groups</li>
+      <li>app.js builds, server.js runs; app.js prefixes, routes files detail</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 2 -->
+<section class="session" id="s2">
+  <span class="badge b2">Session 2 / 7</span>
+  <h2 class="session-title">The Data Models</h2>
+
+  <p>Vocabulary: <strong>collection</strong> = like a table. <strong>document</strong> = one record (a JSON object). <strong>schema/model</strong> = the blueprint for what fields a document has.</p>
+
+  <h3>1. User — one doc per person</h3>
+  <table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>name, email, password</td><td>Credentials</td></tr>
+    <tr><td>dailyNewPages</td><td>Goal: pages/day (0.5–10)</td></tr>
+    <tr><td>currentStreak</td><td>Consecutive active days</td></tr>
+    <tr><td>lastActiveDate</td><td>Last active day — streak math compares to this</td></tr>
+    <tr><td>onboardingComplete</td><td>Finished initial setup?</td></tr>
+    <tr><td>planStartDate</td><td>When the plan began — separates "already knew" vs "learned in-app"</td></tr>
+    <tr><td>reviewIntensity</td><td>light / standard / strong</td></tr>
+    <tr><td>offDays</td><td>Weekday rest days</td></tr>
+  </table>
+
+  <h3>2. UserProgress ⭐ — one doc per (user, page) pair</h3>
+  <p>A user with 200 memorized pages has <strong>200 of these documents.</strong></p>
+  <table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>userId</td><td>Owner (User._id)</td></tr>
+    <tr><td>pageNumber</td><td>1–604</td></tr>
+    <tr><td>status</td><td>'memorized' / 'not_started'</td></tr>
+    <tr><td>memorizedDate</td><td>First memorized</td></tr>
+    <tr><td>lastReviewedDate</td><td>Drives the whole review schedule</td></tr>
+    <tr><td>reviewCount</td><td>Times reviewed</td></tr>
+  </table>
+
+  <div class="qa">
+    <p class="q">Q: Why one document per page instead of an array on the User?</p>
+    <ol>
+      <li>Scheduling needs per-page history (dates, counts) — naturally one record per page</li>
+      <li>Database can <strong>sort/index</strong> efficiently (e.g. by lastReviewedDate, oldest-first)</li>
+      <li>Marking one page = updating one tiny doc, not rewriting a 600-element array</li>
+      <li>Unique index on <code>{userId, pageNumber}</code> — DB itself blocks duplicates</li>
+    </ol>
+  </div>
+
+  <h3>3. QuranMetadata — the reference table</h3>
+  <p>Static, same for every user. 604 docs, one per page: <code>juzNumber</code>, <code>surahName</code>. No Quran text — just labels. Seeded once via <code>node seed/quranData.js</code>.</p>
+
+  <h3>How they relate</h3>
+  <pre><code>User (1) ──────&lt; UserProgress (many)    QuranMetadata (shared)
+  _id            userId → User._id          pageNumber
+                  pageNumber ── matched by page number ──┘</code></pre>
+
+  <h3>Streak: does it need ALL tasks done?</h3>
+  <p><strong>No — any single task (new OR review) is enough.</strong> The streak is a daily on/off flag via <code>lastActiveDate</code>, not a task counter:</p>
+  <pre><code>!lastActiveDate           → streak = 1   (first ever)
+lastActiveDate === today  → unchanged    (already counted today)
+isStreakContinued()       → streak + 1   (came back next day, or only off-days in gap)
+otherwise                 → streak = 1   (real day missed → reset)</code></pre>
+  <p>Doing 1 task or 10 tasks today has the same effect on the streak — the first one already locked the day in.</p>
+
+  <h3>Custom / fixed review count</h3>
+  <p>If the user sets <code>recentReviewCount</code> / <code>cycleReviewCount</code> on Settings ("Fixed number" mode), the automatic <code>reviewIntensity</code> formula is <strong>skipped entirely</strong> and that exact number is used instead. <code>null</code> = "use the automatic formula."</p>
+
+  <h3>What is the user's unique ID?</h3>
+  <p>It's <code>_id</code> — auto-generated by MongoDB (a 24-char ObjectId), <strong>not the email.</strong> UserProgress links to its owner by storing that same <code>User._id</code> in its <code>userId</code> field — that's the connection between the two collections. Email is unique too, but only used for login, not internal linking (since email could theoretically change, _id never does).</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>The 3 models and what each field is for</li>
+      <li>The "one doc per page" design decision and its 4 reasons</li>
+      <li>Streak = daily flag, not task counter; any 1 task is enough</li>
+      <li>Custom review overrides bypass the formula</li>
+      <li>_id (not email) is the real linking key between collections</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 3 -->
+<section class="session" id="s3">
+  <span class="badge b3">Session 3 / 7</span>
+  <h2 class="session-title">Authentication</h2>
+
+  <p>Two problems: <strong>(1) Storage</strong> — never keep passwords readable. <strong>(2) Sessions</strong> — prove who you are on every request without retyping a password.</p>
+
+  <h3>Part A — Passwords (bcrypt)</h3>
+  <p><strong>Hashing</strong> = scrambling into a fixed jumble, irreversible. <strong>Salted</strong> = random data mixed in so identical passwords get different hashes.</p>
+  <pre><code>stored in DB:   hash("MySecret" + salt) → $2a$10$abc...
+login attempt:  hash("MySecret" + same salt) → $2a$10$abc...  ✅ match!</code></pre>
+  <p>Never decrypted — only re-hashed and compared. <code>password</code> field is also marked <code>select: false</code> so it's never returned by normal queries.</p>
+  <div class="quote">Passwords are hashed with bcrypt at salt strength 10 before saving. We store only the hash, never plaintext; login verifies by hashing the attempt and comparing. bcrypt is one-way and salted, so passwords can't be recovered even if the DB leaks.</div>
+
+  <h3>Part B — Staying logged in (JWT)</h3>
+  <p>A JWT = a tamper-proof "wristband": contains your <code>_id</code> + expiry (30 days), digitally signed with a server secret. Signed = the server can verify it issued it, without storing any session.</p>
+  <pre><code>LOGIN: password ok → server signs JWT (your _id) → sent to browser
+BROWSER: saves token in localStorage
+EVERY REQUEST AFTER: browser attaches token → server verifies → "yep, user X"</code></pre>
+
+  <h3>The full journey</h3>
+  <ol>
+    <li><strong>Register</strong> — reject if email exists → create user (bcrypt hook hashes password) → sign JWT → return token + safe fields (never password)</li>
+    <li><strong>Login</strong> — find user with <code>.select('+password')</code> → <code>matchPassword()</code> via bcrypt.compare → sign fresh JWT. Error message is deliberately vague ("Invalid email or password") so attackers can't tell which emails exist.</li>
+    <li><strong>Browser stores &amp; attaches</strong> — AuthContext saves token to localStorage; an axios <em>interceptor</em> in api.js auto-attaches it to every request:
+      <pre><code>API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});</code></pre>
+      A response interceptor wipes the token and redirects to /login on any 401 — self-healing expired sessions.
+    </li>
+    <li><strong>Server guards routes</strong> — <code>protect</code> middleware reads the header, runs <code>jwt.verify()</code> (checks signature + expiry), attaches the user to <code>req.user</code>. <code>router.use(protect)</code> in progressRoutes.js turns this on for every progress route at once.</li>
+  </ol>
+  <p><strong>Data isolation:</strong> every protected controller queries using <code>req.user._id</code> — e.g. <code>UserProgress.find({ userId: req.user._id })</code>. Structurally impossible to fetch someone else's data.</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>bcrypt: one-way + salted, hash-compare, select:false</li>
+      <li>JWT: signed wristband, no server-side session</li>
+      <li>Full flow: register/login → interceptor attaches → protect verifies → req.user._id isolates data</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 4 -->
+<section class="session" id="s4">
+  <span class="badge b4">Session 4 / 7</span>
+  <h2 class="session-title">The Core Engine ⭐ (getTodayTasks)</h2>
+
+  <p>Every dashboard load asks: <strong>"What should this user do today?"</strong> Answer = new pages + review pages. Built entirely by <code>getTodayTasks</code> in progressController.js.</p>
+
+  <h3>The science (the "why")</h3>
+  <p><strong>Ebbinghaus's Forgetting Curve (1885):</strong> new material fades fast at first, then more slowly. <strong>Spaced repetition</strong> (Pimsleur 1967, Leitner 1972): reviewing at the right moments resets the forgetting clock, so retention lasts longer with less effort.</p>
+  <table>
+    <tr><th>Bucket</th><th>Who's in it</th><th>Why</th></tr>
+    <tr><td>Recent review</td><td>Pages memorized in last few active days</td><td>Freshest = most fragile → review often</td></tr>
+    <tr><td>Cycle review</td><td>Everything older</td><td>Stable → slower rotation, oldest-reviewed-first</td></tr>
+  </table>
+  <div class="quote">Honest caveat: this approximates "true" spaced repetition (like Anki's SM-2, where each item gets its own growing interval). This app uses a set-wide rotation speed instead. A defensible simplification — and reviewCount + lastReviewedDate are already stored per page, exactly what a per-item algorithm would need next.</div>
+
+  <h3>A) Dates: always UTC YYYY-MM-DD strings</h3>
+  <pre><code>const getDateString = (date) => new Date(date).toISOString().split('T')[0];</code></pre>
+  <p>Avoids "today" flipping at the wrong moment depending on server location.</p>
+
+  <h3>B) Off days</h3>
+  <p>If today is an off day → empty task lists, <code>isOffDay: true</code>. But if the streak is alive, <code>lastActiveDate</code> still advances — a rest day doesn't break the chain.</p>
+
+  <h3>C) Load the raw material</h3>
+  <pre><code>UserProgress.find({ userId, status: 'memorized' })
+  .sort({ lastReviewedDate: 1, pageNumber: 1 });</code></pre>
+  <p>This sort alone puts the stalest-reviewed pages first — the engine behind "review what's closest to being forgotten first."</p>
+
+  <h3>D) How many NEW pages today (the fractional-goal trick)</h3>
+  <pre><code>const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
+const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
+return Math.max(0, assignedToday - assignedYesterday);</code></pre>
+  <p>Example with dailyNewPages = 0.5:</p>
+  <table>
+    <tr><th>Day</th><th>assignedToday</th><th>assignedYesterday</th><th>today's new pages</th></tr>
+    <tr><td>0</td><td>1</td><td>0</td><td><strong>1</strong></td></tr>
+    <tr><td>1</td><td>1</td><td>1</td><td><strong>0</strong></td></tr>
+    <tr><td>2</td><td>2</td><td>1</td><td><strong>1</strong></td></tr>
+    <tr><td>3</td><td>2</td><td>2</td><td><strong>0</strong></td></tr>
+  </table>
+  <p>→ 1,0,1,0... = "a page every other day," with one formula handling whole and fractional goals identically. New pages are picked walking 1→604 in order, first not-yet-memorized pages. Skipped for paused users or a Hafiz (all 604 done).</p>
+
+  <h3>E) How many REVIEWS today</h3>
+  <pre><code>if (totalMemorized === 0) return 0;
+if (totalMemorized === 604) { /* Hafiz schedule */ }
+if (totalMemorized < 3) return totalMemorized;
+const cycleDays = { light: 14, standard: 10, strong: 7 }[reviewIntensity] || 10;
+return Math.min(Math.ceil(totalMemorized / cycleDays), 40);</code></pre>
+  <p>100 memorized pages, standard (cycleDays=10) → 10 pages/day → whole set cycles roughly every 10 days. light = slower (14d), strong = faster (7d). Capped at 40/day. Skipped if a fixed override (cycleReviewCount) is set.</p>
+
+  <h3>F) Splitting recent vs cycle — no duplicates</h3>
+  <p>Last 3 active days' pages → recent pool (capped at <code>max(3, min(ceil(dailyNewPages×3), 6))</code> or manual override). Everything else memorized → cycle pool, explicitly excluding recent-pool pages. A page never appears in both lists.</p>
+
+  <h3>G) Labeling — one batched query</h3>
+  <pre><code>QuranMetadata.find({ pageNumber: { $in: pageNumbers } });</code></pre>
+  <p>One query for all chosen pages, not one per page — a real performance detail (relevant to the &lt;3s load requirement).</p>
+
+  <h3>Completing a task → streak tick</h3>
+  <p><code>type: 'new'</code> → creates/updates UserProgress as memorized, sets memorizedDate. <code>type: 'review'</code> → sets lastReviewedDate, bumps reviewCount. Then the streak rule from Session 2 fires.</p>
+
+  <h3>buildProgressSummary — same logic, read-only</h3>
+  <p>A smaller function mirroring the same new-page/review rules but returning only counts, with no writes — small enough to feed the AI chatbot real context. Same business logic, reused in two places (DRY).</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>The two-bucket review system + the science (Ebbinghaus + spaced repetition)</li>
+      <li>UTC date-string trick</li>
+      <li>The fractional new-page formula and why it elegantly handles 0.5/day</li>
+      <li>The review-target formula (totalMemorized / cycleDays, capped at 40)</li>
+      <li>buildProgressSummary reuses this logic for the AI assistant</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 5 -->
+<section class="session" id="s5">
+  <span class="badge b5">Session 5 / 7</span>
+  <h2 class="session-title">Frontend Structure</h2>
+
+  <h3>Routing — App.jsx</h3>
+  <pre><code>&lt;ThemeProvider&gt;      // dark/light mode
+  &lt;AuthProvider&gt;      // who is logged in
+    &lt;ToastProvider&gt;   // popup notifications
+      &lt;Router&gt;...&lt;Routes&gt;...&lt;/Router&gt;</code></pre>
+  <p><strong>Public routes</strong> (/, /login, /register) — wrapped in PublicRoute, redirects already-logged-in users away. <strong>Protected routes</strong> (/dashboard, /onboarding, /settings, /progress, /library) — wrapped in ProtectedRoute, shows a spinner while checking auth, bounces to /login if no user. Wrappers also force onboarding if <code>onboardingComplete === false</code>.</p>
+
+  <h3>Auth state — AuthContext.jsx</h3>
+  <p>A React <strong>Context</strong> = an app-wide shared box of state, readable from any component without manually passing it down. Exposes <code>user</code>, <code>loading</code>, and <code>login/register/logout/updateUser</code>. On first load, <code>checkAuth()</code> calls <code>GET /api/auth/me</code> if a token exists — this is why refreshing the page keeps you logged in. Any component reads it via <code>useAuth()</code>.</p>
+
+  <h3>Dashboard.jsx — the pattern every page follows</h3>
+  <p><strong>fetch → store in state → render from state.</strong></p>
+  <pre><code>const [taskRes, juzRes] = await Promise.all([
+  progressAPI.getTodayTasks(),
+  progressAPI.getJuzProgress(),
+]);</code></pre>
+  <p><code>Promise.all</code> fires both requests in parallel instead of one after another — faster, relevant to the &lt;3s load requirement.</p>
+
+  <h3>Optimistic UI</h3>
+  <pre><code>await progressAPI.markComplete({ pageNumber, type });
+setCompletedKeys(prev => new Set(prev).add(`${type}-${pageNumber}`));</code></pre>
+  <p>The card flips to "Done" <strong>immediately</strong>, locally, with an Undo option — instead of waiting for + re-fetching from the server. Assume success, update instantly, reconcile only if it actually fails. Makes the app feel instant.</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>Routing split: Public vs Protected, onboarding redirect wrappers</li>
+      <li>AuthContext as the app-wide "who's logged in" store</li>
+      <li>The universal fetch/store/render pattern + Promise.all for parallel loads</li>
+      <li>Optimistic UI and why it's used on "mark complete"</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 6 -->
+<section class="session" id="s6">
+  <span class="badge b6">Session 6 / 7</span>
+  <h2 class="session-title">Features: Library, Tours, Progress, AI</h2>
+
+  <h3>Library reader &amp; Memorize mode</h3>
+  <p>Memorize mode is <strong>not a separate page</strong> — it's a URL flag: <code>?mode=memorize</code>. Why: survives a refresh, is bookmarkable, and reuses all existing reader machinery (audio, verse selection, tafsir panel, RTL layout) unmodified — no second component to maintain.</p>
+  <p><strong>"Test myself"</strong> conceals words behind a blur until tapped — this is <strong>active recall</strong>: forcing retrieval cements memory better than re-reading. Blurred (not hidden) so the line's shape stays visible as a positional cue.</p>
+
+  <h3>Onboarding &amp; guided tours</h3>
+  <p><strong>driver.js</strong> draws a dimmed spotlight overlay around one element at a time. Tours run on <strong>first visit only</strong>, gated by a <code>localStorage</code> flag (e.g. <code>seenDashboardTour</code>). Each tour filters out steps for UI that doesn't exist for that user (e.g. a Hafiz has no "new memorization" column, so that step auto-skips).</p>
+
+  <h3>Progress page</h3>
+  <p>30-Juz grid in two densities (compact/detailed), compact is default to avoid clutter. Also a GitHub-style contribution graph from <code>memorizedByDate</code> — all date math in UTC, consistent with the backend's date-string discipline.</p>
+
+  <h3>The AI Assistant — chatController.js</h3>
+  <p>Powered by Groq's <code>llama-3.3-70b-versatile</code>. <strong>Knows the user's real progress</strong> — before calling the AI, the server calls <code>buildProgressSummary(req.user)</code> (the same function from Session 4) and injects real streak/pages/tasks into the prompt, instructing the model never to invent numbers. If that lookup fails, chat still works without personalized context (fails safe). Rate-limited to 20 requests/5 min per user.</p>
+
+  <h3>Quran content itself</h3>
+  <p>The app stores <strong>no Quran text or audio</strong> — pulled live from public APIs (<code>api.alquran.cloud</code> for text with full tashkeel/diacritics, <code>cdn.islamic.network</code> for audio). Responses cached in-memory (Maps) so revisiting a page is instant.</p>
+
+  <div class="recap">
+    <h4>✅ You can now explain</h4>
+    <ul>
+      <li>Memorize mode = a URL flag, not a separate page — and why</li>
+      <li>Active recall via blur-based self-testing</li>
+      <li>driver.js tours, gated once per feature, auto-skip missing UI</li>
+      <li>AI assistant context-injection + fail-safe + rate limiting</li>
+      <li>External Quran content APIs + client-side caching</li>
+    </ul>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- SESSION 7 -->
+<section class="session" id="s7">
+  <span class="badge b7">Session 7 / 7</span>
+  <h2 class="session-title">Defense Prep — Q&amp;A + 60-Second Summary</h2>
+
+  <h3>Memorize this — say it almost verbatim</h3>
+  <div class="summary-box">
+    "It's a React frontend and an Express/MongoDB backend that talk over a REST API with JWT auth — passwords bcrypt-hashed, tokens attached by an axios interceptor and verified by a <code>protect</code> middleware. The data model is one document per user-page, which records when each page was memorized and last reviewed. The core engine, <code>getTodayTasks</code>, turns that history into a daily plan: new pages up to the user's goal, plus two review buckets — recent pages reviewed often, older pages cycled oldest-first — which operationalizes the Ebbinghaus forgetting curve and spaced repetition. All dates are compared in UTC to stay timezone-safe, rest days preserve the streak, and Quran text/audio plus an AI assistant that's aware of the user's real progress round out the experience."
+  </div>
+
+  <h3>Rapid-fire Q&amp;A</h3>
+
+  <div class="qa"><p class="q">Q: Why MongoDB, not SQL?</p><p>Data is document-shaped, access is mostly "load everything for this user." Schema evolved a lot during development (off-days, pause mode, overrides added later) — MongoDB's flexibility made that cheap.</p></div>
+
+  <div class="qa"><p class="q">Q: Why one UserProgress doc per page, not an array on User?</p><p>Per-page history needs sorting/filtering by page — exactly what an indexed collection gives. One small doc update per tap, not rewriting a 600-element array. Unique index blocks duplicates at the DB level.</p></div>
+
+  <div class="qa"><p class="q">Q: How does review scheduling map to the forgetting curve?</p><p>Fresh pages decay fastest → reviewed often (recent bucket). Older pages are more stable → rotated slower (cycle bucket), oldest-reviewed-first as a stand-in for "review right before it'd be forgotten."</p></div>
+
+  <div class="qa"><p class="q">Q: Is this "real" spaced repetition like Anki?</p><p>Honestly, no — Anki/SM-2 gives each item its own growing interval; this uses a set-wide rotation speed plus a recent-window heuristic. Faithful to the principle; reviewCount + lastReviewedDate are already stored per page for a future per-item algorithm.</p></div>
+
+  <div class="qa"><p class="q">Q: How are passwords stored?</p><p>bcrypt hash, salt strength 10, select:false so never returned by default queries, verified with bcrypt.compare — never reversed.</p></div>
+
+  <div class="qa"><p class="q">Q: How is session security handled?</p><p>JWT signed with a server secret, 30-day expiry, sent as a Bearer token, verified by protect middleware on every protected route.</p></div>
+
+  <div class="qa"><p class="q">Q: How are timezones handled?</p><p>Every date reduced to a UTC YYYY-MM-DD string before comparison — avoids "today" shifting by server location. Trade-off: day rolls over at UTC midnight, not the user's local midnight — acceptable now, fixable later with a per-user timezone field.</p></div>
+
+  <div class="qa"><p class="q">Q: How would you scale it?</p><p>Per-user queries already indexed; API is stateless (JWT, no server sessions) so it scales horizontally; QuranMetadata is tiny/static and cacheable; heavy Quran text/audio served by external CDNs, not your server.</p></div>
+
+  <div class="qa"><p class="q">Q: What happens when someone finishes the whole Quran (Hafiz)?</p><p>totalMemorized === 604 → no new pages assigned, review target switches to a Hafiz-specific schedule, dashboard shows a congrats banner instead of a "new memorization" column.</p></div>
+
+  <h3>Full plan recap</h3>
+  <ol>
+    <li>Big picture (client/server split, request lifecycle)</li>
+    <li>Data models (User, UserProgress, QuranMetadata + "why one doc per page")</li>
+    <li>Auth (bcrypt + JWT, end to end)</li>
+    <li>The core engine (getTodayTasks, the science, the math)</li>
+    <li>Frontend structure (routing, AuthContext, fetch/render/optimistic-UI)</li>
+    <li>Features (Library/Memorize, tours, Progress page, AI assistant)</li>
+    <li>Defense prep (60-sec summary + rapid Q&amp;A)</li>
+  </ol>
+</section>
+
+<hr class="div">
+
+<!-- FILE STRUCTURE -->
+<section class="session" id="filestruct">
+  <span class="badge b8">Reference</span>
+  <h2 class="session-title">Full File Structure</h2>
+
+  <h3>server/ — the backend</h3>
+  <div class="filetree">server/
+├── server.js                 <span class="comment"># Connects to MongoDB, starts listening on PORT</span>
+├── app.js                    <span class="comment"># Builds the Express app: middleware, routes, 404 handler</span>
+│
+├── models/                   <span class="comment"># Mongoose schemas — shape of your data</span>
+│   ├── User.js                <span class="comment"># One doc/person: credentials, goals, streak, settings</span>
+│   ├── UserProgress.js        <span class="comment"># One doc/(user,page) pair: memorized/review tracking</span>
+│   └── QuranMetadata.js       <span class="comment"># Static 604-page reference table (juz, surah names)</span>
+│
+├── controllers/              <span class="comment"># Business logic for each endpoint</span>
+│   ├── authController.js      <span class="comment"># register, login, getMe, updateProfile</span>
+│   ├── progressController.js  <span class="star">★ getTodayTasks, markPageComplete, onboarding — THE CORE</span>
+│   └── chatController.js      <span class="comment"># sendMessage — AI (Groq) w/ user's real progress</span>
+│
+├── routes/                   <span class="comment"># URL → controller function mapping</span>
+│   ├── authRoutes.js          <span class="comment"># /api/auth/*</span>
+│   ├── progressRoutes.js      <span class="comment"># /api/progress/*</span>
+│   └── chatRoutes.js          <span class="comment"># /api/chat/*</span>
+│
+├── middleware/                <span class="comment"># Runs before a controller</span>
+│   ├── auth.js                 <span class="comment"># protect — verifies JWT, sets req.user</span>
+│   └── chatRateLimit.js        <span class="comment"># Caps chat to 20 req / 5 min per user</span>
+│
+└── seed/                      <span class="comment"># One-time DB-filling scripts</span>
+    ├── quranData.js            <span class="comment"># Populates QuranMetadata (604 pages)</span>
+    └── demoData.js             <span class="comment"># Fake demo data (testing/screenshots)</span></div>
+
+  <h3>client/src/ — the frontend</h3>
+  <div class="filetree">client/src/
+├── main.jsx                  <span class="comment"># Entry point — renders &lt;App /&gt;</span>
+├── App.jsx                   <span class="comment"># All routes + Theme/Auth/Toast providers</span>
+├── i18n.js                   <span class="comment"># Translations (English/Arabic)</span>
+│
+├── context/                  <span class="comment"># App-wide shared state</span>
+│   ├── AuthContext.jsx         <span class="comment"># Who's logged in + login/register/logout</span>
+│   ├── ThemeContext.jsx        <span class="comment"># Dark/light/system theme</span>
+│   └── ToastContext.jsx        <span class="comment"># Pop-up notifications</span>
+│
+├── services/                 <span class="comment"># Talking to APIs</span>
+│   ├── api.js                  <span class="comment"># Axios → your backend, auto-attaches JWT</span>
+│   └── quranApi.js             <span class="comment"># External Quran text/audio/tafsir APIs</span>
+│
+├── pages/                    <span class="comment"># One file per route/screen</span>
+│   ├── Landing.jsx              <span class="comment"># Public homepage (/)</span>
+│   ├── About.jsx                <span class="comment"># /about</span>
+│   ├── Login.jsx / Register.jsx <span class="comment"># Auth forms</span>
+│   ├── Onboarding.jsx           <span class="comment"># First-time setup: pages known + daily goal</span>
+│   ├── Dashboard.jsx            <span class="star">★ Today's tasks, stats, streak — the main hub</span>
+│   ├── Library.jsx              <span class="star">★ Mushaf reader + Memorize mode (?mode=memorize)</span>
+│   ├── Progress.jsx             <span class="comment"># 30-Juz grid + contribution graph</span>
+│   └── Settings.jsx             <span class="comment"># Name, daily goal, review intensity, advanced</span>
+│
+├── components/                <span class="comment"># Reusable pieces</span>
+│   ├── Navbar.jsx / Footer.jsx   <span class="comment"># Layout chrome</span>
+│   ├── Logo.jsx                  <span class="comment"># App logo</span>
+│   ├── ProtectedRoute.jsx        <span class="comment"># Blocks access if not logged in</span>
+│   ├── ConfirmModal.jsx          <span class="comment"># Generic "are you sure?" popup</span>
+│   ├── HowToMemorizeModal.jsx    <span class="comment"># 7-step memorization method guide</span>
+│   ├── Chatbot.jsx               <span class="comment"># The AI assistant widget</span>
+│   ├── Tooltip.jsx               <span class="comment"># Hover label for icon-only buttons</span>
+│   ├── InfoHint.jsx              <span class="comment"># Inline "ⓘ" term explainer</span>
+│   ├── LanguageToggle.jsx        <span class="comment"># Switch English/Arabic</span>
+│   ├── dashboardTour.js          <span class="comment"># driver.js tour steps for Dashboard</span>
+│   └── libraryTour.js            <span class="comment"># driver.js tour steps for Library</span>
+│
+├── hooks/
+│   └── useDraggable.js           <span class="comment"># Drag interaction hook (chatbot widget)</span>
+│
+├── data/                      <span class="comment"># Static frontend reference data</span>
+│   ├── juzRanges.js              <span class="comment"># Pages belonging to each of the 30 Juz</span>
+│   └── surahPages.js             <span class="comment"># Pages belonging to each Surah</span>
+│
+└── utils/
+    └── surahDisplay.js           <span class="comment"># Formats/displays surah names</span></div>
+
+  <h3>The mental shortcut</h3>
+  <table class="map-table">
+    <tr><td>"What happens when I click X?"</td><td>pages/ (frontend) or controllers/ (backend)</td></tr>
+    <tr><td>"What does the data look like?"</td><td>models/</td></tr>
+    <tr><td>"What's the URL for this?"</td><td>routes/</td></tr>
+    <tr><td>"Is the user allowed to do this?"</td><td>middleware/auth.js</td></tr>
+    <tr><td>"How does the app remember who's logged in?"</td><td>context/AuthContext.jsx</td></tr>
+    <tr><td>"How does frontend call backend?"</td><td>services/api.js</td></tr>
+  </table>
+
+  <a class="top-link" href="#top">↑ Back to top</a>
+</section>
+
+</div>
+</body>
+</html>

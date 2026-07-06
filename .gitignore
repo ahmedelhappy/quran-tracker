@@ -20,6 +20,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude Code
-CLAUDE.md
-.claude/
+# Claude Code — track CLAUDE.md and shared .claude config; keep machine-local settings out
+.claude/settings.local.json
