@@ -440,6 +440,8 @@ exports.getTodayTasks = async (req, res) => {
         surahName: meta?.surahName || 'Unknown',
         surahNameArabic: meta?.surahNameArabic || '',
         surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        firstVerseKey: meta?.firstVerseKey ?? null,
+        lastVerseKey: meta?.lastVerseKey ?? null,
       };
     };
 
@@ -451,6 +453,8 @@ exports.getTodayTasks = async (req, res) => {
         surahName: meta?.surahName || 'Unknown',
         surahNameArabic: meta?.surahNameArabic || '',
         surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        firstVerseKey: meta?.firstVerseKey ?? null,
+        lastVerseKey: meta?.lastVerseKey ?? null,
         lastReviewedDate: progress.lastReviewedDate,
         reviewCount: progress.reviewCount || 0,
       };
@@ -828,6 +832,8 @@ exports.getWeekPlan = async (req, res) => {
           surahName: meta?.surahName || 'Unknown',
           surahNameArabic: meta?.surahNameArabic || '',
           surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+          firstVerseKey: meta?.firstVerseKey ?? null,
+          lastVerseKey: meta?.lastVerseKey ?? null,
         };
       })() : null,
       newPagesInfo: (day.newPagesForDay || []).map(pg => {
@@ -838,6 +844,8 @@ exports.getWeekPlan = async (req, res) => {
           surahName: meta?.surahName || 'Unknown',
           surahNameArabic: meta?.surahNameArabic || '',
           surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+          firstVerseKey: meta?.firstVerseKey ?? null,
+          lastVerseKey: meta?.lastVerseKey ?? null,
         };
       }),
     }));

@@ -121,6 +121,8 @@
     "fmtPage": "Page {{num}}",
     "fmtPageRange": "Pages {{start}}–{{end}}",
     "fmtPagesMulti": "Pages {{nums}}",
+    "startsAt": "starts at {{verse}}",
+    "verseSpan": "{{start}}–{{end}}",
     "quotes": [
       { "text": "The best among you (Muslims) are those who learn the Qur'an and teach it.", "source": "Sahih Al-Bukhari 5027" },
       { "text": "Whoever recites a letter from the Book of Allah will receive one good deed worth ten times its value.", "source": "Tirmidhi 2910" },

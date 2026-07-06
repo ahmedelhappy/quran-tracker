@@ -1,3 +1,5 @@
+import { toArabicDigits } from '../services/quranApi';
+
 export const formatSurahNames = (page, isArabic) => {
   const surahs = page?.surahs?.length
     ? page.surahs
@@ -7,3 +9,8 @@ export const formatSurahNames = (page, isArabic) => {
     .filter(Boolean)
     .join(' · ');
 };
+
+// Localize a "surah:ayah" verse key for display, converting to Arabic-Indic
+// digits in Arabic (e.g. "2:187" → "٢:١٨٧"). Returns '' for missing keys.
+export const localizeVerseKey = (key, isArabic) =>
+  key ? (isArabic ? toArabicDigits(key) : key) : '';
