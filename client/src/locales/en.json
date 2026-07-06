@@ -605,6 +605,14 @@
     "method": {
       "title": "Memorization steps",
       "fullGuide": "Open the full guide"
+    },
+    "marks": {
+      "juz": "Start of Juz {{n}}",
+      "hizb": "Start of Hizb {{n}}",
+      "quarter1": "Quarter of Hizb {{n}}",
+      "quarter2": "Half of Hizb {{n}}",
+      "quarter3": "Three quarters of Hizb {{n}}",
+      "sajda": "Place of prostration (Sajdah)"
     }
   },
   "footer": {

@@ -13,6 +13,7 @@ import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import MushafPage from '../components/MushafPage';
+import MushafMarks from '../components/MushafMarks';
 import PageScrubber from '../components/PageScrubber';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI } from '../services/api';
@@ -26,7 +27,7 @@ import {
   DEFAULT_RECITER,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
-import { fetchMushafPage, ensurePageFont, mushafFontFamily } from '../services/mushafApi';
+import { fetchMushafPage, ensurePageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { useDraggable } from '../hooks/useDraggable';
 
@@ -166,6 +167,9 @@ export default function Library() {
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Bump-only: re-renders once a previous page is warmed so a top-of-page
+  // juz/hizb/quarter ornament can be drawn (see the cache-warming effect).
+  const [, bumpMarginContext] = useState(0);
   const [memorizedPages, setMemorizedPages] = useState(new Set());
   const [savingMemorized, setSavingMemorized] = useState(false);
 
@@ -336,6 +340,23 @@ export default function Library() {
       .finally(() => { if (!cancelled) setPageLoading(false); });
     return () => { cancelled = true; };
   }, [visiblePages, currentPage, reloadKey, pageResolved]);
+
+  // Warm the cache for the page just before the first visible one so a
+  // juz/hizb/quarter boundary that lands on that page's very first verse can be
+  // drawn — detecting it needs the previous page's last rub-el-hizb. Matters on
+  // cold jumps (Jump-to-Juz lands directly on a juz-start page's first line);
+  // during sequential reading the previous page is already cached. The bump
+  // re-renders so renderPageCard recomputes `prevLastRub` from the warm cache.
+  useEffect(() => {
+    if (!pageResolved) return;
+    const first = visiblePages[0];
+    if (!first || first <= 1 || peekMushafPage(first - 1)) return;
+    let cancelled = false;
+    fetchMushafPage(first - 1)
+      .then(() => { if (!cancelled) bumpMarginContext((k) => k + 1); })
+      .catch(() => { /* the top-of-page boundary just won't show — harmless */ });
+    return () => { cancelled = true; };
+  }, [visiblePages, pageResolved]);
 
   const stopAudio = useCallback(() => {
     const el = audioRef.current;
@@ -782,6 +803,16 @@ export default function Library() {
       const idx = order.indexOf.get(`${verseKey}:${position}`);
       return idx != null && idx > watermark;
     };
+    // Margin ornaments hug the page's OUTER edge, matching the physical book:
+    // an odd page is right-hand (ornaments on the right), an even page is
+    // left-hand (ornaments on the left) — true in both single-page view and
+    // the two-page spread (whose right/left halves are always odd/even).
+    // Detecting a boundary on the page's first verse needs the previous page's
+    // last rub — read it from the in-session cache (in a spread the previous
+    // page is the on-screen sibling, so it's always present there).
+    const outerEdge = pd.page % 2 === 0 ? 'left' : 'right';
+    const prevVerses = peekMushafPage(pd.page - 1)?.verses;
+    const prevLastRub = prevVerses?.length ? prevVerses[prevVerses.length - 1].rubElHizb ?? null : null;
     return (
       <div
         key={slot}
@@ -801,23 +832,31 @@ export default function Library() {
             <span className="shrink-0">{t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}</span>
           </div>
           {/* Fixed-size framed page, uniformly scaled to fit the column. The turn
-              animation lives INSIDE the frame so the frame itself never moves. */}
-          <div className="mushaf-canvas">
-            <div className="mushaf-frame">
-              <Flip flipKey={pd.page} dir={turnDirRef.current} animate={!reduceMotion}>
-                <MushafPage
-                  pageData={pd}
-                  fontFamily={mushafFontFamily(pd.page)}
-                  selectedVerseKey={selectedVerseKey}
-                  playingVerseKey={playingVerseKey}
-                  concealMode={concealMode}
-                  isConcealed={isConcealedHere}
-                  onSelectVerse={selectVerse}
-                  onRevealVerse={revealVerse}
-                  onRevealThrough={revealThrough}
-                  onHideVerse={hideVerse}
-                />
-              </Flip>
+              animation lives INSIDE the frame so the frame itself never moves.
+              `.mushaf-canvas-frame` reserves a proportional gutter around the
+              canvas for the margin marks, which hang past the frame's border
+              into that gutter — see MushafMarks and index.css. */}
+          <div className="mushaf-canvas-frame">
+            <div className="mushaf-canvas">
+              <div className="mushaf-frame">
+                <Flip flipKey={pd.page} dir={turnDirRef.current} animate={!reduceMotion}>
+                  <MushafPage
+                    pageData={pd}
+                    fontFamily={mushafFontFamily(pd.page)}
+                    selectedVerseKey={selectedVerseKey}
+                    playingVerseKey={playingVerseKey}
+                    concealMode={concealMode}
+                    isConcealed={isConcealedHere}
+                    onSelectVerse={selectVerse}
+                    onRevealVerse={revealVerse}
+                    onRevealThrough={revealThrough}
+                    onHideVerse={hideVerse}
+                  />
+                </Flip>
+                {/* Sibling of the Flip/page-grid, not a child — that grid clips
+                    overflow, which would cut the ornaments off at the border. */}
+                <MushafMarks pageData={pd} outerEdge={outerEdge} prevLastRub={prevLastRub} />
+              </div>
             </div>
           </div>
           {/* Page number + an interactive per-page memorized toggle, so each half

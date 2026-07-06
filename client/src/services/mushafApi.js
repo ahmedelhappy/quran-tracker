@@ -49,7 +49,11 @@ const fetchVersesByPage = async (page) => {
   // render. We take the verse-level `fields=text_uthmani` instead (used only for
   // the tafsir preview); word grouping relies solely on the now-correct page_number.
   const wordFields = 'code_v1,line_number,char_type_name,page_number';
-  const base = `${QURAN_API}/verses/by_page/${page}?words=true&fields=text_uthmani&word_fields=${wordFields}`;
+  // Verse-level fields carry the printed margin structure: the juz / hizb /
+  // quarter-hizb the verse opens (for the boundary ornaments) and its sajda
+  // number, if any (for the prostration mark). See MushafPage for the render.
+  const verseFields = 'text_uthmani,juz_number,hizb_number,rub_el_hizb_number,sajdah_number';
+  const base = `${QURAN_API}/verses/by_page/${page}?words=true&fields=${verseFields}&word_fields=${wordFields}`;
   const all = [];
   let p = 1;
   // per_page is capped at 50 server-side; no mushaf page has that many ayahs,
@@ -134,6 +138,13 @@ const shapePage = (page, rawVerses) => {
     return {
       ...meta,
       textUthmani: v.text_uthmani, // whole-ayah text (tafsir preview); see fetch note
+      // Printed-mushaf margin data (verse-level). rubElHizb is the global 1..240
+      // quarter index the ornaments are derived from; sajdah is null unless the
+      // verse carries a prostration mark.
+      juz: v.juz_number,
+      hizb: v.hizb_number,
+      rubElHizb: v.rub_el_hizb_number,
+      sajdah: v.sajdah_number ?? null,
       words: v.words.map((w) => ({
         ...meta,
         position: w.position,
@@ -155,3 +166,10 @@ export const fetchMushafPage = async (page) => {
   pageCache.set(page, shaped);
   return shaped;
 };
+
+// Read an already-fetched page from the in-session cache without a network
+// round-trip (null if it hasn't been loaded). Used to look at the previous
+// page's last verse when deciding whether a juz/hizb/quarter boundary lands on
+// a page's very first verse — where there's no preceding verse on the page
+// itself to compare against.
+export const peekMushafPage = (page) => pageCache.get(page) ?? null;

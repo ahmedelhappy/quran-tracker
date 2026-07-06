@@ -102,6 +102,16 @@ html[lang='ar'] body {
    can never overflow the frame at any viewport width — the printed-mushaf model.
    The internal width is sized to the widest *normal* line in the book (~16× the
    font); the single rare wider line (p443) is shrunk to fit by MushafPage. */
+/* Reserves a proportional margin gutter around the canvas for the printed
+   mushaf's outer ornaments (see MushafMarks). A PERCENTAGE (not a flat px
+   value) so the reserved space scales with the card exactly like the canvas
+   itself does — proportionally correct from a narrow single-column phone up
+   to a wide two-page spread. */
+.mushaf-canvas-frame {
+  width: 100%;
+  box-sizing: border-box;
+  padding-inline: 9%;
+}
 .mushaf-canvas {
   container-type: inline-size;
   position: relative;
@@ -121,7 +131,10 @@ html[lang='ar'] body {
   border-image: url('/mushaf-frame.svg') 20 round;
   border-radius: 2px;
   padding: 12px;
+  --mushaf-mark: #9a7b22;       /* gold margin ornaments — shared by the page's
+                                   ayah-end medallions and the sibling marks layer */
 }
+.dark .mushaf-frame { --mushaf-mark: #d8b25a; }
 .mushaf-page {
   /* Exactly 15 equal-height rows, one per printed line. The frame's inner text
      box is a fixed 800px (852 − 2×14 border − 2×12 padding), so each slot is a
@@ -138,9 +151,8 @@ html[lang='ar'] body {
   overflow: hidden;
   --mushaf-fs: 32px;
   --mushaf-ink: #2a241b;        /* soft warm charcoal — not a harsh black */
-  --mushaf-mark: #9a7b22;       /* gold ayah medallions */
 }
-.dark .mushaf-page { --mushaf-ink: #ecdfc0; --mushaf-mark: #d8b25a; }
+.dark .mushaf-page { --mushaf-ink: #ecdfc0; }
 /* Pages 1–2 are the ornamental opening spread — a short, vertically-centred
    block rather than a full 15-line grid. */
 .mushaf-page.is-ornamental {
@@ -332,6 +344,64 @@ html[lang='ar'] body {
 .mushaf-edge-zone:disabled { opacity: 0 !important; cursor: default; pointer-events: none; }
 @media (pointer: coarse) {
   .mushaf-edge-zone { display: none; }
+}
+
+/* ── Printed-mushaf margin marks ─────────────────────────────────────────────
+   The juz / hizb / quarter-hizb boundary ornaments and sajda medallions the
+   Madinah print carries in the OUTER margin. Each is pinned to a line with the
+   same fixed 15-slot geometry as the text (positioned inline: top = (line −
+   0.5)/15) then hung PAST the frame's outer edge with a negative offset (see
+   MushafMarks), so they read as hanging in the margin like the print rather
+   than sitting on the text. Gold like the print's ornaments (--mushaf-mark),
+   and non-interactive apart from a hover tooltip.
+
+   Rendered by Library.jsx as a SIBLING of the Flip/page-grid inside
+   `.mushaf-frame`, not a child of MushafPage — the grid (and the page-turn
+   wrapper around it) both clip overflow, which would cut the ornaments off
+   right as they cross into the margin. `inset: 12px` reproduces the frame's
+   own content/text box (524×800 — frame's 12px padding inset from its
+   own padding-edge containing block) so the line math lines up exactly with
+   the text despite living outside the grid; `.mushaf-canvas-frame`'s gutter
+   (see above) is what keeps the hanging ornaments clear of the card's own
+   overflow-hidden clip, and clear of the edge-turn arrows further out. */
+.mushaf-marks {
+  position: absolute;
+  inset: 12px;
+  pointer-events: none;          /* only the ornaments themselves take hover */
+  z-index: 6;                    /* above the text, kept legible by the halo below */
+  font-family: 'Scheherazade New', 'Amiri', serif;
+  color: var(--mushaf-mark);
+}
+.mushaf-mark {
+  position: absolute;
+  display: flex;
+  pointer-events: none;
+}
+.mushaf-mark-btn {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 42px;
+  line-height: 1;
+  text-align: center;
+  cursor: default;
+  /* Halo so the gold reads over any body glyph it overlaps at the line's edge. */
+  text-shadow: 0 0 3px rgba(247, 240, 218, 0.95), 0 0 3px rgba(247, 240, 218, 0.95);
+}
+.dark .mushaf-mark-btn {
+  text-shadow: 0 0 3px rgba(31, 27, 20, 0.95), 0 0 3px rgba(31, 27, 20, 0.95);
+}
+.mushaf-mark-star { font-size: 22px; line-height: 1; }
+.mushaf-mark--juz .mushaf-mark-star { font-size: 29px; }      /* juz reads slightly larger */
+.mushaf-mark--sajda .mushaf-mark-star { font-size: 19px; }    /* sajda slightly smaller */
+.mushaf-mark-label {
+  margin-top: 1px;
+  max-width: 49px;
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.2px;
 }
 
 /* Sacred geometric star pattern — used as page background texture */
