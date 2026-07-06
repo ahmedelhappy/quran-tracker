@@ -121,8 +121,8 @@
     "fmtPage": "صفحة {{num}}",
     "fmtPageRange": "صفحات {{start}}–{{end}}",
     "fmtPagesMulti": "صفحات {{nums}}",
-    "startsAt": "يبدأ من {{verse}}",
-    "verseSpan": "{{start}}–{{end}}",
+    "versesRange": "الآيات {{range}}",
+    "verseSingle": "الآية {{verse}}",
     "quotes": [
       { "text": "خيركم من تعلّم القرآن وعلّمه.", "source": "صحيح البخاري 5027" },
       { "text": "من قرأ حرفاً من كتاب الله فله به حسنة، والحسنة بعشر أمثالها.", "source": "الترمذي 2910" },

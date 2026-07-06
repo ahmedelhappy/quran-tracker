@@ -11,7 +11,7 @@ import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget } from 'react-icons/fi';
-import { formatSurahNames, localizeVerseKey } from '../utils/surahDisplay';
+import { formatSurahNames, formatSurahRangesLabel } from '../utils/surahDisplay';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -64,14 +64,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   const isAr = i18n.language === 'ar';
-  const verseLabel = page.firstVerseKey
-    ? (isNew
-        ? t('dashboard.startsAt', { verse: localizeVerseKey(page.firstVerseKey, isAr) })
-        : t('dashboard.verseSpan', {
-            start: localizeVerseKey(page.firstVerseKey, isAr),
-            end: localizeVerseKey(page.lastVerseKey || page.firstVerseKey, isAr),
-          }))
-    : null;
+  const surahLabel = isNew ? formatSurahRangesLabel(page, isAr, t) : formatSurahNames(page, isAr);
   return (
     <div
       className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-s-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
@@ -103,10 +96,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
             )}
             <ListenButton pageNumber={page.pageNumber} tourAnchor={tourAnchor} />
           </div>
-          <p className="text-sm text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>
-          {verseLabel && (
-            <p className="text-xs text-[#707974] dark:text-gray-500 mt-0.5 font-mono tracking-tight">{verseLabel}</p>
-          )}
+          <p className="text-sm text-[#404944] dark:text-gray-400">{surahLabel}</p>
           {isNew && (
             <div className="mt-1.5 flex items-center gap-3 flex-wrap">
               {/* Open this page in the Library to memorize it */}
