@@ -1,6 +1,7 @@
 const UserProgress = require('../models/UserProgress');
-const QuranMetadata = require('../models/QuranMetadata');
 const User = require('../models/User');
+const { getMetadataForPages } = require('../utils/quranMetadataCache');
+const { serverError } = require('../utils/errorResponse');
 
 const getDateString = (date) => new Date(date).toISOString().split('T')[0];
 
@@ -140,12 +141,10 @@ const nextUnmemorizedPages = (user, memorizedSet, count) => {
   return pages;
 };
 
-// Fetches QuranMetadata for an array of page numbers in one query
-const getMetadataMap = async (pageNumbers) => {
-  if (!pageNumbers.length) return {};
-  const records = await QuranMetadata.find({ pageNumber: { $in: pageNumbers } });
-  return Object.fromEntries(records.map(r => [r.pageNumber, r]));
-};
+// Returns QuranMetadata for an array of page numbers, served from the in-memory
+// cache (the table is static and only changes on reseed + restart) instead of
+// hitting Mongo on every task computation.
+const getMetadataMap = (pageNumbers) => getMetadataForPages(pageNumbers);
 
 // Builds a compact, read-only snapshot of a user's plan & progress. Reuses the
 // same helpers and new-page/review rules as getTodayTasks but returns only counts
@@ -289,7 +288,7 @@ exports.completeOnboarding = async (req, res) => {
     });
   } catch (error) {
     console.error('Onboarding error:', error);
-    res.status(500).json({ success: false, message: 'Error completing onboarding', error: error.message });
+    serverError(res, 'Error completing onboarding', error);
   }
 };
 
@@ -583,7 +582,7 @@ exports.getTodayTasks = async (req, res) => {
     });
   } catch (error) {
     console.error('GetTodayTasks error:', error);
-    res.status(500).json({ success: false, message: "Error fetching today's tasks", error: error.message });
+    serverError(res, "Error fetching today's tasks", error);
   }
 };
 
@@ -660,7 +659,7 @@ exports.markPageComplete = async (req, res) => {
     });
   } catch (error) {
     console.error('MarkPageComplete error:', error);
-    res.status(500).json({ success: false, message: 'Error marking page complete', error: error.message });
+    serverError(res, 'Error marking page complete', error);
   }
 };
 
@@ -720,7 +719,7 @@ exports.unmarkPageComplete = async (req, res) => {
     });
   } catch (error) {
     console.error('UnmarkPageComplete error:', error);
-    res.status(500).json({ success: false, message: 'Error undoing completion', error: error.message });
+    serverError(res, 'Error undoing completion', error);
   }
 };
 
@@ -759,7 +758,7 @@ exports.getEstimate = async (req, res) => {
     });
   } catch (error) {
     console.error('GetEstimate error:', error);
-    res.status(500).json({ success: false, message: 'Error calculating estimate', error: error.message });
+    serverError(res, 'Error calculating estimate', error);
   }
 };
 
@@ -902,7 +901,7 @@ exports.getWeekPlan = async (req, res) => {
     res.status(200).json({ success: true, data: enrichedPlan });
   } catch (error) {
     console.error('GetWeekPlan error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching week plan', error: error.message });
+    serverError(res, 'Error fetching week plan', error);
   }
 };
 
@@ -935,7 +934,7 @@ exports.getAllProgress = async (req, res) => {
     });
   } catch (error) {
     console.error('GetAllProgress error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching progress', error: error.message });
+    serverError(res, 'Error fetching progress', error);
   }
 };
 
@@ -991,7 +990,7 @@ exports.updateMemorized = async (req, res) => {
     });
   } catch (error) {
     console.error('UpdateMemorized error:', error);
-    res.status(500).json({ success: false, message: 'Error updating memorized pages', error: error.message });
+    serverError(res, 'Error updating memorized pages', error);
   }
 };
 
@@ -1014,7 +1013,7 @@ exports.resetProgress = async (req, res) => {
     res.status(200).json({ success: true, message: 'Progress reset successfully' });
   } catch (error) {
     console.error('ResetProgress error:', error);
-    res.status(500).json({ success: false, message: 'Error resetting progress', error: error.message });
+    serverError(res, 'Error resetting progress', error);
   }
 };
 
@@ -1091,6 +1090,6 @@ exports.getJuzProgress = async (req, res) => {
     res.status(200).json({ success: true, data: juzProgress });
   } catch (error) {
     console.error('GetJuzProgress error:', error);
-    res.status(500).json({ success: false, message: 'Error fetching Juz progress', error: error.message });
+    serverError(res, 'Error fetching Juz progress', error);
   }
 };

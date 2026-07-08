@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Bookmark = require('../models/Bookmark');
+const { serverError } = require('../utils/errorResponse');
 
 // A generous ceiling so the list stays manageable (and can't be abused).
 const MAX_BOOKMARKS = 100;
@@ -10,7 +11,8 @@ const getBookmarks = async (req, res) => {
     const bookmarks = await Bookmark.find({ userId: req.user._id }).sort({ pageNumber: 1 });
     res.status(200).json({ success: true, data: bookmarks });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error fetching bookmarks', error: error.message });
+    console.error('GetBookmarks error:', error);
+    serverError(res, 'Error fetching bookmarks', error);
   }
 };
 
@@ -59,7 +61,8 @@ const addBookmark = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, message: 'This page is already bookmarked' });
     }
-    res.status(500).json({ success: false, message: 'Error adding bookmark', error: error.message });
+    console.error('AddBookmark error:', error);
+    serverError(res, 'Error adding bookmark', error);
   }
 };
 
@@ -76,7 +79,8 @@ const deleteBookmark = async (req, res) => {
     }
     res.status(200).json({ success: true, message: 'Bookmark removed' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error removing bookmark', error: error.message });
+    console.error('DeleteBookmark error:', error);
+    serverError(res, 'Error removing bookmark', error);
   }
 };
 

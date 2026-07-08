@@ -13,6 +13,7 @@ const jwt = require('jsonwebtoken');
 const QuranMetadata = require('../models/QuranMetadata');
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
+const { resetMetadataCache } = require('../utils/quranMetadataCache');
 
 let mongod;
 
@@ -51,6 +52,9 @@ async function seedMetadata(count = 30) {
     });
   }
   await QuranMetadata.insertMany(docs);
+  // The metadata cache lazy-loads once per process; drop it so this test's freshly
+  // seeded rows are what the next controller read sees (the DB was just wiped).
+  resetMetadataCache();
 }
 
 // Create a user (password is hashed by the model's pre-save hook).

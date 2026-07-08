@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
+const { serverError } = require('../utils/errorResponse');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -50,11 +51,7 @@ exports.register = async (req, res) => {
 
   } catch (error) {
     console.error('Register error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during registration',
-      error: error.message
-    });
+    serverError(res, 'Server error during registration', error);
   }
 };
 
@@ -122,11 +119,7 @@ exports.login = async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during login',
-      error: error.message
-    });
+    serverError(res, 'Server error during login', error);
   }
 };
 
@@ -163,11 +156,7 @@ exports.getMe = async (req, res) => {
 
   } catch (error) {
     console.error('GetMe error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    serverError(res, 'Server error', error);
   }
 };
 
@@ -362,11 +351,7 @@ exports.updateProfile = async (req, res) => {
 
   } catch (error) {
     console.error('UpdateProfile error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating profile',
-      error: error.message
-    });
+    serverError(res, 'Error updating profile', error);
   }
 };
 
@@ -400,7 +385,7 @@ exports.changePassword = async (req, res) => {
     res.status(200).json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('ChangePassword error:', error);
-    res.status(500).json({ success: false, message: 'Error changing password' });
+    serverError(res, 'Error changing password', error);
   }
 };
 
@@ -417,6 +402,6 @@ exports.deleteAccount = async (req, res) => {
     res.status(200).json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
     console.error('DeleteAccount error:', error);
-    res.status(500).json({ success: false, message: 'Error deleting account', error: error.message });
+    serverError(res, 'Error deleting account', error);
   }
 };
