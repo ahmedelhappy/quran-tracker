@@ -513,6 +513,11 @@
     "rangeStart": "Start page (1–604)",
     "rangeEnd": "End page (1–604)"
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "message": "An unexpected error occurred. Reloading the page usually fixes it.",
+    "reload": "Reload page"
+  },
   "common": {
     "loading": "Loading...",
     "error": "Something went wrong.",

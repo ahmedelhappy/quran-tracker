@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -7,16 +7,26 @@ import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Chatbot from './components/Chatbot';
 
-// Pages
-import Landing from './pages/Landing';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Onboarding from './pages/Onboarding';
-import Settings from './pages/Settings';
-import Progress from './pages/Progress';
-import Library from './pages/Library';
-import About from './pages/About';
+// Pages are lazy-loaded so each route ships its own chunk — this keeps heavy,
+// route-specific dependencies (Recharts on /progress, driver.js tours on
+// /dashboard and /library) out of the initial bundle.
+const Landing = lazy(() => import('./pages/Landing'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Progress = lazy(() => import('./pages/Progress'));
+const Library = lazy(() => import('./pages/Library'));
+const About = lazy(() => import('./pages/About'));
+
+// Full-screen spinner, reused as the Suspense fallback while a route chunk loads
+// and while auth state is resolving.
+const PageLoader = () => (
+  <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex items-center justify-center">
+    <div className="w-10 h-10 border-4 border-[#1B4332] dark:border-emerald-500 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 // Redirect to /onboarding if onboarding not complete
 const DashboardWrapper = () => {
@@ -40,13 +50,7 @@ const PersistentChatbot = () => {
 // Redirect authenticated users away from public pages
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#1B4332] dark:border-emerald-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
   return children;
 };
@@ -64,23 +68,25 @@ function App() {
     <AuthProvider>
       <ToastProvider>
         <Router>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
-            <Route path="/about"    element={<About />} />
-            <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
+              <Route path="/about"    element={<About />} />
+              <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-            {/* Protected routes */}
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardWrapper /></ProtectedRoute>} />
-            <Route path="/onboarding" element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>} />
-            <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/progress"  element={<ProtectedRoute><Progress /></ProtectedRoute>} />
-            <Route path="/library"   element={<ProtectedRoute><Library /></ProtectedRoute>} />
+              {/* Protected routes */}
+              <Route path="/dashboard" element={<ProtectedRoute><DashboardWrapper /></ProtectedRoute>} />
+              <Route path="/onboarding" element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>} />
+              <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/progress"  element={<ProtectedRoute><Progress /></ProtectedRoute>} />
+              <Route path="/library"   element={<ProtectedRoute><Library /></ProtectedRoute>} />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
           <PersistentChatbot />
         </Router>
       </ToastProvider>
