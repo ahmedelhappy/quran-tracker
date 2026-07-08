@@ -1,6 +1,7 @@
 const { test, before, after, beforeEach, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
+const jwt = require('jsonwebtoken');
 
 const { connect, disconnect, clearDatabase, createUser } = require('./helpers');
 const app = require('../app');
@@ -84,5 +85,51 @@ describe('Auth API', () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.data.email, 'me@example.com');
+  });
+
+  test('a token issued before a password change is rejected afterwards', async () => {
+    const user = await createUser({ email: 'rotate@example.com', password: 'secret123' });
+
+    // A token that was minted a minute ago (its `iat` predates the change below).
+    const oldToken = jwt.sign(
+      { id: user._id, iat: Math.floor(Date.now() / 1000) - 60 },
+      process.env.JWT_SECRET
+    );
+
+    // Before any change, the token is accepted.
+    const before = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${oldToken}`);
+    assert.equal(before.status, 200);
+
+    // Change the password (still authenticating with the currently-valid token).
+    const change = await request(app)
+      .put('/api/auth/password')
+      .set('Authorization', `Bearer ${oldToken}`)
+      .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
+    assert.equal(change.status, 200);
+
+    // The same token is now rejected — the change invalidated every prior session.
+    const after = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${oldToken}`);
+    assert.equal(after.status, 401);
+
+    // A freshly issued token (from logging in with the new password) still works.
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'rotate@example.com', password: 'newpass123' });
+    assert.equal(login.status, 200);
+    const fresh = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${login.body.data.token}`);
+    assert.equal(fresh.status, 200);
+  });
+
+  test('login rejects a NoSQL-operator object as email with 400', async () => {
+    await createUser({ email: 'inject@example.com', password: 'secret123' });
+
+    // Without the type gate this { $gt: '' } would match an arbitrary user.
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: { $gt: '' }, password: { $gt: '' } });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+    assert.ok(!res.body.data);
   });
 });

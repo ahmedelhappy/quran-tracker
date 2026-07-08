@@ -98,6 +98,10 @@ const userSchema = new mongoose.Schema(
       default: 'fromStart',
     },
     newMemorizationStartPage: { type: Number, default: null, min: 1, max: 604 },
+    // When the password was last changed. Tokens minted before this instant are
+    // rejected by the auth middleware, so a password change ends every prior
+    // session. Null for accounts that have never changed their password.
+    passwordChangedAt: { type: Date, default: null },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically
@@ -112,6 +116,14 @@ userSchema.pre("save", async function () {
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+
+  // Record when the password changed (used to invalidate older tokens). Skip
+  // brand-new accounts — their first token is issued moments later. Back-date by
+  // one second because a JWT's `iat` is only second-precision; without the buffer
+  // the token issued right after the change could look fractionally older than it.
+  if (!this.isNew) {
+    this.passwordChangedAt = new Date(Date.now() - 1000);
+  }
 });
 
 // Method to check if password matches

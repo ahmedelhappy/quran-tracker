@@ -31,6 +31,19 @@ const protect = async (req, res, next) => {
       });
     }
 
+    // Reject tokens minted before the user last changed their password, so a
+    // password change invalidates every session issued beforehand. `iat` is in
+    // seconds; passwordChangedAt is already back-dated a second when set.
+    if (req.user.passwordChangedAt) {
+      const changedAtSec = Math.floor(req.user.passwordChangedAt.getTime() / 1000);
+      if (decoded.iat < changedAtSec) {
+        return res.status(401).json({
+          success: false,
+          message: 'Session expired, please log in again'
+        });
+      }
+    }
+
     next();
 
   } catch (error) {
