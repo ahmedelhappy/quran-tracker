@@ -79,6 +79,67 @@ const reconcileStreakAfterUndo = async (userId) => {
   return user.currentStreak || 0;
 };
 
+// FROM THE END memorization order, precomputed once at module load from the
+// committed mushaf structure (no DB dependency). "From the end" means surah by
+// surah backward (114 → 1) but the pages WITHIN each surah go forward, so a
+// multi-page surah is still memorized from its beginning — walking raw pages
+// 604→1 would force a surah's last page first and break recitation. A page
+// shared by several surahs is claimed by the latest surah to reach it (that
+// surah's run comes first), which keeps the top of the sequence 604, 603, 602…
+// and only reorders inside multi-page surahs (e.g. Al-Mulk emits 562 then 563).
+const FROM_END_ORDER = (() => {
+  const structure = require('../seed/data/quranStructure.json');
+  const pagesBySurah = new Map();
+  for (const page of structure) {
+    for (const s of page.surahs) {
+      if (!pagesBySurah.has(s.number)) pagesBySurah.set(s.number, []);
+      pagesBySurah.get(s.number).push(page.pageNumber);
+    }
+  }
+  for (const pages of pagesBySurah.values()) pages.sort((a, b) => a - b);
+  const order = [];
+  const seen = new Set();
+  for (let surah = 114; surah >= 1; surah--) {
+    for (const pg of pagesBySurah.get(surah) || []) {
+      if (!seen.has(pg)) { seen.add(pg); order.push(pg); }
+    }
+  }
+  return order;
+})();
+const FROM_END_INDEX = new Map(FROM_END_ORDER.map((pg, i) => [pg, i]));
+
+// The full 604-page walk order for a user. fromStart walks 1→604; a custom
+// newMemorizationStartPage anchors the walk there and wraps past the mushaf edge
+// so the skipped pages come last. fromEnd uses the surah-backward order above
+// (no custom anchor — the UI only offers custom under fromStart).
+const memorizationWalkOrder = (user) => {
+  if (user.memorizationDirection === 'fromEnd') return FROM_END_ORDER;
+  const anchor = user.newMemorizationStartPage || 1;
+  const order = new Array(604);
+  for (let i = 0; i < 604; i++) order[i] = ((anchor - 1 + i) % 604) + 1;
+  return order;
+};
+
+// Position of a page along the user's new-memorization walk: 0 for the page the
+// walk starts at, increasing in the direction of travel. Lower index = scheduled
+// sooner. Used to tie-break same-date pages when picking the continuation page.
+const memorizationWalkIndex = (user, pageNumber) => {
+  if (user.memorizationDirection === 'fromEnd') return FROM_END_INDEX.get(pageNumber) ?? 0;
+  const anchor = user.newMemorizationStartPage || 1;
+  return ((pageNumber - anchor) % 604 + 604) % 604;
+};
+
+// The next `count` unmemorized pages in the user's memorization order.
+const nextUnmemorizedPages = (user, memorizedSet, count) => {
+  const pages = [];
+  if (count <= 0) return pages;
+  for (const page of memorizationWalkOrder(user)) {
+    if (pages.length >= count) break;
+    if (!memorizedSet.has(page)) pages.push(page);
+  }
+  return pages;
+};
+
 // Fetches QuranMetadata for an array of page numbers in one query
 const getMetadataMap = async (pageNumbers) => {
   if (!pageNumbers.length) return {};
@@ -117,10 +178,7 @@ const buildProgressSummary = async (user) => {
   ).length;
   const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
-  const newPageNumbers = [];
-  for (let page = 1; page <= 604 && newPageNumbers.length < remainingNewPages; page++) {
-    if (!memorizedPageNumbers.has(page)) newPageNumbers.push(page);
-  }
+  const newPageNumbers = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
 
   // --- REVIEWS DUE TODAY (cycle + recent buckets, mirrors getTodayTasks) ---
   let reviewsDueToday = 0;
@@ -316,23 +374,12 @@ exports.getTodayTasks = async (req, res) => {
     const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
     // Next unmemorized pages
-    const newPageNums = [];
-    if (remainingNewPages > 0) {
-      for (let page = 1; page <= 604; page++) {
-        if (!memorizedPageNumbers.has(page)) {
-          newPageNums.push(page);
-          if (newPageNums.length >= remainingNewPages) break;
-        }
-      }
-    }
+    const newPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
 
-    // Extra unmemorized pages (for "Want more?" section)
-    const extraNewPageNums = [];
-    for (let page = 1; page <= 604 && extraNewPageNums.length < 3; page++) {
-      if (!memorizedPageNumbers.has(page) && !newPageNums.includes(page)) {
-        extraNewPageNums.push(page);
-      }
-    }
+    // Extra unmemorized pages (for "Want more?" section): the walk's next 3 pages
+    // after today's batch — today's batch is a prefix of the same walk, so slice it off.
+    const extraNewPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, newPageNums.length + 3)
+      .slice(newPageNums.length);
 
     // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
     // The recent bucket is the user's most recently memorized pages during active
@@ -416,7 +463,13 @@ exports.getTodayTasks = async (req, res) => {
     if (targetNewPages === 0 && !isHafiz) {
       const sortedByMemDate = [...allMemorizedPages]
         .filter(p => p.memorizedDate && getDateString(p.memorizedDate) !== todayString)
-        .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate));
+        .sort((a, b) => {
+          const dateDiff = new Date(b.memorizedDate) - new Date(a.memorizedDate);
+          if (dateDiff !== 0) return dateDiff;
+          // Same-date pages (e.g. an onboarding batch): the one furthest along the
+          // memorization walk is the one the user reached most recently.
+          return memorizationWalkIndex(user, b.pageNumber) - memorizationWalkIndex(user, a.pageNumber);
+        });
       if (sortedByMemDate.length > 0) {
         continuationPageNum = sortedByMemDate[0].pageNumber;
       }
@@ -728,13 +781,9 @@ exports.getWeekPlan = async (req, res) => {
     const dailyNewPages = user.dailyNewPages || 1;
     const reviewIntensity = user.reviewIntensity || 'standard';
 
-    // Build ordered list of unmemorized pages
-    const unmemorizedPages = [];
-    if (!isHafiz) {
-      for (let page = 1; page <= 604; page++) {
-        if (!memorizedPageNumbers.has(page)) unmemorizedPages.push(page);
-      }
-    }
+    // Build the full list of unmemorized pages in the user's memorization order,
+    // so projected days advance in the same direction today's tasks do.
+    const unmemorizedPages = isHafiz ? [] : nextUnmemorizedPages(user, memorizedPageNumbers, 604);
 
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);

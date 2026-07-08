@@ -92,6 +92,12 @@ const userSchema = new mongoose.Schema(
     language: { type: String, enum: ['en', 'ar'], default: 'en' },
     pausedFromOnboarding: { type: Boolean, default: false },
     cycleReviewStartPage: { type: Number, default: null, min: 1, max: 604 },
+    memorizationDirection: {
+      type: String,
+      enum: ['fromStart', 'fromEnd'],
+      default: 'fromStart',
+    },
+    newMemorizationStartPage: { type: Number, default: null, min: 1, max: 604 },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically

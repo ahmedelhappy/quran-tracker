@@ -195,6 +195,108 @@ describe('Progress API — spaced repetition', () => {
     assert.deepEqual(res.body.data.recentReviewPages.map(p => p.pageNumber), [3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
+  test('a fromEnd user is assigned page 604 first and the week plan continues downward', async () => {
+    const user = await createUser({
+      dailyNewPages: 2,
+      planStartDate: new Date(),
+      memorizationDirection: 'fromEnd',
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    // The walk starts at the last surah of the mushaf and moves backward surah by
+    // surah; through the single-page short surahs this coincides with 604, 603, 602…
+    assert.deepEqual(res.body.data.newPages.map(p => p.pageNumber), [604, 603]);
+    assert.deepEqual(res.body.data.extraNewPages.map(p => p.pageNumber), [602, 601, 600]);
+
+    // Future days project the same direction: tomorrow picks up after today's batch.
+    const week = await request(app).get('/api/progress/week').set('Authorization', auth);
+    assert.equal(week.status, 200);
+    const firstActiveDay = week.body.data.find(d => !d.isOffDay);
+    assert.deepEqual(firstActiveDay.newPagesForDay, [602, 601]);
+  });
+
+  test('fromEnd memorizes a multi-page surah forward: 562 then 563, not 563 then 562', async () => {
+    const user = await createUser({
+      dailyNewPages: 2,
+      planStartDate: new Date(),
+      memorizationDirection: 'fromEnd',
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // Memorize everything from Al-Qalam (page 564) to the end of the mushaf, so the
+    // next surah due backward is Al-Mulk, which spans pages 562–563. Surah-by-surah
+    // backward but pages WITHIN a surah forward means Al-Mulk is picked up from its
+    // first page: 562 then 563 — walking raw pages 604→1 would give 563 then 562.
+    for (let p = 564; p <= 604; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(2), lastReviewedDate: daysAgo(2) });
+    }
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.data.newPages.map(p => p.pageNumber), [562, 563]);
+
+    // The week projection advances in the same surah-forward order: the next surah
+    // back (At-Tahrim, pages 560–561) is also picked up from its first page.
+    const week = await request(app).get('/api/progress/week').set('Authorization', auth);
+    assert.equal(week.status, 200);
+    const firstActiveDay = week.body.data.find(d => !d.isOffDay);
+    assert.deepEqual(firstActiveDay.newPagesForDay, [560, 561]);
+  });
+
+  test('a custom start anchor walks forward from it and wraps to cover skipped pages last', async () => {
+    // Anchor at Juz 29 (page 562): new pages run 562 → 604 first, then wrap to 1.
+    const user = await createUser({
+      dailyNewPages: 3,
+      planStartDate: new Date(),
+      newMemorizationStartPage: 562,
+    });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const fresh = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(fresh.status, 200);
+    assert.deepEqual(fresh.body.data.newPages.map(p => p.pageNumber), [562, 563, 564]);
+
+    // Once the anchor-to-end stretch is memorized, the walk wraps around so the
+    // skipped early pages (1–561) are scheduled last.
+    for (let p = 562; p <= 604; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(2), lastReviewedDate: daysAgo(2) });
+    }
+    const wrapped = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(wrapped.status, 200);
+    assert.deepEqual(wrapped.body.data.newPages.map(p => p.pageNumber), [1, 2, 3]);
+  });
+
+  test('switching direction mid-plan picks the correct next page without touching progress', async () => {
+    const user = await createUser({ dailyNewPages: 1, planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    for (let p = 1; p <= 3; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(4 - p), lastReviewedDate: daysAgo(4 - p) });
+    }
+
+    // Default direction continues from the front: next unmemorized page is 4.
+    const before = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.deepEqual(before.body.data.newPages.map(p => p.pageNumber), [4]);
+
+    const put = await request(app)
+      .put('/api/auth/profile')
+      .set('Authorization', auth)
+      .send({ memorizationDirection: 'fromEnd' });
+    assert.equal(put.status, 200);
+    assert.equal(put.body.data.memorizationDirection, 'fromEnd');
+
+    // The very next task now comes from the back of the mushaf...
+    const after = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.deepEqual(after.body.data.newPages.map(p => p.pageNumber), [604]);
+    assert.equal(after.body.data.stats.totalMemorized, 3);
+
+    // ...and the already-memorized pages were left untouched.
+    const memorized = await UserProgress.find({ userId: user._id, status: 'memorized' }).sort({ pageNumber: 1 });
+    assert.deepEqual(memorized.map(p => p.pageNumber), [1, 2, 3]);
+  });
+
   test('an off-day returns empty task arrays unless ignoreOffDay is set', async () => {
     const todayUtcDay = new Date().getUTCDay();
     const user = await createUser({

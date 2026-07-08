@@ -113,6 +113,8 @@ exports.login = async (req, res) => {
         pauseNewMemorization: user.pauseNewMemorization || false,
         pausedFromOnboarding: user.pausedFromOnboarding || false,
         cycleReviewStartPage: user.cycleReviewStartPage ?? null,
+        memorizationDirection: user.memorizationDirection || 'fromStart',
+        newMemorizationStartPage: user.newMemorizationStartPage ?? null,
         language: user.language,
         token
       }
@@ -151,6 +153,8 @@ exports.getMe = async (req, res) => {
         pauseNewMemorization: user.pauseNewMemorization || false,
         pausedFromOnboarding: user.pausedFromOnboarding || false,
         cycleReviewStartPage: user.cycleReviewStartPage ?? null,
+        memorizationDirection: user.memorizationDirection || 'fromStart',
+        newMemorizationStartPage: user.newMemorizationStartPage ?? null,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
         language: user.language,
@@ -278,6 +282,27 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    if (req.body.memorizationDirection !== undefined) {
+      if (!['fromStart', 'fromEnd'].includes(req.body.memorizationDirection)) {
+        return res.status(400).json({
+          success: false,
+          message: 'memorizationDirection must be "fromStart" or "fromEnd"'
+        });
+      }
+      updateData.memorizationDirection = req.body.memorizationDirection;
+    }
+
+    if (req.body.newMemorizationStartPage !== undefined) {
+      const v = req.body.newMemorizationStartPage;
+      if (v === null) {
+        updateData.newMemorizationStartPage = null;
+      } else {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 1 && n <= 604) updateData.newMemorizationStartPage = n;
+        else return res.status(400).json({ success: false, message: 'newMemorizationStartPage must be between 1 and 604' });
+      }
+    }
+
     // Picking a NEW custom review-cycle start point resets the review recency so
     // the cycle does a clean sweep from that point forward — covering every page
     // in order — instead of skipping pages that happen to have been reviewed
@@ -326,6 +351,8 @@ exports.updateProfile = async (req, res) => {
         pauseNewMemorization: updatedUser.pauseNewMemorization || false,
         pausedFromOnboarding: updatedUser.pausedFromOnboarding || false,
         cycleReviewStartPage: updatedUser.cycleReviewStartPage ?? null,
+        memorizationDirection: updatedUser.memorizationDirection || 'fromStart',
+        newMemorizationStartPage: updatedUser.newMemorizationStartPage ?? null,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,
