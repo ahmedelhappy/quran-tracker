@@ -545,6 +545,16 @@ export default function Settings() {
   const [isPaused, setIsPaused]       = useState(user?.pauseNewMemorization ?? false);
   const [pauseSaving, setPauseSaving] = useState(false);
 
+  // Memorization direction: memDirChoice is the selected card ('fromStart' |
+  // 'fromEnd' | 'custom'); custom keeps direction fromStart and anchors the walk
+  // at memStartPage. Saved with the rest of the plan via the sticky save bar.
+  const [memDirection, setMemDirection] = useState(user?.memorizationDirection ?? 'fromStart');
+  const [memStartPage, setMemStartPage] = useState(user?.newMemorizationStartPage ?? null);
+  const [memDirChoice, setMemDirChoice] = useState(
+    user?.newMemorizationStartPage != null ? 'custom' : (user?.memorizationDirection ?? 'fromStart')
+  );
+  const [memStartMode, setMemStartMode] = useState('juz');
+
   const [showAdvanced, setShowAdvanced]       = useState(false);
   const [cycleStartMode, setCycleStartMode]   = useState('juz');
   const [cycleStartPage, setCycleStartPage]   = useState(user?.cycleReviewStartPage ?? null);
@@ -576,6 +586,9 @@ export default function Settings() {
       setCycleReviewValue(user.cycleReviewCount ?? 5);
       setIsPaused(user.pauseNewMemorization ?? false);
       setCycleStartPage(user.cycleReviewStartPage ?? null);
+      setMemDirection(user.memorizationDirection ?? 'fromStart');
+      setMemStartPage(user.newMemorizationStartPage ?? null);
+      setMemDirChoice(user.newMemorizationStartPage != null ? 'custom' : (user.memorizationDirection ?? 'fromStart'));
     }
   }, [user]);
 
@@ -614,9 +627,11 @@ export default function Settings() {
       reviewMode !== userReviewMode ||
       recentReviewValue !== (user.recentReviewCount ?? autoRecentPages(user.dailyNewPages)) ||
       (reviewMode === 'intensity' && intensity !== (user.reviewIntensity ?? 'standard')) ||
-      (reviewMode === 'fixed' && cycleReviewValue !== (user.cycleReviewCount ?? 5));
+      (reviewMode === 'fixed' && cycleReviewValue !== (user.cycleReviewCount ?? 5)) ||
+      memDirection !== (user.memorizationDirection ?? 'fromStart') ||
+      (memStartPage ?? null) !== (user.newMemorizationStartPage ?? null);
     setPlanDirty(changed);
-  }, [dailyPages, offDays, reviewMode, intensity, recentReviewValue, cycleReviewValue, user]);
+  }, [dailyPages, offDays, reviewMode, intensity, recentReviewValue, cycleReviewValue, memDirection, memStartPage, user]);
 
   const isDirty = (activeSection === 'profile' && profileDirty) ||
                   (activeSection === 'memorization' && planDirty);
@@ -626,6 +641,16 @@ export default function Settings() {
       if (!prev.includes(jsDay) && prev.length === 6) return prev;
       return prev.includes(jsDay) ? prev.filter(x => x !== jsDay) : [...prev, jsDay];
     });
+
+  const selectMemDirection = (choice) => {
+    setMemDirChoice(choice);
+    if (choice === 'custom') {
+      setMemDirection('fromStart');
+    } else {
+      setMemDirection(choice);
+      setMemStartPage(null);
+    }
+  };
 
   const togglePause = async () => {
     const next = !isPaused;
@@ -699,6 +724,8 @@ export default function Settings() {
         dailyNewPages: dailyPages,
         offDays,
         recentReviewCount: recentReviewValue,
+        memorizationDirection: memDirection,
+        newMemorizationStartPage: memStartPage ?? null,
         ...(reviewMode === 'intensity'
           ? { reviewIntensity: intensity, cycleReviewCount: null }
           : { cycleReviewCount: cycleReviewValue }
@@ -731,6 +758,9 @@ export default function Settings() {
       setReviewMode(user?.cycleReviewCount != null ? 'fixed' : 'intensity');
       setRecentReviewValue(user?.recentReviewCount ?? autoRecentPages(user?.dailyNewPages));
       setCycleReviewValue(user?.cycleReviewCount ?? 5);
+      setMemDirection(user?.memorizationDirection ?? 'fromStart');
+      setMemStartPage(user?.newMemorizationStartPage ?? null);
+      setMemDirChoice(user?.newMemorizationStartPage != null ? 'custom' : (user?.memorizationDirection ?? 'fromStart'));
     }
   };
 
@@ -1007,6 +1037,127 @@ export default function Settings() {
                     </div>
                     {isCustomInvalid && (
                       <p className="text-xs text-red-500 mt-2">{t('settings.dailyTargetRangeError')}</p>
+                    )}
+                  </div>
+
+                  {/* Where new memorization starts */}
+                  <div>
+                    <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.memDirectionTitle')}</p>
+                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.memDirectionDesc')}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { value: 'fromStart', labelKey: 'settings.memDirectionFromStart', descKey: 'settings.memDirectionFromStartDesc' },
+                        { value: 'fromEnd',   labelKey: 'settings.memDirectionFromEnd',   descKey: 'settings.memDirectionFromEndDesc' },
+                        { value: 'custom',    labelKey: 'settings.memDirectionCustom',    descKey: 'settings.memDirectionCustomDesc' },
+                      ].map(({ value, labelKey, descKey }) => {
+                        const selected = memDirChoice === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => selectMemDirection(value)}
+                            className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
+                              selected
+                                ? 'border-[#003527] bg-[#f0fdf4] dark:bg-emerald-900/20 shadow-sm'
+                                : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30 hover:border-[#003527] dark:hover:border-emerald-500'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className={`font-medium ${selected ? 'text-[#003527] dark:text-emerald-300' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
+                              <span className={selected ? 'text-[#003527] dark:text-emerald-400' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
+                            </div>
+                            <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t(descKey)}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {memDirChoice === 'fromEnd' && (
+                      <p className="text-xs text-[#904d00] dark:text-amber-400 mt-2">💡 {t('settings.memDirectionEndHint')}</p>
+                    )}
+
+                    {memDirChoice === 'custom' && (
+                      <div className="mt-3 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600 flex flex-col gap-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <FiMapPin className="w-4 h-4 text-[#003527] dark:text-emerald-400 shrink-0" />
+                          <p className="text-xs text-[#003527] dark:text-emerald-300 font-medium">
+                            {memStartPage
+                              ? `${t('settings.memStartCurrent')}: ${(() => {
+                                  const juzInfo = JUZ_RANGES.find(j => memStartPage >= j.start && memStartPage <= j.end);
+                                  return juzInfo
+                                    ? t('settings.cycleStartJuz', { juz: juzInfo.juz }) + ` · ${t('settings.cycleStartPage', { page: memStartPage })}`
+                                    : t('settings.cycleStartPage', { page: memStartPage });
+                                })()}`
+                              : t('settings.memStartNone')}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {[
+                            { mode: 'juz',   labelKey: 'settings.cycleStartByJuz' },
+                            { mode: 'surah', labelKey: 'settings.cycleStartBySurah' },
+                          ].map(({ mode, labelKey }) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setMemStartMode(mode)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                memStartMode === mode
+                                  ? 'bg-[#003527] text-white border-[#003527]'
+                                  : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                              }`}
+                            >
+                              {t(labelKey)}
+                            </button>
+                          ))}
+                        </div>
+
+                        {memStartMode === 'juz' && (
+                          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                            {JUZ_RANGES.map(({ juz, start, end }) => {
+                              const isSelected = memStartPage !== null && memStartPage >= start && memStartPage <= end;
+                              return (
+                                <button
+                                  key={juz}
+                                  type="button"
+                                  onClick={() => setMemStartPage(start)}
+                                  className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
+                                    isSelected
+                                      ? 'bg-[#003527] text-white border-[#003527]'
+                                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                                  }`}
+                                >
+                                  {juz}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {memStartMode === 'surah' && (
+                          <div className="max-h-56 overflow-y-auto rounded-xl border border-[#dce2f3] dark:border-gray-700 divide-y divide-[#dce2f3] dark:divide-gray-700 bg-white dark:bg-gray-800">
+                            {SURAH_PAGES.map(s => {
+                              const isSelected = memStartPage === s.start;
+                              return (
+                                <button
+                                  key={s.number}
+                                  type="button"
+                                  onClick={() => setMemStartPage(s.start)}
+                                  className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
+                                    isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
+                                  }`}
+                                >
+                                  <span className="text-sm font-medium">{s.number}. {isArabic ? s.arabic : s.name}</span>
+                                  <span className={`text-xs shrink-0 ${isSelected ? 'text-white/70' : 'text-[#707974] dark:text-gray-400'}`}>
+                                    {t('settings.cycleStartPage', { page: s.start })}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.memStartWrapHint')}</p>
+                      </div>
                     )}
                   </div>
 

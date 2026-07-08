@@ -145,6 +145,13 @@ export default function Onboarding() {
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
   const [rangeErrors, setRangeErrors] = useState([{}]);
   const [dailyPages, setDailyPages] = useState(1);
+  // 'fromStart' | 'fromEnd' | 'custom' — custom anchors new memorization at a
+  // Juz/Surah start page; the selection id keeps only the clicked card highlighted
+  // when several share a start page (e.g. the short surahs on page 604).
+  const [direction, setDirection] = useState('fromStart');
+  const [customStartMode, setCustomStartMode] = useState('juz');
+  const [customStartPage, setCustomStartPage] = useState(null);
+  const [customStartSel, setCustomStartSel] = useState(null);
   const [reviewIntensity, setReviewIntensity] = useState('standard');
   const [fixedReviewValue, setFixedReviewValue] = useState(5);
   const [offDays, setOffDays] = useState([]);
@@ -229,6 +236,8 @@ export default function Onboarding() {
       await progressAPI.completeOnboarding({ memorizedPages: Array.from(selectedPages).sort((a, b) => a - b), dailyNewPages: dailyPages });
       await authAPI.updateProfile({
         offDays,
+        memorizationDirection: direction === 'fromEnd' ? 'fromEnd' : 'fromStart',
+        newMemorizationStartPage: direction === 'custom' ? customStartPage : null,
         ...(reviewIntensity === 'fixed'
           ? { cycleReviewCount: fixedReviewValue, recentReviewCount: null }
           : { reviewIntensity, cycleReviewCount: null, recentReviewCount: null }),
@@ -472,6 +481,110 @@ export default function Onboarding() {
           </div>
         </section>
 
+        {/* Memorization direction */}
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.directionTitle')}</h2>
+            <p className="text-[#404944] dark:text-gray-400">{t('onboarding.directionDesc')}</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { value: 'fromStart', titleKey: 'onboarding.directionFromStart', descKey: 'onboarding.directionFromStartDesc' },
+              { value: 'fromEnd',   titleKey: 'onboarding.directionFromEnd',   descKey: 'onboarding.directionFromEndDesc' },
+              { value: 'custom',    titleKey: 'onboarding.directionCustom',    descKey: 'onboarding.directionCustomDesc' },
+            ].map(({ value, titleKey, descKey }) => (
+              <button
+                key={value}
+                onClick={() => setDirection(value)}
+                className={`flex flex-col items-start gap-1.5 p-5 rounded-xl border-2 text-start transition-colors ${
+                  direction === value
+                    ? 'border-[#003527] bg-[#b0f0d6] dark:bg-emerald-900/40 text-[#064e3b] dark:text-emerald-300'
+                    : 'border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-800 text-[#404944] dark:text-gray-300 hover:bg-[#e7eefe] dark:hover:bg-gray-700'
+                }`}
+              >
+                <span className="font-semibold">{t(titleKey)}</span>
+                <span className={`text-xs leading-relaxed ${direction === value ? 'text-[#064e3b]/80 dark:text-emerald-300/80' : 'text-[#404944]/80 dark:text-gray-400'}`}>
+                  {t(descKey)}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {direction === 'fromEnd' && (
+            <p className="text-xs text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.directionEndHint')}</p>
+          )}
+
+          {direction === 'custom' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#f0f3ff] dark:border-gray-700 p-4 flex flex-col gap-3">
+              <div className="flex gap-2">
+                {[
+                  { mode: 'juz',   labelKey: 'onboarding.byJuz' },
+                  { mode: 'surah', labelKey: 'onboarding.bySurah' },
+                ].map(({ mode, labelKey }) => (
+                  <button
+                    key={mode}
+                    onClick={() => setCustomStartMode(mode)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      customStartMode === mode
+                        ? 'bg-[#003527] text-white border-[#003527]'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                    }`}
+                  >
+                    {t(labelKey)}
+                  </button>
+                ))}
+              </div>
+
+              {customStartMode === 'juz' && (
+                <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
+                  {JUZ_RANGES.map(({ juz, start }) => (
+                    <button
+                      key={juz}
+                      onClick={() => { setCustomStartPage(start); setCustomStartSel(`juz-${juz}`); }}
+                      className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
+                        customStartSel === `juz-${juz}`
+                          ? 'bg-[#003527] text-white border-[#003527]'
+                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                      }`}
+                    >
+                      {juz}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {customStartMode === 'surah' && (
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-[#dce2f3] dark:border-gray-700 divide-y divide-[#dce2f3] dark:divide-gray-700">
+                  {SURAH_PAGES.map(s => {
+                    const isSelected = customStartSel === `surah-${s.number}`;
+                    return (
+                      <button
+                        key={s.number}
+                        onClick={() => { setCustomStartPage(s.start); setCustomStartSel(`surah-${s.number}`); }}
+                        className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
+                          isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{s.number}. {isArabic ? s.arabic : s.name}</span>
+                        <span className={`text-xs shrink-0 ${isSelected ? 'text-white/70' : 'text-[#707974] dark:text-gray-400'}`}>
+                          {t('settings.cycleStartPage', { page: s.start })}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {customStartPage && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
+                  ✓ {t('onboarding.directionCustomSelected', { page: customStartPage })}
+                </p>
+              )}
+              <p className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.directionCustomHint')}</p>
+            </div>
+          )}
+        </section>
+
         {/* Navigation */}
         <div className="mt-auto pt-6 flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700">
           <button
@@ -482,7 +595,7 @@ export default function Onboarding() {
           </button>
           <button
             onClick={() => setStep(3)}
-            disabled={hasRangeErrors}
+            disabled={hasRangeErrors || (direction === 'custom' && !customStartPage)}
             className="bg-[#003527] text-white px-8 py-4 rounded-xl text-sm font-medium hover:bg-[#064e3b] transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
           >
             {t('onboarding.continue')} <span className="inline-block rtl:rotate-180">→</span>
