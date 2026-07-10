@@ -171,7 +171,17 @@ export default function Library() {
   // juz/hizb/quarter ornament can be drawn (see the cache-warming effect).
   const [, bumpMarginContext] = useState(0);
   const [memorizedPages, setMemorizedPages] = useState(new Set());
+  // pageNumber -> fraction (0,1) for pages with partial (sub-page) coverage —
+  // memorizedPages already includes these pages too (any progress counts).
+  const [partialPages, setPartialPages] = useState(new Map());
   const [savingMemorized, setSavingMemorized] = useState(false);
+
+  // ── Mark verses (sub-page memorization) ──────────────────
+  // Tap the first verse, then the last verse, to add that exact range via
+  // PUT /api/progress/units (unit: 'verses') instead of marking a whole page.
+  const [markVersesMode, setMarkVersesMode] = useState(false);
+  const [markRangeStart, setMarkRangeStart] = useState(null);
+  const [markingVerses, setMarkingVerses] = useState(false);
 
   // ── Bookmarks (account-saved, multiple per user) ────────
   const [bookmarks, setBookmarks] = useState([]);
@@ -288,6 +298,8 @@ export default function Library() {
       const pages = res.data?.data?.memorizedPages ?? [];
       const memorized = new Set(pages);
       setMemorizedPages(memorized);
+      const partial = res.data?.data?.partialPages ?? [];
+      setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
       if (hadExplicitPageRef.current) return;
       let nextNew = null;
       for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
@@ -626,6 +638,53 @@ export default function Library() {
     localStorage.setItem('seenVerseTapCue', '1'); // the "tap a verse" cue has served its purpose
   }, []);
 
+  // Re-reads memorized/partial pages after a units mutation — cheaper to just
+  // refetch than to reconcile every affected page's fraction locally.
+  const refreshMemorizedPages = useCallback(() => {
+    progressAPI.getAllProgress().then(res => {
+      setMemorizedPages(new Set(res.data?.data?.memorizedPages ?? []));
+      const partial = res.data?.data?.partialPages ?? [];
+      setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
+    }).catch(() => {});
+  }, []);
+
+  const cancelMarkVerses = useCallback(() => {
+    setMarkVersesMode(false);
+    setMarkRangeStart(null);
+  }, []);
+  // Abort an in-progress "mark verses" selection if the reader turns the page.
+  useEffect(() => { cancelMarkVerses(); }, [currentPage, cancelMarkVerses]);
+
+  // First tap sets the range start; the second tap (any later verse, in either
+  // reading order) submits [start, end] to the units endpoint. compileUnitRange
+  // on the server normalizes the order, so which one is tapped first doesn't matter.
+  const handleMarkVersesTap = useCallback(async (verseKey) => {
+    if (!markRangeStart) {
+      setMarkRangeStart(verseKey);
+      return;
+    }
+    if (verseKey === markRangeStart) { setMarkRangeStart(null); return; } // tapped the same word again — restart
+    setMarkingVerses(true);
+    try {
+      await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref: { from: markRangeStart, to: verseKey } });
+      showToast(t('library.markVerses.added'), 'success');
+      refreshMemorizedPages();
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setMarkingVerses(false);
+      setMarkRangeStart(null);
+      setMarkVersesMode(false);
+    }
+  }, [markRangeStart, showToast, t, refreshMemorizedPages]);
+
+  // Routes word taps to the mark-verses flow while it's active, otherwise the
+  // normal verse-selection behaviour.
+  const handleWordSelect = useCallback((verseKey) => {
+    if (markVersesMode) { handleMarkVersesTap(verseKey); return; }
+    selectVerse(verseKey);
+  }, [markVersesMode, handleMarkVersesTap, selectVerse]);
+
   // "Hide all": collapse every visible page's watermark back to the start.
   const hideAllVerses = () => setWatermarks({});
   // "Reveal all": push every visible page's watermark to its last word.
@@ -657,15 +716,24 @@ export default function Library() {
   const markPageMemorized = async (page) => {
     if (savingMemorized || memorizedPages.has(page)) return;
     const prevPages = memorizedPages;
+    const prevPartial = partialPages;
     const nextPages = new Set(prevPages);
     nextPages.add(page);
     setSavingMemorized(true);
     setMemorizedPages(nextPages);
+    // A whole-page mark always results in full coverage — drop any stale
+    // partial-fraction entry so the tick doesn't show "½" right after this.
+    if (partialPages.has(page)) {
+      const nextPartial = new Map(partialPages);
+      nextPartial.delete(page);
+      setPartialPages(nextPartial);
+    }
     try {
       await progressAPI.markComplete({ pageNumber: page, type: 'new' });
       showToast(t('library.markedToast', { n: fmtNum(page) }), 'success');
     } catch {
       setMemorizedPages(prevPages); // roll back the optimistic change
+      setPartialPages(prevPartial);
       showToast(t('common.error'), 'error');
     } finally {
       setSavingMemorized(false);
@@ -675,15 +743,22 @@ export default function Library() {
   const unmarkPageMemorized = async (page) => {
     if (savingMemorized || !memorizedPages.has(page)) return;
     const prevPages = memorizedPages;
+    const prevPartial = partialPages;
     const nextPages = new Set(prevPages);
     nextPages.delete(page);
     setSavingMemorized(true);
     setMemorizedPages(nextPages);
+    if (partialPages.has(page)) {
+      const nextPartial = new Map(partialPages);
+      nextPartial.delete(page);
+      setPartialPages(nextPartial);
+    }
     try {
       await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
       showToast(t('library.unmarkedToast', { n: fmtNum(page) }), 'success');
     } catch {
       setMemorizedPages(prevPages); // roll back the optimistic change
+      setPartialPages(prevPartial);
       showToast(t('common.error'), 'error');
     } finally {
       setSavingMemorized(false);
@@ -847,7 +922,7 @@ export default function Library() {
                     playingVerseKey={playingVerseKey}
                     concealMode={concealMode}
                     isConcealed={isConcealedHere}
-                    onSelectVerse={selectVerse}
+                    onSelectVerse={handleWordSelect}
                     onRevealVerse={revealVerse}
                     onRevealThrough={revealThrough}
                     onHideVerse={hideVerse}
@@ -864,9 +939,13 @@ export default function Library() {
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
             {(() => {
               const done = memorizedPages.has(pd.page);
-              const label = done
-                ? t('library.removePage', { n: fmtNum(pd.page) })
-                : t('library.markPage', { n: fmtNum(pd.page) });
+              const fraction = partialPages.get(pd.page);
+              const isPartial = done && fraction != null;
+              const label = isPartial
+                ? t('library.halfMemorized', { n: fmtNum(pd.page), pct: Math.round(fraction * 100) })
+                : done
+                  ? t('library.removePage', { n: fmtNum(pd.page) })
+                  : t('library.markPage', { n: fmtNum(pd.page) });
               return (
                 <Tooltip label={label}>
                   <button
@@ -878,9 +957,11 @@ export default function Library() {
                     data-tour="lib-mark"
                     className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {done
-                      ? <FiCheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      : <FiCircle className="w-4 h-4 text-amber-800/45 dark:text-amber-200/35" />}
+                    {isPartial
+                      ? <FiCheckCircle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                      : done
+                        ? <FiCheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        : <FiCircle className="w-4 h-4 text-amber-800/45 dark:text-amber-200/35" />}
                   </button>
                 </Tooltip>
               );
@@ -1201,6 +1282,38 @@ export default function Library() {
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+
+            {/* Mark verses — sub-page memorization by verse range */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.markVerses.title')}</span>
+              {markVersesMode ? (
+                <div className="flex flex-col gap-2 text-xs bg-[#f0f4ff] dark:bg-gray-700/40 border border-[#dce2f3] dark:border-gray-600 rounded-lg px-3 py-2">
+                  <p className="text-[#404944] dark:text-gray-300 font-medium">
+                    {markingVerses
+                      ? t('common.loading')
+                      : markRangeStart
+                        ? t('library.markVerses.tapLast')
+                        : t('library.markVerses.tapFirst')}
+                  </p>
+                  <button
+                    onClick={cancelMarkVerses}
+                    disabled={markingVerses}
+                    className="self-start text-[#707974] dark:text-gray-400 hover:text-[#ba1a1a] dark:hover:text-red-400 font-medium disabled:opacity-50"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              ) : (
+                <Tooltip label={t('library.markVerses.hint')}>
+                  <button
+                    onClick={() => setMarkVersesMode(true)}
+                    className="inline-flex items-center gap-1.5 self-start text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2"
+                  >
+                    <FiPlus className="w-3.5 h-3.5" /> {t('library.markVerses.start')}
+                  </button>
+                </Tooltip>
               )}
             </div>
 

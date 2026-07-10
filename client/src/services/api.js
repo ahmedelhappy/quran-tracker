@@ -48,6 +48,7 @@ export const progressAPI = {
   getJuzProgress: () => API.get('/progress/juz'),
   getEstimate: (dailyPages) => API.get(`/progress/estimate${dailyPages != null ? `?dailyPages=${dailyPages}` : ''}`),
   getWeekPlan: () => API.get('/progress/week'),
+  updateUnits: (data) => API.put('/progress/units', data),
 };
 
 // Page bookmarks (account-saved, multiple per user)

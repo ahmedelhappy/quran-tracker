@@ -11,7 +11,7 @@ import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget } from 'react-icons/fi';
-import { formatSurahNames, formatSurahRangesLabel } from '../utils/surahDisplay';
+import { formatSurahNames, formatSurahRangesLabel, formatSegmentLabel } from '../utils/surahDisplay';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -65,6 +65,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
   const accentColor = isNew ? '#004f35' : '#fe932c';
   const isAr = i18n.language === 'ar';
   const surahLabel = isNew ? formatSurahRangesLabel(page, isAr, t) : formatSurahNames(page, isAr);
+  const segmentLabel = isNew ? formatSegmentLabel(page.segment, isAr, t) : null;
   return (
     <div
       className={`bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 border-s-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-opacity ${done ? 'opacity-70' : ''}`}
@@ -97,6 +98,9 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
             <ListenButton pageNumber={page.pageNumber} tourAnchor={tourAnchor} />
           </div>
           <p className="text-sm text-[#404944] dark:text-gray-400">{surahLabel}</p>
+          {segmentLabel && (
+            <p className="text-xs font-medium text-[#904d00] dark:text-amber-400 mt-0.5">{segmentLabel}</p>
+          )}
           {isNew && (
             <div className="mt-1.5 flex items-center gap-3 flex-wrap">
               {/* Open this page in the Library to memorize it */}
@@ -144,7 +148,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
             </button>
           )}
           <button
-            onClick={() => onComplete(page.pageNumber, type)}
+            onClick={() => onComplete(page.pageNumber, type, page.segment)}
             disabled={marking}
             className={`text-xs font-semibold uppercase tracking-wide px-4 py-2 rounded-lg transition-colors disabled:opacity-60 ${
               isNew
@@ -236,6 +240,13 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
     const pageStr = nums.length === 1
       ? t('dashboard.fmtPage', { num: nums[0] })
       : t('dashboard.fmtPagesMulti', { nums: nums.join(isAr ? '، ' : ', ') });
+    // A half-page plan's day is always a single segment task — show "first
+    // half"/"second half" instead of the surah name (the page-only label
+    // doesn't say which half, and infos.length === 1 here in that case).
+    if (infos.length === 1 && infos[0].segment) {
+      const segmentLabel = formatSegmentLabel(infos[0].segment, isAr, t);
+      if (segmentLabel) return `${pageStr} · ${segmentLabel}`;
+    }
     const firstSurah = formatSurahNames(infos[0], isAr);
     const sameSurah = infos.every(p => formatSurahNames(p, isAr) === firstSurah);
     return sameSurah && firstSurah ? `${pageStr} · ${firstSurah}` : pageStr;
@@ -405,12 +416,14 @@ export default function Dashboard() {
     }
   };
 
-  const markComplete = async (pageNumber, type) => {
+  const markComplete = async (pageNumber, type, segment) => {
     const key = `${type}-${pageNumber}`;
     if (markingKeys.has(key) || completedKeys.has(key)) return;
     setMarkingKeys(prev => new Set(prev).add(key));
     try {
-      await progressAPI.markComplete({ pageNumber, type });
+      // segment is only ever present on a half-page plan's daily task — it
+      // tells the server to record just that verse range instead of the whole page.
+      await progressAPI.markComplete(segment ? { pageNumber, type, segment } : { pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
       showToast(t(type === 'new' ? 'dashboard.pageMarkedMemorized' : 'dashboard.pageMarkedReviewed', { number: pageNumber }), 'success');
     } catch {

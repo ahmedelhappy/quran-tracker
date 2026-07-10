@@ -75,3 +75,26 @@ export const formatSurahRangesLabel = (page, isArabic, t) => {
     .filter(Boolean)
     .join(' · ');
 };
+
+// Builds "first half · verses 1–4" (or "second half · verse 176") for a
+// half-page plan's daily task, which carries a { fromVerseKey, toVerseKey,
+// half } segment instead of covering the whole page. Falls back to a
+// surah:ayah verse-key range on the rare page where the split crosses a surah
+// boundary (formatVerseRangeDigits still applies the LTR bidi isolation).
+export const formatSegmentLabel = (segment, isArabic, t) => {
+  if (!segment) return null;
+  const from = parseVerseKey(segment.fromVerseKey);
+  const to = parseVerseKey(segment.toVerseKey);
+  if (!from || !to) return null;
+
+  const halfLabel = t(segment.half === 2 ? 'dashboard.secondHalf' : 'dashboard.firstHalf');
+  if (from.surah !== to.surah) {
+    return `${halfLabel} · ${formatVerseRangeDigits(segment.fromVerseKey, segment.toVerseKey, isArabic)}`;
+  }
+  if (from.ayah === to.ayah) {
+    const verse = isArabic ? toArabicDigits(from.ayah) : String(from.ayah);
+    return `${halfLabel} · ${t('dashboard.verseSingle', { verse })}`;
+  }
+  const range = formatVerseRangeDigits(from.ayah, to.ayah, isArabic);
+  return `${halfLabel} · ${t('dashboard.versesRange', { range })}`;
+};

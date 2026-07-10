@@ -10,6 +10,7 @@ import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
 import { SURAH_PAGES } from '../data/surahPages';
+import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 
 function toPageRanges(sortedPages) {
   if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
@@ -161,6 +162,8 @@ export default function Onboarding() {
   const selectedCount = selectedPages.size;
   const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
   const selectedSurahCount = SURAH_PAGES.filter(s => isCovered(selectedPages, s.start, s.end)).length;
+  const selectedHizbCount = HIZB_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
+  const selectedRubCount = RUB_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
 
   // Client-side estimate
   const activeDays = 7 - offDays.length;
@@ -179,6 +182,11 @@ export default function Onboarding() {
 
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
   const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
+  // Hizb/¼-Hizb selections round to whole pages, same as Juz/Surah — a boundary
+  // that falls mid-page just includes that whole page. Verse-exact partial
+  // coverage is edited later from the Library ("mark verses") or Progress page.
+  const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
+  const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -292,9 +300,11 @@ export default function Onboarding() {
             <p className="text-[#404944] dark:text-gray-400">{t('onboarding.alreadyMemorizedHint')}</p>
           </div>
 
-          {/* Quick guide to the three selection tabs + combine note */}
+          {/* Quick guide to the selection tabs + combine note */}
           <div className="rounded-lg bg-[#f0f3ff] dark:bg-gray-700/40 border border-[#dce2f3] dark:border-gray-600 px-4 py-3 text-xs text-[#404944] dark:text-gray-300 space-y-1.5">
             <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byJuz')}</span> — {t('onboarding.tabGuideByJuz')}</p>
+            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byHizb')}</span> — {t('onboarding.tabGuideByHizb')}</p>
+            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byQuarterHizb')}</span> — {t('onboarding.tabGuideByQuarterHizb')}</p>
             <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.bySurah')}</span> — {t('onboarding.tabGuideBySurah')}</p>
             <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byRange')}</span> — {t('onboarding.tabGuideByRange')}</p>
             <p className="pt-1 text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.tabGuideCombine')}</p>
@@ -305,9 +315,11 @@ export default function Onboarding() {
               {t('onboarding.selectMode')}
               <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
             </p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {[
                 { mode: 'juz',   labelKey: 'onboarding.byJuz' },
+                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
+                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
                 { mode: 'surah', labelKey: 'onboarding.bySurah' },
                 { mode: 'range', labelKey: 'onboarding.byRange' },
               ].map(({ mode, labelKey }) => (
@@ -351,6 +363,53 @@ export default function Onboarding() {
                   {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
                 </button>
               </div>
+            </div>
+          )}
+
+          {selectionMode === 'hizb' && (
+            <div>
+              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
+                {HIZB_RANGES.map(({ hizb, start, end }) => (
+                  <button
+                    key={hizb}
+                    onClick={() => toggleHizb(hizb)}
+                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
+                      isCovered(selectedPages, start, end)
+                        ? 'bg-[#003527] text-white border-[#003527]'
+                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                    }`}
+                  >
+                    {hizb}
+                  </button>
+                ))}
+              </div>
+              {selectedHizbCount > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.hizbSelected', { count: selectedHizbCount })}</p>
+              )}
+            </div>
+          )}
+
+          {selectionMode === 'rub' && (
+            <div>
+              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
+                {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => (
+                  <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
+                    <button
+                      onClick={() => toggleRub(rub)}
+                      className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border ${
+                        isCovered(selectedPages, start, end)
+                          ? 'bg-[#003527] text-white border-[#003527]'
+                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                      }`}
+                    >
+                      {hizb}.{quarter}
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+              {selectedRubCount > 0 && (
+                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.quarterHizbSelected', { count: selectedRubCount })}</p>
+              )}
             </div>
           )}
 

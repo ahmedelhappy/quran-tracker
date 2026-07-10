@@ -13,6 +13,7 @@ import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
+import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -133,6 +134,11 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   });
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
   const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
+  // Rounds to whole pages, same as Juz/Surah — a Hizb/¼-Hizb boundary that falls
+  // mid-page just includes that whole page here. Verse-exact partial coverage is
+  // edited from the Library ("mark verses") instead.
+  const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
+  const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -186,6 +192,8 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   const selectedCount = selectedPages.size;
   const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
   const fullSurahCount = SURAH_PAGES.filter(s => countIn(selectedPages, s.start, s.end) === (s.end - s.start + 1)).length;
+  const fullHizbCount = HIZB_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
+  const fullRubCount = RUB_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
 
   const handleSave = async () => {
     setSaving(true);
@@ -220,9 +228,11 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
         <div className="p-6 space-y-6">
           <div className="flex flex-col gap-1">
             <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {[
                 { mode: 'juz',   labelKey: 'onboarding.byJuz' },
+                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
+                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
                 { mode: 'surah', labelKey: 'onboarding.bySurah' },
                 { mode: 'range', labelKey: 'onboarding.byRange' },
               ].map(({ mode, labelKey }) => (
@@ -285,6 +295,81 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
                 {fullJuzCount > 0 ? t('settings.juzSelected', { count: fullJuzCount }) : t('settings.noJuzSelected')}
               </p>
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
+            </div>
+          )}
+
+          {selectionMode === 'hizb' && (
+            <div>
+              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
+                {HIZB_RANGES.map(({ hizb, start, end }) => {
+                  const size = end - start + 1;
+                  const sel = countIn(selectedPages, start, end);
+                  const isFull = sel === size;
+                  const isPartial = sel > 0 && !isFull;
+                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
+                  const pct = Math.round((sel / size) * 100);
+                  return (
+                    <button
+                      key={hizb}
+                      onClick={() => toggleHizb(hizb)}
+                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
+                        isFull
+                          ? 'bg-[#003527] text-white border-[#003527]'
+                          : isRemoved
+                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
+                            : isPartial
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
+                      }`}
+                    >
+                      <span>{hizb}</span>
+                      {(isFull || isPartial || isRemoved) && (
+                        <span className="text-[9px] leading-none opacity-80">
+                          {isFull ? '100' : isRemoved ? '0' : pct}%
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+                {fullHizbCount > 0 ? t('onboarding.hizbSelected', { count: fullHizbCount }) : t('settings.noJuzSelected')}
+              </p>
+            </div>
+          )}
+
+          {selectionMode === 'rub' && (
+            <div>
+              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
+                {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => {
+                  const size = end - start + 1;
+                  const sel = countIn(selectedPages, start, end);
+                  const isFull = sel === size;
+                  const isPartial = sel > 0 && !isFull;
+                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
+                  return (
+                    <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
+                      <button
+                        onClick={() => toggleRub(rub)}
+                        className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border ${
+                          isFull
+                            ? 'bg-[#003527] text-white border-[#003527]'
+                            : isRemoved
+                              ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
+                              : isPartial
+                                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                                : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
+                        }`}
+                      >
+                        {hizb}.{quarter}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
+                {fullRubCount > 0 ? t('onboarding.quarterHizbSelected', { count: fullRubCount }) : t('settings.noJuzSelected')}
+              </p>
             </div>
           )}
 
