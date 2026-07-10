@@ -478,4 +478,87 @@ describe('Progress API — spaced repetition', () => {
     assert.equal(refreshed.currentStreak, 5);
     assert.equal(refreshed.lastActiveDate.getTime(), yesterday.getTime());
   });
+
+  test('a half-page plan (0.5/day) assigns the first half of the next page on the first active day', async () => {
+    const user = await createUser({ dailyNewPages: 0.5, planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.newPages.length, 1);
+
+    const task = res.body.data.newPages[0];
+    assert.equal(task.pageNumber, 1);
+    // Page 1 (Al-Fatiha) has 7 verses — the first half is verses 1–4.
+    assert.deepEqual(task.segment, { fromVerseKey: '1:1', toVerseKey: '1:4', half: 1 });
+    assert.equal(res.body.data.stats.targetNewPages, 1);
+  });
+
+  test('a half-page plan gets the remainder on the next active day, completing the page', async () => {
+    const user = await createUser({ dailyNewPages: 0.5, planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const day1 = await request(app).get('/api/progress/today').set('Authorization', auth);
+    const task1 = day1.body.data.newPages[0];
+
+    const complete1 = await request(app).post('/api/progress/complete').set('Authorization', auth).send({
+      pageNumber: task1.pageNumber, type: 'new', segment: { fromVerseKey: task1.segment.fromVerseKey, toVerseKey: task1.segment.toVerseKey },
+    });
+    assert.equal(complete1.status, 200);
+
+    const partial = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.deepEqual(partial.toObject().segments.map(s => ({ from: s.from, to: s.to })), [{ from: '1:1', to: '1:4' }]);
+
+    // Simulate the next active day: back-date so today's completion count resets.
+    await UserProgress.updateOne(
+      { userId: user._id, pageNumber: 1 },
+      { $set: { memorizedDate: daysAgo(1), lastReviewedDate: daysAgo(1) } }
+    );
+
+    const day2 = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(day2.body.data.newPages.length, 1);
+    const task2 = day2.body.data.newPages[0];
+    assert.equal(task2.pageNumber, 1);
+    assert.deepEqual(task2.segment, { fromVerseKey: '1:5', toVerseKey: '1:7', half: 2 });
+
+    const complete2 = await request(app).post('/api/progress/complete').set('Authorization', auth).send({
+      pageNumber: task2.pageNumber, type: 'new', segment: { fromVerseKey: task2.segment.fromVerseKey, toVerseKey: task2.segment.toVerseKey },
+    });
+    assert.equal(complete2.status, 200);
+
+    const full = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.ok(!full.segments || full.segments.length === 0);
+  });
+
+  test('direction interplay: a fromEnd half-page-plan user gets page 604\'s first half first', async () => {
+    const user = await createUser({ dailyNewPages: 0.5, memorizationDirection: 'fromEnd', planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    const task = res.body.data.newPages[0];
+    assert.equal(task.pageNumber, 604);
+    assert.equal(task.segment.half, 1);
+  });
+
+  test('isHafiz requires every page to be FULLY memorized, not just touched', async () => {
+    const user = await createUser({ planStartDate: daysAgo(30) });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // 603 full pages plus one partial page = 604 pages "touched" but not a hafiz.
+    for (let p = 2; p <= 604; p++) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10) });
+    }
+    await UserProgress.create({
+      userId: user._id, pageNumber: 1, status: 'memorized',
+      memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10),
+      segments: [{ from: '1:1', to: '1:4' }],
+    });
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.isHafiz, false);
+    assert.equal(res.body.data.stats.fullPages, 603);
+    assert.ok(Math.abs(res.body.data.stats.totalMemorized - (603 + 4 / 7)) < 1e-9);
+  });
 });

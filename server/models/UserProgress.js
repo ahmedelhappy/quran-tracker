@@ -29,7 +29,19 @@ const userProgressSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
-  }
+  },
+  // Sub-page memorization. Absent/empty ⇒ the whole page is memorized (every
+  // pre-Stage-5 document is still valid with no migration). Present ⇒ only these
+  // verse ranges of the page are memorized; server/utils/segments.js computes the
+  // memorized fraction and merges/subtracts ranges when units are added/removed.
+  segments: {
+    type: [{
+      from: { type: String, required: true }, // verse key, e.g. "2:187"
+      to: { type: String, required: true },
+      _id: false,
+    }],
+    default: undefined,
+  },
 }, {
   timestamps: true
 });

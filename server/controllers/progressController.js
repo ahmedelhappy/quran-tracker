@@ -2,26 +2,44 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
+const {
+  UNIT_TYPES,
+  PAGE_BY_NUMBER,
+  compileUnitRange,
+  rangeToPages,
+  addRangeToPage,
+  removeRangeFromPage,
+  remainderRanges,
+  pageFraction,
+  totalMemorizedFraction,
+} = require('../utils/segments');
 
 const getDateString = (date) => new Date(date).toISOString().split('T')[0];
 
 const MS_PER_DAY = 86400000;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// Returns the number of daily review pages based on intensity and memorized count.
-const computeDailyReviewTarget = (totalMemorized, reviewIntensity) => {
-  if (totalMemorized === 0) return 0;
-  if (totalMemorized === 604) {
+// Returns the number of daily review pages based on intensity and how many pages
+// have SOME progress (full or partial — a partial page is still one reviewable
+// item, per the segments design). isHafiz must be passed explicitly: with
+// segments, "604 pages touched" no longer implies "604 pages fully memorized".
+const computeDailyReviewTarget = (totalPagesWithProgress, reviewIntensity, isHafiz) => {
+  if (totalPagesWithProgress === 0) return 0;
+  if (isHafiz) {
     const hafizSchedule = { light: 40, standard: 60, strong: Math.ceil(604 / 7) };
     return hafizSchedule[reviewIntensity] || hafizSchedule.standard;
   }
-  if (totalMemorized < 3) return totalMemorized;
+  if (totalPagesWithProgress < 3) return totalPagesWithProgress;
   const cycleDays = { light: 14, standard: 10, strong: 7 }[reviewIntensity] || 10;
-  return Math.min(Math.ceil(totalMemorized / cycleDays), 40);
+  return Math.min(Math.ceil(totalPagesWithProgress / cycleDays), 40);
 };
 
-// Returns how many new pages are allocated for a given date based on planStartDate.
+// Returns how many new-page TASKS are allocated for a given date based on
+// planStartDate. A half-page plan (dailyNewPages < 1, i.e. 0.5) always targets
+// exactly one task per active day — that task is half a page's worth of verses
+// (see nextHalfPageTask), so two active days assign one whole page.
 const computeNewPageTargetForDate = (dailyNewPages, planStartDate, targetDate) => {
+  if (dailyNewPages < 1) return 1;
   const start = new Date(planStartDate).getTime();
   const target = new Date(targetDate).getTime();
   const daysPassed = Math.floor((target - start) / MS_PER_DAY);
@@ -130,7 +148,10 @@ const memorizationWalkIndex = (user, pageNumber) => {
   return ((pageNumber - anchor) % 604 + 604) % 604;
 };
 
-// The next `count` unmemorized pages in the user's memorization order.
+// The next `count` unmemorized pages in the user's memorization order. A page
+// with ANY progress (full or partial) counts as memorized here — once started,
+// a page leaves the "new" pool and only advances via the half-page flow below
+// or a manual edit (Library "mark verses", Settings).
 const nextUnmemorizedPages = (user, memorizedSet, count) => {
   const pages = [];
   if (count <= 0) return pages;
@@ -139,6 +160,33 @@ const nextUnmemorizedPages = (user, memorizedSet, count) => {
     if (!memorizedSet.has(page)) pages.push(page);
   }
   return pages;
+};
+
+// Finds the next half-page task: the first page (in the user's memorization
+// order) that isn't FULLY memorized yet. A page with no progress gets its first
+// half (split at the verse midpoint); a page already holding a first-half
+// segment gets the remainder, completing it. `fullSet`/`partialByPage` are
+// passed in explicitly (rather than re-derived from a DB query) so this can run
+// against the live UserProgress state (getTodayTasks) or a day-by-day simulated
+// state (getWeekPlan) with the same logic.
+const nextHalfPageTask = (user, fullSet, partialByPage) => {
+  for (const pageNumber of memorizationWalkOrder(user)) {
+    if (fullSet.has(pageNumber)) continue;
+    const meta = PAGE_BY_NUMBER.get(pageNumber);
+    if (!meta || !meta.verseKeys.length) continue;
+
+    const existingSegments = partialByPage.get(pageNumber) || [];
+    if (existingSegments.length === 0) {
+      const mid = Math.ceil(meta.verseKeys.length / 2);
+      return { pageNumber, fromVerseKey: meta.verseKeys[0], toVerseKey: meta.verseKeys[mid - 1], half: 1 };
+    }
+
+    const remaining = remainderRanges(meta.verseKeys, existingSegments);
+    if (!remaining.length) continue; // already full — shouldn't happen, but stay safe
+    const [ri, rj] = remaining[0];
+    return { pageNumber, fromVerseKey: meta.verseKeys[ri], toVerseKey: meta.verseKeys[rj], half: 2 };
+  }
+  return null;
 };
 
 // Returns QuranMetadata for an array of page numbers, served from the in-memory
@@ -158,12 +206,13 @@ const buildProgressSummary = async (user) => {
 
   const allMemorizedPages = await UserProgress.find(
     { userId, status: 'memorized' },
-    { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1 }
+    { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1, segments: 1 }
   ).sort({ lastReviewedDate: 1, pageNumber: 1 });
 
   const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
-  const totalMemorized = allMemorizedPages.length;
-  const isHafiz = totalMemorized === 604;
+  const totalPagesWithProgress = allMemorizedPages.length;
+  const totalMemorized = totalMemorizedFraction(allMemorizedPages);
+  const isHafiz = allMemorizedPages.every(p => !p.segments || p.segments.length === 0) && totalPagesWithProgress === 604;
   const percentage = parseFloat(((totalMemorized / 604) * 100).toFixed(1));
 
   // --- NEW PAGES DUE TODAY (mirrors getTodayTasks) ---
@@ -184,7 +233,7 @@ const buildProgressSummary = async (user) => {
   if (!isOffDay) {
     const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
       ? user.cycleReviewCount
-      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+      : computeDailyReviewTarget(totalPagesWithProgress, user.reviewIntensity || 'standard', isHafiz);
 
     const planStartDateString = getDateString(user.planStartDate || user.createdAt);
     const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
@@ -306,7 +355,10 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- OFF DAY ---
     if (!ignoreOffDay && offDays.includes(new Date().getUTCDay())) {
-      const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
+      const offDayProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+      const totalMemorized = totalMemorizedFraction(offDayProgress);
+      const fullPages = offDayProgress.filter(p => !p.segments || p.segments.length === 0).length;
+      const isHafiz = fullPages === 604;
 
       // Preserve streak on off-days: bump lastActiveDate without incrementing the count.
       // Guard: never tick for a user who has never been active (null lastActiveDate).
@@ -325,11 +377,11 @@ exports.getTodayTasks = async (req, res) => {
         success: true,
         data: {
           isOffDay: true,
-          isHafiz: totalMemorized === 604,
+          isHafiz,
           newPages: [], reviewPages: [], extraNewPages: [], extraReviewPages: [],
           recentReviewPages: [], continuationPage: null,
           stats: {
-            totalMemorized, totalPages: 604,
+            totalMemorized, fullPages, totalPages: 604,
             percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
             currentStreak: user.currentStreak || 0,
             dailyNewPages: user.dailyNewPages || 1,
@@ -339,7 +391,7 @@ exports.getTodayTasks = async (req, res) => {
             newPagesCompletedToday: 0, reviewsCompletedToday: 0,
             targetNewPages: 0, dailyReviewTarget: 0,
             newMemorizationComplete: true, reviewComplete: true,
-            todayComplete: true, isHafiz: totalMemorized === 604,
+            todayComplete: true, isHafiz,
           },
         },
       });
@@ -350,13 +402,16 @@ exports.getTodayTasks = async (req, res) => {
       .sort({ lastReviewedDate: 1, pageNumber: 1 });
 
     const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
-    const totalMemorized = allMemorizedPages.length;
-    const isHafiz = totalMemorized === 604;
+    const totalPagesWithProgress = allMemorizedPages.length;
+    const fullPages = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
+    const totalMemorized = totalMemorizedFraction(allMemorizedPages);
+    const isHafiz = fullPages === 604;
+    const isHalfPagePlan = (user.dailyNewPages || 1) < 1;
 
     // --- REVIEW TARGET ---
     const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
       ? user.cycleReviewCount
-      : computeDailyReviewTarget(totalMemorized, user.reviewIntensity || 'standard');
+      : computeDailyReviewTarget(totalPagesWithProgress, user.reviewIntensity || 'standard', isHafiz);
 
     // --- NEW MEMORIZATION TARGET ---
     let targetNewPages = 0;
@@ -372,13 +427,25 @@ exports.getTodayTasks = async (req, res) => {
 
     const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
-    // Next unmemorized pages
-    const newPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
-
-    // Extra unmemorized pages (for "Want more?" section): the walk's next 3 pages
-    // after today's batch — today's batch is a prefix of the same walk, so slice it off.
-    const extraNewPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, newPageNums.length + 3)
-      .slice(newPageNums.length);
+    // --- NEW PAGE / HALF-PAGE TASK ---
+    // A half-page plan replaces the whole-page walk with one segment task a day
+    // (see nextHalfPageTask); a normal plan keeps walking whole unmemorized pages.
+    let newPageNums = [];
+    let halfPageTask = null;
+    let extraNewPageNums = [];
+    if (isHalfPagePlan) {
+      if (remainingNewPages > 0) {
+        const fullPageSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
+        const partialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
+        halfPageTask = nextHalfPageTask(user, fullPageSet, partialByPage);
+      }
+    } else {
+      newPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
+      // Extra unmemorized pages (for "Want more?" section): the walk's next 3 pages
+      // after today's batch — today's batch is a prefix of the same walk, so slice it off.
+      extraNewPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, newPageNums.length + 3)
+        .slice(newPageNums.length);
+    }
 
     // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
     // The recent bucket is the user's most recently memorized pages during active
@@ -457,7 +524,9 @@ exports.getTodayTasks = async (req, res) => {
     const recentReviewTarget = recentPool.length;
     const dailyReviewTotal = cycleReviewTarget + recentReviewTarget;
 
-    // --- CONTINUATION PAGE (0.5/day: no-new-pages days show the most recently memorized page) ---
+    // --- CONTINUATION PAGE (paused users: show the most recently memorized page for
+    // extra practice). Half-page plans no longer hit targetNewPages === 0 — every
+    // active day now gets a half-page task from nextHalfPageTask instead.
     let continuationPageNum = null;
     if (targetNewPages === 0 && !isHafiz) {
       const sortedByMemDate = [...allMemorizedPages]
@@ -481,12 +550,15 @@ exports.getTodayTasks = async (req, res) => {
       ...extraReviewPages.map(p => p.pageNumber),
       ...cappedRecentPages.map(p => p.pageNumber),
       ...(continuationPageNum ? [continuationPageNum] : []),
+      ...(halfPageTask ? [halfPageTask.pageNumber] : []),
     ];
     const metaMap = await getMetadataMap(allPageNumsNeeded);
 
-    const toNewPageDto = (pageNum) => {
+    // `segmentInfo` attaches a { fromVerseKey, toVerseKey, half } label for
+    // half-page tasks, so the dashboard can render "first half (2:1–2:10)".
+    const toNewPageDto = (pageNum, segmentInfo = null) => {
       const meta = metaMap[pageNum];
-      return {
+      const dto = {
         pageNumber: pageNum,
         juzNumber: meta?.juzNumber || 1,
         surahName: meta?.surahName || 'Unknown',
@@ -495,7 +567,15 @@ exports.getTodayTasks = async (req, res) => {
         firstVerseKey: meta?.firstVerseKey ?? null,
         lastVerseKey: meta?.lastVerseKey ?? null,
       };
+      if (segmentInfo) {
+        dto.segment = { fromVerseKey: segmentInfo.fromVerseKey, toVerseKey: segmentInfo.toVerseKey, half: segmentInfo.half };
+      }
+      return dto;
     };
+
+    const newPageDtos = isHalfPagePlan
+      ? (halfPageTask ? [toNewPageDto(halfPageTask.pageNumber, halfPageTask)] : [])
+      : newPageNums.map(pg => toNewPageDto(pg));
 
     const toReviewPageDto = (progress) => {
       const meta = metaMap[progress.pageNumber];
@@ -558,14 +638,14 @@ exports.getTodayTasks = async (req, res) => {
         isOffDay: false,
         isHafiz,
         firstCycleComplete,
-        newPages: newPageNums.map(toNewPageDto),
+        newPages: newPageDtos,
         reviewPages: reviewPages.map(toReviewPageDto),
         extraNewPages: extraNewPageNums.map(toNewPageDto),
         extraReviewPages: extraReviewPages.map(toReviewPageDto),
         recentReviewPages: cappedRecentPages.map(toReviewPageDto),
         continuationPage: continuationPageNum ? toNewPageDto(continuationPageNum) : null,
         stats: {
-          totalMemorized, totalPages: 604,
+          totalMemorized, fullPages, totalPages: 604,
           percentage: parseFloat(percentage),
           currentStreak: user.currentStreak || 0,
           dailyNewPages: user.dailyNewPages || 1,
@@ -592,7 +672,7 @@ exports.getTodayTasks = async (req, res) => {
 exports.markPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pageNumber, type, alreadyKnow } = req.body;
+    const { pageNumber, type, alreadyKnow, segment } = req.body;
 
     if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
       return res.status(400).json({ success: false, message: 'Invalid page number' });
@@ -606,11 +686,36 @@ exports.markPageComplete = async (req, res) => {
       const memorizedDate = alreadyKnow
         ? (() => { const d = new Date(now); d.setUTCDate(d.getUTCDate() - 1); d.setUTCHours(0, 0, 0, 0); return d; })()
         : now;
-      await UserProgress.findOneAndUpdate(
-        { userId, pageNumber },
-        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate }, $inc: { reviewCount: 1 } },
-        { upsert: true, new: true }
-      );
+
+      if (segment && typeof segment.fromVerseKey === 'string' && typeof segment.toVerseKey === 'string') {
+        // Half-page plans (and any other segment-bearing completion): merge the
+        // verse range into whatever progress the page already has instead of
+        // overwriting the whole page. Clears segments (becomes a full page) once
+        // the merged coverage reaches the page's full verse span.
+        const meta = PAGE_BY_NUMBER.get(pageNumber);
+        if (!meta) return res.status(400).json({ success: false, message: 'Unknown page' });
+        const existing = await UserProgress.findOne({ userId, pageNumber });
+        let merged;
+        try {
+          merged = addRangeToPage(existing?.segments, segment.fromVerseKey, segment.toVerseKey, meta);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        await UserProgress.findOneAndUpdate(
+          { userId, pageNumber },
+          {
+            $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments: merged.segments },
+            $inc: { reviewCount: 1 },
+          },
+          { upsert: true, new: true }
+        );
+      } else {
+        await UserProgress.findOneAndUpdate(
+          { userId, pageNumber },
+          { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments: [] }, $inc: { reviewCount: 1 } },
+          { upsert: true, new: true }
+        );
+      }
     } else if (type === 'review') {
       const result = await UserProgress.findOneAndUpdate(
         { userId, pageNumber, status: 'memorized' },
@@ -676,6 +781,11 @@ exports.unmarkPageComplete = async (req, res) => {
     }
 
     if (type === 'new') {
+      // Deletes the whole doc if it was touched today — including any segments.
+      // For a half-page plan this means undoing day 2's completion also discards
+      // day 1's segment if both happen on the same "today" (same-day undo, the
+      // realistic use of this button, is unaffected: there's nothing from a prior
+      // day to lose yet).
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
       const tomorrowStart = new Date(todayStart);
@@ -771,9 +881,11 @@ exports.getWeekPlan = async (req, res) => {
     const user = await User.findById(userId);
 
     const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' });
-    const totalMemorized = allMemorizedPages.length;
+    const totalPagesWithProgress = allMemorizedPages.length;
+    const fullPagesCount = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
     const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
-    const isHafiz = totalMemorized === 604;
+    const isHafiz = fullPagesCount === 604;
+    const isHalfPagePlan = (user.dailyNewPages || 1) < 1;
 
     const offDays = user.offDays || [];
     const planStart = user.planStartDate || user.createdAt;
@@ -781,8 +893,26 @@ exports.getWeekPlan = async (req, res) => {
     const reviewIntensity = user.reviewIntensity || 'standard';
 
     // Build the full list of unmemorized pages in the user's memorization order,
-    // so projected days advance in the same direction today's tasks do.
-    const unmemorizedPages = isHafiz ? [] : nextUnmemorizedPages(user, memorizedPageNumbers, 604);
+    // so projected days advance in the same direction today's tasks do. Half-page
+    // plans instead walk day-by-day below via a simulated full/partial state.
+    const unmemorizedPages = (isHafiz || isHalfPagePlan) ? [] : nextUnmemorizedPages(user, memorizedPageNumbers, 604);
+
+    // Simulated progress state for half-page plans: starts from the real DB state
+    // and "completes" one segment task per active day as the loop advances, so
+    // day 2 correctly shows the remainder of whatever page day 1 started.
+    const simFullSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
+    const simPartialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
+    const applySimTask = (task) => {
+      if (!task) return;
+      const meta = PAGE_BY_NUMBER.get(task.pageNumber);
+      const merged = addRangeToPage(simPartialByPage.get(task.pageNumber), task.fromVerseKey, task.toVerseKey, meta);
+      if (merged.full) {
+        simFullSet.add(task.pageNumber);
+        simPartialByPage.delete(task.pageNumber);
+      } else {
+        simPartialByPage.set(task.pageNumber, merged.segments);
+      }
+    };
 
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
@@ -802,6 +932,14 @@ exports.getWeekPlan = async (req, res) => {
     const plan = [];
     let cumulativeNew = Math.max(0, todayNewTarget - newPagesCompletedToday);
     const pageNumsForMeta = [];
+    const segmentByDayIndex = new Map(); // plan array index -> segment task, for half-page days
+
+    // If today's half-page task is still pending, "complete" it in the simulation
+    // so tomorrow's preview starts from the remainder/next page, matching how
+    // cumulativeNew already skips today's whole-page pick above.
+    if (isHalfPagePlan && cumulativeNew > 0) {
+      applySimTask(nextHalfPageTask(user, simFullSet, simPartialByPage));
+    }
 
     // Estimate the "recently memorized" review pages each projected day will also
     // carry (pages memorized over the last up to 3 active days), so the week tab's
@@ -811,7 +949,7 @@ exports.getWeekPlan = async (req, res) => {
       : Math.max(3, Math.min(Math.ceil(dailyNewPages * 3), 6));
     const recentNewWindow = [];
     if (!isHafiz && !user.pauseNewMemorization && !isTodayOffDay && todayNewTarget > 0) {
-      recentNewWindow.push(todayNewTarget);
+      recentNewWindow.push(isHalfPagePlan ? 0.5 : todayNewTarget);
     }
 
     for (let i = 1; i <= 6; i++) {
@@ -835,20 +973,35 @@ exports.getWeekPlan = async (req, res) => {
 
       const newPagesForDay = [];
       if (newTarget > 0) {
-        for (let j = 0; j < newTarget && (cumulativeNew + j) < unmemorizedPages.length; j++) {
-          const pg = unmemorizedPages[cumulativeNew + j];
-          newPagesForDay.push(pg);
-          pageNumsForMeta.push(pg);
+        if (isHalfPagePlan) {
+          const task = nextHalfPageTask(user, simFullSet, simPartialByPage);
+          if (task) {
+            newPagesForDay.push(task.pageNumber);
+            pageNumsForMeta.push(task.pageNumber);
+            segmentByDayIndex.set(plan.length, task);
+            applySimTask(task);
+          }
+        } else {
+          for (let j = 0; j < newTarget && (cumulativeNew + j) < unmemorizedPages.length; j++) {
+            const pg = unmemorizedPages[cumulativeNew + j];
+            newPagesForDay.push(pg);
+            pageNumsForMeta.push(pg);
+          }
         }
       }
 
-      const projectedMemorized = Math.min(604, totalMemorized + cumulativeNew);
+      // Half-page plans project review load off the CURRENT page count — each
+      // task only partially advances a page, so it isn't a reliable "pages added"
+      // signal the way a whole-page cumulativeNew is.
+      const projectedPagesWithProgress = isHalfPagePlan
+        ? totalPagesWithProgress
+        : Math.min(604, totalPagesWithProgress + cumulativeNew);
       // Honor a fixed daily review count the same way getTodayTasks does, so the
       // week projection matches today's number instead of falling back to the
       // intensity formula (which made future days show the old intensity).
       const cycleTarget = (user.cycleReviewCount !== null && user.cycleReviewCount !== undefined)
         ? user.cycleReviewCount
-        : computeDailyReviewTarget(projectedMemorized, reviewIntensity);
+        : computeDailyReviewTarget(projectedPagesWithProgress, reviewIntensity, isHafiz);
       // Recent reviews = pages memorized over the last up to 3 active days, capped.
       const recentTarget = isHafiz ? 0 : Math.min(maxRecent, recentNewWindow.reduce((a, b) => a + b, 0));
 
@@ -862,41 +1015,38 @@ exports.getWeekPlan = async (req, res) => {
       });
 
       cumulativeNew += newTarget;
-      recentNewWindow.push(newTarget);
+      recentNewWindow.push(isHalfPagePlan ? (newTarget > 0 ? 0.5 : 0) : newTarget);
       while (recentNewWindow.length > 3) recentNewWindow.shift();
     }
 
     // Fetch metadata for new pages in the plan
     const metaMap = await getMetadataMap(pageNumsForMeta);
 
-    const enrichedPlan = plan.map(day => ({
-      ...day,
-      newPageInfo: day.newPagesForDay?.[0] ? (() => {
-        const pg = day.newPagesForDay[0];
-        const meta = metaMap[pg];
-        return {
-          pageNumber: pg,
-          juzNumber: meta?.juzNumber || 1,
-          surahName: meta?.surahName || 'Unknown',
-          surahNameArabic: meta?.surahNameArabic || '',
-          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
-          firstVerseKey: meta?.firstVerseKey ?? null,
-          lastVerseKey: meta?.lastVerseKey ?? null,
-        };
-      })() : null,
-      newPagesInfo: (day.newPagesForDay || []).map(pg => {
-        const meta = metaMap[pg];
-        return {
-          pageNumber: pg,
-          juzNumber: meta?.juzNumber || 1,
-          surahName: meta?.surahName || 'Unknown',
-          surahNameArabic: meta?.surahNameArabic || '',
-          surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
-          firstVerseKey: meta?.firstVerseKey ?? null,
-          lastVerseKey: meta?.lastVerseKey ?? null,
-        };
-      }),
-    }));
+    const buildPageInfo = (pg, segmentTask) => {
+      const meta = metaMap[pg];
+      const info = {
+        pageNumber: pg,
+        juzNumber: meta?.juzNumber || 1,
+        surahName: meta?.surahName || 'Unknown',
+        surahNameArabic: meta?.surahNameArabic || '',
+        surahs: meta?.surahs ?? [{ name: meta?.surahName ?? 'Unknown', nameArabic: meta?.surahNameArabic ?? '' }],
+        firstVerseKey: meta?.firstVerseKey ?? null,
+        lastVerseKey: meta?.lastVerseKey ?? null,
+      };
+      if (segmentTask) {
+        info.segment = { fromVerseKey: segmentTask.fromVerseKey, toVerseKey: segmentTask.toVerseKey, half: segmentTask.half };
+      }
+      return info;
+    };
+
+    const enrichedPlan = plan.map((day, idx) => {
+      const segmentTask = segmentByDayIndex.get(idx) || null;
+      return {
+        ...day,
+        newPageInfo: day.newPagesForDay?.[0] ? buildPageInfo(day.newPagesForDay[0], segmentTask) : null,
+        newPagesInfo: (day.newPagesForDay || []).map(pg => buildPageInfo(pg, segmentTask)),
+      };
+    });
 
     res.status(200).json({ success: true, data: enrichedPlan });
   } catch (error) {
@@ -913,6 +1063,13 @@ exports.getAllProgress = async (req, res) => {
     const userId = req.user._id;
     const progress = await UserProgress.find({ userId, status: 'memorized' }).sort({ pageNumber: 1 });
     const pageNumbers = progress.map(p => p.pageNumber);
+    const totalMemorized = totalMemorizedFraction(progress);
+    const fullPages = progress.filter(p => !p.segments || p.segments.length === 0).length;
+    // Fraction of each partially-memorized page — the client uses this for a
+    // "½ memorized" footer-tick state distinct from the plain memorized tick.
+    const partialPages = progress
+      .filter(p => p.segments && p.segments.length > 0)
+      .map(p => ({ pageNumber: p.pageNumber, fraction: pageFraction(p.pageNumber, p.segments) }));
 
     // Build date → count map for heatmap and chart
     const memorizedByDate = {};
@@ -927,8 +1084,10 @@ exports.getAllProgress = async (req, res) => {
       success: true,
       data: {
         memorizedPages: pageNumbers,
-        totalMemorized: pageNumbers.length,
-        percentage: ((pageNumbers.length / 604) * 100).toFixed(1),
+        totalMemorized,
+        fullPages,
+        partialPages,
+        percentage: ((totalMemorized / 604) * 100).toFixed(1),
         memorizedByDate,
       },
     });
@@ -967,7 +1126,10 @@ exports.updateMemorized = async (req, res) => {
         updateOne: {
           filter: { userId, pageNumber },
           update: {
-            $set: { status: 'memorized' },
+            // This editor works in whole pages only — clear any partial segments
+            // a page might already carry (Library "mark verses" is where partial
+            // coverage is edited verse-exactly).
+            $set: { status: 'memorized', segments: [] },
             $setOnInsert: {
               userId,
               pageNumber,
@@ -1023,8 +1185,9 @@ exports.resetProgress = async (req, res) => {
 exports.getJuzProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, lastReviewedDate: 1 });
+    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, lastReviewedDate: 1, segments: 1 });
     const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
+    const fractionByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, pageFraction(p.pageNumber, p.segments)]));
     const reviewDateByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, p.lastReviewedDate]));
     const now = new Date();
 
@@ -1063,9 +1226,13 @@ exports.getJuzProgress = async (req, res) => {
 
     const juzProgress = juzRanges.map(({ juz, start, end }) => {
       const totalPages = end - start + 1;
-      let memorizedInJuz = 0;
+      let memorizedInJuz = 0; // fractional — partial pages count by their fraction
+      let fullPagesInJuz = 0;
       for (let p = start; p <= end; p++) {
-        if (memorizedPages.has(p)) memorizedInJuz++;
+        if (!memorizedPages.has(p)) continue;
+        const frac = fractionByPage[p];
+        memorizedInJuz += frac;
+        if (frac === 1) fullPagesInJuz++;
       }
       // Find the oldest (most stale) review date among memorized pages in this juz
       let oldestReview = null;
@@ -1080,9 +1247,9 @@ exports.getJuzProgress = async (req, res) => {
 
       return {
         juzNumber: juz, startPage: start, endPage: end,
-        totalPages, memorizedPages: memorizedInJuz,
+        totalPages, memorizedPages: memorizedInJuz, fullPages: fullPagesInJuz,
         percentage: Math.round((memorizedInJuz / totalPages) * 100),
-        isComplete: memorizedInJuz === totalPages,
+        isComplete: fullPagesInJuz === totalPages,
         oldestReviewDaysAgo,
       };
     });
@@ -1091,5 +1258,116 @@ exports.getJuzProgress = async (req, res) => {
   } catch (error) {
     console.error('GetJuzProgress error:', error);
     serverError(res, 'Error fetching Juz progress', error);
+  }
+};
+
+// @desc    Add or remove memorization by unit (Juz, Hizb, ¼-Hizb, Surah, page, or
+//          a raw verse range) — the verse-exact counterpart to updateMemorized.
+// @route   PUT /api/progress/units
+// @access  Private
+exports.updateUnits = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { action, unit, ref } = req.body;
+
+    if (action !== 'add' && action !== 'remove') {
+      return res.status(400).json({ success: false, message: "action must be 'add' or 'remove'" });
+    }
+    if (!UNIT_TYPES.includes(unit)) {
+      return res.status(400).json({ success: false, message: `unit must be one of ${UNIT_TYPES.join(', ')}` });
+    }
+
+    let range;
+    try {
+      range = compileUnitRange(unit, ref);
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    const pageRanges = rangeToPages(range.from, range.to);
+    if (!pageRanges.length) {
+      return res.status(400).json({ success: false, message: 'No pages found for this selection' });
+    }
+
+    const pageNumbers = pageRanges.map(p => p.pageNumber);
+    const existingDocs = await UserProgress.find({ userId, pageNumber: { $in: pageNumbers } });
+    const existingByPage = new Map(existingDocs.map(d => [d.pageNumber, d]));
+
+    const yesterday = new Date();
+    yesterday.setUTCHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const bulkOps = [];
+    const affectedPages = [];
+
+    for (const pr of pageRanges) {
+      const meta = PAGE_BY_NUMBER.get(pr.pageNumber);
+      if (!meta) continue;
+      const existingDoc = existingByPage.get(pr.pageNumber);
+      const existingSegments = existingDoc?.segments;
+
+      if (action === 'add') {
+        let merged;
+        try {
+          merged = addRangeToPage(existingSegments, pr.fromVerseKey, pr.toVerseKey, meta);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        bulkOps.push({
+          updateOne: {
+            filter: { userId, pageNumber: pr.pageNumber },
+            update: {
+              $set: { status: 'memorized', segments: merged.segments },
+              $setOnInsert: {
+                userId, pageNumber: pr.pageNumber,
+                memorizedDate: yesterday, lastReviewedDate: yesterday, reviewCount: 0,
+              },
+            },
+            upsert: true,
+          },
+        });
+        affectedPages.push({ pageNumber: pr.pageNumber, fraction: merged.full ? 1 : pageFraction(pr.pageNumber, merged.segments), full: merged.full });
+      } else {
+        if (!existingDoc || existingDoc.status !== 'memorized') continue; // nothing to remove
+        let result;
+        try {
+          result = removeRangeFromPage(existingSegments, pr.fromVerseKey, pr.toVerseKey, meta);
+        } catch (err) {
+          return res.status(400).json({ success: false, message: err.message });
+        }
+        if (result.deleted) {
+          bulkOps.push({ deleteOne: { filter: { userId, pageNumber: pr.pageNumber } } });
+          affectedPages.push({ pageNumber: pr.pageNumber, fraction: 0, full: false, removed: true });
+        } else {
+          bulkOps.push({
+            updateOne: {
+              filter: { userId, pageNumber: pr.pageNumber },
+              update: { $set: { segments: result.segments } },
+            },
+          });
+          affectedPages.push({ pageNumber: pr.pageNumber, fraction: result.full ? 1 : pageFraction(pr.pageNumber, result.segments), full: result.full });
+        }
+      }
+    }
+
+    if (bulkOps.length) await UserProgress.bulkWrite(bulkOps);
+
+    const allDocs = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const totalMemorized = totalMemorizedFraction(allDocs);
+    const fullPages = allDocs.filter(d => !d.segments || d.segments.length === 0).length;
+
+    res.status(200).json({
+      success: true,
+      message: action === 'add' ? 'Memorization added' : 'Memorization removed',
+      data: {
+        affectedPages,
+        totalMemorized,
+        fullPages,
+        percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
+      },
+    });
+  } catch (error) {
+    console.error('UpdateUnits error:', error);
+    serverError(res, 'Error updating memorization units', error);
   }
 };
