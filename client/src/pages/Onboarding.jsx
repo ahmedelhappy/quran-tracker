@@ -11,6 +11,7 @@ import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { useDragSelect } from '../hooks/useDragSelect';
 
 function toPageRanges(sortedPages) {
   if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
@@ -187,6 +188,7 @@ export default function Onboarding() {
   // coverage is edited later from the Library ("mark verses") or Progress page.
   const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
   const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
+  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -344,8 +346,10 @@ export default function Onboarding() {
                 {JUZ_RANGES.map(({ juz, start, end }) => (
                   <button
                     key={juz}
-                    onClick={() => toggleJuz(juz)}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
+                    data-tile-id={juz}
+                    onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
+                    onClick={() => ds.handleClick(juz, toggleJuz)}
+                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                       isCovered(selectedPages, start, end)
                         ? 'bg-[#003527] text-white border-[#003527]'
                         : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
@@ -372,8 +376,10 @@ export default function Onboarding() {
                 {HIZB_RANGES.map(({ hizb, start, end }) => (
                   <button
                     key={hizb}
-                    onClick={() => toggleHizb(hizb)}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border ${
+                    data-tile-id={hizb}
+                    onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
+                    onClick={() => ds.handleClick(hizb, toggleHizb)}
+                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                       isCovered(selectedPages, start, end)
                         ? 'bg-[#003527] text-white border-[#003527]'
                         : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
@@ -395,8 +401,10 @@ export default function Onboarding() {
                 {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => (
                   <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
                     <button
-                      onClick={() => toggleRub(rub)}
-                      className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border ${
+                      data-tile-id={rub}
+                      onPointerDown={(e) => ds.start(e, rub, toggleRub)}
+                      onClick={() => ds.handleClick(rub, toggleRub)}
+                      className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                         isCovered(selectedPages, start, end)
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
@@ -428,8 +436,10 @@ export default function Onboarding() {
                   return (
                   <button
                     key={s.number}
-                    onClick={() => toggleSurah(s.number)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors ${
+                    data-tile-id={s.number}
+                    onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
+                    onClick={() => ds.handleClick(s.number, toggleSurah)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors touch-pan-y select-none ${
                       surahSelected
                         ? 'bg-[#003527] text-white border-[#003527]'
                         : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
