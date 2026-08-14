@@ -58,6 +58,19 @@ export const bookmarksAPI = {
   remove: (id) => API.delete(`/bookmarks/${id}`),
 };
 
+// Mushaf annotations (highlights, notes, hard flags — account-saved, anchored to
+// verse keys). listForPage powers the reader; listByKind('hard') the hard list.
+export const annotationsAPI = {
+  listForPage: (page) => API.get('/annotations', { params: { page } }),
+  listByKind: (kind) => API.get('/annotations', { params: { kind } }),
+  getSummary: () => API.get('/annotations/summary'),
+  create: (data) => API.post('/annotations', data),
+  update: (id, data) => API.put(`/annotations/${id}`, data),
+  remove: (id) => API.delete(`/annotations/${id}`),
+  // Upsert a page's free-form drawing (empty strokes deletes it).
+  saveDrawing: (data) => API.put('/annotations/drawing', data),
+};
+
 export const chatAPI = {
   sendMessage: (messages) => API.post('/chat', { messages }),
 };

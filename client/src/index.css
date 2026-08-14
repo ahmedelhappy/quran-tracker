@@ -214,18 +214,198 @@ html[lang='ar'] body {
   cursor: pointer;
   border-radius: 5px;
   padding: 0 0.04em;
+  position: relative;        /* anchor for the inset note-dot indicator */
   transition: background-color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
   user-select: none;         /* dragging to reveal must not select glyph text */
   -webkit-user-select: none;
 }
 
+/* ── Annotation layers (account-saved highlights / hard flags) ──────────
+   Highlight = a background tint on the verse's word spans (respecting a
+   word span when set). Placed BEFORE the interaction states below so a
+   selected/playing/hover verse still reads clearly over its highlight. A
+   "hard" verse gets an inset bottom underline that coexists with a tint.
+   Dark variants stay translucent so the QCF glyphs remain legible and the
+   self-test blur isn't fought. */
+.mushaf-word.is-hl-yellow { background: rgba(250, 204, 21, 0.42); }
+.mushaf-word.is-hl-green  { background: rgba(52, 211, 153, 0.38); }
+.mushaf-word.is-hl-blue   { background: rgba(96, 165, 250, 0.38); }
+.mushaf-word.is-hl-pink   { background: rgba(244, 114, 182, 0.38); }
+.dark .mushaf-word.is-hl-yellow { background: rgba(250, 204, 21, 0.26); }
+.dark .mushaf-word.is-hl-green  { background: rgba(52, 211, 153, 0.24); }
+.dark .mushaf-word.is-hl-blue   { background: rgba(96, 165, 250, 0.26); }
+.dark .mushaf-word.is-hl-pink   { background: rgba(244, 114, 182, 0.26); }
+
+.mushaf-word.is-hard { box-shadow: inset 0 -0.14em 0 rgba(220, 38, 38, 0.55); }
+.dark .mushaf-word.is-hard { box-shadow: inset 0 -0.14em 0 rgba(248, 113, 113, 0.6); }
+
+/* The SELECTED verse is a NON-FILL indicator — a thin rounded brand-green ring
+   (with a barely-there wash) — so a click can never be mistaken for a user
+   highlight tint (a solid fill). The PLAYING verse stays a fill, but subtler than
+   any highlight, and it clears on pause. */
 .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.10); }
-.mushaf-word.is-selected { background: rgba(251, 191, 36, 0.45); }
-.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.32); }
+.mushaf-word.is-selected {
+  background: rgba(0, 79, 53, 0.08);
+  box-shadow: inset 0 0 0 1.5px rgba(0, 79, 53, 0.55);
+}
+.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.16); }
 .dark .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.14); }
-.dark .mushaf-word.is-selected { background: rgba(217, 119, 6, 0.30); }
-.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.28); }
+.dark .mushaf-word.is-selected {
+  background: rgba(52, 211, 153, 0.08);
+  box-shadow: inset 0 0 0 1.5px rgba(52, 211, 153, 0.5);
+}
+.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.17); }
+
+/* Note indicator: a small dot pinned inside the ayah medallion's word box
+   (never outside it, so the line's overflow:hidden can't clip it). */
+.mushaf-note-dot {
+  position: absolute;
+  top: 0.05em;
+  inset-inline-end: 0.05em;
+  width: 0.42em;
+  height: 0.42em;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: #2563eb;
+  box-shadow: 0 0 0 0.06em rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  z-index: 2;
+}
+.dark .mushaf-note-dot { background: #60a5fa; box-shadow: 0 0 0 0.06em rgba(17, 24, 39, 0.9); }
+
+/* ── Free-form ink layer ────────────────────────────────────────────────────
+   Sibling of the marks layer inside `.mushaf-frame`; `inset: 12px` reproduces
+   the frame's 524×800 text box (same trick as `.mushaf-marks`) so the SVG's
+   0 0 524 800 viewBox maps 1:1 to the internal coordinate space and strokes
+   scale with the frame. Display-only until active; active captures all pointer
+   input over the text (suspending word taps / self-test / swipe). */
+/* The ink/text overlays cover the text box EXTENDED into the margins so the
+   gutter is annotatable. inset:-22px -40px reproduces that extended box (the
+   frame's 12px padding minus the 34/52-unit margins) in the same 1:1 units as
+   the viewBox, so margin ink scales with the page. Pointer-events off when
+   inactive ⇒ never blocks the margin ornaments / edge arrows. */
+.mushaf-draw-svg {
+  position: absolute;
+  inset: -22px -40px;
+  z-index: 5;                 /* above the text, below the margin marks (z 6) */
+  pointer-events: none;
+  overflow: visible;
+}
+.mushaf-draw-svg.is-active { pointer-events: auto; cursor: crosshair; }
+
+/* Free-floating text notes (HTML overlay in the same extended box). Container is
+   click-through; each note opts into pointer-events only while draw mode is on. */
+.mushaf-text-layer { position: absolute; inset: -22px -40px; z-index: 6; pointer-events: none; }
+/* A text note renders as a small icon anchored at its (x,y) — never the text
+   itself. The anchor is the positioned point; the icon is a tappable badge that
+   inherits the note colour via currentColor. */
+.mushaf-text-note-anchor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+.mushaf-text-note-icon {
+  width: 21px;
+  height: 21px;
+  padding: 3.5px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(253, 248, 236, 0.92);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.dark .mushaf-text-note-icon { background: rgba(31, 27, 20, 0.92); box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.4); }
+.mushaf-text-note-anchor.is-editable .mushaf-text-note-icon { cursor: move; }
+.mushaf-text-note-del {
+  position: absolute;
+  top: -7px;
+  inset-inline-end: -7px;
+  width: 15px;
+  height: 15px;
+  padding: 2px;
+  border-radius: 9999px;
+  background: #ba1a1a;
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1;
+}
+.mushaf-text-note-anchor.is-editable .mushaf-text-note-del { display: inline-flex; }
+/* Text-note colours share the ink palette (dark-mode ink flips to light). */
+.mushaf-text-note--ink { color: #2a241b; }
+.dark .mushaf-text-note--ink { color: #ecdfc0; }
+.mushaf-text-note--yellow { color: #b45309; }
+.mushaf-text-note--green { color: #047857; }
+.mushaf-text-note--blue { color: #1d4ed8; }
+.mushaf-text-note--pink { color: #be185d; }
+.dark .mushaf-text-note--yellow { color: #fbbf24; }
+.dark .mushaf-text-note--green { color: #34d399; }
+.dark .mushaf-text-note--blue { color: #93c5fd; }
+.dark .mushaf-text-note--pink { color: #f9a8d4; }
+
+.mushaf-text-editor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  z-index: 2;
+}
+.mushaf-text-input {
+  width: 130px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid #004f35;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+.dark .mushaf-text-input { background: #1f2937; border-color: #34d399; }
+.mushaf-text-editor-ok {
+  width: 20px; height: 20px; padding: 3px;
+  border-radius: 9999px; background: #004f35; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+
+.mushaf-stroke { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* Highlighter: wide + translucent, multiply so the glyphs stay readable beneath
+   it on light paper; on dark paper `screen` lightens instead so it still reads. */
+.mushaf-stroke--highlighter { opacity: 0.35; mix-blend-mode: multiply; }
+.dark .mushaf-stroke--highlighter { opacity: 0.42; mix-blend-mode: screen; }
+/* Pen is opaque (its colour class supplies the stroke). */
+.mushaf-stroke--ink    { stroke: #1f2937; }
+.dark .mushaf-stroke--ink    { stroke: #e8e2d2; }
+.mushaf-stroke--yellow { stroke: #f4b400; }
+.mushaf-stroke--green  { stroke: #17a673; }
+.mushaf-stroke--blue   { stroke: #3b82f6; }
+.mushaf-stroke--pink   { stroke: #ec4899; }
+
+/* One-time pulse of a page's annotation marks after arriving via the navigator. */
+@keyframes anno-pulse {
+  0%   { filter: none; }
+  35%  { filter: drop-shadow(0 0 5px rgba(37, 99, 235, 0.85)); }
+  100% { filter: none; }
+}
+.is-anno-pulse .mushaf-draw-svg,
+.is-anno-pulse .mushaf-note-dot,
+.is-anno-pulse .mushaf-word.is-hard,
+.is-anno-pulse [class*="is-hl-"] {
+  animation: anno-pulse 1.1s ease-in-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-anno-pulse .mushaf-draw-svg,
+  .is-anno-pulse .mushaf-note-dot,
+  .is-anno-pulse .mushaf-word.is-hard,
+  .is-anno-pulse [class*="is-hl-"] { animation: none; }
+}
 
 /* Blur (not hide) a concealed word during self-test so its shape stays a cue.
    Which words are concealed is computed per-word in MushafPage (the hovered

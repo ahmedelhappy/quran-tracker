@@ -34,6 +34,17 @@ export default function MushafPage({
   onRevealVerse,
   onRevealThrough,
   onHideVerse,
+  // ── Account-saved annotations (verse-anchored, never pixel/offset) ──
+  // highlightFor(verseKey, position) → colour name | null (respects a word span);
+  // noteVerses / hardVerses are Sets of verse keys; onOpenNote(verseKey) opens the
+  // note panel from the end-medallion indicator (null ⇒ indicator is decorative,
+  // e.g. while the "mark verses" picking mode owns taps). Rendering stays purely
+  // background/overlay so the exact pre-spaced glyph layout is untouched.
+  highlightFor,
+  noteVerses,
+  hardVerses,
+  onOpenNote,
+  noteIndicatorLabel,
 }) {
   const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
   const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
@@ -185,10 +196,17 @@ export default function MushafPage({
                     : hovered
                       ? ' is-hover'
                       : '';
+              // Annotation layers — background tint / underline only, so glyph
+              // metrics never shift. The selection/playing states above still win
+              // (their CSS rules come after the highlight rules).
+              const hlColor = highlightFor ? highlightFor(w.verseKey, w.position) : null;
+              const isHardWord = hardVerses?.has(w.verseKey);
+              const annCls = `${hlColor ? ` is-hl-${hlColor}` : ''}${isHardWord ? ' is-hard' : ''}`;
+              const isNoteMedallion = w.charType === 'end' && noteVerses?.has(w.verseKey);
               return (
                 <span
                   key={`${w.verseKey}-${w.position}`}
-                  className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}`}
+                  className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}`}
                   style={fontFamily ? { fontFamily } : undefined}
                   onPointerDown={(e) => {
                     suppressClickRef.current = false; // fresh interaction
@@ -210,6 +228,22 @@ export default function MushafPage({
                   }}
                 >
                   <span className={concealed ? 'mushaf-concealed' : undefined}>{w.glyph}</span>
+                  {/* Note indicator — an inset dot on the ayah medallion (kept
+                      inside the word box so the line's overflow clip never cuts
+                      it). Absolutely positioned ⇒ zero effect on glyph spacing.
+                      Clickable to open the note when onOpenNote is provided. */}
+                  {isNoteMedallion && (onOpenNote ? (
+                    <button
+                      type="button"
+                      className="mushaf-note-dot"
+                      aria-label={noteIndicatorLabel}
+                      title={noteIndicatorLabel}
+                      onClick={(e) => { e.stopPropagation(); onOpenNote(w.verseKey); }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="mushaf-note-dot" aria-hidden="true" />
+                  ))}
                 </span>
               );
             })}

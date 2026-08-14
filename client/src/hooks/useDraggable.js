@@ -92,6 +92,7 @@ export function useDraggable(storageKey, { axis } = {}) {
     ref,
     style: { transform: `translate(${pos.x}px, ${pos.y}px)` },
     moved,
+    setPos,   // place programmatically (e.g. re-anchor a popover to a new selection)
     dragHandlers: { onPointerDown },
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useReducer } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -6,17 +6,21 @@ import {
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus,
+  FiFlag, FiMessageSquare, FiCornerUpRight,
+  FiPenTool, FiEdit2, FiEdit3, FiDelete, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
 } from 'react-icons/fi';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
+import ConfirmModal from '../components/ConfirmModal';
 import MushafPage from '../components/MushafPage';
 import MushafMarks from '../components/MushafMarks';
+import MushafDrawLayer from '../components/MushafDrawLayer';
 import PageScrubber from '../components/PageScrubber';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
-import { progressAPI, bookmarksAPI } from '../services/api';
+import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import {
   fetchPageTafsir,
@@ -38,6 +42,27 @@ const JUZ_START_PAGES = [
 ];
 
 const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
+const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
+const REP_COUNTS = [2, 3, 5, Infinity]; // repeat-count choices (verse & range)
+
+// The four highlight colours offered in the verse popover (must match the
+// server's Annotation color enum). `cls` is the swatch's fill in the picker.
+const ANNOTATION_COLORS = [
+  { key: 'yellow', cls: 'bg-yellow-300', labelKey: 'library.annotations.colorYellow' },
+  { key: 'green',  cls: 'bg-emerald-300', labelKey: 'library.annotations.colorGreen' },
+  { key: 'blue',   cls: 'bg-blue-300', labelKey: 'library.annotations.colorBlue' },
+  { key: 'pink',   cls: 'bg-pink-300', labelKey: 'library.annotations.colorPink' },
+];
+
+// Ink colours offered in the drawing toolbar — the highlight enum plus a dark-ink
+// pen (must match the server's stroke-colour set).
+const DRAW_COLORS = [
+  { key: 'ink',    cls: 'bg-gray-800 dark:bg-gray-200', labelKey: 'library.annotations.colorInk' },
+  { key: 'yellow', cls: 'bg-yellow-300', labelKey: 'library.annotations.colorYellow' },
+  { key: 'green',  cls: 'bg-emerald-300', labelKey: 'library.annotations.colorGreen' },
+  { key: 'blue',   cls: 'bg-blue-400', labelKey: 'library.annotations.colorBlue' },
+  { key: 'pink',   cls: 'bg-pink-400', labelKey: 'library.annotations.colorPink' },
+];
 
 // The ayah's plain Uthmani text (basmala excluded), used for the legible
 // tafsir-panel preview. Taken verse-level from the API — word-level text is no
@@ -188,6 +213,57 @@ export default function Library() {
   const [bookmarkLabel, setBookmarkLabel] = useState('');
   const [savingBookmark, setSavingBookmark] = useState(false);
 
+  // ── Annotations (highlights / notes / hard flags, verse-anchored) ──
+  // annotationsByPage: pageNumber -> Annotation[] for the visible page(s),
+  // refetched on every mutation. hardList: the user's hard items (enriched with
+  // surah labels) for the sidebar. notePanel drives the note editor sheet.
+  const [annotationsByPage, setAnnotationsByPage] = useState(new Map());
+  const [hardList, setHardList] = useState([]);
+  const [hardOpen, setHardOpen] = useState(false);
+  const [savingAnnotation, setSavingAnnotation] = useState(false);
+  const [notePanel, setNotePanel] = useState(null); // { pageNumber, verseKey, id? } | null
+  const [noteDraft, setNoteDraft] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  // A free-form text note opened for READING (its icon was tapped outside draw
+  // mode). Read-only sheet; editing happens in draw mode. { text, color } | null
+  const [readTextNote, setReadTextNote] = useState(null);
+
+  // ── Free-form drawing (annotate mode) ──────────────────────────────
+  // drawPage = the page currently in annotate mode (null = off). Only one page
+  // is annotated at a time; drawStrokes is that page's working strokes, seeded
+  // from its saved doc and auto-saved (debounced) via PUT /annotations/drawing.
+  const [drawPage, setDrawPage] = useState(null);
+  const [drawStrokes, setDrawStrokes] = useState([]);
+  const [drawTool, setDrawTool] = useState('pen'); // 'pen' | 'highlighter' | 'eraser' | 'text'
+  const [drawColor, setDrawColor] = useState('ink');
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const drawDirtyRef = useRef(false);
+  const drawSaveTimerRef = useRef(null);
+  const drawLatestRef = useRef({ page: null, strokes: [] });
+  const drawStrokesRef = useRef([]);          // synchronous mirror for undo/redo
+  const undoStackRef = useRef([]);            // past stroke-array snapshots (cap 50)
+  const redoStackRef = useRef([]);
+  const [, bumpHistory] = useReducer((n) => n + 1, 0); // re-render undo/redo enabled state
+  // Lets the keyboard handler (declared before these callbacks) reach the latest
+  // exit/undo/redo without pulling later-declared callbacks into its deps.
+  const exitDrawRef = useRef(null);
+  const undoRef = useRef(null);
+  const redoRef = useRef(null);
+  const drawWidth = drawTool === 'highlighter' ? 22 : 3;
+  // Draw toolbar = a dropdown anchored under the active page's pencil button.
+  const drawAnchorRef = useRef(null);          // the active pencil button
+  const drawMenuRef = useRef(null);            // the dropdown panel
+  const [drawMenuPos, setDrawMenuPos] = useState({ top: 0, left: 0 });
+
+  // ── Annotation visibility (clean-reading toggle) ───────────────────
+  const [annoVisible, setAnnoVisible] = useState(() => localStorage.getItem('mushafAnnoVisible') !== '0');
+  useEffect(() => { localStorage.setItem('mushafAnnoVisible', annoVisible ? '1' : '0'); }, [annoVisible]);
+
+  // ── Annotation navigation ──────────────────────────────────────────
+  const [annoSummary, setAnnoSummary] = useState([]); // [{ pageNumber, counts, noteExcerpt }]
+  const [annoNavOpen, setAnnoNavOpen] = useState(false);
+  const [pulsePage, setPulsePage] = useState(null);    // page to pulse after nav arrival
+
   // The "tap a verse" cue retires once the reader has selected a verse (self-test
   // keeps its own cue). The drag flag suppresses the popover's tooltip mid-drag.
   const [seenVerseTap, setSeenVerseTap] = useState(() => localStorage.getItem('seenVerseTapCue') === '1');
@@ -204,6 +280,28 @@ export default function Library() {
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef(null);
 
+  // ── Playback speed (persisted) ──────────────────────────
+  const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+  const [playbackRate, setPlaybackRate] = useState(() => {
+    const v = parseFloat(localStorage.getItem('playbackRate'));
+    return SPEEDS.includes(v) ? v : 1;
+  });
+
+  // ── Repetition for memorization ─────────────────────────
+  // 'off' → continuous whole-Quran auto-advance. 'verse' → repeat the current
+  // verse N times then advance. 'range' → loop [rangeStart..rangeEnd] M times.
+  const [repeatMode, setRepeatMode] = useState('off');
+  const [repeatOpen, setRepeatOpen] = useState(false);
+  const [verseRepeat, setVerseRepeat] = useState(3);      // 2 | 3 | 5 | Infinity
+  const [rangeStart, setRangeStart] = useState(0);        // index into `verses`
+  const [rangeEnd, setRangeEnd] = useState(0);
+  const [rangeRepeat, setRangeRepeat] = useState(3);
+  const repeatsDoneRef = useRef(0);   // times the current verse has finished (verse mode)
+  const rangePassesRef = useRef(0);   // completed passes over the range (range mode)
+  // A page turn driven by continuous playback: 'first' | 'last' | null. Resumed by
+  // the effect below once the new page's verses have loaded.
+  const pendingPlayRef = useRef(null);
+
   // ── Verse selection + tafsir state (verses addressed by stable verseKey) ──
   const [selectedVerseKey, setSelectedVerseKey] = useState(null);
   const [tafsirOpen, setTafsirOpen] = useState(false);
@@ -217,8 +315,12 @@ export default function Library() {
   const [tafsirError, setTafsirError] = useState(false);
   const [tafsirReloadKey, setTafsirReloadKey] = useState(0);
 
-  // Draggable verse action popover — dragged only via the grip handle
-  const { ref: popoverRef, style: popoverDragStyle, dragHandlers: popoverDragHandlers } = useDraggable('versePopoverPos');
+  // Verse action popover — placed near the selection each time, then draggable via
+  // the grip (current instance only, so no persisted position).
+  const { ref: popoverRef, style: popoverDragStyle, setPos: setPopoverPos, dragHandlers: popoverDragHandlers } = useDraggable(null);
+  useEffect(() => { localStorage.removeItem('versePopoverPos'); }, []); // drop the old persisted spot
+  const lastPointerRef = useRef(null);   // last pointer-down in the reader (for placement)
+  const placeNextRef = useRef(false);    // re-place the popover only after a word click
 
   // ── Contextual onboarding (driver.js) ────────────────────
   const tourRef = useRef(null);
@@ -378,10 +480,12 @@ export default function Library() {
     setAudioBuffering(false);
   }, []);
 
-  // Page / view change: stop audio, clear selection, close tafsir (verse
-  // indices shift when the on-screen verse set changes).
+  // Page / view change: clear selection + close tafsir (verse indices shift when
+  // the on-screen verse set changes). Audio normally stops too — but NOT when the
+  // turn was driven by continuous playback (pendingPlayRef), which resumes on the
+  // new page.
   useEffect(() => {
-    stopAudio();
+    if (!pendingPlayRef.current) stopAudio();
     setSelectedVerseKey(null);
     setTafsirOpen(false);
     setTafsirIndex(null);
@@ -450,21 +554,42 @@ export default function Library() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVerseKey]);
 
-  // Drive the single <audio> element: load + play current ayah
+  // Drive the single <audio> element: load + play current ayah (at the chosen speed).
   useEffect(() => {
     const el = audioRef.current;
     if (!el || playingIndex == null || !verses[playingIndex]) return;
     setAudioError(false);
     el.src = getAyahAudioUrl(reciter, verses[playingIndex].id);
+    el.playbackRate = playbackRate;
     if (isPlaying) {
       el.play().catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playingIndex, reciter, verses]);
 
+  // Apply a speed change to the live element immediately and persist it.
+  useEffect(() => {
+    const el = audioRef.current;
+    if (el) el.playbackRate = playbackRate;
+    localStorage.setItem('playbackRate', String(playbackRate));
+  }, [playbackRate]);
+
   useEffect(() => {
     localStorage.setItem('reciter', reciter);
   }, [reciter]);
+
+  // Reset repeat counters when the mode / range changes.
+  useEffect(() => { repeatsDoneRef.current = 0; rangePassesRef.current = 0; }, [repeatMode]);
+  useEffect(() => { rangePassesRef.current = 0; }, [rangeStart, rangeEnd, rangeRepeat]);
+  // Default the range pickers to the visible page's verse span (until in range mode).
+  useEffect(() => {
+    if (repeatMode === 'range') return;
+    setRangeStart(0);
+    setRangeEnd(Math.max(0, verses.length - 1));
+  }, [verses.length, repeatMode]);
+
+  const pageStep = twoPage ? 2 : 1;
+  const maxPage = twoPage ? 603 : 604;
 
   const playAyah = (index) => {
     if (index < 0 || index >= verses.length) return;
@@ -474,19 +599,54 @@ export default function Library() {
       if (el && !isPlaying) { el.play().catch(() => {}); setIsPlaying(true); }
       return;
     }
+    repeatsDoneRef.current = 0;
     setPlayingIndex(index);
     setIsPlaying(true);
+  };
+
+  // Replay the current verse from its start without reloading (verse-repeat).
+  const replayCurrent = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.currentTime = 0;
+    el.play().catch(() => {});
+    setIsPlaying(true);
+  };
+
+  // Move one verse in `dir`, crossing to the adjacent page at the boundary so
+  // playback (and the bar's prev/next) flow continuously across the whole Quran.
+  const advance = (dir) => {
+    const nextIdx = (playingIndex ?? 0) + dir;
+    if (nextIdx >= 0 && nextIdx < verses.length) {
+      repeatsDoneRef.current = 0;
+      setPlayingIndex(nextIdx);
+      setIsPlaying(true);
+      return;
+    }
+    repeatsDoneRef.current = 0;
+    if (dir > 0) {
+      if (currentPage + pageStep <= 604) { pendingPlayRef.current = 'first'; goToPage(currentPage + pageStep); }
+      else stopAudio();
+    } else {
+      if (currentPage > 1) { pendingPlayRef.current = 'last'; goToPage(currentPage - pageStep); }
+      else stopAudio();
+    }
+  };
+  // Bar prev/next: start playback if idle, else step (crossing pages at the ends).
+  const stepVerse = (dir) => {
+    if (playingIndex == null) { playAyah(dir > 0 ? 0 : verses.length - 1); return; }
+    advance(dir);
   };
 
   const togglePlayPause = () => {
     const el = audioRef.current;
     if (!el) return;
-    if (playingIndex == null) { playAyah(0); return; }
+    if (playingIndex == null) { playAyah(repeatMode === 'range' ? rangeStart : 0); return; }
     if (isPlaying) { el.pause(); setIsPlaying(false); }
     else { el.play().catch(() => {}); setIsPlaying(true); }
   };
 
-  // Popover play button: play from the selected verse, or pause if it's the one already playing
+  // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
   const toggleSelectedVerse = (index) => {
     const el = audioRef.current;
     if (index === playingIndex && isPlaying && el) { el.pause(); setIsPlaying(false); }
@@ -494,15 +654,50 @@ export default function Library() {
   };
 
   const handleEnded = () => {
-    if (playingIndex != null && playingIndex < verses.length - 1) {
-      setPlayingIndex(playingIndex + 1);
-    } else {
-      stopAudio();
+    if (playingIndex == null) return;
+    if (repeatMode === 'verse') {
+      repeatsDoneRef.current += 1;
+      if (verseRepeat === Infinity || repeatsDoneRef.current < verseRepeat) { replayCurrent(); return; }
+      repeatsDoneRef.current = 0;
+      advance(1);
+      return;
     }
+    if (repeatMode === 'range') {
+      if (playingIndex < rangeEnd) { setPlayingIndex(playingIndex + 1); setIsPlaying(true); return; }
+      rangePassesRef.current += 1; // finished one pass over the range
+      if (rangeRepeat === Infinity || rangePassesRef.current < rangeRepeat) {
+        if (rangeStart === playingIndex) replayCurrent();   // single-verse range
+        else { setPlayingIndex(rangeStart); setIsPlaying(true); }
+        return;
+      }
+      rangePassesRef.current = 0;
+      stopAudio();
+      return;
+    }
+    advance(1); // 'off' → continuous auto-advance across pages
   };
 
-  const pageStep = twoPage ? 2 : 1;
-  const maxPage = twoPage ? 603 : 604;
+  // Resume playback on the freshly-turned page once its verses have loaded.
+  useEffect(() => {
+    if (!pendingPlayRef.current || verses.length === 0) return;
+    const where = pendingPlayRef.current;
+    pendingPlayRef.current = null;
+    setAudioError(false);
+    repeatsDoneRef.current = 0;
+    setPlayingIndex(where === 'first' ? 0 : verses.length - 1);
+    setIsPlaying(true);
+  }, [verses]);
+
+  // Preload the next page's data + font while the last verse plays, so the
+  // continuous turn at the boundary doesn't stutter.
+  useEffect(() => {
+    if (playingIndex == null || repeatMode === 'range') return;
+    if (playingIndex >= verses.length - 1 && currentPage + pageStep <= 604) {
+      fetchMushafPage(currentPage + pageStep).catch(() => {});
+      ensurePageFont(currentPage + pageStep).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playingIndex]);
 
   const goToPage = useCallback((n) => {
     let page = clampPage(n);
@@ -529,6 +724,18 @@ export default function Library() {
       const el = e.target;
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
+      // While annotating, page turns are suspended; Escape leaves draw mode and
+      // Ctrl+Z / Ctrl+Alt+Z (or Ctrl+Shift+Z / Ctrl+Y) undo/redo. Keys are gated
+      // by the input-focus check above, so typing a text note isn't intercepted.
+      if (drawPage != null) {
+        if (e.key === 'Escape') { e.preventDefault(); exitDrawRef.current?.(); return; }
+        const mod = e.ctrlKey || e.metaKey;
+        const z = e.key === 'z' || e.key === 'Z';
+        const y = e.key === 'y' || e.key === 'Y';
+        if (mod && z && !e.altKey && !e.shiftKey) { e.preventDefault(); undoRef.current?.(); }
+        else if (mod && ((z && (e.altKey || e.shiftKey)) || y)) { e.preventDefault(); redoRef.current?.(); }
+        return;
+      }
       switch (e.key) {
         case 'ArrowLeft':
         case 'PageDown':
@@ -538,6 +745,8 @@ export default function Library() {
           e.preventDefault(); goPrev(); break;
         case 'Escape':
           if (tafsirOpen) setTafsirOpen(false);
+          else if (readTextNote) setReadTextNote(null);
+          else if (notePanel) setNotePanel(null);
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
           else if (focused) setFocusMode(false);
           break;
@@ -550,21 +759,22 @@ export default function Library() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, selectedVerseKey, focused]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, focused, drawPage]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
   // clearly dominates (so vertical scrolling is never hijacked) and no tour runs.
+  // Suspended while annotating (the drawing layer owns touch there).
   const touchStartRef = useRef(null);
   const onTouchStart = (e) => {
-    if (tourActiveRef.current) { touchStartRef.current = null; return; }
+    if (tourActiveRef.current || drawPage != null) { touchStartRef.current = null; return; }
     const p = e.touches[0];
     touchStartRef.current = { x: p.clientX, y: p.clientY };
   };
   const onTouchEnd = (e) => {
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!start || tourActiveRef.current) return;
+    if (!start || tourActiveRef.current || drawPage != null) return;
     const p = e.changedTouches[0];
     const dx = p.clientX - start.x;
     const dy = p.clientY - start.y;
@@ -682,8 +892,350 @@ export default function Library() {
   // normal verse-selection behaviour.
   const handleWordSelect = useCallback((verseKey) => {
     if (markVersesMode) { handleMarkVersesTap(verseKey); return; }
+    placeNextRef.current = true; // a fresh word click re-anchors the popover
     selectVerse(verseKey);
   }, [markVersesMode, handleMarkVersesTap, selectVerse]);
+
+  // Entering "mark verses" clears any selected verse so its popover (with the
+  // annotation actions) can't fire while the two-word picking mode owns taps.
+  const startMarkVerses = useCallback(() => {
+    setSelectedVerseKey(null);
+    setMarkVersesMode(true);
+  }, []);
+
+  // ── Annotations: highlights / notes / hard flags (verse-anchored) ──
+  // Load all annotations for the given pages, replacing each page's cached list.
+  const loadAnnotationsForPages = useCallback((pages) => {
+    Promise.all(
+      pages.map((p) =>
+        annotationsAPI.listForPage(p)
+          .then((r) => [p, r.data?.data ?? []])
+          .catch(() => [p, []])
+      )
+    ).then((entries) => {
+      setAnnotationsByPage((prev) => {
+        const next = new Map(prev);
+        entries.forEach(([p, list]) => next.set(p, list));
+        return next;
+      });
+    });
+  }, []);
+
+  const loadHardList = useCallback(() => {
+    annotationsAPI.listByKind('hard')
+      .then((r) => setHardList(r.data?.data ?? []))
+      .catch(() => {});
+  }, []);
+
+  // The per-page annotation summary powers the navigator; refetched after any
+  // mutation so its counts/jump targets stay current.
+  const loadSummary = useCallback(() => {
+    annotationsAPI.getSummary()
+      .then((r) => setAnnoSummary(r.data?.data ?? []))
+      .catch(() => {});
+  }, []);
+
+  // Load the visible page(s)' annotations alongside the mushaf pages, and the
+  // hard list + summary once (both span every page, kept independently).
+  useEffect(() => { if (pageResolved) loadAnnotationsForPages(visiblePages); }, [visiblePages, pageResolved, loadAnnotationsForPages]);
+  useEffect(() => { loadHardList(); loadSummary(); }, [loadHardList, loadSummary]);
+
+  const findAnn = useCallback(
+    (page, predicate) => (annotationsByPage.get(page) ?? []).find(predicate),
+    [annotationsByPage]
+  );
+
+  // Highlight a verse in `color`; clicking the active colour again removes it,
+  // a different colour updates it (whole-verse; word spans stay a server option).
+  const setVerseHighlight = useCallback(async (page, verseKey, color) => {
+    if (savingAnnotation) return;
+    const existing = findAnn(page, (a) => a.kind === 'highlight' && a.verseKey === verseKey);
+    setSavingAnnotation(true);
+    try {
+      if (existing && existing.color === color) {
+        await annotationsAPI.remove(existing._id);
+        showToast(t('library.annotations.highlightRemoved'), 'success');
+      } else if (existing) {
+        await annotationsAPI.update(existing._id, { color });
+        showToast(t('library.annotations.highlightAdded'), 'success');
+      } else {
+        await annotationsAPI.create({ pageNumber: page, verseKey, kind: 'highlight', color });
+        showToast(t('library.annotations.highlightAdded'), 'success');
+      }
+      loadAnnotationsForPages([page]);
+      loadSummary();
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setSavingAnnotation(false);
+    }
+  }, [savingAnnotation, findAnn, showToast, t, loadAnnotationsForPages, loadSummary]);
+
+  // Toggle a verse-level or (verseKey null) whole-page hard flag.
+  const toggleHard = useCallback(async (page, verseKey) => {
+    if (savingAnnotation) return;
+    const existing = findAnn(page, (a) => a.kind === 'hard' && (a.verseKey ?? null) === (verseKey ?? null));
+    setSavingAnnotation(true);
+    try {
+      if (existing) {
+        await annotationsAPI.remove(existing._id);
+        showToast(t('library.annotations.hardRemoved'), 'success');
+      } else {
+        await annotationsAPI.create({ pageNumber: page, verseKey: verseKey ?? null, kind: 'hard' });
+        showToast(t('library.annotations.hardAdded'), 'success');
+      }
+      loadAnnotationsForPages([page]);
+      loadHardList();
+      loadSummary();
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setSavingAnnotation(false);
+    }
+  }, [savingAnnotation, findAnn, showToast, t, loadAnnotationsForPages, loadHardList, loadSummary]);
+
+  // Open the note editor for a verse (prefilled if a note already exists). Closes
+  // the tafsir sheet so the two side panels never stack.
+  const openNote = useCallback((page, verseKey) => {
+    const existing = findAnn(page, (a) => a.kind === 'note' && a.verseKey === verseKey);
+    setTafsirOpen(false);
+    setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null });
+    setNoteDraft(existing?.text ?? '');
+  }, [findAnn]);
+
+  const saveNote = useCallback(async () => {
+    if (!notePanel || savingNote) return;
+    const text = noteDraft.trim();
+    const { pageNumber, verseKey, id } = notePanel;
+    setSavingNote(true);
+    try {
+      if (!text) {
+        if (id) { await annotationsAPI.remove(id); showToast(t('library.annotations.noteDeleted'), 'success'); }
+      } else if (id) {
+        await annotationsAPI.update(id, { text });
+        showToast(t('library.annotations.noteSaved'), 'success');
+      } else {
+        await annotationsAPI.create({ pageNumber, verseKey, kind: 'note', text });
+        showToast(t('library.annotations.noteSaved'), 'success');
+      }
+      loadAnnotationsForPages([pageNumber]);
+      loadSummary();
+      setNotePanel(null);
+      setNoteDraft('');
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setSavingNote(false);
+    }
+  }, [notePanel, noteDraft, savingNote, showToast, t, loadAnnotationsForPages, loadSummary]);
+
+  const deleteNote = useCallback(async () => {
+    if (!notePanel || savingNote) return;
+    if (!notePanel.id) { setNotePanel(null); setNoteDraft(''); return; }
+    setSavingNote(true);
+    try {
+      await annotationsAPI.remove(notePanel.id);
+      showToast(t('library.annotations.noteDeleted'), 'success');
+      loadAnnotationsForPages([notePanel.pageNumber]);
+      loadSummary();
+      setNotePanel(null);
+      setNoteDraft('');
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    } finally {
+      setSavingNote(false);
+    }
+  }, [notePanel, savingNote, showToast, t, loadAnnotationsForPages, loadSummary]);
+
+  // Remove a hard item from the sidebar list (and refresh the page if it's on screen).
+  const removeHardItem = useCallback(async (id, page) => {
+    try {
+      await annotationsAPI.remove(id);
+      loadHardList();
+      loadSummary();
+      if (visiblePages.includes(page)) loadAnnotationsForPages([page]);
+    } catch {
+      showToast(t('common.error'), 'error');
+    }
+  }, [loadHardList, loadSummary, visiblePages, loadAnnotationsForPages, showToast, t]);
+
+  // Close the note sheet when the reader turns the page.
+  useEffect(() => { setNotePanel(null); }, [currentPage]);
+
+  // ── Drawing (annotate mode) ────────────────────────────────────────
+  // Keep the latest page+strokes in a ref so a flush (debounce fire, exit, page
+  // change, unmount) always saves the freshest state without stale closures.
+  useEffect(() => { drawLatestRef.current = { page: drawPage, strokes: drawStrokes }; }, [drawPage, drawStrokes]);
+
+  const flushDrawing = useCallback(async () => {
+    if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
+    if (!drawDirtyRef.current) return;
+    const { page, strokes } = drawLatestRef.current;
+    drawDirtyRef.current = false;
+    if (page == null) return;
+    try {
+      await annotationsAPI.saveDrawing({ pageNumber: page, strokes });
+      loadSummary();
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+    }
+  }, [loadSummary, showToast, t]);
+
+  const scheduleDrawSave = useCallback(() => {
+    drawDirtyRef.current = true;
+    if (drawSaveTimerRef.current) clearTimeout(drawSaveTimerRef.current);
+    drawSaveTimerRef.current = setTimeout(() => { flushDrawing(); }, 1500); // ~1.5s after last stroke
+  }, [flushDrawing]);
+
+  // Apply a new strokes snapshot, recording history for undo/redo. Every ink
+  // change (draw, erase, clear) funnels through here; `record` pushes the prior
+  // snapshot onto the undo stack (capped at 50) and clears the redo stack.
+  const applyStrokes = useCallback((next, record = true) => {
+    if (record) {
+      undoStackRef.current.push(drawStrokesRef.current);
+      if (undoStackRef.current.length > 50) undoStackRef.current.shift();
+      redoStackRef.current = [];
+    }
+    drawStrokesRef.current = next;
+    setDrawStrokes(next);
+    scheduleDrawSave();
+    bumpHistory();
+  }, [scheduleDrawSave]);
+
+  const handleDrawChange = useCallback((next) => applyStrokes(next, true), [applyStrokes]);
+
+  const enterDraw = useCallback((page) => {
+    if (drawPage != null && drawPage !== page) flushDrawing(); // flush the other page first
+    setSelectedVerseKey(null);
+    setAnnoVisible(true);                 // drawing always shows what you're editing
+    const doc = (annotationsByPage.get(page) ?? []).find((a) => a.kind === 'drawing');
+    const seed = doc?.strokes ?? [];
+    drawStrokesRef.current = seed;
+    setDrawStrokes(seed);
+    undoStackRef.current = [];             // history is session-local, reset per page
+    redoStackRef.current = [];
+    drawDirtyRef.current = false;
+    setDrawPage(page);
+    bumpHistory();
+  }, [drawPage, flushDrawing, annotationsByPage]);
+
+  const exitDraw = useCallback(async () => {
+    const page = drawPage;
+    await flushDrawing();
+    setDrawPage(null);
+    setClearConfirm(false);
+    if (page != null && visiblePages.includes(page)) loadAnnotationsForPages([page]);
+  }, [drawPage, flushDrawing, visiblePages, loadAnnotationsForPages]);
+
+  const toggleDraw = useCallback((page) => {
+    if (drawPage === page) exitDraw();
+    else enterDraw(page);
+  }, [drawPage, exitDraw, enterDraw]);
+  useEffect(() => { exitDrawRef.current = exitDraw; }, [exitDraw]);
+
+  // Position the draw dropdown under the active pencil button — flipping above /
+  // shifting horizontally when it would overflow the viewport.
+  const positionDrawMenu = useCallback(() => {
+    const a = drawAnchorRef.current;
+    if (!a) return;
+    const r = a.getBoundingClientRect();
+    const m = drawMenuRef.current;
+    const mw = m?.offsetWidth || 240;
+    const mh = m?.offsetHeight || 150;
+    const gap = 6;
+    let top = r.bottom + gap;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - gap - mh); // flip above
+    let left = r.left + r.width / 2 - mw / 2;                                   // centre under the button
+    left = Math.min(Math.max(left, 8), window.innerWidth - mw - 8);            // shift into view
+    setDrawMenuPos({ top, left });
+  }, []);
+  useLayoutEffect(() => {
+    if (drawPage == null) return;
+    positionDrawMenu();
+    const reposition = () => positionDrawMenu();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
+  }, [drawPage, positionDrawMenu]);
+
+  const undoStroke = useCallback(() => {
+    if (!undoStackRef.current.length) return;
+    redoStackRef.current.push(drawStrokesRef.current);
+    applyStrokes(undoStackRef.current.pop(), false);
+  }, [applyStrokes]);
+  const redoStroke = useCallback(() => {
+    if (!redoStackRef.current.length) return;
+    undoStackRef.current.push(drawStrokesRef.current);
+    applyStrokes(redoStackRef.current.pop(), false);
+  }, [applyStrokes]);
+  useEffect(() => { undoRef.current = undoStroke; }, [undoStroke]);
+  useEffect(() => { redoRef.current = redoStroke; }, [redoStroke]);
+
+  const clearDrawing = useCallback(() => {
+    applyStrokes([], true);
+    setClearConfirm(false);
+  }, [applyStrokes]);
+
+  // ── Text notes (free-floating labels placed with the 'T' tool) ─────
+  const createText = useCallback(async (page, x, y, text, color) => {
+    try {
+      await annotationsAPI.create({ pageNumber: page, kind: 'text', x, y, text, color });
+      loadAnnotationsForPages([page]);
+      loadSummary();
+    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+  }, [loadAnnotationsForPages, loadSummary, showToast, t]);
+  const updateText = useCallback(async (page, id, patch) => {
+    try {
+      await annotationsAPI.update(id, patch);
+      loadAnnotationsForPages([page]);
+      loadSummary();
+    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+  }, [loadAnnotationsForPages, loadSummary, showToast, t]);
+  const deleteText = useCallback(async (page, id) => {
+    try {
+      await annotationsAPI.remove(id);
+      loadAnnotationsForPages([page]);
+      loadSummary();
+    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+  }, [loadAnnotationsForPages, loadSummary, showToast, t]);
+
+  // Flush + exit if the active drawing page scrolls out of view (bookmark / juz
+  // jump / scrubber — the on-page turn controls are already suspended in draw mode).
+  useEffect(() => {
+    if (drawPage != null && !visiblePages.includes(drawPage)) {
+      flushDrawing().finally(() => { setDrawPage(null); setClearConfirm(false); });
+    }
+  }, [visiblePages, drawPage, flushDrawing]);
+
+  // Save any pending drawing if the reader leaves the Library mid-stroke.
+  useEffect(() => () => {
+    if (drawDirtyRef.current) {
+      const { page, strokes } = drawLatestRef.current;
+      if (page != null) annotationsAPI.saveDrawing({ pageNumber: page, strokes }).catch(() => {});
+    }
+  }, []);
+
+  // ── Annotation navigation: prev / next annotated page (wraps) + pulse ──
+  const annotatedPages = useMemo(() => annoSummary.map((s) => s.pageNumber), [annoSummary]);
+  const jumpToAnnotatedPage = useCallback((page) => {
+    setPulsePage(page);
+    goToPage(page);
+  }, [goToPage]);
+  const gotoAdjacentAnnotated = useCallback((dir) => {
+    if (!annotatedPages.length) return;
+    const after = annotatedPages.filter((p) => (dir > 0 ? p > currentPage : p < currentPage));
+    const target = dir > 0
+      ? (after[0] ?? annotatedPages[0])                        // next, wrap to first
+      : (after[after.length - 1] ?? annotatedPages[annotatedPages.length - 1]); // prev, wrap to last
+    jumpToAnnotatedPage(target);
+  }, [annotatedPages, currentPage, jumpToAnnotatedPage]);
+
+  // Clear the arrival pulse once its animation has run.
+  useEffect(() => {
+    if (pulsePage == null) return;
+    const id = setTimeout(() => setPulsePage(null), 2600);
+    return () => clearTimeout(id);
+  }, [pulsePage]);
 
   // "Hide all": collapse every visible page's watermark back to the start.
   const hideAllVerses = () => setWatermarks({});
@@ -819,6 +1371,7 @@ export default function Library() {
   }, [tafsirEdition]);
 
   const openTafsir = (index) => {
+    setNotePanel(null); // don't stack the two side panels
     setTafsirIndex(index);
     setTafsirOpen(true);
   };
@@ -846,7 +1399,62 @@ export default function Library() {
     [verses, selectedVerseKey]
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
-  const playingVerseKey = playingIndex != null ? verses[playingIndex]?.verseKey ?? null : null;
+  // Only tint the verse while it's actually playing — pausing clears the tint
+  // (resuming restores it; the audio element keeps its position, so play() picks
+  // up from the same offset).
+  const playingVerseKey = (isPlaying && playingIndex != null) ? verses[playingIndex]?.verseKey ?? null : null;
+
+  // Popover prev/next: move the selection to the adjacent verse (the popover
+  // follows), and keep audio going if it was playing. Programmatic, so it does
+  // NOT re-anchor the popover (only a fresh word click does).
+  const gotoPopoverVerse = (dir) => {
+    const nidx = selectedAudioIndex + dir;
+    if (nidx < 0 || nidx >= verses.length) return;
+    setSelectedVerseKey(verses[nidx].verseKey);
+    if (isPlaying || playingIndex != null) playAyah(nidx);
+  };
+
+  // Place the popover near the clicked word: below the pointer when it's in the
+  // top half of the viewport, above it in the bottom half; centred on x; clamped
+  // to the viewport with a small offset (standard selection-toolbar flip/shift).
+  useLayoutEffect(() => {
+    if (!selectedVerse || !popoverRef.current || !placeNextRef.current) return;
+    placeNextRef.current = false;
+    const el = popoverRef.current;
+    const { width: w, height: h } = el.getBoundingClientRect();
+    const p = lastPointerRef.current || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const gap = 14;
+    let top = p.y < window.innerHeight / 2 ? p.y + gap : p.y - h - gap;
+    let left = p.x - w / 2;
+    left = Math.min(Math.max(left, 8), window.innerWidth - w - 8);
+    top = Math.min(Math.max(top, 8), window.innerHeight - h - 8);
+    setPopoverPos({ x: left, y: top });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVerseKey]);
+  // The selected verse's own annotations, for the popover's active states.
+  const selectedVerseAnns = selectedVerse ? (annotationsByPage.get(selectedVerse.page) ?? []) : [];
+  const selectedHighlightColor = selectedVerse
+    ? selectedVerseAnns.find(a => a.kind === 'highlight' && a.verseKey === selectedVerse.verseKey)?.color ?? null
+    : null;
+  const selectedHasNote = selectedVerse
+    ? selectedVerseAnns.some(a => a.kind === 'note' && a.verseKey === selectedVerse.verseKey)
+    : false;
+  const selectedIsHard = selectedVerse
+    ? selectedVerseAnns.some(a => a.kind === 'hard' && a.verseKey === selectedVerse.verseKey)
+    : false;
+  // Localized surah label(s) for a page (from SURAH_PAGES) — used by the hard list.
+  const surahsForPage = (page) =>
+    [...new Set(SURAH_PAGES.filter(s => s.start <= page && page <= s.end).map(s => s.number))]
+      .map(surahLabelFor).filter(Boolean).join(' · ');
+  // A one-line label for a hard-list item: page · surah (+ verse, or "whole page").
+  const hardItemLabel = (h) => {
+    const pageLbl = t('library.pageInfoLabel', { n: fmtNum(h.pageNumber) });
+    if (h.verseKey) {
+      const [s, a] = h.verseKey.split(':').map(Number);
+      return `${pageLbl} · ${surahLabelFor(s)} ${t('library.verseLabel', { n: fmtNum(a) })}`;
+    }
+    return `${pageLbl} · ${surahsForPage(h.pageNumber) || t('library.annotations.wholePage')}`;
+  };
   const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
   // The bookmark (if any) already saved for the active/current page — when set,
   // the add control swaps for this bookmark's own remove affordance.
@@ -888,6 +1496,46 @@ export default function Library() {
     const outerEdge = pd.page % 2 === 0 ? 'left' : 'right';
     const prevVerses = peekMushafPage(pd.page - 1)?.verses;
     const prevLastRub = prevVerses?.length ? prevVerses[prevVerses.length - 1].rubElHizb ?? null : null;
+
+    // Compile this page's annotations into per-word lookups for MushafPage. A
+    // highlight tints its verse (a word span when set); notes/hard mark verses;
+    // a verseKey-null hard flag marks the whole page (the footer flag control).
+    const anns = annotationsByPage.get(pd.page) ?? [];
+    const highlightIndex = new Map();
+    const noteVerses = new Set();
+    const hardVerses = new Set();
+    let pageHard = null;
+    for (const a of anns) {
+      if (a.kind === 'highlight' && a.verseKey) {
+        const arr = highlightIndex.get(a.verseKey) ?? [];
+        arr.push(a);
+        highlightIndex.set(a.verseKey, arr);
+      } else if (a.kind === 'note' && a.verseKey) {
+        noteVerses.add(a.verseKey);
+      } else if (a.kind === 'hard') {
+        if (a.verseKey) hardVerses.add(a.verseKey);
+        else pageHard = a;
+      }
+    }
+    const highlightFor = (verseKey, position) => {
+      const hs = highlightIndex.get(verseKey);
+      if (!hs) return null;
+      for (const h of hs) {
+        if (h.wordFrom == null || h.wordTo == null) return h.color; // whole verse
+        if (position >= h.wordFrom && position <= h.wordTo) return h.color;
+      }
+      return null;
+    };
+    const isPageHard = !!pageHard;
+    // Drawing: the active page renders the live working strokes; every other page
+    // renders its saved doc (display-only). Only the active page captures input.
+    const drawDoc = anns.find((a) => a.kind === 'drawing');
+    const isDrawingHere = drawPage === pd.page;
+    const layerStrokes = isDrawingHere ? drawStrokes : (drawDoc?.strokes ?? []);
+    const textNotes = anns.filter((a) => a.kind === 'text');
+    // Clean-reading toggle: while hidden (and not drawing this page), suppress all
+    // annotation visuals AND their click targets.
+    const showAnns = annoVisible || isDrawingHere;
     return (
       <div
         key={slot}
@@ -904,7 +1552,40 @@ export default function Library() {
               )}
               {pageSurah}
             </span>
-            <span className="shrink-0">{t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}</span>
+            <span className="shrink-0 flex items-center gap-1.5">
+              {t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}
+              {/* Show/hide all annotation visuals (clean reading) */}
+              <Tooltip label={annoVisible ? t('library.annotations.hideAll') : t('library.annotations.showAll')}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setAnnoVisible((v) => !v); }}
+                  disabled={isDrawingHere}
+                  aria-label={annoVisible ? t('library.annotations.hideAll') : t('library.annotations.showAll')}
+                  aria-pressed={!annoVisible}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-full text-amber-800/55 dark:text-amber-200/45 hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-40"
+                >
+                  {annoVisible ? <FiEye className="w-3.5 h-3.5" /> : <FiEyeOff className="w-3.5 h-3.5" />}
+                </button>
+              </Tooltip>
+              {/* Annotate (free-draw) toggle for this page */}
+              <Tooltip label={isDrawingHere ? t('library.draw.exit') : t('library.draw.enter')}>
+                <button
+                  ref={isDrawingHere ? drawAnchorRef : undefined}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleDraw(pd.page); }}
+                  disabled={markVersesMode}
+                  aria-label={isDrawingHere ? t('library.draw.exit') : t('library.draw.enter')}
+                  aria-pressed={isDrawingHere}
+                  className={`inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors disabled:opacity-40 ${
+                    isDrawingHere
+                      ? 'bg-[#004f35] text-white'
+                      : 'text-amber-800/55 dark:text-amber-200/45 hover:bg-black/5 dark:hover:bg-white/10'
+                  }`}
+                >
+                  <FiEdit2 className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
+            </span>
           </div>
           {/* Fixed-size framed page, uniformly scaled to fit the column. The turn
               animation lives INSIDE the frame so the frame itself never moves.
@@ -913,7 +1594,7 @@ export default function Library() {
               into that gutter — see MushafMarks and index.css. */}
           <div className="mushaf-canvas-frame">
             <div className="mushaf-canvas">
-              <div className="mushaf-frame">
+              <div className={`mushaf-frame${pulsePage === pd.page ? ' is-anno-pulse' : ''}`}>
                 <Flip flipKey={pd.page} dir={turnDirRef.current} animate={!reduceMotion}>
                   <MushafPage
                     pageData={pd}
@@ -926,10 +1607,31 @@ export default function Library() {
                     onRevealVerse={revealVerse}
                     onRevealThrough={revealThrough}
                     onHideVerse={hideVerse}
+                    highlightFor={showAnns ? highlightFor : null}
+                    noteVerses={showAnns ? noteVerses : EMPTY_SET}
+                    hardVerses={showAnns ? hardVerses : EMPTY_SET}
+                    onOpenNote={(markVersesMode || !showAnns) ? null : (vk) => openNote(pd.page, vk)}
+                    noteIndicatorLabel={t('library.annotations.noteIndicator')}
                   />
                 </Flip>
-                {/* Sibling of the Flip/page-grid, not a child — that grid clips
-                    overflow, which would cut the ornaments off at the border. */}
+                {/* Free-form ink + text overlays are siblings of the Flip/page-grid,
+                    not children — that grid clips overflow. Their extended box
+                    reaches into the margins (see MushafDrawLayer / index.css). */}
+                <MushafDrawLayer
+                  strokes={layerStrokes}
+                  active={isDrawingHere}
+                  visible={annoVisible}
+                  tool={drawTool}
+                  color={drawColor}
+                  width={drawWidth}
+                  onStrokesChange={handleDrawChange}
+                  textNotes={textNotes}
+                  onCreateText={(x, y, text, color) => createText(pd.page, x, y, text, color)}
+                  onUpdateText={(id, patch) => updateText(pd.page, id, patch)}
+                  onDeleteText={(id) => deleteText(pd.page, id)}
+                  onReadText={(n) => setReadTextNote({ text: n.text, color: n.color || 'ink' })}
+                  placeholder={t('library.draw.textPlaceholder')}
+                />
                 <MushafMarks pageData={pd} outerEdge={outerEdge} prevLastRub={prevLastRub} />
               </div>
             </div>
@@ -962,6 +1664,27 @@ export default function Library() {
                       : done
                         ? <FiCheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
                         : <FiCircle className="w-4 h-4 text-amber-800/45 dark:text-amber-200/35" />}
+                  </button>
+                </Tooltip>
+              );
+            })()}
+            {/* Whole-page "mark hard" flag — sits beside the memorized tick, same
+                round-icon-button treatment so the pair reads as one control set. */}
+            {(() => {
+              const label = isPageHard
+                ? t('library.annotations.unmarkPageHard', { n: fmtNum(pd.page) })
+                : t('library.annotations.markPageHard', { n: fmtNum(pd.page) });
+              return (
+                <Tooltip label={label}>
+                  <button
+                    type="button"
+                    onClick={() => toggleHard(pd.page, null)}
+                    disabled={savingAnnotation || markVersesMode}
+                    aria-label={label}
+                    aria-pressed={isPageHard}
+                    className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FiFlag className={`w-4 h-4 ${isPageHard ? 'text-red-600 dark:text-red-400 fill-current' : 'text-amber-800/45 dark:text-amber-200/35'}`} />
                   </button>
                 </Tooltip>
               );
@@ -1308,12 +2031,139 @@ export default function Library() {
               ) : (
                 <Tooltip label={t('library.markVerses.hint')}>
                   <button
-                    onClick={() => setMarkVersesMode(true)}
+                    onClick={startMarkVerses}
                     className="inline-flex items-center gap-1.5 self-start text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2"
                   >
                     <FiPlus className="w-3.5 h-3.5" /> {t('library.markVerses.start')}
                   </button>
                 </Tooltip>
+              )}
+            </div>
+
+            {/* Annotations navigator — prev/next annotated page + the full list */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setAnnoNavOpen((o) => !o)}
+                className="flex items-center justify-between gap-2 text-start"
+                aria-expanded={annoNavOpen}
+              >
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
+                  <FiEdit3 className="w-3 h-3 text-[#004f35] dark:text-emerald-400" />
+                  {t('library.annotations.navTitle')}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  {annotatedPages.length > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[#e6f0ea] dark:bg-emerald-900/40 text-[#004f35] dark:text-emerald-300 text-[10px] font-bold">
+                      {fmtNum(annotatedPages.length)}
+                    </span>
+                  )}
+                  <FiChevronDown className={`w-4 h-4 text-[#707974] dark:text-gray-500 transition-transform ${annoNavOpen ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+
+              {/* Prev / next annotated page (wraps at the ends) */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => gotoAdjacentAnnotated(-1)}
+                  disabled={annotatedPages.length === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FiChevronRight className="w-4 h-4 rtl:rotate-180" /> {t('library.annotations.prevAnnotated')}
+                </button>
+                <button
+                  onClick={() => gotoAdjacentAnnotated(1)}
+                  disabled={annotatedPages.length === 0}
+                  className="flex-1 inline-flex items-center justify-center gap-1 text-xs font-medium rounded-lg border border-[#dce2f3] dark:border-gray-600 px-2 py-1.5 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {t('library.annotations.nextAnnotated')} <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
+                </button>
+              </div>
+
+              {annoNavOpen && (
+                annotatedPages.length === 0 ? (
+                  <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.navEmpty')}</p>
+                ) : (
+                  <ul className="flex flex-col gap-1 max-h-64 overflow-y-auto -mr-1 pr-1">
+                    {annoSummary.map((s) => (
+                      <li key={s.pageNumber}>
+                        <button
+                          onClick={() => jumpToAnnotatedPage(s.pageNumber)}
+                          className={`w-full text-start rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
+                            s.pageNumber === bookmarkTargetPage ? 'bg-[#f0f4ff] dark:bg-gray-700/60' : ''
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-[#003527] dark:text-emerald-300">
+                              {t('library.pageInfoLabel', { n: fmtNum(s.pageNumber) })}
+                            </span>
+                            <span className="inline-flex items-center gap-2 text-[10px] text-[#707974] dark:text-gray-400">
+                              {s.counts.highlight > 0 && <span className="inline-flex items-center gap-0.5"><FiDroplet className="w-3 h-3 text-amber-500" />{fmtNum(s.counts.highlight)}</span>}
+                              {s.counts.note > 0 && <span className="inline-flex items-center gap-0.5"><FiMessageSquare className="w-3 h-3 text-blue-500" />{fmtNum(s.counts.note)}</span>}
+                              {s.counts.hard > 0 && <span className="inline-flex items-center gap-0.5"><FiFlag className="w-3 h-3 text-red-500" />{fmtNum(s.counts.hard)}</span>}
+                              {s.counts.drawing > 0 && <FiPenTool className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+                            </span>
+                          </span>
+                          {s.noteExcerpt && (
+                            <span className="block truncate text-[11px] text-[#707974] dark:text-gray-500 mt-0.5" dir="auto">“{s.noteExcerpt}”</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              )}
+            </div>
+
+            {/* Hard verses & pages — the user's "hard" list with jump links */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setHardOpen((o) => !o)}
+                className="flex items-center justify-between gap-2 text-start"
+                aria-expanded={hardOpen}
+              >
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
+                  <FiFlag className="w-3 h-3 text-red-500 dark:text-red-400" />
+                  {t('library.annotations.hardTitle')}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  {hardList.length > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-[10px] font-bold">
+                      {fmtNum(hardList.length)}
+                    </span>
+                  )}
+                  <FiChevronDown className={`w-4 h-4 text-[#707974] dark:text-gray-500 transition-transform ${hardOpen ? 'rotate-180' : ''}`} />
+                </span>
+              </button>
+              {hardOpen && (
+                hardList.length === 0 ? (
+                  <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.hardEmpty')}</p>
+                ) : (
+                  <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
+                    {hardList.map((h) => (
+                      <li key={h._id} className="flex items-center gap-1">
+                        <button
+                          onClick={() => goToPage(h.pageNumber)}
+                          className={`flex-1 min-w-0 inline-flex items-center gap-1.5 text-start text-xs rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
+                            h.pageNumber === bookmarkTargetPage ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
+                          }`}
+                        >
+                          <FiFlag className="w-3 h-3 shrink-0 text-red-500 dark:text-red-400" />
+                          <span className="truncate">{hardItemLabel(h)}</span>
+                          <FiCornerUpRight className="w-3 h-3 shrink-0 ms-auto text-[#9aa3a0] dark:text-gray-600 rtl:rotate-180" />
+                        </button>
+                        <Tooltip label={t('library.annotations.removeHard')}>
+                          <button
+                            onClick={() => removeHardItem(h._id, h.pageNumber)}
+                            aria-label={t('library.annotations.removeHard')}
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                            <FiTrash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                      </li>
+                    ))}
+                  </ul>
+                )
               )}
             </div>
 
@@ -1346,13 +2196,15 @@ export default function Library() {
                 the full row so the arrows flank the whole spread. */}
             <div
               className={`mushaf-viewport relative w-full mx-auto${twoPage ? '' : ' max-w-[760px]'}`}
+              onPointerDownCapture={(e) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; }}
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
             >
               {/* Edge hot-zones: LEFT turns forward, RIGHT turns back (RTL book).
                   Pure affordance — hidden on touch (swipe covers that), sit in the
-                  margin outside the text frame, and step aside at the book's ends. */}
-              {pagesData.length > 0 && !pageError && (
+                  margin outside the text frame, and step aside at the book's ends.
+                  Hidden while annotating (page turns are suspended in draw mode). */}
+              {pagesData.length > 0 && !pageError && drawPage == null && (
                 <>
                   <button
                     type="button"
@@ -1421,12 +2273,14 @@ export default function Library() {
               {' '}· {t('library.juzInfoLabel', { n: fmtNum(currentJuz) })}
             </p>
 
-            {/* Verse action popover — draggable only via the grip handle */}
+            {/* Verse action popover — placed near the selection (fixed), draggable
+                via the grip. While it's open the bottom audio bar is hidden and the
+                popover is the sole transport (play/pause + prev/next). */}
             {selectedVerse && (
               <div
                 ref={popoverRef}
                 style={popoverDragStyle}
-                className="sticky bottom-20 z-30 mx-auto bg-white dark:bg-gray-800 rounded-full border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex items-center gap-2 select-none"
+                className="fixed left-0 top-0 z-40 bg-white dark:bg-gray-800 rounded-3xl border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex flex-wrap items-center justify-center gap-2 select-none max-w-[calc(100vw-1.5rem)]"
               >
                 <Tooltip label={t('tooltips.dragHandle')} suppressed={handleDragging}>
                   <span
@@ -1441,8 +2295,19 @@ export default function Library() {
                 <span className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
                   {verseRef(selectedVerse)}
                 </span>
-                {/* Play + Tafsir actions — also the anchor for the one-time coachmark */}
-                <div className="flex items-center gap-2" data-tour="verse-actions">
+                {/* Transport (play/pause + prev/next) + Tafsir — the popover is the
+                    sole controller while it's open (the bottom bar is hidden). */}
+                <div className="flex items-center gap-1.5" data-tour="verse-actions">
+                  <Tooltip label={t('tooltips.prevVerse')}>
+                    <button
+                      onClick={() => gotoPopoverVerse(-1)}
+                      disabled={selectedAudioIndex <= 0}
+                      aria-label={t('tooltips.prevVerse')}
+                      className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                    >
+                      <FiSkipBack className="w-3.5 h-3.5 rtl:rotate-180" />
+                    </button>
+                  </Tooltip>
                   {(() => {
                     const isThisPlaying = selectedAudioIndex === playingIndex && isPlaying;
                     return (
@@ -1458,6 +2323,16 @@ export default function Library() {
                       </Tooltip>
                     );
                   })()}
+                  <Tooltip label={t('tooltips.nextVerse')}>
+                    <button
+                      onClick={() => gotoPopoverVerse(1)}
+                      disabled={selectedAudioIndex >= verses.length - 1}
+                      aria-label={t('tooltips.nextVerse')}
+                      className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
+                    >
+                      <FiSkipForward className="w-3.5 h-3.5 rtl:rotate-180" />
+                    </button>
+                  </Tooltip>
                   <Tooltip label={t('tooltips.verseTafsir')}>
                     <button
                       onClick={() => openTafsir(selectedAudioIndex)}
@@ -1467,6 +2342,60 @@ export default function Library() {
                     </button>
                   </Tooltip>
                 </div>
+                {/* Annotation actions — highlight swatches, note, mark hard. Kept
+                    off while the "mark verses" picking mode owns taps (it clears
+                    the selection anyway, so this is a double guard). */}
+                {!markVersesMode && (
+                  <div className="flex items-center gap-1.5" data-tour="verse-annotate">
+                    <span className="w-px h-6 bg-[#dce2f3] dark:bg-gray-600" aria-hidden="true" />
+                    {ANNOTATION_COLORS.map(({ key, cls, labelKey }) => {
+                      const active = selectedHighlightColor === key;
+                      return (
+                        <Tooltip key={key} label={t(labelKey)}>
+                          <button
+                            onClick={() => setVerseHighlight(selectedVerse.page, selectedVerse.verseKey, key)}
+                            disabled={savingAnnotation}
+                            aria-label={t(labelKey)}
+                            aria-pressed={active}
+                            className={`w-6 h-6 rounded-full transition-transform disabled:opacity-50 ${cls} ${
+                              active
+                                ? 'ring-2 ring-offset-1 ring-[#004f35] dark:ring-emerald-400 dark:ring-offset-gray-800 scale-110'
+                                : 'ring-1 ring-black/10 dark:ring-white/25 hover:scale-110'
+                            }`}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                    <Tooltip label={selectedHasNote ? t('library.annotations.editNote') : t('library.annotations.addNote')}>
+                      <button
+                        onClick={() => openNote(selectedVerse.page, selectedVerse.verseKey)}
+                        aria-label={selectedHasNote ? t('library.annotations.editNote') : t('library.annotations.addNote')}
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
+                          selectedHasNote
+                            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300'
+                            : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <FiMessageSquare className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label={selectedIsHard ? t('library.annotations.unmarkHard') : t('library.annotations.markHard')}>
+                      <button
+                        onClick={() => toggleHard(selectedVerse.page, selectedVerse.verseKey)}
+                        disabled={savingAnnotation}
+                        aria-label={selectedIsHard ? t('library.annotations.unmarkHard') : t('library.annotations.markHard')}
+                        aria-pressed={selectedIsHard}
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors disabled:opacity-50 ${
+                          selectedIsHard
+                            ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400'
+                            : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20'
+                        }`}
+                      >
+                        <FiFlag className={`w-3.5 h-3.5 ${selectedIsHard ? 'fill-current' : ''}`} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )}
                 <Tooltip label={t('tooltips.close')}>
                   <button
                     onClick={() => setSelectedVerseKey(null)}
@@ -1478,13 +2407,13 @@ export default function Library() {
               </div>
             )}
 
-            {/* ── Sticky audio bar ───────────────────────── */}
-            <div data-tour="lib-audio" className="sticky bottom-3 z-20 w-full max-w-[650px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+            {/* ── Sticky audio bar — stays visible with the popover (reciter, speed, repeat live here) ── */}
+            <div data-tour="lib-audio" className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
                   <button
-                    onClick={() => playAyah((playingIndex ?? 0) - 1)}
-                    disabled={pageLoading || pageError || playingIndex == null || playingIndex === 0}
+                    onClick={() => stepVerse(-1)}
+                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex === 0 && currentPage <= 1)}
                     className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiSkipBack className="w-4 h-4 rtl:rotate-180" />
@@ -1507,8 +2436,8 @@ export default function Library() {
                 </Tooltip>
                 <Tooltip label={t('tooltips.nextVerse')}>
                   <button
-                    onClick={() => playAyah(playingIndex == null ? 0 : playingIndex + 1)}
-                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex != null && playingIndex >= verses.length - 1)}
+                    onClick={() => stepVerse(1)}
+                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex != null && playingIndex >= verses.length - 1 && currentPage >= maxPage)}
                     className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiSkipForward className="w-4 h-4 rtl:rotate-180" />
@@ -1527,12 +2456,125 @@ export default function Library() {
                 </p>
               </div>
 
+              {/* Playback speed */}
+              <Tooltip label={t('library.audio.speed')}>
+                <select
+                  value={playbackRate}
+                  onChange={e => setPlaybackRate(parseFloat(e.target.value))}
+                  aria-label={t('library.audio.speed')}
+                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                >
+                  {SPEEDS.map(s => (
+                    <option key={s} value={s}>{fmtNum(s)}×</option>
+                  ))}
+                </select>
+              </Tooltip>
+
+              {/* Repeat for memorization (verse ×N / range loop) */}
+              <div className="relative">
+                <Tooltip label={t('library.audio.repeat')}>
+                  <button
+                    type="button"
+                    onClick={() => setRepeatOpen(o => !o)}
+                    aria-label={t('library.audio.repeat')}
+                    aria-pressed={repeatMode !== 'off'}
+                    className={`relative w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
+                      repeatMode !== 'off'
+                        ? 'bg-[#004f35] text-white border-[#004f35]'
+                        : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <FiRepeat className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+                {repeatOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setRepeatOpen(false)} />
+                    <div className="absolute bottom-full mb-2 end-0 z-40 w-64 bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3" dir={isArabic ? 'rtl' : 'ltr'}>
+                      <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
+                        {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setRepeatMode(m)}
+                            className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
+                              repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {repeatMode === 'verse' && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-[#707974] dark:text-gray-400">{t('library.audio.repeatTimes')}</span>
+                          {REP_COUNTS.map(n => (
+                            <button
+                              key={String(n)}
+                              type="button"
+                              onClick={() => setVerseRepeat(n)}
+                              className={`flex-1 text-xs font-bold rounded-md py-1 border transition-colors ${
+                                verseRepeat === n ? 'bg-[#004f35] text-white border-[#004f35]' : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300'
+                              }`}
+                            >
+                              {n === Infinity ? '∞' : `×${fmtNum(n)}`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {repeatMode === 'range' && (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <label className="flex-1 flex flex-col gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#707974] dark:text-gray-500">{t('library.audio.rangeFrom')}</span>
+                              <select value={rangeStart} onChange={e => setRangeStart(Math.min(Number(e.target.value), rangeEnd))} className={selectCls}>
+                                {verses.map((v, i) => <option key={v.verseKey} value={i}>{v.verseKey}</option>)}
+                              </select>
+                            </label>
+                            <label className="flex-1 flex flex-col gap-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#707974] dark:text-gray-500">{t('library.audio.rangeTo')}</span>
+                              <select value={rangeEnd} onChange={e => setRangeEnd(Math.max(Number(e.target.value), rangeStart))} className={selectCls}>
+                                {verses.map((v, i) => <option key={v.verseKey} value={i}>{v.verseKey}</option>)}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-[#707974] dark:text-gray-400">{t('library.audio.repeatTimes')}</span>
+                            {REP_COUNTS.map(n => (
+                              <button
+                                key={String(n)}
+                                type="button"
+                                onClick={() => setRangeRepeat(n)}
+                                className={`flex-1 text-xs font-bold rounded-md py-1 border transition-colors ${
+                                  rangeRepeat === n ? 'bg-[#004f35] text-white border-[#004f35]' : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300'
+                                }`}
+                              >
+                                {n === Infinity ? '∞' : `×${fmtNum(n)}`}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setRepeatOpen(false); playAyah(rangeStart); }}
+                            className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg py-1.5 transition-colors"
+                          >
+                            {t('library.audio.playRange')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <Tooltip label={t('tooltips.reciter')}>
                 <select
                   value={reciter}
                   onChange={e => setReciter(e.target.value)}
                   aria-label={t('tooltips.reciter')}
-                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 max-w-[180px]"
+                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 max-w-[160px]"
                 >
                   {RECITERS.map(r => (
                     <option key={r.id} value={r.id}>{isArabic ? r.nameAr : r.nameEn}</option>
@@ -1614,17 +2656,24 @@ export default function Library() {
                 </p>
               </div>
 
-              {/* Surah · verse + play */}
+              {/* Surah · verse + play (toggles: pauses if this verse is playing) */}
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirVerse)}</p>
-                <button
-                  onClick={() => playAyah(tafsirIndex)}
-                  title={t('library.playThisVerse')}
-                  aria-label={t('library.playThisVerse')}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                >
-                  <FiPlay className="w-3 h-3 rtl:rotate-180" /> {t('library.playThisVerse')}
-                </button>
+                {(() => {
+                  const tafsirPlaying = tafsirIndex === playingIndex && isPlaying;
+                  return (
+                    <button
+                      onClick={() => toggleSelectedVerse(tafsirIndex)}
+                      title={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
+                      aria-label={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                    >
+                      {tafsirPlaying
+                        ? <><FiPause className="w-3 h-3" /> {t('library.pause')}</>
+                        : <><FiPlay className="w-3 h-3 rtl:rotate-180" /> {t('library.playThisVerse')}</>}
+                    </button>
+                  );
+                })()}
               </div>
 
               {/* Edition select */}
@@ -1672,6 +2721,214 @@ export default function Library() {
           </div>
         </>
       )}
+
+      {/* ── Note editor: same bottom-sheet (mobile) / side-panel (desktop) shell as tafsir ── */}
+      {notePanel && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            onClick={() => setNotePanel(null)}
+          />
+          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+                          bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
+                          md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0">
+            <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                  {notePanel.id ? t('library.annotations.editNote') : t('library.annotations.addNote')}
+                </h3>
+              </div>
+              <Tooltip label={t('tooltips.close')}>
+                <button
+                  onClick={() => setNotePanel(null)}
+                  aria-label={t('tooltips.close')}
+                  className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+              {(() => {
+                const [s, a] = notePanel.verseKey.split(':').map(Number);
+                return (
+                  <p className="text-xs font-semibold text-[#404944] dark:text-gray-300">
+                    {surahLabelFor(s)} · {t('library.verseLabel', { n: fmtNum(a) })}
+                  </p>
+                );
+              })()}
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                maxLength={2000}
+                rows={8}
+                dir="auto"
+                placeholder={t('library.annotations.notePlaceholder')}
+                className="w-full rounded-xl border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 resize-none"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(noteDraft.length)} / {fmtNum(2000)}</span>
+                <div className="flex items-center gap-2">
+                  {notePanel.id && (
+                    <button
+                      onClick={deleteNote}
+                      disabled={savingNote}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#ba1a1a] dark:text-red-400 border border-red-200 dark:border-red-900/50 px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors"
+                    >
+                      <FiTrash2 className="w-3.5 h-3.5" /> {t('library.annotations.delete')}
+                    </button>
+                  )}
+                  <button
+                    onClick={saveNote}
+                    disabled={savingNote}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+                  >
+                    {t('library.annotations.save')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Read a free-form text note (its icon was tapped outside draw mode). The
+          text never renders on the page itself — only here, read-only. */}
+      {readTextNote && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+            onClick={() => setReadTextNote(null)}
+          />
+          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+                          bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
+                          md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:inset-x-auto md:start-1/2 md:-translate-x-1/2 md:w-[420px] md:max-h-[70vh] md:rounded-2xl md:border">
+            <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} />
+                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                  {t('library.draw.noteTitle')}
+                </h3>
+              </div>
+              <Tooltip label={t('tooltips.close')}>
+                <button
+                  onClick={() => setReadTextNote(null)}
+                  aria-label={t('tooltips.close')}
+                  className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <FiX className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <p dir="auto" className="text-sm leading-relaxed text-[#1A1A1A] dark:text-gray-100 whitespace-pre-wrap break-words">
+                {readTextNote.text}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Draw toolbar — a dropdown anchored under the active page's pencil button.
+          Opens with draw mode, stays open while drawing, closes on Done/Escape/exit. */}
+      {drawPage != null && (
+        <div
+          ref={drawMenuRef}
+          data-testid="draw-menu"
+          style={{ top: drawMenuPos.top, left: drawMenuPos.left }}
+          className="fixed z-40 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-2 flex flex-col gap-1.5 select-none"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Tools row */}
+          <div className="flex items-center gap-1">
+            {[
+              { k: 'pen', icon: FiPenTool, label: t('library.draw.pen') },
+              { k: 'highlighter', icon: FiEdit3, label: t('library.draw.highlighter') },
+              { k: 'text', icon: FiType, label: t('library.draw.text') },
+              { k: 'eraser', icon: FiDelete, label: t('library.draw.eraser') },
+            ].map((tl) => {
+              const ToolIcon = tl.icon;
+              return (
+                <Tooltip key={tl.k} label={tl.label}>
+                  <button
+                    type="button"
+                    onClick={() => setDrawTool(tl.k)}
+                    aria-label={tl.label}
+                    aria-pressed={drawTool === tl.k}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                      drawTool === tl.k ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <ToolIcon className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>
+          {/* Colours row (hidden for the eraser) */}
+          {drawTool !== 'eraser' && (
+            <div className="flex items-center gap-2 px-1 py-0.5">
+              {DRAW_COLORS.map(({ key, cls, labelKey }) => (
+                <Tooltip key={key} label={t(labelKey)}>
+                  <button
+                    type="button"
+                    onClick={() => setDrawColor(key)}
+                    aria-label={t(labelKey)}
+                    aria-pressed={drawColor === key}
+                    className={`w-6 h-6 rounded-full transition-transform ${cls} ${
+                      drawColor === key
+                        ? 'ring-2 ring-offset-1 ring-[#004f35] dark:ring-emerald-400 dark:ring-offset-gray-800 scale-110'
+                        : 'ring-1 ring-black/10 dark:ring-white/25 hover:scale-110'
+                    }`}
+                  />
+                </Tooltip>
+              ))}
+            </div>
+          )}
+          {/* Actions row */}
+          <div className="flex items-center gap-1 border-t border-[#dce2f3] dark:border-gray-700 pt-1.5">
+            <Tooltip label={t('library.draw.undo')}>
+              <button type="button" onClick={undoStroke} disabled={undoStackRef.current.length === 0} aria-label={t('library.draw.undo')}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                <FiRotateCcw className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={t('library.draw.redo')}>
+              <button type="button" onClick={redoStroke} disabled={redoStackRef.current.length === 0} aria-label={t('library.draw.redo')}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+                <FiRotateCw className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={t('library.draw.clear')}>
+              <button type="button" onClick={() => setClearConfirm(true)} disabled={drawStrokes.length === 0} aria-label={t('library.draw.clear')}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[#ba1a1a] dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors">
+                <FiTrash2 className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <span className="flex-1" />
+            <Tooltip label={t('library.draw.done')}>
+              <button type="button" onClick={exitDraw} aria-label={t('library.draw.done')}
+                className="h-9 px-3 rounded-xl flex items-center justify-center gap-1.5 bg-[#004f35] text-white hover:bg-[#003527] transition-colors text-xs font-semibold">
+                <FiCheck className="w-4 h-4" /> {t('library.draw.done')}
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm before wiping a page's ink */}
+      <ConfirmModal
+        isOpen={clearConfirm}
+        onClose={() => setClearConfirm(false)}
+        onConfirm={clearDrawing}
+        title={t('library.draw.clearTitle')}
+        message={t('library.draw.clearMessage')}
+        confirmText={t('library.draw.clear')}
+        isDanger
+      />
 
       {/* Full 7-step method, reused from the dashboard guide */}
       <HowToMemorizeModal isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
