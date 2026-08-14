@@ -17,11 +17,24 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // Middleware
+const isProduction = process.env.NODE_ENV === 'production';
+
+// In development Vite picks the next free port when 5173 is taken (5174, 5175…),
+// so allow any localhost port instead of pinning one. Production stays strict:
+// only CLIENT_URL is accepted.
+const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
+const localhostOrigin = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+
 app.use(cors({
-  origin: [
-    process.env.NODE_ENV !== 'production' && 'http://localhost:5173',
-    process.env.CLIENT_URL,
-  ].filter(Boolean),
+  origin: (origin, callback) => {
+    // Requests without an Origin header (curl, same-origin, health checks) pass.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (!isProduction && localhostOrigin.test(origin)) return callback(null, true);
+    // Reject by omitting the CORS headers rather than throwing: the browser still
+    // blocks the response, but we avoid turning every stray origin into a 500.
+    return callback(null, false);
+  },
   credentials: true,
 }));
 app.use(express.json());
