@@ -4,11 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { FiChevronDown, FiChevronUp, FiEdit2 } from 'react-icons/fi';
+import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 
@@ -18,6 +19,17 @@ const WEEKDAY_LABEL_KEYS = ['', 'settings.dayMon', '', 'settings.dayWed', '', 's
 
 const toISODate = (d) => d.toISOString().split('T')[0];
 const levelForCount = (c) => (c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 2 : c <= 4 ? 3 : 4);
+
+// Display-friendly time estimate from a raw day count; unit is a translation key
+// (reuses the onboarding.time* strings so both estimate cards read identically).
+function formatEstimate(days) {
+  if (!days || days <= 0) return null;
+  if (days < 7) return { value: days, unitKey: days === 1 ? 'onboarding.timeDay' : 'onboarding.timeDays' };
+  if (days < 30) { const w = Math.round(days / 7); return { value: w, unitKey: w === 1 ? 'onboarding.timeWeek' : 'onboarding.timeWeeks' }; }
+  if (days < 365) { const m = Math.round(days / 30); return { value: m, unitKey: m === 1 ? 'onboarding.timeMonth' : 'onboarding.timeMonths' }; }
+  const y = parseFloat((days / 365).toFixed(1));
+  return { value: y, unitKey: y === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
+}
 
 const toUTCMidnight = (date) => {
   const d = new Date(date);
@@ -153,10 +165,12 @@ export default function Progress() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { showToast } = useToast();
   const isDark = theme === 'dark';
   const isArabic = i18n.language === 'ar';
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
+  const [estimate, setEstimate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [activeTab, setActiveTab] = useState('progress');
@@ -164,17 +178,24 @@ export default function Progress() {
   const [showAllSurahs, setShowAllSurahs] = useState(false);
   const [showSurahBreakdown, setShowSurahBreakdown] = useState(false);
   const [showDetailedMap, setShowDetailedMap] = useState(false);
+  // In-place progress editing: a draft page-set the map/breakdown edit, saved via
+  // updateMemorized. editMode gates every interactive affordance below.
+  const [editMode, setEditMode] = useState(false);
+  const [draft, setDraft] = useState(() => new Set());
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
-      const [juzRes, allRes] = await Promise.all([
+      const [juzRes, allRes, estRes] = await Promise.all([
         progressAPI.getJuzProgress(),
         progressAPI.getAllProgress(),
+        progressAPI.getEstimate(),
       ]);
       setJuzData(juzRes.data.data);
       setOverallStats(allRes.data.data);
+      setEstimate(estRes.data.data);
     } catch {
       setError(true);
     } finally {
@@ -188,16 +209,96 @@ export default function Progress() {
   const percentage = overallStats?.percentage ?? '0.0';
 
   const memorizedSet = useMemo(() => new Set(overallStats?.memorizedPages ?? []), [overallStats]);
+  // pageNumber → fraction (0<f<1) for partially-memorized pages, so the map can
+  // render them as half-filled amber instead of full green.
+  const partialMap = useMemo(
+    () => new Map((overallStats?.partialPages ?? []).map(p => [p.pageNumber, p.fraction])),
+    [overallStats]
+  );
+
+  // While editing, the map + breakdown reflect the DRAFT set; otherwise the saved
+  // set. Every fill/coverage computation reads activeSet so both views stay in sync.
+  const activeSet = editMode ? draft : memorizedSet;
+  const pageChanged = (p) => editMode && draft.has(p) !== memorizedSet.has(p);
+  const changedCount = useMemo(() => {
+    if (!editMode) return 0;
+    let n = 0;
+    for (const p of draft) if (!memorizedSet.has(p)) n++;
+    for (const p of memorizedSet) if (!draft.has(p)) n++;
+    return n;
+  }, [editMode, draft, memorizedSet]);
+
+  const enterEditMode = () => { setDraft(new Set(memorizedSet)); setEditMode(true); };
+  const cancelEdit = () => { setEditMode(false); setDraft(new Set(memorizedSet)); };
+  const togglePage = (page) => setDraft(prev => {
+    const next = new Set(prev);
+    if (next.has(page)) next.delete(page); else next.add(page);
+    return next;
+  });
+  // Toggle a whole page span (a Juz or a Surah): if every page is already in the
+  // draft, clear them all; otherwise add them all — same semantics as the
+  // onboarding/settings tile toggles.
+  const toggleRange = (start, end) => setDraft(prev => {
+    const next = new Set(prev);
+    let allIn = true;
+    for (let p = start; p <= end; p++) if (!next.has(p)) { allIn = false; break; }
+    for (let p = start; p <= end; p++) { if (allIn) next.delete(p); else next.add(p); }
+    return next;
+  });
+  const rangeChanged = (start, end) => {
+    if (!editMode) return false;
+    for (let p = start; p <= end; p++) if (pageChanged(p)) return true;
+    return false;
+  };
+  const saveEdit = async () => {
+    if (changedCount === 0) { setEditMode(false); return; }
+    setSaving(true);
+    try {
+      // updateMemorized is segment-preserving: pages already memorized keep their
+      // verse segments, only added/removed whole pages change. See the server note.
+      await progressAPI.updateMemorized({ memorizedPages: Array.from(draft) });
+      await load();
+      showToast(t('progress.changesSaved'), 'success');
+      setEditMode(false);
+    } catch {
+      showToast(t('progress.saveFailed'), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fractional coverage of a page range: full pages count 1, partial pages by
+  // their fraction. Reads activeSet so it works in both view and edit mode; a
+  // page toggled in edit mode counts as a full page (no fractions while editing).
+  const rangeCoverage = (start, end) => {
+    let full = 0, frac = 0, partial = 0;
+    for (let p = start; p <= end; p++) {
+      if (!activeSet.has(p)) continue;
+      const f = pageChanged(p) ? null : partialMap.get(p);
+      if (f != null && f < 1) { frac += f; partial++; }
+      else { full++; frac += 1; }
+    }
+    return { full, frac, total: end - start + 1, partial };
+  };
+  const round1 = (n) => Math.round(n * 10) / 10;
+
+  // Projected completion (GET /api/progress/estimate). estimateDisplay is null
+  // once nothing is left to memorize (whole Quran done).
+  const estimateDisplay = formatEstimate(estimate?.estimatedDays);
+  const projectedDate = estimate?.estimatedDays
+    ? new Date(Date.now() + estimate.estimatedDays * 86400000)
+    : null;
+  const dateLocale = isArabic ? 'ar-u-ca-gregory-nu-arab' : 'en-US';
 
   const surahStats = useMemo(() => SURAH_PAGES.map(surah => {
     const total = surah.end - surah.start + 1;
     let count = 0;
     for (let p = surah.start; p <= surah.end; p++) {
-      if (memorizedSet.has(p)) count++;
+      if (activeSet.has(p)) count++;
     }
     const pct = total > 0 ? Math.round(count / total * 100) : 0;
     return { ...surah, pct };
-  }), [memorizedSet]);
+  }), [activeSet]);
 
   const surahComplete   = surahStats.filter(s => s.pct === 100).length;
   const surahInProgress = surahStats.filter(s => s.pct > 0 && s.pct < 100).length;
@@ -367,19 +468,82 @@ export default function Progress() {
               </div>
             </div>
 
+            {/* ── Projected completion ── */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
+              <h2 className="text-sm font-bold text-[#4A4A4A] dark:text-gray-400 uppercase tracking-wide mb-4">{t('progress.projectedCompletion')}</h2>
+              {loading ? (
+                <div className="flex flex-wrap gap-8"><Skeleton h="h-10" w="w-28" /><Skeleton h="h-10" w="w-44" /></div>
+              ) : (estimate && estimate.remainingPages === 0) ? (
+                <p className="text-sm text-[#1B4332] dark:text-emerald-400 font-medium">{t('progress.alreadyComplete')}</p>
+              ) : !estimateDisplay ? (
+                <p className="text-sm text-[#4A4A4A] dark:text-gray-400">{t('progress.estimateUnavailable')}</p>
+              ) : (
+                <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
+                  <div>
+                    <div className="flex items-end gap-2">
+                      <span className="text-4xl font-extrabold text-[#1A1A1A] dark:text-gray-100 tabular-nums">{estimateDisplay.value}</span>
+                      <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey)}</span>
+                    </div>
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-1">{t('progress.atPace', { count: estimate.dailyPages })}</p>
+                  </div>
+                  {projectedDate && (
+                    <div>
+                      <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-1">{t('progress.projectedFinish')}</p>
+                      <p className="text-lg font-bold text-[#1B4332] dark:text-emerald-400">
+                        {projectedDate.toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* ── Memorization Map (primary view) ── */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
                 <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('progress.memorizeMap')}</h2>
                 {!loading && (
-                  <button
-                    onClick={() => setShowDetailedMap(v => !v)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1B4332] dark:text-emerald-400 border border-[#1B4332]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-[#1B4332]/5 dark:hover:bg-emerald-900/20 transition-colors"
-                  >
-                    {showDetailedMap ? t('progress.showCompactMap') : t('progress.showDetailedMap')}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setShowDetailedMap(v => !v)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1B4332] dark:text-emerald-400 border border-[#1B4332]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-[#1B4332]/5 dark:hover:bg-emerald-900/20 transition-colors"
+                    >
+                      {showDetailedMap ? t('progress.showCompactMap') : t('progress.showDetailedMap')}
+                    </button>
+                    {!editMode ? (
+                      <button
+                        onClick={enterEditMode}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#143728] px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        <FiEdit2 className="w-3.5 h-3.5" /> {t('progress.editProgress')}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={cancelEdit}
+                          disabled={saving}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4A4A4A] dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors disabled:opacity-50"
+                        >
+                          <FiX className="w-3.5 h-3.5" /> {t('progress.cancel')}
+                        </button>
+                        <button
+                          onClick={saveEdit}
+                          disabled={saving || changedCount === 0}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#143728] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <FiSave className="w-3.5 h-3.5" /> {saving ? t('progress.saving') : t('progress.saveChanges')}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
+
+              {editMode && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  {t('progress.editHint', { count: changedCount })}
+                </div>
+              )}
               {loading ? (
                 <Skeleton h="h-64" />
               ) : (
@@ -393,11 +557,9 @@ export default function Progress() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                         {JUZ_RANGES.map(({ juz, start, end }) => {
-                          const total = end - start + 1;
-                          let count = 0;
-                          for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
-                          const pct = Math.round((count / total) * 100);
-                          const complete = pct === 100;
+                          const { full, frac, total } = rangeCoverage(start, end);
+                          const pct = Math.round((frac / total) * 100);
+                          const complete = full === total;
                           return (
                             <div
                               key={juz}
@@ -410,18 +572,46 @@ export default function Progress() {
                               <div className="flex items-center justify-between gap-2 mb-2.5">
                                 <span className="text-sm font-bold text-[#1A1A1A] dark:text-gray-100">{t('settings.cycleStartJuz', { juz })}</span>
                                 <span className={`text-[11px] font-semibold tabular-nums ${complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#4A4A4A] dark:text-gray-400'}`}>
-                                  {count}/{total} · {pct}%
+                                  {round1(frac)}/{total} · {pct}%
                                 </span>
                               </div>
                               <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${total}, minmax(0, 1fr))` }}>
                                 {Array.from({ length: total }, (_, i) => start + i).map(page => {
-                                  const done = memorizedSet.has(page);
+                                  const done = activeSet.has(page);
+                                  const changed = pageChanged(page);
+                                  const f = (!changed && done) ? partialMap.get(page) : null;
+                                  const isPartial = f != null && f < 1;
+                                  const pp = isPartial ? Math.round(f * 100) : 0;
+                                  const ring = changed ? ' ring-2 ring-offset-1 ring-amber-500 dark:ring-amber-400 dark:ring-offset-gray-800' : '';
+                                  const base = done && !isPartial
+                                    ? 'bg-emerald-600 dark:bg-emerald-500'
+                                    : isPartial
+                                      ? 'bg-gray-200 dark:bg-gray-700 relative overflow-hidden'
+                                      : 'bg-gray-200 dark:bg-gray-700';
+                                  const title = isPartial
+                                    ? t('progress.mapPagePartial', { page, pct: pp })
+                                    : done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page });
+                                  const inner = isPartial
+                                    ? <div className="absolute inset-x-0 bottom-0 bg-amber-400 dark:bg-amber-500" style={{ height: `${pp}%` }} />
+                                    : null;
+                                  if (editMode) {
+                                    return (
+                                      <button
+                                        key={page}
+                                        type="button"
+                                        onClick={() => togglePage(page)}
+                                        aria-pressed={done}
+                                        title={title}
+                                        className={`aspect-square rounded-xs ${base}${ring} cursor-pointer hover:opacity-80 transition-opacity`}
+                                      >
+                                        {inner}
+                                      </button>
+                                    );
+                                  }
                                   return (
-                                    <div
-                                      key={page}
-                                      title={done ? t('progress.mapPageMemorized', { page }) : t('progress.mapPageNot', { page })}
-                                      className={`aspect-square rounded-xs ${done ? 'bg-emerald-600 dark:bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`}
-                                    />
+                                    <div key={page} title={title} className={`aspect-square rounded-xs ${base}`}>
+                                      {inner}
+                                    </div>
                                   );
                                 })}
                               </div>
@@ -440,26 +630,37 @@ export default function Progress() {
                       </div>
                       <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
                         {JUZ_RANGES.map(({ juz, start, end }) => {
-                          const total = end - start + 1;
-                          let count = 0;
-                          for (let p = start; p <= end; p++) if (memorizedSet.has(p)) count++;
-                          const pct = Math.round((count / total) * 100);
-                          const complete = pct === 100;
-                          const started = count > 0;
-                          return (
-                            <div
-                              key={juz}
-                              title={`${t('progress.juz')} ${juz} — ${count}/${total} (${pct}%)`}
-                              className={`rounded-lg p-2 text-center transition-colors ${
-                                complete
-                                  ? 'bg-[#1B4332] text-white'
-                                  : started
-                                    ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700/50'
-                                    : 'bg-gray-100 dark:bg-gray-700/50'
-                              }`}
-                            >
+                          const { full, frac, total, partial } = rangeCoverage(start, end);
+                          const pct = Math.round((frac / total) * 100);
+                          const complete = full === total;
+                          const started = frac > 0;
+                          const changed = rangeChanged(start, end);
+                          const title = partial > 0
+                            ? `${t('progress.juz')} ${juz} — ${round1(frac)}/${total} (${pct}%) · ${t('progress.partialCount', { count: partial })}`
+                            : `${t('progress.juz')} ${juz} — ${full}/${total} (${pct}%)`;
+                          const cls = `rounded-lg p-2 text-center transition-colors ${
+                            complete
+                              ? 'bg-[#1B4332] text-white'
+                              : started
+                                ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700/50'
+                                : 'bg-gray-100 dark:bg-gray-700/50'
+                          }${changed ? ' ring-2 ring-amber-500 dark:ring-amber-400' : ''}`;
+                          const content = (
+                            <>
                               <p className={`text-base font-bold leading-none ${complete ? 'text-white' : started ? 'text-amber-800 dark:text-amber-300' : 'text-gray-400 dark:text-gray-500'}`}>{juz}</p>
                               <p className={`text-[10px] mt-1 tabular-nums ${complete ? 'text-green-200' : started ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>{pct}%</p>
+                            </>
+                          );
+                          if (editMode) {
+                            return (
+                              <button key={juz} type="button" onClick={() => toggleRange(start, end)} aria-pressed={complete} title={title} className={`${cls} cursor-pointer hover:opacity-90`}>
+                                {content}
+                              </button>
+                            );
+                          }
+                          return (
+                            <div key={juz} title={title} className={cls}>
+                              {content}
                             </div>
                           );
                         })}
@@ -481,12 +682,14 @@ export default function Progress() {
                         </div>
                       ))}
                     </div>
-                    <button
-                      onClick={() => navigate('/settings?tab=memorization&edit=1')}
-                      className="inline-flex items-center gap-2 bg-[#1B4332] hover:bg-[#143728] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors shrink-0"
-                    >
-                      <FiEdit2 className="w-4 h-4" /> {t('progress.editMyPages')}
-                    </button>
+                    {!editMode && (
+                      <button
+                        onClick={() => navigate('/settings?tab=memorization&edit=1')}
+                        className="inline-flex items-center gap-2 text-[#1B4332] dark:text-emerald-400 text-sm font-semibold px-4 py-2.5 rounded-lg border border-[#1B4332]/30 dark:border-emerald-500/30 hover:bg-[#1B4332]/5 dark:hover:bg-emerald-900/20 transition-colors shrink-0"
+                      >
+                        <FiEdit2 className="w-4 h-4" /> {t('progress.editInSettings')}
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -518,38 +721,55 @@ export default function Progress() {
                   </p>
                   <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
                     {surahStats
-                      .filter(s => showAllSurahs || s.pct > 0)
-                      .map(surah => (
-                        <div
-                          key={surah.number}
-                          title={`${surah.number}. ${isArabic ? surah.arabic : surah.name} — ${surah.pct}%`}
-                          className={`relative rounded-lg p-2 text-center cursor-default ${
-                            surah.pct === 100
-                              ? 'bg-[#1B4332] text-white'
-                              : surah.pct > 0
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-400'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
-                          }`}
-                        >
-                          {surah.pct > 0 && surah.pct < 100 && (
-                            <span className="absolute top-1 ltr:right-1 rtl:left-1 text-[9px] font-bold leading-none text-amber-700 dark:text-amber-400">
-                              {surah.pct}%
-                            </span>
-                          )}
-                          <p className={`text-xs font-semibold leading-tight line-clamp-2 mt-1 ${
-                            surah.pct === 100 ? 'text-white' : surah.pct > 0 ? 'text-amber-800 dark:text-amber-200' : ''
-                          }`}>
-                            {isArabic ? surah.arabic : surah.name}
-                          </p>
-                          {!isArabic && (
-                            <p className={`text-[10px] leading-tight line-clamp-1 mt-0.5 ${
-                              surah.pct === 100 ? 'text-green-200' : 'text-[#4A4A4A]/60 dark:text-gray-500'
+                      .filter(s => showAllSurahs || s.pct > 0 || (editMode && rangeChanged(s.start, s.end)))
+                      .map(surah => {
+                        const changed = rangeChanged(surah.start, surah.end);
+                        const title = `${surah.number}. ${isArabic ? surah.arabic : surah.name} — ${surah.pct}%`;
+                        const cls = `relative rounded-lg p-2 text-center ${editMode ? 'cursor-pointer hover:opacity-90' : 'cursor-default'} ${
+                          surah.pct === 100
+                            ? 'bg-[#1B4332] text-white'
+                            : surah.pct > 0
+                            ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-400'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400'
+                        }${changed ? ' ring-2 ring-amber-500 dark:ring-amber-400' : ''}`;
+                        const inner = (
+                          <>
+                            {surah.pct > 0 && surah.pct < 100 && (
+                              <span className="absolute top-1 ltr:right-1 rtl:left-1 text-[9px] font-bold leading-none text-amber-700 dark:text-amber-400">
+                                {surah.pct}%
+                              </span>
+                            )}
+                            <p className={`text-xs font-semibold leading-tight line-clamp-2 mt-1 ${
+                              surah.pct === 100 ? 'text-white' : surah.pct > 0 ? 'text-amber-800 dark:text-amber-200' : ''
                             }`}>
-                              {surah.arabic}
+                              {isArabic ? surah.arabic : surah.name}
                             </p>
-                          )}
-                        </div>
-                      ))
+                            {!isArabic && (
+                              <p className={`text-[10px] leading-tight line-clamp-1 mt-0.5 ${
+                                surah.pct === 100 ? 'text-green-200' : 'text-[#4A4A4A]/60 dark:text-gray-500'
+                              }`}>
+                                {surah.arabic}
+                              </p>
+                            )}
+                          </>
+                        );
+                        return editMode ? (
+                          <button
+                            key={surah.number}
+                            type="button"
+                            onClick={() => toggleRange(surah.start, surah.end)}
+                            aria-pressed={surah.pct === 100}
+                            title={title}
+                            className={cls}
+                          >
+                            {inner}
+                          </button>
+                        ) : (
+                          <div key={surah.number} title={title} className={cls}>
+                            {inner}
+                          </div>
+                        );
+                      })
                     }
                   </div>
                   {surahNotStarted > 0 && (
