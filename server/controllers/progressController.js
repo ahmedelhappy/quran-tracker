@@ -162,32 +162,60 @@ const nextUnmemorizedPages = (user, memorizedSet, count) => {
   return pages;
 };
 
-// Finds the next half-page task: the first page (in the user's memorization
-// order) that isn't FULLY memorized yet. A page with no progress gets its first
-// half (split at the verse midpoint); a page already holding a first-half
-// segment gets the remainder, completing it. `fullSet`/`partialByPage` are
-// passed in explicitly (rather than re-derived from a DB query) so this can run
-// against the live UserProgress state (getTodayTasks) or a day-by-day simulated
-// state (getWeekPlan) with the same logic.
-const nextHalfPageTask = (user, fullSet, partialByPage) => {
-  for (const pageNumber of memorizationWalkOrder(user)) {
-    if (fullSet.has(pageNumber)) continue;
-    const meta = PAGE_BY_NUMBER.get(pageNumber);
-    if (!meta || !meta.verseKeys.length) continue;
+// The next `count` new-memorization items in the user's walk order, SEGMENT-AWARE.
+// This is the single source of truth for "what to memorize next" and the fix for
+// the half-page bugs: a PARTIALLY-memorized page is never treated as done — it
+// always contributes its REMAINING segment first (completing it), before the walk
+// moves on. Only then does the walk pick up fresh pages.
+//   granularity 'full'  → a fresh page is a whole-page item ({ pageNumber } only)
+//   granularity 'half'  → a fresh page is split at the verse midpoint (first half)
+// A partial page's remainder is a segment item under BOTH granularities. So after
+// switching a 0.5/day plan to 1 page/day, the half-finished page's REMAINDER is the
+// next task (we chose "remainder only" — it completes the page cleanly without
+// fragmenting the next page into halves under a whole-page plan; see the report).
+// `fullSet`/`partialByPage` are passed in so this runs against the live state or a
+// day-by-day simulated state (getWeekPlan) with identical logic.
+const nextNewItems = (user, fullSet, partialByPage, count, granularity) => {
+  const items = [];
+  if (count <= 0) return items;
+  const simFull = new Set(fullSet);
+  const simPartial = new Map(partialByPage);
+  while (items.length < count) {
+    let picked = null;
+    for (const pageNumber of memorizationWalkOrder(user)) {
+      if (simFull.has(pageNumber)) continue;
+      const meta = PAGE_BY_NUMBER.get(pageNumber);
+      if (!meta || !meta.verseKeys.length) continue;
 
-    const existingSegments = partialByPage.get(pageNumber) || [];
-    if (existingSegments.length === 0) {
-      const mid = Math.ceil(meta.verseKeys.length / 2);
-      return { pageNumber, fromVerseKey: meta.verseKeys[0], toVerseKey: meta.verseKeys[mid - 1], half: 1 };
+      const seg = simPartial.get(pageNumber);
+      if (seg && seg.length) {
+        // Partial page → serve the remainder (completes it), regardless of plan.
+        const remaining = remainderRanges(meta.verseKeys, seg);
+        if (!remaining.length) { simFull.add(pageNumber); simPartial.delete(pageNumber); continue; }
+        const [ri, rj] = remaining[0];
+        picked = { pageNumber, fromVerseKey: meta.verseKeys[ri], toVerseKey: meta.verseKeys[rj], half: 2 };
+        simFull.add(pageNumber); simPartial.delete(pageNumber);
+        break;
+      }
+      if (granularity === 'half') {
+        const mid = Math.ceil(meta.verseKeys.length / 2);
+        picked = { pageNumber, fromVerseKey: meta.verseKeys[0], toVerseKey: meta.verseKeys[mid - 1], half: 1 };
+        simPartial.set(pageNumber, [{ from: meta.verseKeys[0], to: meta.verseKeys[mid - 1] }]);
+        break;
+      }
+      picked = { pageNumber }; // fresh whole page (no segment)
+      simFull.add(pageNumber);
+      break;
     }
-
-    const remaining = remainderRanges(meta.verseKeys, existingSegments);
-    if (!remaining.length) continue; // already full — shouldn't happen, but stay safe
-    const [ri, rj] = remaining[0];
-    return { pageNumber, fromVerseKey: meta.verseKeys[ri], toVerseKey: meta.verseKeys[rj], half: 2 };
+    if (!picked) break;
+    items.push(picked);
   }
-  return null;
+  return items;
 };
+
+// The single next half-page task (getWeekPlan's day-by-day simulation uses this).
+const nextHalfPageTask = (user, fullSet, partialByPage) =>
+  nextNewItems(user, fullSet, partialByPage, 1, 'half')[0] || null;
 
 // Returns QuranMetadata for an array of page numbers, served from the in-memory
 // cache (the table is static and only changes on reseed + restart) instead of
@@ -427,25 +455,19 @@ exports.getTodayTasks = async (req, res) => {
 
     const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
 
-    // --- NEW PAGE / HALF-PAGE TASK ---
-    // A half-page plan replaces the whole-page walk with one segment task a day
-    // (see nextHalfPageTask); a normal plan keeps walking whole unmemorized pages.
-    let newPageNums = [];
-    let halfPageTask = null;
-    let extraNewPageNums = [];
-    if (isHalfPagePlan) {
-      if (remainingNewPages > 0) {
-        const fullPageSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
-        const partialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
-        halfPageTask = nextHalfPageTask(user, fullPageSet, partialByPage);
-      }
-    } else {
-      newPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
-      // Extra unmemorized pages (for "Want more?" section): the walk's next 3 pages
-      // after today's batch — today's batch is a prefix of the same walk, so slice it off.
-      extraNewPageNums = nextUnmemorizedPages(user, memorizedPageNumbers, newPageNums.length + 3)
-        .slice(newPageNums.length);
-    }
+    // --- NEW PAGE ITEMS (segment-aware) ---
+    // One generator drives both plans: a half-page plan splits fresh pages into
+    // halves, a whole-page plan takes them whole — and BOTH always finish a
+    // partially-memorized page's remainder first (so switching 0.5 → 1 page/day
+    // never skips the leftover half). Extras ("Want more?") are the next items
+    // beyond today's due batch — segment-aware too, so a 0.5/day plan offers the
+    // next new half rather than falling back to review-only.
+    const granularity = isHalfPagePlan ? 'half' : 'full';
+    const fullPageSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
+    const partialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
+    const newItems = nextNewItems(user, fullPageSet, partialByPage, remainingNewPages, granularity);
+    const extraItems = nextNewItems(user, fullPageSet, partialByPage, newItems.length + 3, granularity)
+      .slice(newItems.length);
 
     // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
     // The recent bucket is the user's most recently memorized pages during active
@@ -545,12 +567,11 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- METADATA (batched) ---
     const allPageNumsNeeded = [
-      ...newPageNums, ...extraNewPageNums,
+      ...newItems.map(it => it.pageNumber), ...extraItems.map(it => it.pageNumber),
       ...reviewPages.map(p => p.pageNumber),
       ...extraReviewPages.map(p => p.pageNumber),
       ...cappedRecentPages.map(p => p.pageNumber),
       ...(continuationPageNum ? [continuationPageNum] : []),
-      ...(halfPageTask ? [halfPageTask.pageNumber] : []),
     ];
     const metaMap = await getMetadataMap(allPageNumsNeeded);
 
@@ -573,9 +594,11 @@ exports.getTodayTasks = async (req, res) => {
       return dto;
     };
 
-    const newPageDtos = isHalfPagePlan
-      ? (halfPageTask ? [toNewPageDto(halfPageTask.pageNumber, halfPageTask)] : [])
-      : newPageNums.map(pg => toNewPageDto(pg));
+    // A segment item (fromVerseKey present) carries its verse range; a fresh
+    // whole-page item ({ pageNumber } only) becomes a plain whole-page DTO.
+    const itemToDto = (it) => toNewPageDto(it.pageNumber, it.fromVerseKey ? it : null);
+    const newPageDtos = newItems.map(itemToDto);
+    const extraNewPageDtos = extraItems.map(itemToDto);
 
     const toReviewPageDto = (progress) => {
       const meta = metaMap[progress.pageNumber];
@@ -640,7 +663,7 @@ exports.getTodayTasks = async (req, res) => {
         firstCycleComplete,
         newPages: newPageDtos,
         reviewPages: reviewPages.map(toReviewPageDto),
-        extraNewPages: extraNewPageNums.map(toNewPageDto),
+        extraNewPages: extraNewPageDtos,
         extraReviewPages: extraReviewPages.map(toReviewPageDto),
         recentReviewPages: cappedRecentPages.map(toReviewPageDto),
         continuationPage: continuationPageNum ? toNewPageDto(continuationPageNum) : null,
@@ -892,16 +915,18 @@ exports.getWeekPlan = async (req, res) => {
     const dailyNewPages = user.dailyNewPages || 1;
     const reviewIntensity = user.reviewIntensity || 'standard';
 
-    // Build the full list of unmemorized pages in the user's memorization order,
-    // so projected days advance in the same direction today's tasks do. Half-page
-    // plans instead walk day-by-day below via a simulated full/partial state.
-    const unmemorizedPages = (isHafiz || isHalfPagePlan) ? [] : nextUnmemorizedPages(user, memorizedPageNumbers, 604);
-
     // Simulated progress state for half-page plans: starts from the real DB state
     // and "completes" one segment task per active day as the loop advances, so
     // day 2 correctly shows the remainder of whatever page day 1 started.
     const simFullSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
     const simPartialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
+
+    // The whole-page projection now walks the SAME segment-aware generator, so a
+    // partial page's remainder is scheduled first (a plan switched 0.5 → 1 doesn't
+    // skip it in the week view either).
+    const unmemorizedPages = (isHafiz || isHalfPagePlan)
+      ? []
+      : nextNewItems(user, simFullSet, simPartialByPage, 604, 'full').map(it => it.pageNumber);
     const applySimTask = (task) => {
       if (!task) return;
       const meta = PAGE_BY_NUMBER.get(task.pageNumber);
@@ -1126,13 +1151,17 @@ exports.updateMemorized = async (req, res) => {
         updateOne: {
           filter: { userId, pageNumber },
           update: {
-            // This editor works in whole pages only — clear any partial segments
-            // a page might already carry (Library "mark verses" is where partial
-            // coverage is edited verse-exactly).
-            $set: { status: 'memorized', segments: [] },
+            // Whole-page editor: a NEWLY added page becomes a full page (segments
+            // set to [] on insert), but a page that is ALREADY memorized keeps
+            // whatever segments it carries — so a ½-memorized page that stays in
+            // the set is never silently promoted to a full page by an unrelated
+            // save. Verse-exact coverage is edited in the Library "mark verses"
+            // flow; this endpoint only adds/removes whole pages.
+            $set: { status: 'memorized' },
             $setOnInsert: {
               userId,
               pageNumber,
+              segments: [],
               memorizedDate: yesterday,
               lastReviewedDate: yesterday,
               reviewCount: 0,

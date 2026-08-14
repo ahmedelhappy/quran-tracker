@@ -530,6 +530,55 @@ describe('Progress API — spaced repetition', () => {
     assert.ok(!full.segments || full.segments.length === 0);
   });
 
+  test('"Want more?" on a 0.5/day plan offers the next new HALF, not review-only', async () => {
+    const user = await createUser({ dailyNewPages: 0.5, planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const res = await request(app).get('/api/progress/today').set('Authorization', auth);
+    assert.equal(res.status, 200);
+    // Today's task is page 1's first half (1:1–1:4).
+    assert.deepEqual(res.body.data.newPages[0].segment, { fromVerseKey: '1:1', toVerseKey: '1:4', half: 1 });
+    // The first extra-new item is the REMAINING half of page 1 (segment-aware), not the next page.
+    const extras = res.body.data.extraNewPages;
+    assert.ok(extras.length >= 1, 'extraNewPages should not be empty on a half-page plan');
+    assert.equal(extras[0].pageNumber, 1);
+    assert.deepEqual(extras[0].segment, { fromVerseKey: '1:5', toVerseKey: '1:7', half: 2 });
+    // The next extra after that is page 2's first half.
+    assert.equal(extras[1].pageNumber, 2);
+    assert.equal(extras[1].segment.half, 1);
+  });
+
+  test('switching 0.5/day → 1 page/day serves the half-finished page\'s REMAINDER first (no skip)', async () => {
+    const user = await createUser({ dailyNewPages: 0.5, planStartDate: new Date() });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // Do the first half of page 1 on the half-page plan.
+    const day1 = await request(app).get('/api/progress/today').set('Authorization', auth);
+    const t1 = day1.body.data.newPages[0];
+    await request(app).post('/api/progress/complete').set('Authorization', auth)
+      .send({ pageNumber: 1, type: 'new', segment: { fromVerseKey: t1.segment.fromVerseKey, toVerseKey: t1.segment.toVerseKey } });
+
+    // The page is stored as half-memorized (segments), not fully memorized.
+    const p1 = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.deepEqual(p1.toObject().segments.map(s => ({ from: s.from, to: s.to })), [{ from: '1:1', to: '1:4' }]);
+
+    // Switch to a whole-page plan; back-date so today's count resets.
+    await User.updateOne({ _id: user._id }, { $set: { dailyNewPages: 1 } });
+    await UserProgress.updateOne({ userId: user._id, pageNumber: 1 }, { $set: { memorizedDate: daysAgo(1), lastReviewedDate: daysAgo(1) } });
+
+    const day2 = await request(app).get('/api/progress/today').set('Authorization', auth);
+    const t2 = day2.body.data.newPages[0];
+    // The next task is page 1's REMAINDER (1:5–1:7), NOT page 2.
+    assert.equal(t2.pageNumber, 1);
+    assert.deepEqual(t2.segment, { fromVerseKey: '1:5', toVerseKey: '1:7', half: 2 });
+
+    // The all-progress payload exposes the per-page fraction for the map (4/7 of page 1).
+    const all = await request(app).get('/api/progress/all').set('Authorization', auth);
+    assert.deepEqual(all.body.data.partialPages, [{ pageNumber: 1, fraction: 4 / 7 }]);
+    assert.equal(all.body.data.fullPages, 0);
+    assert.ok(all.body.data.memorizedPages.includes(1)); // still listed (has progress)
+  });
+
   test('direction interplay: a fromEnd half-page-plan user gets page 604\'s first half first', async () => {
     const user = await createUser({ dailyNewPages: 0.5, memorizationDirection: 'fromEnd', planStartDate: new Date() });
     const auth = `Bearer ${tokenFor(user._id)}`;
@@ -560,5 +609,44 @@ describe('Progress API — spaced repetition', () => {
     assert.equal(res.body.data.isHafiz, false);
     assert.equal(res.body.data.stats.fullPages, 603);
     assert.ok(Math.abs(res.body.data.stats.totalMemorized - (603 + 4 / 7)) < 1e-9);
+  });
+
+  test('updateMemorized preserves a partial page it keeps, adds new pages full, drops removed ones', async () => {
+    const user = await createUser({ planStartDate: daysAgo(30) });
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    // Page 1 is HALF memorized (verses 1:1–1:4 of 1:1–1:7); page 5 is a full page;
+    // page 9 is a full page we're about to drop from the set.
+    await UserProgress.create({
+      userId: user._id, pageNumber: 1, status: 'memorized',
+      memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10),
+      segments: [{ from: '1:1', to: '1:4' }],
+    });
+    await addMemorizedPage(user._id, 5, { memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10) });
+    await addMemorizedPage(user._id, 9, { memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10) });
+
+    // The whole-page editor sends the full desired set: keep 1 and 5, drop 9, add 10.
+    const res = await request(app).put('/api/progress/memorized')
+      .set('Authorization', auth)
+      .send({ memorizedPages: [1, 5, 10] });
+    assert.equal(res.status, 200);
+
+    // Page 1's partial segment survives — NOT silently promoted to a full page.
+    const p1 = await UserProgress.findOne({ userId: user._id, pageNumber: 1 });
+    assert.deepEqual(p1.toObject().segments.map(s => ({ from: s.from, to: s.to })), [{ from: '1:1', to: '1:4' }]);
+    // Page 5 stays a full page.
+    const p5 = await UserProgress.findOne({ userId: user._id, pageNumber: 5 });
+    assert.ok(!p5.segments || p5.segments.length === 0);
+    // Page 10 is newly added as a full page.
+    const p10 = await UserProgress.findOne({ userId: user._id, pageNumber: 10 });
+    assert.ok(p10 && (!p10.segments || p10.segments.length === 0));
+    // Page 9 was removed.
+    const p9 = await UserProgress.findOne({ userId: user._id, pageNumber: 9 });
+    assert.equal(p9, null);
+
+    // The all-progress fraction still reports page 1 as 4/7, confirming no flatten.
+    const all = await request(app).get('/api/progress/all').set('Authorization', auth);
+    assert.deepEqual(all.body.data.partialPages, [{ pageNumber: 1, fraction: 4 / 7 }]);
+    assert.equal(all.body.data.fullPages, 2);
   });
 });
