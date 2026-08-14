@@ -1,6 +1,19 @@
 import { toArabicDigits } from '../services/quranApi';
 import { SURAH_BY_NUMBER } from '../data/surahPages';
 
+// A task page that spans more than one surah. Such tasks show the PAGE NUMBER
+// ONLY (no surah names, no verse ranges) — the page number already carries the
+// location and multi-surah labels get noisy.
+export const isMultiSurahPage = (page) => (page?.surahs?.length ?? 0) > 1;
+
+// The surah/verse sub-label for a task card: empty for a multi-surah page (so
+// only the page number renders), otherwise the usual name+range (new) or name
+// (review) label. Half-page "first/second half" labels are handled separately.
+export const formatTaskSurahLabel = (page, isArabic, t, isNew) => {
+  if (isMultiSurahPage(page)) return '';
+  return isNew ? formatSurahRangesLabel(page, isArabic, t) : formatSurahNames(page, isArabic);
+};
+
 export const formatSurahNames = (page, isArabic) => {
   const surahs = page?.surahs?.length
     ? page.surahs

@@ -3,15 +3,16 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { progressAPI, authAPI } from '../services/api';
+import { progressAPI, authAPI, annotationsAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { startDashboardTour } from '../components/dashboardTour';
-import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget } from 'react-icons/fi';
-import { formatSurahNames, formatSurahRangesLabel, formatSegmentLabel } from '../utils/surahDisplay';
+import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
+import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSurahPage } from '../utils/surahDisplay';
+import { getDailyVerse } from '../services/dailyVerse';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -64,7 +65,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
   const isAr = i18n.language === 'ar';
-  const surahLabel = isNew ? formatSurahRangesLabel(page, isAr, t) : formatSurahNames(page, isAr);
+  const surahLabel = formatTaskSurahLabel(page, isAr, t, isNew); // '' for multi-surah pages
   const segmentLabel = isNew ? formatSegmentLabel(page.segment, isAr, t) : null;
   return (
     <div
@@ -97,7 +98,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
             )}
             <ListenButton pageNumber={page.pageNumber} tourAnchor={tourAnchor} />
           </div>
-          <p className="text-sm text-[#404944] dark:text-gray-400">{surahLabel}</p>
+          {surahLabel && <p className="text-sm text-[#404944] dark:text-gray-400">{surahLabel}</p>}
           {segmentLabel && (
             <p className="text-xs font-medium text-[#904d00] dark:text-amber-400 mt-0.5">{segmentLabel}</p>
           )}
@@ -169,7 +170,10 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
   const { t, i18n } = useTranslation();
   const { pageNumber } = page;
   const isNew = type === 'new';
+  const isAr = i18n.language === 'ar';
   const accentColor = isNew ? '#004f35' : '#fe932c';
+  const surahLabel = formatTaskSurahLabel(page, isAr, t, isNew); // '' for multi-surah pages
+  const segmentLabel = isNew ? formatSegmentLabel(page.segment, isAr, t) : null;
   return (
     <div
       className={`bg-white dark:bg-gray-800 rounded-xl p-3 border border-[#dce2f3] dark:border-gray-700 border-s-4 flex justify-between items-center gap-3 transition-opacity ${done ? 'opacity-70' : ''}`}
@@ -193,7 +197,8 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
             )}
             <ListenButton pageNumber={pageNumber} compact />
           </div>
-          {formatSurahNames(page, i18n.language === 'ar') && <p className="text-xs text-[#404944] dark:text-gray-400">{formatSurahNames(page, i18n.language === 'ar')}</p>}
+          {surahLabel && <p className="text-xs text-[#404944] dark:text-gray-400">{surahLabel}</p>}
+          {segmentLabel && <p className="text-[11px] font-medium text-[#904d00] dark:text-amber-400">{segmentLabel}</p>}
         </div>
       </div>
       {done ? (
@@ -247,9 +252,12 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
       const segmentLabel = formatSegmentLabel(infos[0].segment, isAr, t);
       if (segmentLabel) return `${pageStr} · ${segmentLabel}`;
     }
+    // Multi-surah pages (and days mixing different surahs) show the page number
+    // only, matching the task cards.
+    const anyMulti = infos.some(isMultiSurahPage);
     const firstSurah = formatSurahNames(infos[0], isAr);
     const sameSurah = infos.every(p => formatSurahNames(p, isAr) === firstSurah);
-    return sameSurah && firstSurah ? `${pageStr} · ${firstSurah}` : pageStr;
+    return !anyMulti && sameSurah && firstSurah ? `${pageStr} · ${firstSurah}` : pageStr;
   };
 
   // Today shows the stable daily total (it does not shrink as pages are ticked
@@ -319,6 +327,9 @@ export default function Dashboard() {
   const [weekLoading, setWeekLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('today');
   const [isOverrideDay, setIsOverrideDay] = useState(false);
+  // The user's "hard" annotations, summarised for the chip that links into the
+  // Library at the first hard verse/page.
+  const [hardInfo, setHardInfo] = useState({ count: 0, firstPage: null });
 
   const quotes = t('dashboard.quotes', { returnObjects: true });
   const tips = t('dashboard.tips', { returnObjects: true });
@@ -326,6 +337,19 @@ export default function Dashboard() {
   const quote = quotes[doy % quotes.length];
   const tip = tips[doy % tips.length];
   const todayDateString = new Date().toISOString().split('T')[0];
+
+  // Today's motivational verse from the Qur'an API, in the current UI language
+  // (Arabic text for AR, English translation for EN — never cross-translated).
+  // Falls back to the curated `quote` above when the API is unreachable.
+  const [dailyVerse, setDailyVerse] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setDailyVerse(null);
+    getDailyVerse(i18n.language)
+      .then((v) => { if (alive) setDailyVerse(v); })
+      .catch(() => { if (alive) setDailyVerse(null); });
+    return () => { alive = false; };
+  }, [i18n.language]);
 
   useEffect(() => {
     (async () => {
@@ -342,6 +366,16 @@ export default function Dashboard() {
         setLoading(false);
       }
     })();
+  }, []);
+
+  // The hard-annotations summary loads independently — it never blocks the tasks.
+  useEffect(() => {
+    annotationsAPI.listByKind('hard').then((res) => {
+      const list = res.data?.data ?? [];
+      setHardInfo(list.length
+        ? { count: list.length, firstPage: Math.min(...list.map((a) => a.pageNumber)) }
+        : { count: 0, firstPage: null });
+    }).catch(() => {});
   }, []);
 
   // First-run onboarding helpers: run the guided tour once, then show the
@@ -670,6 +704,17 @@ export default function Dashboard() {
                 </div>
               );
             })()}
+            {/* Hard-verses shortcut — jumps into the Library at the first hard item */}
+            {hardInfo.count > 0 && (
+              <Link
+                to={`/library?page=${hardInfo.firstPage}`}
+                title={t('dashboard.hardChipHint')}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 w-max text-xs font-semibold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+              >
+                <FiFlag className="w-3.5 h-3.5" />
+                {t('dashboard.hardChip', { count: hardInfo.count })}
+              </Link>
+            )}
           </div>
 
           <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">
@@ -929,7 +974,9 @@ export default function Dashboard() {
                               <InfoHint text={t('hints.continuation')} label={t('dashboard.continuePage')} size="xs" />
                             </p>
                             <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
-                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
+                            {!isMultiSurahPage(data.continuationPage) && formatSurahNames(data.continuationPage, i18n.language === 'ar') && (
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
+                            )}
                             <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
                           </div>
                         </div>
@@ -1055,12 +1102,34 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Daily quote */}
+        {/* Daily motivational verse — the API verse in the current language when
+            available, otherwise the curated offline quote. Arabic verse text uses
+            the Quran script; the English translation is plain italic. */}
         <div className="text-center pb-4">
-          <p className="text-[#404944] dark:text-gray-400 italic text-sm max-w-2xl mx-auto">
-            "{quote.text}"
-          </p>
-          <p className="text-[#707974] dark:text-gray-500 text-xs mt-1">— {quote.source}</p>
+          {dailyVerse ? (
+            dailyVerse.lang === 'ar' ? (
+              <>
+                <p dir="rtl" className="arabic text-[#1A1A1A] dark:text-gray-100 text-lg leading-loose max-w-2xl mx-auto">
+                  {dailyVerse.text}
+                </p>
+                <p className="text-[#707974] dark:text-gray-500 text-xs mt-1">{dailyVerse.source}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-[#404944] dark:text-gray-400 italic text-sm max-w-2xl mx-auto">
+                  "{dailyVerse.text}"
+                </p>
+                <p className="text-[#707974] dark:text-gray-500 text-xs mt-1">— {dailyVerse.source}</p>
+              </>
+            )
+          ) : (
+            <>
+              <p className="text-[#404944] dark:text-gray-400 italic text-sm max-w-2xl mx-auto">
+                "{quote.text}"
+              </p>
+              <p className="text-[#707974] dark:text-gray-500 text-xs mt-1">— {quote.source}</p>
+            </>
+          )}
         </div>
       </main>
 
