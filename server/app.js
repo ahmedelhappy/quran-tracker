@@ -47,6 +47,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/progress', require('./routes/progressRoutes'));
 app.use('/api/bookmarks', require('./routes/bookmarkRoutes'));
 app.use('/api/annotations', require('./routes/annotationRoutes'));
+app.use('/api/leaderboard', require('./routes/leaderboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 
 // 404 catch-all

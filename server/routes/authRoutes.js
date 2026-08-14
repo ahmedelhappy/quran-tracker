@@ -23,6 +23,8 @@ const profileSchema = {
   cycleReviewStartPage: { type: 'number', nullable: true },
   memorizationDirection: 'string',
   newMemorizationStartPage: { type: 'number', nullable: true },
+  leaderboardOptIn: 'boolean',
+  displayName: { type: 'string', nullable: true },
 };
 const passwordSchema = { currentPassword: 'string', newPassword: 'string' };
 

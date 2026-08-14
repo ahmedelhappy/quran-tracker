@@ -11,9 +11,10 @@ import ConfirmModal from '../components/ConfirmModal';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { useDragSelect } from '../hooks/useDragSelect';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -139,6 +140,7 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   // edited from the Library ("mark verses") instead.
   const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
   const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
+  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
     if (!surahSearch.trim()) return true;
@@ -270,8 +272,10 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
                   return (
                     <button
                       key={juz}
-                      onClick={() => toggleJuz(juz)}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
+                      data-tile-id={juz}
+                      onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
+                      onClick={() => ds.handleClick(juz, toggleJuz)}
+                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isRemoved
@@ -311,8 +315,10 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
                   return (
                     <button
                       key={hizb}
-                      onClick={() => toggleHizb(hizb)}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border ${
+                      data-tile-id={hizb}
+                      onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
+                      onClick={() => ds.handleClick(hizb, toggleHizb)}
+                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isRemoved
@@ -350,8 +356,10 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
                   return (
                     <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
                       <button
-                        onClick={() => toggleRub(rub)}
-                        className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border ${
+                        data-tile-id={rub}
+                        onPointerDown={(e) => ds.start(e, rub, toggleRub)}
+                        onClick={() => ds.handleClick(rub, toggleRub)}
+                        className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border touch-pan-y select-none ${
                           isFull
                             ? 'bg-[#003527] text-white border-[#003527]'
                             : isRemoved
@@ -393,8 +401,10 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
                   return (
                     <button
                       key={s.number}
-                      onClick={() => toggleSurah(s.number)}
-                      className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors ${
+                      data-tile-id={s.number}
+                      onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
+                      onClick={() => ds.handleClick(s.number, toggleSurah)}
+                      className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
                           : isRemoved
@@ -581,6 +591,107 @@ function ChangePasswordCard() {
           {pwLoading ? t('settings.password.saving') : <><FiSave className="w-4 h-4" /> {t('settings.password.update')}</>}
         </button>
       </form>
+    </div>
+  );
+}
+
+// ── Community / Leaderboard Card ─────────────────────────
+// Self-contained (its own state + immediate save) so it doesn't touch the
+// profile section's dirty/Save-bar machinery — mirrors ChangePasswordCard and
+// the pause-memorization toggle.
+function CommunityCard() {
+  const { user, updateUser } = useAuth();
+  const { showToast } = useToast();
+  const { t } = useTranslation();
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [optIn, setOptIn] = useState(!!user?.leaderboardOptIn);
+  const [saving, setSaving] = useState(false);
+
+  const persist = async (payload, rollback) => {
+    setSaving(true);
+    try {
+      const res = await authAPI.updateProfile(payload);
+      updateUser(res.data.data);
+      showToast(t('settings.community.saved'), 'success');
+    } catch (error) {
+      showToast(error.response?.data?.message ?? t('settings.community.failed'), 'error');
+      if (rollback) rollback();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleOptIn = async () => {
+    const next = !optIn;
+    if (next && displayName.trim().length < 3) {
+      showToast(t('settings.community.nameRequired'), 'error');
+      return;
+    }
+    setOptIn(next); // optimistic
+    await persist(
+      next ? { leaderboardOptIn: true, displayName: displayName.trim() } : { leaderboardOptIn: false },
+      () => setOptIn(!next)
+    );
+  };
+
+  const saveName = async () => {
+    const trimmed = displayName.trim();
+    if (trimmed.length > 0 && trimmed.length < 3) {
+      showToast(t('settings.community.nameTooShort'), 'error');
+      return;
+    }
+    await persist({ displayName: trimmed || null });
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-6 sacred-shadow">
+      <div className="flex items-center gap-3 mb-2">
+        <FiAward className="w-5 h-5 text-[#003527] dark:text-emerald-400" />
+        <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.community.title')}</h3>
+      </div>
+      <p className="text-sm text-[#404944] dark:text-gray-400 mb-5">{t('settings.community.desc')}</p>
+
+      <div className="mb-5 max-w-sm">
+        <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+          {t('settings.community.displayName')}
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={displayName}
+            onChange={e => setDisplayName(e.target.value)}
+            maxLength={30}
+            placeholder={t('settings.community.displayNamePlaceholder')}
+            className="flex-1 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
+          />
+          <button
+            type="button"
+            onClick={saveName}
+            disabled={saving}
+            className="bg-[#003527] text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-[#064e3b] transition-colors disabled:opacity-60 flex items-center gap-2 shrink-0"
+          >
+            <FiSave className="w-4 h-4" /> {t('settings.community.save')}
+          </button>
+        </div>
+        <p className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 pt-4 border-t border-[#dce2f3] dark:border-gray-700">
+        <div>
+          <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
+          <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={optIn}
+          onClick={toggleOptIn}
+          disabled={saving}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${optIn ? 'bg-[#1B4332]' : 'bg-gray-300 dark:bg-gray-600'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${optIn ? 'ltr:translate-x-6 rtl:-translate-x-6' : 'ltr:translate-x-1 rtl:-translate-x-1'}`} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -983,6 +1094,8 @@ export default function Settings() {
                     </button>
                   </div>
                 </section>
+
+                <CommunityCard />
 
                 <ChangePasswordCard />
 

@@ -71,6 +71,11 @@ export const annotationsAPI = {
   saveDrawing: (data) => API.put('/annotations/drawing', data),
 };
 
+// Opt-in leaderboard (weekly / all-time). period is 'week' | 'all'.
+export const leaderboardAPI = {
+  get: (period) => API.get('/leaderboard', { params: { period } }),
+};
+
 export const chatAPI = {
   sendMessage: (messages) => API.post('/chat', { messages }),
 };

@@ -102,6 +102,16 @@ const userSchema = new mongoose.Schema(
     // rejected by the auth middleware, so a password change ends every prior
     // session. Null for accounts that have never changed their password.
     passwordChangedAt: { type: Date, default: null },
+    // Leaderboard (opt-in). displayName is the ONLY identity shown publicly on the
+    // leaderboard — never the email or real name. Opting in requires a displayName
+    // (enforced in updateProfile); the 3-char minimum is a controller check.
+    leaderboardOptIn: { type: Boolean, default: false },
+    displayName: {
+      type: String,
+      trim: true,
+      maxlength: [30, "Display name cannot exceed 30 characters"],
+      default: null,
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically

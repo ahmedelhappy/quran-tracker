@@ -52,5 +52,8 @@ userProgressSchema.index({ userId: 1, pageNumber: 1 }, { unique: true });
 // Index for efficient queries
 userProgressSchema.index({ userId: 1, status: 1 });
 userProgressSchema.index({ userId: 1, lastReviewedDate: 1 });
+// The leaderboard's weekly board filters memorized rows by memorizedDate across
+// many users at once, so index it independently of userId.
+userProgressSchema.index({ memorizedDate: 1 });
 
 module.exports = mongoose.model('UserProgress', userProgressSchema);

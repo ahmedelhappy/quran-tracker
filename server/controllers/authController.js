@@ -112,6 +112,8 @@ exports.login = async (req, res) => {
         cycleReviewStartPage: user.cycleReviewStartPage ?? null,
         memorizationDirection: user.memorizationDirection || 'fromStart',
         newMemorizationStartPage: user.newMemorizationStartPage ?? null,
+        leaderboardOptIn: user.leaderboardOptIn || false,
+        displayName: user.displayName ?? null,
         language: user.language,
         token
       }
@@ -148,6 +150,8 @@ exports.getMe = async (req, res) => {
         cycleReviewStartPage: user.cycleReviewStartPage ?? null,
         memorizationDirection: user.memorizationDirection || 'fromStart',
         newMemorizationStartPage: user.newMemorizationStartPage ?? null,
+        leaderboardOptIn: user.leaderboardOptIn || false,
+        displayName: user.displayName ?? null,
         lastActiveDate: user.lastActiveDate,
         createdAt: user.createdAt,
         language: user.language,
@@ -292,6 +296,35 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    // Leaderboard identity. An empty/null displayName clears it; otherwise it must
+    // be 3–30 characters. The public leaderboard shows ONLY this name.
+    if (req.body.displayName !== undefined) {
+      const dn = req.body.displayName;
+      if (dn === null || (typeof dn === 'string' && dn.trim() === '')) {
+        updateData.displayName = null;
+      } else {
+        const trimmed = String(dn).trim();
+        if (trimmed.length < 3 || trimmed.length > 30) {
+          return res.status(400).json({ success: false, message: 'Display name must be 3 to 30 characters' });
+        }
+        updateData.displayName = trimmed;
+      }
+    }
+
+    if (req.body.leaderboardOptIn !== undefined) {
+      const optIn = Boolean(req.body.leaderboardOptIn);
+      // Opting in requires a display name — supplied in this request or already saved.
+      if (optIn) {
+        const effectiveName = updateData.displayName !== undefined
+          ? updateData.displayName
+          : (await User.findById(userId).select('displayName'))?.displayName;
+        if (!effectiveName) {
+          return res.status(400).json({ success: false, message: 'A display name is required to join the leaderboard' });
+        }
+      }
+      updateData.leaderboardOptIn = optIn;
+    }
+
     // Picking a NEW custom review-cycle start point resets the review recency so
     // the cycle does a clean sweep from that point forward — covering every page
     // in order — instead of skipping pages that happen to have been reviewed
@@ -325,6 +358,12 @@ exports.updateProfile = async (req, res) => {
       );
     }
 
+    // Changing leaderboard membership/name invalidates the cached board so the
+    // user sees the effect immediately instead of after the 5-minute TTL.
+    if (updateData.leaderboardOptIn !== undefined || updateData.displayName !== undefined) {
+      require('./leaderboardController')._clearCache();
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
@@ -342,6 +381,8 @@ exports.updateProfile = async (req, res) => {
         cycleReviewStartPage: updatedUser.cycleReviewStartPage ?? null,
         memorizationDirection: updatedUser.memorizationDirection || 'fromStart',
         newMemorizationStartPage: updatedUser.newMemorizationStartPage ?? null,
+        leaderboardOptIn: updatedUser.leaderboardOptIn || false,
+        displayName: updatedUser.displayName ?? null,
         onboardingComplete: updatedUser.onboardingComplete,
         currentStreak: updatedUser.currentStreak,
         createdAt: updatedUser.createdAt,

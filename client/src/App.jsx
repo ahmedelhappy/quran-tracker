@@ -18,6 +18,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Progress = lazy(() => import('./pages/Progress'));
 const Library = lazy(() => import('./pages/Library'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const About = lazy(() => import('./pages/About'));
 
 // Full-screen spinner, reused as the Suspense fallback while a route chunk loads
@@ -82,6 +83,7 @@ function App() {
               <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/progress"  element={<ProtectedRoute><Progress /></ProtectedRoute>} />
               <Route path="/library"   element={<ProtectedRoute><Library /></ProtectedRoute>} />
+              <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { FiSettings, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen } from 'react-icons/fi';
+import { FiSettings, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTrendingUp, FiBookOpen, FiAward } from 'react-icons/fi';
 import Logo from './Logo';
 import LanguageToggle from './LanguageToggle';
 import Tooltip from './Tooltip';
@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: FiHome },
   { to: '/progress',  labelKey: 'nav.progress',  icon: FiTrendingUp },
   { to: '/library',   labelKey: 'nav.library',   icon: FiBookOpen },
+  { to: '/leaderboard', labelKey: 'nav.leaderboard', icon: FiAward },
 ];
 
 const Navbar = () => {
