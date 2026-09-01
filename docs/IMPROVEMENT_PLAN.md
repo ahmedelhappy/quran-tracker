@@ -1284,6 +1284,12 @@ that stops covering the mushaf.
 **Root causes already confirmed by the planning session** (do not re-derive):
 1. Panel prev/next set `tafsirIndex` only; `selectedVerseKey` is independent. Sync both ways.
 2. The draw toolbar renders whenever `drawPage != null`; no collapse, no shortcuts.
+   **Refined 2026-09-02 by the user — the pen icon is a THREE-STATE CYCLE:**
+   click 1 = annotating ON + panel shown; click 2 = panel hidden but STILL
+   annotating; click 3 = stop annotating. Then it repeats. Open question flagged to
+   the user: after a click-OUTSIDE collapse (which also hides the panel while
+   annotating), the next pen click lands on "stop annotating" under a strict cycle —
+   confirm that is wanted, or make click-outside leave the icon re-showing the panel.
 3. The panel is reachable only through `openTafsir(index)` from the verse popover.
 4. Grouped tafsir is almost certainly the EDITION’s own structure (a passage commentary
    repeated per ayah), not a fetch bug — verify by diffing adjacent ayahs first.
