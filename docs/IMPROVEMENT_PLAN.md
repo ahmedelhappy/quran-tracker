@@ -8,15 +8,17 @@
 
 ## Chat sessions
 
-Work is split across Claude Code sessions with two roles. To reopen one: `claude --resume`
-(or the session picker in the IDE) and match the titles below — update a title here if the
-picker shows a different auto-generated name.
+Work is split across Claude Code sessions with two roles: one long-lived **planning
+session**, and per-stage **implementation chats named after their stage** (the user's
+convention). Implementation prompts are self-contained, so any stage can run in a brand-new
+chat — the only cross-chat state is uncommitted work in the shared working tree, and each
+prompt's step 0 handles that explicitly.
 
 | Session | Role | Notes |
 |---------|------|-------|
-| **Planning session** — "wanna make some improvements to site…" (started 2026-07-02) | Audits, architecture decisions, writes every stage prompt, maintains this file + CODE_GUIDE.md | Long-lived; does not implement. Paste implementation reports back into it |
-| **Implementation session #1** (2026-07-03) | Executed Stages 0 → 1.8a (mushaf rendering, reader UX rounds, bookmarks, streak fix, mode merge, scrubber) | Retired after Stage 1.8a — context window full. Commits `153dd3b` … `3d0457d` (+ roadmap doc `b52e3f8`) |
-| **Implementation session #2** (started 2026-07-03) | Stage 1.8b (margin ornaments) onward | Active |
+| **Planning session #1** — "wanna make some improvements to site…" (2026-07-02 → 2026-07-13) | Audit, roadmap, architecture decisions, all stage prompts through review-fixes round 2 | Retired 2026-07-13 (context full). Handed off via a handoff prompt + this doc + the shared memory directory |
+| **Planning session #2** (from 2026-07-13) | Same role: plans, writes prompts, reviews reports, maintains this doc + CODE_GUIDE.md; never implements | Active |
+| Implementation chats (named by stage) | One or more stages each | History: Stages 0–1.8a in one chat (commits `153dd3b`…`3d0457d`); 1.8b–2b in a second (`641d086`…`3cc1775`); Stage 3 → 5 in a third; Stage 6 onward in per-stage chats. Every implementation chat must hold commits until user acceptance and NEVER push while a review is pending |
 
 Workflow: the planning session writes a prompt → paste it into the active implementation
 session → paste its final report back into the planning session → it updates this doc and
@@ -25,6 +27,14 @@ writes the next prompt. Commits happen only after visual acceptance.
 ---
 
 ## Progress log
+
+> ⏳ **AWAITING USER TESTING (as of 2026-07-28):** Stage 7 (interactive Progress page)
+> and Stage 8 (opt-in leaderboard) were implemented directly by the planning session at
+> the user's request ("just start implementing, I'll review later"). Both are
+> code/lint/build/server-test verified but **NOT yet browser-verified**. The user will
+> test them live and report feedback. Everything remains UNCOMMITTED atop the in-flight
+> Stage 6 tree — nothing pushed. Also still pending the user's earlier review: the whole
+> Stage 3→6 stack (see the Review checkpoint rows below).
 
 | Date | Stage | Commit | Notes |
 |------|-------|--------|-------|
@@ -40,7 +50,27 @@ writes the next prompt. Commits happen only after visual acceptance.
 | 2026-07-03 | Stage 1.7d — streak integrity + sidebar cleanup | (uncommitted) | Implemented, awaiting acceptance: prevStreak/prevActiveDate snapshot + reconcileStreakAfterUndo (34/34 tests; Dashboard undo now wires currentStreak from the response — it was NOT refetching); all sidebar mark buttons removed, footer tick is the only mark control. Two-commit split proposed |
 | 2026-07-03 | Stage 1.8a — unified reader | `76ec4fd`, `3d0457d` | **Pushed.** Mode merge + badge cleanup + tour merge + CODE_GUIDE §6 rewrite (76ec4fd); page scrubber (3d0457d). 34/34 server tests, lint/build clean. (The "missing" method checklist was a stale-HMR ghost.) Roadmap doc committed separately as `b52e3f8`. **Reader arc complete — implementation session #1 retired** |
 | 2026-07-03 | Stage 1.8b — mushaf margin ornaments | (uncommitted) | Implemented by session #2: juz/hizb/quarter + sajda marks from verse-level API fields, 15-slot positioning, boundary continuity verified for rubs 2–24. Fixes round 1 (parity side in single view; marks outside the frame via MushafMarks.jsx sibling layer + 9% gutter) and round 2 (~17% bigger ornaments, hizb-numbered quarter/half labels e.g. نصف الحزب ١١) done and **accepted** — pushed as `641d086` |
-| 2026-07-03 | **Stage 2 — real Quran structure data** | `52d247e` (branch) | Implemented on branch `exact-quran-page-metadata`: fetchQuranStructure.js generator → committed quranStructure.json (604 pages, 51 multi-surah), QuranMetadata extended (hizbNumber, first/lastVerseKey, verseKeys, rubBoundaries, surah numbers), seed rewritten, DTOs + Dashboard verse spans ("starts at 2:187"), 42/42 tests. Page 50 and page 106 verified correct end-to-end. **Merged to main + pushed (fast-forward 641d086 → 52d247e); 42/42 on main.** ⚠ Dashboard still showed "Page 50 — Al-Baqarah · Aal-Imran" after the local reseed → the backend serving that dashboard reads a database the seed did NOT touch (production URI is a Render dashboard secret, not in the repo). **Pending: user checks Render's MONGODB_URI vs cluster0.0bmkrkk/quran-tracker; if different, run `node seed/quranData.js` once with the prod URI.** Also: CLAUDE.md + .claude/ un-gitignored and docs/ committed (2026-07-06) — only .claude/settings.local.json and secrets stay ignored |
+| 2026-07-03 | **Stage 2 — real Quran structure data** | `52d247e` (branch) | Implemented on branch `exact-quran-page-metadata`: fetchQuranStructure.js generator → committed quranStructure.json (604 pages, 51 multi-surah), QuranMetadata extended (hizbNumber, first/lastVerseKey, verseKeys, rubBoundaries, surah numbers), seed rewritten, DTOs + Dashboard verse spans ("starts at 2:187"), 42/42 tests. Page 50 and page 106 verified correct end-to-end. **Merged to main + pushed (fast-forward 641d086 → 52d247e); 42/42 on main.** ⚠ Resolved 2026-07-06: the Atlas DB had never actually been reseeded (the implementation session's "end-to-end verification" ran against its in-memory test Mongo, not the real DB — page 50 still had 2 surahs and no firstVerseKey). Ran `node seed/quranData.js` against cluster0.0bmkrkk/quran-tracker and verified directly: p50 = Aal-Imran (3:1–3:9), p49 ends 2:286, p106 = An-Nisa·Al-Ma'idah. If the deployed site still shows the bug after this, Render uses a different DB and needs its own reseed. Lesson: DB-affecting stages must prove themselves with a direct read of the real database, not test infra. Also: CLAUDE.md + .claude/ un-gitignored and docs/ committed 2026-07-06 as `4337723`. **User confirmed working on production AND local — Stage 2 closed** |
+| 2026-07-06 | Stage 2b — verse-label display rules | `ea9d9f9`, `3cc1775` | **Pushed.** Verse-number-only ranges on partial surahs (bidi-isolated digits, singular "verse 176" form), complete surahs bare, review/recent/continuation cards names-only, ayahs counts derived from quranStructure.json (ea9d9f9); month-label collision fix (3cc1775). Verified in-browser EN/AR incl. page 106 |
+| 2026-07-07 | **Stage 3 — memorization direction** | (uncommitted) | Implemented: memorizationDirection fromStart/fromEnd + newMemorizationStartPage anchor with wrap-around; single nextUnmemorizedPages helper replaced all 3 inline loops; direction-aware continuation tie-break; onboarding "Where do you want to start?" step + Settings control; EN/AR locales. Session #3 verified: 45/45 server tests (3 new direction tests), lint/build clean of new issues; working tree confirmed scoped to exactly the 8 task files. Design fix done (user caught it): fromEnd is now surah-backward / pages-forward via FROM_END_ORDER precomputed from quranStructure.json — Al-Mulk emits 562 then 563; 46/46 tests. **Workflow adjustment 2026-07-08: user will review later — Stage 3 commits LOCALLY (no push); Stage 4 proceeds on top; nothing pushes until the user's deferred review of both** |
+| 2026-07-08 | Stage 4 — production hardening | (uncommitted) | Implemented by session #3: auth+API rate limiters (test no-ops, trust proxy), hand-rolled type-gate validation on all auth/progress/bookmark routes (NoSQL-operator surface closed, tested), serverError() helper across all 18 500-sites, boot asserts + await-Mongo, passwordChangedAt token invalidation, QuranMetadata in-memory cache, React.lazy route splitting (recharts isolated), ErrorBoundary, font cache headers. 48/48 tests. Explicitly deferred: password-reset emails, Sentry, refresh tokens. **Stage 3 committed locally (c12666b, 23727f7 — NOT pushed); Stage 4 held uncommitted; user review of 2b/3/4 still pending** |
+| 2026-07-08 | Stage 4 — committed locally | `602ff9f` `39bad64` `bea9944` `022dded` | Rate limits + validation; error responses + boot asserts + metadata cache; token hygiene; client splitting/boundary/font headers. NOT pushed |
+| 2026-07-08 | Stage 5 — verse segments | (uncommitted) | Implemented: UserProgress.segments, server/utils/segments.js unit-compile engine (reads quranStructure.json), PUT /api/progress/units, fractional stats + **isHafiz bug fix** (was "604 touched", now "604 fully memorized"), real half-page plan (continuationPage now paused-users-only), week-tab half-page simulation, Onboarding/Settings Hizb+¼-Hizb tabs (rounded to whole pages), Library mark-verses flow + amber ½-memorized tick, dashboard half labels. 64/64 tests (16 new), live-verified against real Atlas DB. Known limitation (documented): undoing a half-page day-2 completion may discard day-1's segment when both land on the same calendar day. **Uncommitted — step 0 of Stage 6 commits it; user review of 2b/3/4/5 still pending** |
+| 2026-07-08 | Stage 6 — annotations | — | Prompt prepared (chat version supersedes the doc's original: step-0 local commit of Stage 5, hard-flag beside the footer tick instead of the removed sidebar badge, unified sidebar wording, Stage 4 validation on the new routes, metadata-cache enrichment). ⚠ After Stage 6: user review REQUIRED before queueing more — 4 unreviewed layers by then |
+| 2026-07-09 | Stage 5 — committed locally | `f20a0fa` `22d2b2b` | Backend (segments engine/endpoint/stats/half-page, interleaved hunks → one server commit) + client. NOT pushed |
+| 2026-07-09 | Stage 6 — annotations | (uncommitted) | Implemented: Annotation model/routes/controller (per-kind validation, verseKey validated against real structure, 2000 cap), popover swatches/note/hard, page-hard flag beside the 3-state tick, hard list + dashboard chip, layout-neutral word-tint rendering. 88/88 tests (+24). Accepted limitations: whole-verse highlights only in UI (wordFrom/wordTo supported underneath), straddling verses annotate on their selection page only, small medallion indicators |
+| 2026-07-08 | **Review checkpoint** | — | Consolidated 13-point checklist delivered (planning chat) covering 2b/3/4/5/6. On acceptance: push ALL local commits (Stage 3 → 6b); no prod reseed needed (data files unchanged). Stage 7 (interactive Progress + projected-completion card, segments-aware rewrite) gets its prompt only after acceptance |
+| 2026-07-09 | Stage 6b — free ink + annotation navigation | (uncommitted) | Implemented (MushafDrawLayer SVG overlay in the fixed 524×800 space, PUT /annotations/drawing w/ strict stroke validator, annotate-mode input isolation, /annotations/summary + navigator sidebar + arrival pulse; 98/98 tests). **Crash found on user's first load: `<FiEdit2 />` used at Library.jsx:1317 but never imported → mount ReferenceError → error boundary. Fixed directly by the planning session (import added). Root cause of the blind spot: no eslint-plugin-react → core no-undef ignores JSX identifiers; follow-up dispatched to add react/jsx-no-undef. Also: the 6b "browser checklist" was evidently not executed against a running app — mount itself crashed** |
+| 2026-07-09 | Lint-gap + browser-verify round | (uncommitted) | eslint-plugin-react added with react/jsx-no-undef only (proven: fails on the removed import, 0 new noise). Full 6b click-through on an ISOLATED stack (in-memory Mongo :5099 + Vite :5174, CDP real pointer input, screenshots; Atlas untouched) — 20/20 checks: draw/erase/undo/persist/pixel-perfect scaling/navigator/pulse. Found + fixed a real setState-during-render bug in MushafDrawLayer (stroke commit moved out of the setLive updater into the event handler). This isolated-stack CDP approach is the new verification bar. Minor carry-item: word-tap isolation in draw mode confirmed only indirectly — fold an explicit assertion into 6c's verification |
+| 2026-07-09 | Stage 6c — draw UX + audio merge | (uncommitted) | Implemented + browser-verified on the isolated stack (25/25 feature + 6/6 regression checks, 0 console errors): undo/redo stacks + keys, Shift straight-line w/ angle snap, eye visibility toggle, draggable/collapsible toolbar, 'text' annotation kind (Arabic verified; eraser-safe), margin-extended overlay (x ∈ [-52,576]) + widened validators, audio-bar→popover merge with near-selection placement. 104/104 server tests. Cosmetic gap: navigator list lacks a text-kind icon. **REVIEW CHECKPOINT ACTIVE: 19-point consolidated checklist delivered; on acceptance commit 6/6b/6c and push Stage 3 → 6c; no reseed needed** |
+| 2026-07-13 | Review fixes round 1 (6d) — done | (uncommitted) | Root cause confirmed: memorizedSet treated any-progress pages as done → replaced with segment-aware nextNewItems (partial pages serve their remainder FIRST; want-more offers the next half). Plan-switch day = "remainder only" (documented choice). Partial pages render amber-fractional on the detailed map; drag-select via useDragSelect; audio round (bar visible + popover, speed, verse/range repeat, seamless cross-page playback w/ preload, tafsir play-toggle); tints lightened, pause clears playing tint + resume from position. 106/106 tests, 13/13 isolated-browser checks. Scoped: buildProgressSummary (chatbot) still whole-page |
+| 2026-07-13 | Review fixes round 2 — UPDATED prompt | — | Supersedes the earlier round-2 prompt; now ALSO includes: the page-top surah-start bug (plate + basmala belong on the previous page's trailing blanks — An-Nisa p76/77; general fix + all-114 sweep), dashboard rule change (multi-surah task pages show PAGE NUMBER ONLY — no names/ranges; half labels stay), selected-verse indicator becomes non-fill (outline/ring, not a tint), plus the original three (anchored pencil dropdown, icon-only text notes, language-aware motivational verse) |
+| 2026-07-10 | Stage 6e — tafsir expansion | — | Planned with ready prompt (below): add أيسر التفاسير + other worthwhile editions + إعراب الآيات, with mandatory verify-200-first discovery against spa5k CDN / quran.com resources / alquran.cloud; honest rejection if no reliable i'rab source exists |
+| 2026-07-10 | Review fixes round 1 (Stage 6d) | — | User's review findings dispatched: half-page "want more" ignores new memorization; half-memorized pages render fully green on the detailed map AND the walker skips the remaining half after a 0.5→1 plan switch (partial pages must count as pending); drag-to-multi-select pulled forward from Stage 9; audio-bar hiding REVERTED (bar + popover coexist); new audio features (speed, verse/range repeat, continuous cross-page playback); tafsir play button must toggle pause; selected/playing tints lightened; pause clears the playing tint but resume continues from position |
+| 2026-07-28 | **Stage 7 — interactive Progress page** | (uncommitted) | Implemented by the PLANNING session directly (user asked to "just start implementing, I'll review later"). In-place edit mode on `Progress.jsx`: an "Edit progress" toggle in the Memorization Map header opens a draft; detailed map toggles single pages, compact map toggles a whole Juz, surah cards toggle their page span; draft `Set` + Save/Cancel + "{{count}} changed" hint bar + pending-change rings + `aria-pressed`; Save calls `updateMemorized` then reloads. **Segments-aware fix** (the doc's original Stage-7 prompt predated segments): `updateMemorized` now sets `segments: []` only in `$setOnInsert`, so a ½-memorized page that stays in the set is NEVER silently flattened to a full page on save — also fixes the Settings "edit my pages" editor; +1 server test (**107/107**). New **Projected completion** card from `GET /api/progress/estimate` (time-to-finish + projected Gregorian date via `ar-u-ca-gregory-nu-arab`, reuses `formatEstimate`/`onboarding.time*`). Settings "Edit my pages" kept as a secondary link. EN/AR locales added. Verified: 107/107 server tests (in-memory Mongo, Atlas untouched), client build clean, lint clean of NEW issues (the 3 react-refresh context errors + the `chartData` hooks-dep warning are pre-existing, in files not touched here). ⚠ **NOT browser-verified on the isolated CDP stack yet** — user will review. Files: `progressController.js` (updateMemorized), `progress.test.js` (+1), `Progress.jsx`, `en/ar.json`. Held UNCOMMITTED atop the in-flight Stage 6 tree (no collision — Stage 7 lives in Progress.jsx / progressController, not the in-flight Library.jsx); nothing committed or pushed. |
+| 2026-07-28 | **Stage 8 — leaderboard (opt-in)** | (uncommitted) | Implemented by the PLANNING session directly. Backend: `User` gains `leaderboardOptIn` + `displayName` (3–30 chars — the ONLY public identity, never email/real name); `updateProfile` validates both and requires a name to opt in; all three auth payloads (login/getMe/updateProfile) return them; `UserProgress` gains a `{ memorizedDate: 1 }` index. New `GET /api/leaderboard?period=week|all` (protected, type-gated): opted-in users only, **segment-aware fractional page counts**, week = last 7 UTC days, sorted by pages desc (streak tie-break), returns top 50 + the caller's own rank when outside it, behind a 5-minute in-memory per-period cache (single-instance; Redis noted for scale). New `leaderboardController` (+`_clearCache` test hook) and `leaderboardRoutes` mounted in `app.js`. **+9 tests** (opt-in filtering, ranking, week vs all-time, fractional counting, own-rank-outside-top-50 via 51 users, opt-in-requires-name, short-name reject) → **116/116**. Frontend: lazy `/leaderboard` route + Navbar link (FiAward); new `Leaderboard.jsx` (This Week / All Time tabs, medals for the top 3, own-row highlight, a "your rank" card when outside the visible top, a join/opt-in card, loading/error/empty states); a Settings **Community** card (`CommunityCard`, self-contained opt-in toggle + display-name save, mirrors `ChangePasswordCard`); EN/AR locales (`nav.leaderboard`, `leaderboard.*`, `settings.community.*`). Verified: **116/116** server tests (in-memory Mongo, Atlas untouched), client lint clean on all changed files, build clean (Leaderboard chunk ~6.4 KB, lazy). ⚠ **NOT browser-verified yet** — awaiting user testing. No collision with the in-flight Library.jsx (all new files + Settings/Navbar/App/api). Held UNCOMMITTED; nothing pushed. Files: `User.js`, `UserProgress.js`, `authController.js`, `authRoutes.js`, `app.js`, `leaderboardController.js` (new), `leaderboardRoutes.js` (new), `leaderboard.test.js` (new), `api.js`, `App.jsx`, `Navbar.jsx`, `Leaderboard.jsx` (new), `Settings.jsx`, `en/ar.json`. |
+| 2026-07-28 | **Stage 8b — user fix round** | — | Four user-reported items dispatched as a fresh-session prompt (below), bundled with Stage 6e. Root causes confirmed in code by the planning session: (1) **leaderboard staleness** — the 5-min board cache is invalidated ONLY on leaderboard-settings changes, never on progress writes, so pages/rank lag up to 5 minutes (my Stage 8 bug); (2) **range repeat is page-bound** — `rangeStart`/`rangeEnd` are indices into `verses`, which only ever holds the visible page(s), so a range can't span pages; needs global verse addressing + cross-page fetch; (3) **inter-verse gap** — one `<audio>` whose `src` is reassigned per verse (Library.jsx ~558-568) pays a fetch+decode per verse; the existing preload covers page data + font only, not audio → needs double-buffered audio elements; (4) **landing page** — `lastMushafPage` is only a fallback behind "first unmemorized page"; user wants last-opened to win, which **reverses the Stage 1.7c decision** (explicit `?page` still wins). ⚠ Item 2's "end verse: the end of the current verse" read as a typo → default chosen: **end of the current page** (flagged in the prompt for user confirmation). |
+| 2026-08-04 | **Stage 8c — tafsir UX + annotation ergonomics** | — | Five user-reported items dispatched as a fresh-session prompt (below). Grounded in code by the planning session: (1) the panel prev/next buttons move `tafsirIndex` only and never touch `selectedVerseKey`, and selecting a verse while the panel is open never moves `tafsirIndex` → needs TWO-WAY sync; (2) the draw toolbar renders whenever `drawPage != null` (a dropdown anchored under the pencil) so it cannot be collapsed while drawing, and there are no tool shortcuts; (3) the panel opens ONLY via `openTafsir(index)` from the verse popover → add a persistent VS-Code-style toggle on the panel side, keeping the popover path; (4) **grouped tafsir** — classical editions (esp. أيسر التفاسير) comment on a PASSAGE, and the spa5k CDN returns that same block for every ayah in the run, so this is very likely SOURCE DATA, not a fetch bug (note `fetchPageTafsir` already selects per-ayah for page-source editions); the prompt requires verifying by diffing adjacent ayahs before any rewiring, and evaluating hefzmoyaser.net/hafs **with CORS as the gating question**; (5) the panel is `fixed … z-50 md:end-0 md:w-[420px]` so it OVERLAYS the mushaf → make it reflow side-by-side (the uniform-scale frame invariant means a narrower column just scales the page down) and auto-collapse the sidebar, reusing the existing `focused`-mode precedent. Deliberately NOT bundled with another stage: all five interlock in Library.jsx, and 8.5/9 touch different files. |
 
 ---
 
@@ -143,11 +173,13 @@ This is Stage 2 (data + task labels) + Stage 5 (segments feature) below.
 New-page selection currently always walks pages 1→604. Add a plan setting:
 
 - **From the beginning** — Al-Baqarah onward (today's behaviour, default).
-- **From the end** — highest unmemorized page first (604 → 582 → …), i.e. the classic path:
-  the short surahs of Juz ʿAmma first, then Juz 29, and so on backward.
-- **Custom start point** — "start from Juz 29 / Surah Al-Kahf / page N": begin there (in the
-  chosen direction) and wrap around at the end so the skipped part is scheduled last. This
-  mirrors the `cycleReviewStartPage` concept the review cycle already has.
+- **From the end** — the classic beginner path: **surah-by-surah backward, pages within each
+  surah forward** (An-Nas → Al-Falaq → … ; Al-Mulk gets page 562 then 563). Precomputed once
+  from quranStructure.json; NOT a raw 604→1 page walk, which would memorize multi-page
+  surahs backwards (design fix, 2026-07-07).
+- **Custom start point** — "start from Juz 29 / Surah Al-Kahf / page N": begin there and wrap
+  around at the end so the skipped part is scheduled last (fromStart-only). This mirrors the
+  `cycleReviewStartPage` concept the review cycle already has.
 
 This is Stage 3 — small, independent of segments, high value.
 
@@ -172,12 +204,18 @@ Recommended order. Stages 1–4 are “fix + go-live”; stages 5–9 are featur
 | 1.8 | Library UX redesign: mobile pass, minimal sidebar polish, context menu | M — prompt after user's UX simulation |
 | 1.9 | Public Library: browse without an account | S |
 | 2 | Real Quran structure data + verse labels on tasks (fixes B1 everywhere; foundation for units) | M |
+| 2b | Verse-label display rules (verse numbers only, complete-surah handling) + graph label fix | S |
 | 3 | Memorization direction: from start / from end / custom start point | S |
 | 4 | Production hardening (security + performance + monitoring) | M |
 | 5 | Verse-level segments: sub-page units + proper half-page plan | L |
 | 6 | Annotations: highlights, notes, mark-hard | L |
+| 6b | Free ink annotations (pen / highlighter / eraser) + prev-next annotation navigation | M |
+| 6c | Draw UX round: undo/redo keys, shift-line, visibility toggle, draggable toolbar, floating text notes, annotatable margins, audio-bar/popover merge | M |
+| 6e | Tafsir expansion: أيسر التفاسير + more editions + إعراب الآيات (verify sources first) | S |
 | 7 | Interactive Progress page (edit progress in place) | M |
 | 8 | Leaderboard (opt-in) | M |
+| 8b | Fix round: leaderboard freshness, cross-page audio range, gapless playback, library landing page | M |
+| 8c | Tafsir UX round: panel sync/toggle/side-by-side layout, grouped-tafsir labelling, annotation toolbar collapse + shortcuts | M |
 | 8.5 | Product-aware chatbot: feature help, how-tos, deep links | S–M |
 | 9 | UX polish pass | M |
 
@@ -886,10 +924,12 @@ Backend:
    both fields in the login / getMe / updateProfile response payloads like the existing plan
    fields.
 2. Create ONE helper, nextUnmemorizedPages(user, memorizedSet, count): fromStart walks 1→604;
-   fromEnd walks 604→1; when newMemorizationStartPage is set, start there (respecting the
-   direction) and wrap around so the skipped pages are scheduled last. Replace all three inline
-   loops with it, including the continuation-page pick for 0.5-page days (the "most recently
-   memorized page" logic stays, only ordering-sensitive code changes).
+   fromEnd follows a precomputed surah-backward/pages-forward order derived from
+   quranStructure.json (see the design fix note in Part 2 — NOT a raw 604→1 walk); when
+   newMemorizationStartPage is set (fromStart-only), start there and wrap around so the
+   skipped pages are scheduled last. Replace all three inline loops with it, including the
+   continuation-page pick for 0.5-page days (the "most recently memorized page" logic stays,
+   only ordering-sensitive code changes).
 3. getWeekPlan must project future days with the same ordering. getEstimate only depends on
    counts — verify and leave alone.
 4. Tests (follow server/tests/progress.test.js patterns): a fresh fromEnd user is assigned page
@@ -1084,6 +1124,40 @@ page and in the two-page spread (annotations must land on the correct half).
 
 ---
 
+### Stage 6e — Tafsir expansion: more editions + إعراب الآيات
+
+**Goal:** richer tafsir picker — أيسر التفاسير (Abu Bakr al-Jazairi) and other worthwhile
+editions, plus verse-by-verse grammatical analysis (إعراب) — with sources verified before
+anything is wired.
+
+**Prompt for Claude Code:**
+
+```
+Expand the Library's tafsir editions and add i'rab (إعراب الآيات). Client-only unless a
+proxy is genuinely required.
+
+1. DISCOVER before wiring — the project convention (see the verified-200 comments in
+   client/src/services/quranApi.js): enumerate what actually exists on the current
+   sources — the spa5k tafsir CDN edition list, api.quran.com/api/v4/resources/tafsirs,
+   and alquran.cloud's edition list — looking for:
+   - أيسر التفاسير (Aysar al-Tafasir, Abu Bakr al-Jazairi) — the user's priority;
+   - other well-known Arabic tafsirs worth adding (e.g. الطبري، البغوي، القرطبي) — pick
+     2–3 solid ones, not everything;
+   - إعراب الآيات — verse-by-verse grammatical analysis (search for i'rab datasets/APIs,
+     e.g. Quran i'rab JSON repos, with per-ayah addressing).
+   VERIFY each candidate returns 200 with sane content for several sample ayahs (short
+   surah, long ayah 2:282, first/last pages). If no reliable i'rab source exists, REPORT
+   that honestly instead of wiring a broken one.
+2. Add the verified editions to TAFSIR_EDITIONS with proper Arabic + English display
+   names, following the existing source patterns (page-based vs ayah-based) and caching.
+   إعراب appears as its own entry in the same edition picker.
+3. Error handling + caching per the existing per-edition patterns; locales en + ar; RTL.
+4. Verify in-browser: switch between all editions on several ayahs including a very long
+   one; report exactly which sources were added and which were rejected and why.
+```
+
+---
+
 ### Stage 7 — Interactive Progress page
 
 **Goal:** change progress directly from the Progress page: toggle pages in the detailed map,
@@ -1113,7 +1187,11 @@ Required UX (explicit edit mode — no accidental changes):
    toast; Cancel restores. Disable Save while in flight. Keyboard/AT: squares become buttons
    with aria-pressed in edit mode.
 4. Keep the existing "Edit my pages" settings link as a secondary option.
-5. Both locales for the new strings (client/src/locales/en.json, ar.json). Respect dark mode
+5. New "Projected completion" card: the estimated time to finish the whole Quran, using the
+   existing GET /api/progress/estimate endpoint — estimated days/months/years plus the
+   projected calendar date (today + estimatedDays; the endpoint already accounts for off
+   days). Localized date formatting for EN/AR; place it near the Overall Completion card.
+6. Both locales for the new strings (client/src/locales/en.json, ar.json). Respect dark mode
    and RTL (the maps are inside dir-sensitive layout).
 
 Caveat to handle: updateMemorized back-dates newly added pages to yesterday and deletes removed
@@ -1163,6 +1241,50 @@ Frontend (client/):
 
 Run cd server && npm test and cd client && npm run lint && npm run build.
 ```
+
+---
+
+### Stage 8b — User fix round (leaderboard freshness, audio, landing page) + Stage 6e
+
+**Goal:** four user-reported fixes after hands-on use of Stages 7/8, bundled with the
+independent, already-planned Stage 6e (tafsir expansion) since both work in the same
+Library/audio area and would otherwise edit the same files twice.
+
+**Root causes already confirmed by the planning session** (don't re-derive):
+1. `leaderboardController.js` caches the board 5 minutes and is invalidated ONLY by
+   leaderboard-settings changes — never by progress writes.
+2. `rangeStart`/`rangeEnd` are indices into `verses`, which holds only the visible
+   page(s) — so a repeat range can never span pages.
+3. One `<audio>` element gets a new `src` per verse → a fetch+decode gap every verse.
+   The existing preload covers page data + font only, not audio.
+4. The library landing default is "first unmemorized page"; `lastMushafPage` is only a
+   fallback. Item 4 **reverses that Stage 1.7c decision**.
+
+The ready-to-paste prompt lives in the chat handoff; its content is reproduced in the
+planning session's message of 2026-07-28. Key decisions baked in: the repeat-range
+picker becomes globally addressed by verse key (not page-local index); default range =
+selected verse (else page start) → end of the current page; gapless playback via a
+double-buffered pair of `<audio>` elements; `?page` still always wins over the
+last-opened page.
+
+---
+
+### Stage 8c — Tafsir UX + annotation ergonomics
+
+**Goal:** five user-reported items after hands-on use of the reader: two-way tafsir/verse
+sync, a collapsible annotation toolbar with tool shortcuts, a persistent tafsir toggle,
+honest handling of grouped (multi-verse) tafsir text, and a side-by-side panel layout
+that stops covering the mushaf.
+
+**Root causes already confirmed by the planning session** (do not re-derive):
+1. Panel prev/next set `tafsirIndex` only; `selectedVerseKey` is independent. Sync both ways.
+2. The draw toolbar renders whenever `drawPage != null`; no collapse, no shortcuts.
+3. The panel is reachable only through `openTafsir(index)` from the verse popover.
+4. Grouped tafsir is almost certainly the EDITION’s own structure (a passage commentary
+   repeated per ayah), not a fetch bug — verify by diffing adjacent ayahs first.
+5. The panel is `fixed … z-50` and overlays the reader; the mushaf column never shrinks.
+
+The ready-to-paste prompt lives in the chat handoff (planning session, 2026-08-04).
 
 ---
 
@@ -1241,6 +1363,11 @@ item small and consistent with existing patterns:
    overflow when translated (check the Settings and Onboarding tabs particularly).
 7. Verify NFR-01: npm run build, then npm run preview, and check Lighthouse performance on
    / (landing), /dashboard and /library. Report the scores before/after in your summary.
+8. Drag to multi-select in the Onboarding and Settings memorized-pages editors: pressing and
+   dragging across Juz / Surah / page tiles toggles the whole swept range (same semantics as
+   clicking each tile once), with pointer events so it works for mouse AND touch, and no
+   interference with normal scrolling (only trigger once horizontal/tile-to-tile intent is
+   clear). Visual feedback while sweeping (tiles highlight as the drag passes them).
 
 Run npm run lint and npm run build when done and list every file touched grouped by item.
 ```
