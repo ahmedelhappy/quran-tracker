@@ -33,6 +33,9 @@ import {
 } from '../services/quranApi';
 import { fetchMushafPage, ensurePageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { SURAH_PAGES } from '../data/surahPages';
+import {
+  TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
+} from '../utils/verseIndex';
 import { useDraggable } from '../hooks/useDraggable';
 
 const JUZ_START_PAGES = [
@@ -68,6 +71,49 @@ const DRAW_COLORS = [
 // tafsir-panel preview. Taken verse-level from the API — word-level text is no
 // longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
 const verseText = (verse) => verse.textUthmani ?? '';
+
+// One end of the repeat range. Any verse of the Quran is reachable, so this is a
+// surah picker plus that surah's ayah picker — two short lists — rather than one
+// flat list of all 6236 verses. Value in / out is the global ayah number.
+function VerseRangePicker({ label, surahName, ayahName, ord, onChange, surahLabelFor, fmtNum, selectCls }) {
+  const v = verseOfOrd(ord) ?? { surahNumber: 1, ayahNumber: 1 };
+  const count = ayahCount(v.surahNumber);
+  return (
+    <label className="flex flex-col gap-1 min-w-0">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-[#707974] dark:text-gray-500">{label}</span>
+      {/* A grid, not a flex row: the shared select class already carries w-full,
+          which would beat any width utility added here. Each select simply fills
+          its own column — wide for the surah, narrow for the ayah — and the
+          columns flip with the writing direction on their own. */}
+      <div className="grid grid-cols-[1fr_4.5rem] items-center gap-1.5 min-w-0">
+        <select
+          value={v.surahNumber}
+          aria-label={surahName}
+          // Keep the ayah in range when the surah shrinks under it.
+          onChange={(e) => {
+            const s = Number(e.target.value);
+            onChange(ordOf(s, Math.min(v.ayahNumber, ayahCount(s))));
+          }}
+          className={`${selectCls} min-w-0 px-2`}
+        >
+          {SURAH_PAGES.map((s) => (
+            <option key={s.number} value={s.number}>{`${fmtNum(s.number)}. ${surahLabelFor(s.number)}`}</option>
+          ))}
+        </select>
+        <select
+          value={v.ayahNumber}
+          aria-label={ayahName}
+          onChange={(e) => onChange(ordOf(v.surahNumber, Number(e.target.value)))}
+          className={`${selectCls} min-w-0 px-2`}
+        >
+          {Array.from({ length: count }, (_, i) => i + 1).map((a) => (
+            <option key={a} value={a}>{fmtNum(a)}</option>
+          ))}
+        </select>
+      </div>
+    </label>
+  );
+}
 
 // A page's reading order for the self-test watermark: every real glyph in
 // `pd.lines` (top line to bottom, right→left within a line — i.e. `pd.lines`
@@ -281,11 +327,23 @@ export default function Library() {
     const saved = localStorage.getItem('reciter');
     return RECITERS.some(r => r.id === saved) ? saved : DEFAULT_RECITER;
   });
-  const [playingIndex, setPlayingIndex] = useState(null); // index into the combined `verses`
+  // The verse being recited, as a GLOBAL ayah number (1–6236) rather than an index
+  // into `verses`: playback has to be able to name verses that aren't on screen —
+  // a repeat range ending two pages later, or plain continuous recitation running
+  // past the page break. The reader follows the recitation to its page (below).
+  const [playingOrd, setPlayingOrd] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioBuffering, setAudioBuffering] = useState(false);
   const [audioError, setAudioError] = useState(false);
-  const audioRef = useRef(null);
+  // Two <audio> elements, ping-ponged: while one plays, the other preloads the verse
+  // that comes next, so the handoff costs no fetch and no decode — that is what
+  // removes the audible gap between verses. bufOrd records the verse each holds.
+  const audioARef = useRef(null);
+  const audioBRef = useRef(null);
+  const activeBufRef = useRef(0);
+  const bufOrdRef = useRef([null, null]);
+  const bufEl = (i) => (i === 0 ? audioARef.current : audioBRef.current);
+  const activeEl = () => bufEl(activeBufRef.current);
 
   // ── Playback speed (persisted) ──────────────────────────
   const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
@@ -296,18 +354,20 @@ export default function Library() {
 
   // ── Repetition for memorization ─────────────────────────
   // 'off' → continuous whole-Quran auto-advance. 'verse' → repeat the current
-  // verse N times then advance. 'range' → loop [rangeStart..rangeEnd] M times.
+  // verse N times then advance. 'range' → loop [rangeStartOrd..rangeEndOrd] M times.
   const [repeatMode, setRepeatMode] = useState('off');
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [verseRepeat, setVerseRepeat] = useState(3);      // 2 | 3 | 5 | Infinity
-  const [rangeStart, setRangeStart] = useState(0);        // index into `verses`
-  const [rangeEnd, setRangeEnd] = useState(0);
+  // The range is addressed by GLOBAL ayah number, so it can start on the verse in
+  // front of the reader and end pages later; playback turns the pages itself.
+  const [rangeStartOrd, setRangeStartOrd] = useState(1);
+  const [rangeEndOrd, setRangeEndOrd] = useState(1);
   const [rangeRepeat, setRangeRepeat] = useState(3);
   const repeatsDoneRef = useRef(0);   // times the current verse has finished (verse mode)
   const rangePassesRef = useRef(0);   // completed passes over the range (range mode)
-  // A page turn driven by continuous playback: 'first' | 'last' | null. Resumed by
-  // the effect below once the new page's verses have loaded.
-  const pendingPlayRef = useRef(null);
+  // Set just before a page turn that PLAYBACK asked for, so the turn doesn't stop
+  // the recitation the way a manual turn does.
+  const followTurnRef = useRef(false);
 
   // ── Verse selection + tafsir state (verses addressed by stable verseKey) ──
   const [selectedVerseKey, setSelectedVerseKey] = useState(null);
@@ -486,20 +546,29 @@ export default function Library() {
     return () => { cancelled = true; };
   }, [visiblePages, pageResolved]);
 
+  // Stop playback and release BOTH buffers — removing the src and reloading aborts
+  // any download still in flight, so nothing keeps fetching once playback is over.
   const stopAudio = useCallback(() => {
-    const el = audioRef.current;
-    if (el) { el.pause(); el.removeAttribute('src'); }
-    setPlayingIndex(null);
+    [0, 1].forEach((i) => {
+      const el = bufEl(i);
+      if (!el) return;
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+      bufOrdRef.current[i] = null;
+    });
+    activeBufRef.current = 0;
+    setPlayingOrd(null);
     setIsPlaying(false);
     setAudioBuffering(false);
-  }, []);
+  }, []); // bufEl only reads refs, so this stays stable across renders
 
-  // Page / view change: clear selection + close tafsir (verse indices shift when
-  // the on-screen verse set changes). Audio normally stops too — but NOT when the
-  // turn was driven by continuous playback (pendingPlayRef), which resumes on the
-  // new page.
+  // Page / view change: clear selection + close tafsir (the on-screen verse set
+  // changed). Audio stops too — but NOT when the recitation itself asked for the
+  // turn, which is how a range keeps playing straight across a page break.
   useEffect(() => {
-    if (!pendingPlayRef.current) stopAudio();
+    if (followTurnRef.current) followTurnRef.current = false;
+    else stopAudio();
     setSelectedVerseKey(null);
     setTafsirOpen(false);
     setTafsirIndex(null);
@@ -568,158 +637,198 @@ export default function Library() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVerseKey]);
 
-  // Drive the single <audio> element: load + play current ayah (at the chosen speed).
+  // A reciter change invalidates both buffers — same verses, different files. Runs
+  // before the playback effect below (declaration order), so that one reloads.
   useEffect(() => {
-    const el = audioRef.current;
-    if (!el || playingIndex == null || !verses[playingIndex]) return;
-    setAudioError(false);
-    el.src = getAyahAudioUrl(reciter, verses[playingIndex].id);
-    el.playbackRate = playbackRate;
-    if (isPlaying) {
-      el.play().catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playingIndex, reciter, verses]);
-
-  // Apply a speed change to the live element immediately and persist it.
-  useEffect(() => {
-    const el = audioRef.current;
-    if (el) el.playbackRate = playbackRate;
-    localStorage.setItem('playbackRate', String(playbackRate));
-  }, [playbackRate]);
-
-  useEffect(() => {
+    bufOrdRef.current = [null, null];
+    const idle = bufEl(1 - activeBufRef.current);
+    if (idle) { idle.removeAttribute('src'); idle.load(); }
     localStorage.setItem('reciter', reciter);
   }, [reciter]);
 
+  // Drive the active <audio> element: point it at the current verse and play.
+  useEffect(() => {
+    if (playingOrd == null) return;
+    const cur = activeBufRef.current;
+    const other = 1 - cur;
+    // The idle buffer preloaded this verse while the previous one played — swap to
+    // it rather than fetching again. This swap is the gapless handoff.
+    if (bufOrdRef.current[other] === playingOrd && bufOrdRef.current[cur] !== playingOrd) {
+      bufEl(cur)?.pause();
+      activeBufRef.current = other;
+    }
+    const idx = activeBufRef.current;
+    const el = bufEl(idx);
+    if (!el) return;
+    setAudioError(false);
+    if (bufOrdRef.current[idx] !== playingOrd) {
+      el.src = getAyahAudioUrl(reciter, playingOrd);
+      bufOrdRef.current[idx] = playingOrd;
+    } else if (el.currentTime > 0) {
+      try { el.currentTime = 0; } catch { /* not seekable yet — it starts at 0 anyway */ }
+    }
+    el.playbackRate = playbackRate;
+    if (isPlaying) el.play().catch(() => {});
+    // Speed and pause/resume are applied by their own handlers; re-running here on
+    // either would restart the verse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playingOrd, reciter]);
+
+  // Apply a speed change to BOTH elements immediately (the idle one is already
+  // primed with the next verse and must start at the same speed) and persist it.
+  useEffect(() => {
+    [0, 1].forEach((i) => { const el = bufEl(i); if (el) el.playbackRate = playbackRate; });
+    localStorage.setItem('playbackRate', String(playbackRate));
+  }, [playbackRate]);
+
   // Reset repeat counters when the mode / range changes.
   useEffect(() => { repeatsDoneRef.current = 0; rangePassesRef.current = 0; }, [repeatMode]);
-  useEffect(() => { rangePassesRef.current = 0; }, [rangeStart, rangeEnd, rangeRepeat]);
-  // Default the range pickers to the visible page's verse span (until in range mode).
+  useEffect(() => { rangePassesRef.current = 0; }, [rangeStartOrd, rangeEndOrd, rangeRepeat]);
+
+  // Until the reader actually turns range repeat on, keep the range pickers
+  // defaulted to what's in front of them: start at the selected verse if there is
+  // one, otherwise the first verse of the page; end at the last verse of the page
+  // the start verse sits on. Once range mode is on, the values belong to the user.
   useEffect(() => {
     if (repeatMode === 'range') return;
-    setRangeStart(0);
-    setRangeEnd(Math.max(0, verses.length - 1));
-  }, [verses.length, repeatMode]);
+    const startOrd = ordOfKey(selectedVerseKey) ?? ordOfKey(verses[0]?.verseKey);
+    if (!startOrd) return;
+    const startPage = pageOfOrd(startOrd);
+    const onStartPage = verses.filter((v) => v.page === startPage);
+    const endOrd = onStartPage.length ? ordOfKey(onStartPage[onStartPage.length - 1].verseKey) : startOrd;
+    setRangeStartOrd(startOrd);
+    setRangeEndOrd(Math.max(startOrd, endOrd ?? startOrd));
+  }, [verses, repeatMode, selectedVerseKey]);
 
   const pageStep = twoPage ? 2 : 1;
   const maxPage = twoPage ? 603 : 604;
 
-  const playAyah = (index) => {
-    if (index < 0 || index >= verses.length) return;
+  // Which verse follows the one playing — the same question the preloader and the
+  // ended-handler both ask. In verse-repeat mode the repeats replay the SAME
+  // element, so the verse worth preloading is still the one after it.
+  const nextOrdAfter = useCallback((ord) => {
+    if (ord == null) return null;
+    if (repeatMode === 'range') return ord < rangeEndOrd ? ord + 1 : rangeStartOrd;
+    return ord < TOTAL_AYAHS ? ord + 1 : null;
+  }, [repeatMode, rangeStartOrd, rangeEndOrd]);
+
+  const playOrd = (ord) => {
+    if (!(ord >= 1 && ord <= TOTAL_AYAHS)) return;
     setAudioError(false);
-    if (index === playingIndex) {
-      const el = audioRef.current;
+    if (ord === playingOrd) {
+      const el = activeEl();
       if (el && !isPlaying) { el.play().catch(() => {}); setIsPlaying(true); }
       return;
     }
     repeatsDoneRef.current = 0;
-    setPlayingIndex(index);
+    setPlayingOrd(ord);
     setIsPlaying(true);
   };
 
   // Replay the current verse from its start without reloading (verse-repeat).
   const replayCurrent = () => {
-    const el = audioRef.current;
+    const el = activeEl();
     if (!el) return;
     el.currentTime = 0;
     el.play().catch(() => {});
     setIsPlaying(true);
   };
 
-  // Move one verse in `dir`, crossing to the adjacent page at the boundary so
-  // playback (and the bar's prev/next) flow continuously across the whole Quran.
-  const advance = (dir) => {
-    const nextIdx = (playingIndex ?? 0) + dir;
-    if (nextIdx >= 0 && nextIdx < verses.length) {
-      repeatsDoneRef.current = 0;
-      setPlayingIndex(nextIdx);
-      setIsPlaying(true);
+  // Move one verse in `dir` through the whole Quran. Page boundaries don't enter
+  // into it any more: the verse is addressed globally and the view follows it.
+  const advanceOrd = (dir) => {
+    const next = (playingOrd ?? 1) + dir;
+    repeatsDoneRef.current = 0;
+    if (next < 1 || next > TOTAL_AYAHS) { stopAudio(); return; }
+    setPlayingOrd(next);
+    setIsPlaying(true);
+  };
+
+  // Bar prev/next: start playback if idle, else step.
+  const stepVerse = (dir) => {
+    if (playingOrd == null) {
+      const fallback = dir > 0 ? verses[0] : verses[verses.length - 1];
+      const ord = ordOfKey(fallback?.verseKey);
+      if (ord) playOrd(ord);
       return;
     }
-    repeatsDoneRef.current = 0;
-    if (dir > 0) {
-      if (currentPage + pageStep <= 604) { pendingPlayRef.current = 'first'; goToPage(currentPage + pageStep); }
-      else stopAudio();
-    } else {
-      if (currentPage > 1) { pendingPlayRef.current = 'last'; goToPage(currentPage - pageStep); }
-      else stopAudio();
-    }
-  };
-  // Bar prev/next: start playback if idle, else step (crossing pages at the ends).
-  const stepVerse = (dir) => {
-    if (playingIndex == null) { playAyah(dir > 0 ? 0 : verses.length - 1); return; }
-    advance(dir);
+    advanceOrd(dir);
   };
 
   const togglePlayPause = () => {
-    const el = audioRef.current;
+    if (playingOrd == null) {
+      playOrd(repeatMode === 'range' ? rangeStartOrd : ordOfKey(verses[0]?.verseKey));
+      return;
+    }
+    const el = activeEl();
     if (!el) return;
-    if (playingIndex == null) { playAyah(repeatMode === 'range' ? rangeStart : 0); return; }
     if (isPlaying) { el.pause(); setIsPlaying(false); }
     else { el.play().catch(() => {}); setIsPlaying(true); }
   };
 
   // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
-  const toggleSelectedVerse = (index) => {
-    const el = audioRef.current;
-    if (index === playingIndex && isPlaying && el) { el.pause(); setIsPlaying(false); }
-    else playAyah(index);
+  const toggleVerseAudio = (ord) => {
+    if (ord == null) return;
+    if (ord === playingOrd && isPlaying) { activeEl()?.pause(); setIsPlaying(false); }
+    else playOrd(ord);
   };
 
-  const handleEnded = () => {
-    if (playingIndex == null) return;
+  const handleEnded = (e) => {
+    // Only the element actually playing drives the sequence; the idle buffer is
+    // preloading and must never advance anything.
+    if (e && e.currentTarget !== activeEl()) return;
+    if (playingOrd == null) return;
     if (repeatMode === 'verse') {
       repeatsDoneRef.current += 1;
       if (verseRepeat === Infinity || repeatsDoneRef.current < verseRepeat) { replayCurrent(); return; }
       repeatsDoneRef.current = 0;
-      advance(1);
+      advanceOrd(1);
       return;
     }
     if (repeatMode === 'range') {
-      if (playingIndex < rangeEnd) { setPlayingIndex(playingIndex + 1); setIsPlaying(true); return; }
+      if (playingOrd < rangeEndOrd) { setPlayingOrd(playingOrd + 1); setIsPlaying(true); return; }
       rangePassesRef.current += 1; // finished one pass over the range
       if (rangeRepeat === Infinity || rangePassesRef.current < rangeRepeat) {
-        if (rangeStart === playingIndex) replayCurrent();   // single-verse range
-        else { setPlayingIndex(rangeStart); setIsPlaying(true); }
+        if (rangeStartOrd === playingOrd) replayCurrent();   // single-verse range
+        else { setPlayingOrd(rangeStartOrd); setIsPlaying(true); }
         return;
       }
       rangePassesRef.current = 0;
       stopAudio();
       return;
     }
-    advance(1); // 'off' → continuous auto-advance across pages
+    advanceOrd(1); // 'off' → continuous auto-advance through the whole Quran
   };
 
-  // Resume playback on the freshly-turned page once its verses have loaded.
+  // Preload the verse that comes next into the idle buffer, so that by the time the
+  // current one ends its successor is already fetched and decoded. Nothing is
+  // preloaded while playback is stopped or paused.
   useEffect(() => {
-    if (!pendingPlayRef.current || verses.length === 0) return;
-    const where = pendingPlayRef.current;
-    pendingPlayRef.current = null;
-    setAudioError(false);
-    repeatsDoneRef.current = 0;
-    setPlayingIndex(where === 'first' ? 0 : verses.length - 1);
-    setIsPlaying(true);
-  }, [verses]);
-
-  // Preload the next page's data + font while the last verse plays, so the
-  // continuous turn at the boundary doesn't stutter.
-  useEffect(() => {
-    if (playingIndex == null || repeatMode === 'range') return;
-    if (playingIndex >= verses.length - 1 && currentPage + pageStep <= 604) {
-      fetchMushafPage(currentPage + pageStep).catch(() => {});
-      ensurePageFont(currentPage + pageStep).catch(() => {});
-    }
+    if (playingOrd == null || !isPlaying) return;
+    const next = nextOrdAfter(playingOrd);
+    if (next == null || next === playingOrd) return;
+    const idle = 1 - activeBufRef.current;
+    if (bufOrdRef.current[idle] === next) return;
+    const el = bufEl(idle);
+    if (!el) return;
+    el.pause();
+    el.src = getAyahAudioUrl(reciter, next);
+    el.playbackRate = playbackRate;
+    el.load();
+    bufOrdRef.current[idle] = next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playingIndex]);
+  }, [playingOrd, isPlaying, nextOrdAfter, reciter]);
 
+  // Returns whether it actually navigated — the playback follower needs to know,
+  // so it doesn't leave its "this turn was mine" flag set on a no-op.
   const goToPage = useCallback((n) => {
     let page = clampPage(n);
     // In the spread, anchor navigation to the right (odd) page of the pair.
     if (twoPage && page % 2 === 0) page = Math.max(1, page - 1);
-    if (page === currentPage) return;
+    if (page === currentPage) return false;
     turnDirRef.current = page > currentPage ? 'fwd' : 'back'; // for the turn animation
     setSearchParams({ page: String(page) }, { replace: true });
+    return true;
   }, [twoPage, currentPage, setSearchParams]);
 
   // Directional turns for a right-to-left book: "next" always moves forward
@@ -727,6 +836,29 @@ export default function Library() {
   // keyboard, edge-clicks and swipe all route through these two.
   const goNext = useCallback(() => goToPage(currentPage + pageStep), [goToPage, currentPage, pageStep]);
   const goPrev = useCallback(() => goToPage(currentPage - pageStep), [goToPage, currentPage, pageStep]);
+
+  // Keep the mushaf on the verse being recited. When playback reaches a verse that
+  // isn't on screen — a repeat range spanning pages, or continuous recitation
+  // running past the page break — turn to its page. The <audio> element is
+  // untouched by the turn, so the recitation itself never pauses for it.
+  useEffect(() => {
+    if (playingOrd == null) return;
+    const page = pageOfOrd(playingOrd);
+    if (!page || visiblePages.includes(page)) return;
+    followTurnRef.current = true;
+    if (!goToPage(page)) followTurnRef.current = false;
+  }, [playingOrd, visiblePages, goToPage]);
+
+  // Warm the next verse's page (data + font) while the current one is still
+  // playing, so the follow-along turn lands on a page that's ready to draw.
+  useEffect(() => {
+    if (playingOrd == null || !isPlaying) return;
+    const next = nextOrdAfter(playingOrd);
+    const page = next == null ? null : pageOfOrd(next);
+    if (!page || visiblePages.includes(page)) return;
+    fetchMushafPage(page).catch(() => {});
+    ensurePageFont(page).catch(() => {});
+  }, [playingOrd, isPlaying, nextOrdAfter, visiblePages]);
 
   // ── Keyboard page-turning + shortcuts ────────────────────
   // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both
@@ -1417,10 +1549,17 @@ export default function Library() {
     [verses, selectedVerseKey]
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
+  const selectedOrd = ordOfKey(selectedVerseKey);
+  // Where the verse being recited sits among the on-screen verses (-1 while the
+  // view is still catching up to it), for the audio bar's "verse N of M".
+  const playingIndex = useMemo(
+    () => (playingOrd == null ? -1 : verses.findIndex((v) => ordOfKey(v.verseKey) === playingOrd)),
+    [verses, playingOrd]
+  );
   // Only tint the verse while it's actually playing — pausing clears the tint
   // (resuming restores it; the audio element keeps its position, so play() picks
   // up from the same offset).
-  const playingVerseKey = (isPlaying && playingIndex != null) ? verses[playingIndex]?.verseKey ?? null : null;
+  const playingVerseKey = (isPlaying && playingOrd != null) ? keyOfOrd(playingOrd) : null;
 
   // Popover prev/next: move the selection to the adjacent verse (the popover
   // follows), and keep audio going if it was playing. Programmatic, so it does
@@ -1429,7 +1568,7 @@ export default function Library() {
     const nidx = selectedAudioIndex + dir;
     if (nidx < 0 || nidx >= verses.length) return;
     setSelectedVerseKey(verses[nidx].verseKey);
-    if (isPlaying || playingIndex != null) playAyah(nidx);
+    if (isPlaying || playingOrd != null) playOrd(ordOfKey(verses[nidx].verseKey));
   };
 
   // Place the popover near the clicked word: below the pointer when it's in the
@@ -1460,6 +1599,12 @@ export default function Library() {
   const selectedIsHard = selectedVerse
     ? selectedVerseAnns.some(a => a.kind === 'hard' && a.verseKey === selectedVerse.verseKey)
     : false;
+  // "Al-Baqarah 255" for any verse in the Quran, on screen or not — the repeat-range
+  // pickers and the audio bar both name verses the current page doesn't hold.
+  const ordLabel = (ord) => {
+    const v = verseOfOrd(ord);
+    return v ? `${surahLabelFor(v.surahNumber)} ${t('library.verseLabel', { n: fmtNum(v.ayahNumber) })}` : '';
+  };
   // Localized surah label(s) for a page (from SURAH_PAGES) — used by the hard list.
   const surahsForPage = (page) =>
     [...new Set(SURAH_PAGES.filter(s => s.start <= page && page <= s.end).map(s => s.number))]
@@ -2327,11 +2472,11 @@ export default function Library() {
                     </button>
                   </Tooltip>
                   {(() => {
-                    const isThisPlaying = selectedAudioIndex === playingIndex && isPlaying;
+                    const isThisPlaying = selectedOrd != null && selectedOrd === playingOrd && isPlaying;
                     return (
                       <Tooltip label={isThisPlaying ? t('tooltips.pause') : t('tooltips.playFromHere')}>
                         <button
-                          onClick={() => toggleSelectedVerse(selectedAudioIndex)}
+                          onClick={() => toggleVerseAudio(selectedOrd)}
                           className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
                         >
                           {isThisPlaying
@@ -2431,7 +2576,7 @@ export default function Library() {
                 <Tooltip label={t('tooltips.prevVerse')}>
                   <button
                     onClick={() => stepVerse(-1)}
-                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex === 0 && currentPage <= 1)}
+                    disabled={pageLoading || pageError || verses.length === 0 || playingOrd === 1}
                     className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiSkipBack className="w-4 h-4 rtl:rotate-180" />
@@ -2455,7 +2600,7 @@ export default function Library() {
                 <Tooltip label={t('tooltips.nextVerse')}>
                   <button
                     onClick={() => stepVerse(1)}
-                    disabled={pageLoading || pageError || verses.length === 0 || (playingIndex != null && playingIndex >= verses.length - 1 && currentPage >= maxPage)}
+                    disabled={pageLoading || pageError || verses.length === 0 || playingOrd === TOTAL_AYAHS}
                     className="w-9 h-9 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                   >
                     <FiSkipForward className="w-4 h-4 rtl:rotate-180" />
@@ -2468,9 +2613,11 @@ export default function Library() {
                   <FiHeadphones className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400 shrink-0" />
                   {audioError
                     ? <span className="text-[#ba1a1a] dark:text-red-400">{t('library.audioError')}</span>
-                    : playingIndex != null
-                      ? t('library.verseOf', { current: fmtNum(playingIndex + 1), total: fmtNum(verses.length) })
-                      : t('library.listen')}
+                    : playingOrd == null
+                      ? t('library.listen')
+                      : playingIndex >= 0
+                        ? t('library.verseOf', { current: fmtNum(playingIndex + 1), total: fmtNum(verses.length) })
+                        : ordLabel(playingOrd)}
                 </p>
               </div>
 
@@ -2508,7 +2655,7 @@ export default function Library() {
                 {repeatOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setRepeatOpen(false)} />
-                    <div className="absolute bottom-full mb-2 end-0 z-40 w-64 bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3" dir={isArabic ? 'rtl' : 'ltr'}>
+                    <div className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
                       <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
                         {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
                           <button
@@ -2544,20 +2691,42 @@ export default function Library() {
 
                       {repeatMode === 'range' && (
                         <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
-                            <label className="flex-1 flex flex-col gap-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#707974] dark:text-gray-500">{t('library.audio.rangeFrom')}</span>
-                              <select value={rangeStart} onChange={e => setRangeStart(Math.min(Number(e.target.value), rangeEnd))} className={selectCls}>
-                                {verses.map((v, i) => <option key={v.verseKey} value={i}>{v.verseKey}</option>)}
-                              </select>
-                            </label>
-                            <label className="flex-1 flex flex-col gap-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#707974] dark:text-gray-500">{t('library.audio.rangeTo')}</span>
-                              <select value={rangeEnd} onChange={e => setRangeEnd(Math.max(Number(e.target.value), rangeStart))} className={selectCls}>
-                                {verses.map((v, i) => <option key={v.verseKey} value={i}>{v.verseKey}</option>)}
-                              </select>
-                            </label>
-                          </div>
+                          {/* The range is addressed globally: any verse of the Quran can be
+                              picked, and playback turns the pages to follow it. */}
+                          <VerseRangePicker
+                            label={t('library.audio.rangeFrom')}
+                            surahName={`${t('library.audio.rangeFrom')} — ${t('library.surahLabel')}`}
+                            ayahName={`${t('library.audio.rangeFrom')} — ${t('library.verseLabel', { n: '' }).trim()}`}
+                            ord={rangeStartOrd}
+                            onChange={(ord) => { setRangeStartOrd(ord); if (ord > rangeEndOrd) setRangeEndOrd(ord); }}
+                            surahLabelFor={surahLabelFor}
+                            fmtNum={fmtNum}
+                            selectCls={selectCls}
+                          />
+                          <VerseRangePicker
+                            label={t('library.audio.rangeTo')}
+                            surahName={`${t('library.audio.rangeTo')} — ${t('library.surahLabel')}`}
+                            ayahName={`${t('library.audio.rangeTo')} — ${t('library.verseLabel', { n: '' }).trim()}`}
+                            ord={rangeEndOrd}
+                            onChange={(ord) => { setRangeEndOrd(ord); if (ord < rangeStartOrd) setRangeStartOrd(ord); }}
+                            surahLabelFor={surahLabelFor}
+                            fmtNum={fmtNum}
+                            selectCls={selectCls}
+                          />
+                          {/* Says out loud how far the range reaches — a range that
+                              spans pages is the whole point, so show the page span. */}
+                          <p className="text-[11px] text-[#707974] dark:text-gray-400">
+                            {t(
+                              pageOfOrd(rangeStartOrd) === pageOfOrd(rangeEndOrd)
+                                ? 'library.audio.rangeSpanOnePage'
+                                : 'library.audio.rangeSpan',
+                              {
+                                verses: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                                from: fmtNum(pageOfOrd(rangeStartOrd)),
+                                to: fmtNum(pageOfOrd(rangeEndOrd)),
+                              }
+                            )}
+                          </p>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs text-[#707974] dark:text-gray-400">{t('library.audio.repeatTimes')}</span>
                             {REP_COUNTS.map(n => (
@@ -2575,7 +2744,7 @@ export default function Library() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => { setRepeatOpen(false); playAyah(rangeStart); }}
+                            onClick={() => { setRepeatOpen(false); rangePassesRef.current = 0; playOrd(rangeStartOrd); }}
                             className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg py-1.5 transition-colors"
                           >
                             {t('library.audio.playRange')}
@@ -2601,16 +2770,25 @@ export default function Library() {
               </Tooltip>
             </div>
 
-            <audio
-              ref={audioRef}
-              onEnded={handleEnded}
-              onWaiting={() => setAudioBuffering(true)}
-              onPlaying={() => setAudioBuffering(false)}
-              onCanPlay={() => setAudioBuffering(false)}
-              onError={() => {
-                if (playingIndex != null) { setAudioError(true); setIsPlaying(false); }
-              }}
-            />
+            {/* The ping-pong pair: one plays while the other preloads the next verse.
+                Every handler ignores events from whichever element isn't the active
+                one, so a buffering preload never touches the playback state. */}
+            {[audioARef, audioBRef].map((ref, i) => (
+              <audio
+                key={i}
+                ref={ref}
+                preload="auto"
+                onEnded={handleEnded}
+                onWaiting={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(true); }}
+                onPlaying={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(false); }}
+                onCanPlay={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(false); }}
+                onError={(e) => {
+                  if (e.currentTarget !== activeEl() || playingOrd == null) return;
+                  setAudioError(true);
+                  setIsPlaying(false);
+                }}
+              />
+            ))}
           </div>
         </div>
       </main>
@@ -2680,10 +2858,11 @@ export default function Library() {
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirVerse)}</p>
                 {(() => {
-                  const tafsirPlaying = tafsirIndex === playingIndex && isPlaying;
+                  const tafsirOrd = ordOfKey(tafsirVerse.verseKey);
+                  const tafsirPlaying = tafsirOrd != null && tafsirOrd === playingOrd && isPlaying;
                   return (
                     <button
-                      onClick={() => toggleSelectedVerse(tafsirIndex)}
+                      onClick={() => toggleVerseAudio(tafsirOrd)}
                       title={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
                       aria-label={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
