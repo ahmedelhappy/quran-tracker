@@ -1348,6 +1348,10 @@ export default function Library() {
   // ── Tafsir loading ───────────────────────────────────────
   const tafsirVerse = tafsirIndex != null ? verses[tafsirIndex] : null;
 
+  // The chosen edition — one of them is grammatical analysis (إعراب) rather than
+  // commentary, which only changes what the panel calls itself.
+  const tafsirEd = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
+
   useEffect(() => {
     if (!tafsirOpen || !tafsirVerse) return;
     let cancelled = false;
@@ -2611,7 +2615,9 @@ export default function Library() {
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
                 <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
-                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">{t('library.tafsirTitle')}</h3>
+                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                  {t(tafsirEd.kind === 'irab' ? 'library.irabTitle' : 'library.tafsirTitle')}
+                </h3>
                 <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
               </div>
               <div className="flex items-center gap-1 shrink-0">

@@ -20,11 +20,25 @@ export const getAyahAudioUrl = (reciterId, globalAyahNumber) =>
 // Tafsir editions verified to return 200:
 //  - page editions come from api.alquran.cloud (one request per page)
 //  - ayah editions come from the spa5k tafsir CDN (one request per ayah)
+//
+// The editions below were each checked against 48 ayahs spread over the whole
+// mushaf (first and last pages, the short surahs, and the very long 2:282): all
+// returned 200 with real content, as plain text with newlines — no markup to
+// strip. أيسر التفاسير and the إعراب edition exist ONLY on the spa5k CDN;
+// alquran.cloud and api.quran.com carry neither.
+//
+// `kind: 'irab'` marks the one entry that is grammatical analysis rather than
+// commentary — it shares the picker but titles its panel differently.
 export const TAFSIR_EDITIONS = [
-  { id: 'muyassar',  source: 'page', edition: 'ar.muyassar',          nameAr: 'التفسير الميسّر',   nameEn: 'Tafsir Al-Muyassar' },
-  { id: 'ibnkathir', source: 'ayah', slug: 'ar-tafsir-ibn-kathir',    nameAr: 'تفسير ابن كثير',    nameEn: 'Tafsir Ibn Kathir' },
-  { id: 'saadi',     source: 'ayah', slug: 'ar-tafseer-al-saddi',     nameAr: 'تفسير السعدي',      nameEn: "Tafsir As-Sa'di" },
-  { id: 'jalalayn',  source: 'page', edition: 'ar.jalalayn',          nameAr: 'تفسير الجلالين',    nameEn: 'Tafsir Al-Jalalayn' },
+  { id: 'muyassar',  source: 'page', edition: 'ar.muyassar',            nameAr: 'التفسير الميسّر',   nameEn: 'Tafsir Al-Muyassar' },
+  { id: 'aysar',     source: 'ayah', slug: 'abu-bakr-jabir-al-jazairi', nameAr: 'أيسر التفاسير',     nameEn: 'Aysar at-Tafasir (al-Jazairi)' },
+  { id: 'ibnkathir', source: 'ayah', slug: 'ar-tafsir-ibn-kathir',      nameAr: 'تفسير ابن كثير',    nameEn: 'Tafsir Ibn Kathir' },
+  { id: 'saadi',     source: 'ayah', slug: 'ar-tafseer-al-saddi',       nameAr: 'تفسير السعدي',      nameEn: "Tafsir As-Sa'di" },
+  { id: 'jalalayn',  source: 'page', edition: 'ar.jalalayn',            nameAr: 'تفسير الجلالين',    nameEn: 'Tafsir Al-Jalalayn' },
+  { id: 'baghawi',   source: 'ayah', slug: 'ar-tafsir-al-baghawi',      nameAr: 'تفسير البغوي',      nameEn: 'Tafsir Al-Baghawi' },
+  { id: 'qurtubi',   source: 'ayah', slug: 'ar-tafseer-al-qurtubi',     nameAr: 'تفسير القرطبي',     nameEn: 'Tafsir Al-Qurtubi' },
+  { id: 'tabari',    source: 'ayah', slug: 'ar-tafsir-al-tabari',       nameAr: 'تفسير الطبري',      nameEn: 'Tafsir At-Tabari' },
+  { id: 'irab',      source: 'ayah', slug: 'al-i-rab-al-muyassar',      nameAr: 'الإعراب الميسّر',   nameEn: "I'rab (grammar) — Al-Muyassar", kind: 'irab' },
 ];
 
 const fetchPageEdition = async (pageNumber, edition) => {

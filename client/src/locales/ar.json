@@ -614,7 +614,7 @@
     "playFromHere": "استمع بدءاً من هذه الآية",
     "dragHandle": "اسحب للتحريك",
     "verseTafsir": "اقرأ تفسير هذه الآية",
-    "tafsirEdition": "اختر تفسير أي عالِم تقرأ",
+    "tafsirEdition": "اختر تفسير أي عالِم تقرأ — أو إعراب الآية",
     "close": "إغلاق",
     "showPassword": "إظهار كلمة المرور",
     "hidePassword": "إخفاء كلمة المرور",
@@ -751,7 +751,8 @@
     },
     "tafsir": "التفسير",
     "tafsirTitle": "تفسير الآية",
-    "tafsirEdition": "كتاب التفسير",
+    "irabTitle": "إعراب الآية",
+    "tafsirEdition": "كتاب التفسير أو الإعراب",
     "tafsirError": "تعذّر تحميل التفسير",
     "selfTest": {
       "label": "أسلوب اختبار النفس",

@@ -614,7 +614,7 @@
     "playFromHere": "Listen from this verse",
     "dragHandle": "Drag to move",
     "verseTafsir": "Read the explanation (tafsir) of this verse",
-    "tafsirEdition": "Choose which scholar's explanation to read",
+    "tafsirEdition": "Choose which scholar's explanation to read — or the verse's grammatical analysis (i'rab)",
     "close": "Close",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
@@ -751,7 +751,8 @@
     },
     "tafsir": "Tafsir",
     "tafsirTitle": "Tafsir of the verse",
-    "tafsirEdition": "Tafsir book",
+    "irabTitle": "Grammar of the verse (I'rab)",
+    "tafsirEdition": "Tafsir / I'rab book",
     "tafsirError": "Could not load the tafsir",
     "selfTest": {
       "label": "Self-test style",
