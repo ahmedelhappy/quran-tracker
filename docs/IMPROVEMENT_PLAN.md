@@ -28,13 +28,18 @@ writes the next prompt. Commits happen only after visual acceptance.
 
 ## Progress log
 
-> ⏳ **AWAITING USER TESTING (as of 2026-07-28):** Stage 7 (interactive Progress page)
-> and Stage 8 (opt-in leaderboard) were implemented directly by the planning session at
-> the user's request ("just start implementing, I'll review later"). Both are
-> code/lint/build/server-test verified but **NOT yet browser-verified**. The user will
-> test them live and report feedback. Everything remains UNCOMMITTED atop the in-flight
-> Stage 6 tree — nothing pushed. Also still pending the user's earlier review: the whole
-> Stage 3→6 stack (see the Review checkpoint rows below).
+> ✅ **PUSHED 2026-08-04:** the user accepted and everything through Stage 8b is now
+> on `origin/main` (`3cc1775..59eb241`, 24 commits — Stage 3 direction → hardening →
+> segments → annotations/ink/draw → interactive Progress → leaderboard → 6e tafsir
+> editions → the 8b fix round). Verified before the push: **118/118** server tests,
+> a clean client build, and lint carrying only the 5 pre-existing issues (3
+> react-refresh errors in the context files, 2 hook-dep warnings) — none new. Commit
+> messages audited: no AI/assistant mentions. Working tree clean at push time.
+>
+> ⏳ **STILL AWAITING USER TESTING:** Stages 7, 8, 8b and 6e shipped but were only
+> ever code/lint/build/test verified — **NOT browser-verified**. The user is testing
+> them live and will report feedback. Stage 8c (five tafsir/annotation items) is
+> prompted and queued.
 
 | Date | Stage | Commit | Notes |
 |------|-------|--------|-------|
