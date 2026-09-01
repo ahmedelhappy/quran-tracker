@@ -156,6 +156,13 @@ export default function Library() {
   // resolved, so we never briefly load page 1 before jumping to the real target.
   const hadExplicitPageRef = useRef(searchParams.has('page'));
   const [pageResolved, setPageResolved] = useState(hadExplicitPageRef.current);
+  // The page the reader last had open, read at the FIRST render — before any
+  // effect (including the one that persists it) can touch it. That ordering is
+  // the whole point: this value is what a bare /library opens on.
+  const [lastOpenedPage] = useState(() => {
+    const stored = Number(localStorage.getItem('lastMushafPage'));
+    return stored >= 1 && stored <= 604 ? stored : null;
+  });
 
   // Self-test style: 'off' | 'hide' (blur everything, hover peeks a window) |
   // 'cover' (text shown, hover blurs a window under the cursor). Always
@@ -380,42 +387,49 @@ export default function Library() {
   }, []);
 
   // Mount: memorized pages (for the badge + stat), and — when the URL didn't
-  // name a page — resolve the default landing page from this same fetch (no
-  // extra request): the first page not yet memorized, i.e. where a new-
-  // memorization session would pick up. Falls back to the last page the
-  // reader had open (persisted below), then page 1, if everything is
-  // memorized or this fetch fails. Resolved with `replace` so a refresh keeps
-  // landing on the resolved page rather than re-resolving (or worse, snapping
-  // back to page 1) every time.
+  // name a page — resolve the default landing page.
+  //
+  // Precedence: an explicit ?page in the URL always wins (dashboard links,
+  // bookmarks, deep links) → then the LAST PAGE THE READER HAD OPEN → then the
+  // first page not yet memorized → then page 1. Reopening the Library should
+  // feel like picking the mushaf back up where it was put down, so the
+  // last-opened page beats the "where new memorization picks up" guess. It is
+  // read straight from localStorage, so it doesn't wait for the progress
+  // request; the first-unmemorized fallback comes out of that same fetch (no
+  // extra request). Resolved with `replace` so a refresh keeps landing on the
+  // resolved page rather than re-resolving every time.
   useEffect(() => {
-    const fallbackPage = () => {
-      const last = Number(localStorage.getItem('lastMushafPage'));
-      return last >= 1 && last <= 604 ? last : 1;
-    };
     const landOn = (target) => {
       setSearchParams({ page: String(target) }, { replace: true });
       setPageResolved(true);
     };
+    const needsResolution = !hadExplicitPageRef.current;
+    if (needsResolution && lastOpenedPage) landOn(lastOpenedPage);
+
     progressAPI.getAllProgress().then(res => {
       const pages = res.data?.data?.memorizedPages ?? [];
       const memorized = new Set(pages);
       setMemorizedPages(memorized);
       const partial = res.data?.data?.partialPages ?? [];
       setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
-      if (hadExplicitPageRef.current) return;
+      if (!needsResolution || lastOpenedPage) return;
       let nextNew = null;
       for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
-      landOn(nextNew ?? fallbackPage());
+      landOn(nextNew ?? 1);
     }).catch(() => {
-      if (!hadExplicitPageRef.current) landOn(fallbackPage());
+      if (needsResolution && !lastOpenedPage) landOn(1);
     });
     // Mount-only: resolves once against the URL/localStorage as they stood at
     // that moment; every later navigation writes an explicit page itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Remember the last page opened, as a fallback default landing page.
-  useEffect(() => { localStorage.setItem('lastMushafPage', String(currentPage)); }, [currentPage]);
+  // Remember the last page opened. Only once the landing page is resolved: before
+  // that `currentPage` is just the un-resolved default, and writing it would
+  // destroy the very value the resolution above is about to read.
+  useEffect(() => {
+    if (pageResolved) localStorage.setItem('lastMushafPage', String(currentPage));
+  }, [currentPage, pageResolved]);
 
   // Mount: the user's saved bookmarks.
   useEffect(() => {

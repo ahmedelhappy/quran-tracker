@@ -747,6 +747,8 @@
       "repeatTimes": "Times",
       "rangeFrom": "From",
       "rangeTo": "To",
+      "rangeSpan": "{{verses}} verses · pages {{from}}–{{to}}",
+      "rangeSpanOnePage": "{{verses}} verses · page {{from}}",
       "playRange": "Play range"
     },
     "tafsir": "Tafsir",

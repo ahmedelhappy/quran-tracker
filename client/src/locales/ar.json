@@ -747,6 +747,8 @@
       "repeatTimes": "مرات",
       "rangeFrom": "من",
       "rangeTo": "إلى",
+      "rangeSpan": "{{verses}} آية · الصفحات {{from}}–{{to}}",
+      "rangeSpanOnePage": "{{verses}} آية · صفحة {{from}}",
       "playRange": "تشغيل النطاق"
     },
     "tafsir": "التفسير",
