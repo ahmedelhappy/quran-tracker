@@ -2,6 +2,7 @@ const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
+const leaderboardCache = require('../utils/leaderboardCache');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -361,7 +362,7 @@ exports.updateProfile = async (req, res) => {
     // Changing leaderboard membership/name invalidates the cached board so the
     // user sees the effect immediately instead of after the 5-minute TTL.
     if (updateData.leaderboardOptIn !== undefined || updateData.displayName !== undefined) {
-      require('./leaderboardController')._clearCache();
+      leaderboardCache.clear();
     }
 
     res.status(200).json({

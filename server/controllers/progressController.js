@@ -2,6 +2,10 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
+// Every write below changes how many pages this user has memorized, which is
+// exactly what the leaderboard ranks — so each one drops the cached board.
+// Without this the board keeps serving a stale rank for up to its whole TTL.
+const leaderboardCache = require('../utils/leaderboardCache');
 const {
   UNIT_TYPES,
   PAGE_BY_NUMBER,
@@ -354,6 +358,8 @@ exports.completeOnboarding = async (req, res) => {
 
       await UserProgress.bulkWrite(bulkOps);
     }
+
+    leaderboardCache.clear();
 
     res.status(200).json({
       success: true,
@@ -780,6 +786,8 @@ exports.markPageComplete = async (req, res) => {
     }
     await User.findByIdAndUpdate(userId, streakUpdate);
 
+    leaderboardCache.clear();
+
     res.status(200).json({
       success: true,
       message: `Page ${pageNumber} marked as ${type === 'new' ? 'memorized' : 'reviewed'}`,
@@ -844,6 +852,8 @@ exports.unmarkPageComplete = async (req, res) => {
     }
 
     const currentStreak = await reconcileStreakAfterUndo(userId);
+
+    leaderboardCache.clear();
 
     res.status(200).json({
       success: true,
@@ -1174,6 +1184,8 @@ exports.updateMemorized = async (req, res) => {
       await UserProgress.bulkWrite(bulkOps);
     }
 
+    leaderboardCache.clear();
+
     res.status(200).json({
       success: true,
       message: 'Memorized pages updated',
@@ -1200,6 +1212,8 @@ exports.resetProgress = async (req, res) => {
       prevActiveDate: null,
       planStartDate: new Date(),
     });
+
+    leaderboardCache.clear();
 
     res.status(200).json({ success: true, message: 'Progress reset successfully' });
   } catch (error) {
@@ -1380,6 +1394,8 @@ exports.updateUnits = async (req, res) => {
     }
 
     if (bulkOps.length) await UserProgress.bulkWrite(bulkOps);
+
+    leaderboardCache.clear();
 
     const allDocs = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
     const totalMemorized = totalMemorizedFraction(allDocs);

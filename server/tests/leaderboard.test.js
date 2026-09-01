@@ -128,6 +128,72 @@ describe('Leaderboard API', () => {
     assert.equal(res.body.data.displayName, 'Ahmed');
   });
 
+  // The board is cached for 5 minutes, so every write that changes a page count
+  // has to invalidate it — otherwise a user completes a page and the leaderboard
+  // keeps showing the old total (and rank) until the TTL expires.
+  test('completing a page updates the board immediately, not after the cache TTL', async () => {
+    const me = await makeContender('Fresh', 2);
+
+    // Populate the cache for BOTH periods.
+    const before = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id));
+    assert.equal(before.body.data.me.pages, 2);
+    const beforeWeek = await request(app).get('/api/leaderboard?period=week').set('Authorization', auth(me._id));
+    assert.equal(beforeWeek.body.data.me.pages, 2);
+
+    const done = await request(app).post('/api/progress/complete')
+      .set('Authorization', auth(me._id))
+      .send({ pageNumber: 3, type: 'new' });
+    assert.equal(done.status, 200);
+
+    // No _clearCache() here on purpose — the controller must have dropped it.
+    const after = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id));
+    assert.equal(after.body.data.me.pages, 3);
+    const afterWeek = await request(app).get('/api/leaderboard?period=week').set('Authorization', auth(me._id));
+    assert.equal(afterWeek.body.data.me.pages, 3);
+  });
+
+  test('undoing, editing the memorized set, and resetting all refresh the board too', async () => {
+    const me = await makeContender('Editor', 2);
+
+    await request(app).post('/api/progress/complete')
+      .set('Authorization', auth(me._id)).send({ pageNumber: 3, type: 'new' });
+    assert.equal(
+      (await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id))).body.data.me.pages,
+      3
+    );
+
+    // Undo the page completed today.
+    await request(app).post('/api/progress/uncomplete')
+      .set('Authorization', auth(me._id)).send({ pageNumber: 3, type: 'new' });
+    assert.equal(
+      (await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id))).body.data.me.pages,
+      2
+    );
+
+    // Replace the whole memorized set from the Progress page editor.
+    await request(app).put('/api/progress/memorized')
+      .set('Authorization', auth(me._id)).send({ memorizedPages: [1, 2, 3, 4, 5] });
+    assert.equal(
+      (await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id))).body.data.me.pages,
+      5
+    );
+
+    // Marking a verse range (units endpoint) is a page-count change as well.
+    await request(app).put('/api/progress/units')
+      .set('Authorization', auth(me._id))
+      .send({ action: 'remove', unit: 'page', ref: 5 });
+    assert.equal(
+      (await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id))).body.data.me.pages,
+      4
+    );
+
+    // A full reset drops the user off the board entirely.
+    await request(app).delete('/api/progress/reset').set('Authorization', auth(me._id));
+    const afterReset = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id));
+    assert.equal(afterReset.body.data.me, null);
+    assert.equal(afterReset.body.data.totalRanked, 0);
+  });
+
   test('a display name shorter than 3 characters is rejected', async () => {
     const user = await createUser({});
     const res = await request(app).put('/api/auth/profile')
