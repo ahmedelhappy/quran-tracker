@@ -152,6 +152,14 @@ export default function MushafPage({
     return () => { cancelled = true; };
   }, [pageData, fontFamily]);
 
+  // Which verse-level tint a word carries, if any. Playing wins over selected,
+  // as before. Used to find the ends of each run of same-tinted words.
+  const tintOf = (word) =>
+    !word ? null
+      : word.verseKey === playingVerseKey ? 'playing'
+        : word.verseKey === selectedVerseKey ? 'selected'
+          : null;
+
   return (
     <div
       ref={rootRef}
@@ -188,14 +196,20 @@ export default function MushafPage({
                 ? w.charType === 'word' && (inCoverBlur(line.lineNumber, i) || w.verseKey === tapBlurVerse)
                 : isConcealed?.(w.verseKey, w.position) && w.charType === 'word' && !inPeek(line.lineNumber, i);
               const hovered = !concealMode && hoverWord?.verseKey === w.verseKey;
-              const cls =
-                w.verseKey === playingVerseKey
-                  ? ' is-playing'
-                  : w.verseKey === selectedVerseKey
-                    ? ' is-selected'
-                    : hovered
-                      ? ' is-hover'
-                      : '';
+              // A verse-level tint has to read as ONE continuous band across the
+              // words it covers, not a row of little boxes. The words share a flat
+              // edge and only the two ENDS of a run are rounded — computed per LINE,
+              // so a verse that wraps gets a correctly-capped run on each line, and
+              // one that starts or ends mid-line is capped there. Backgrounds only:
+              // nothing here changes a box, so the fixed 576x852 frame is untouched.
+              const tint = tintOf(w);
+              const runStart = tint && tintOf(line.words[i - 1]) !== tint;
+              const runEnd = tint && tintOf(line.words[i + 1]) !== tint;
+              const cls = tint
+                ? ` is-${tint}${runStart ? ' is-run-start' : ''}${runEnd ? ' is-run-end' : ''}`
+                : hovered
+                  ? ' is-hover'
+                  : '';
               // Annotation layers — background tint / underline only, so glyph
               // metrics never shift. The selection/playing states above still win
               // (their CSS rules come after the highlight rules).
