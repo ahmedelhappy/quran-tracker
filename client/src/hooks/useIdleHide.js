@@ -34,6 +34,17 @@ import { useState, useEffect, useRef } from 'react';
  * hiding purely on scroll direction, which a page that fits the window would
  * never trigger at all.
  *
+ * That capture is WHEEL ONLY, deliberately. Touch is not an oversight:
+ *   - On a phone or tablet the bar never hides in the first place (the
+ *     `hover: hover` gate below), so there is no gesture to spend.
+ *   - On a hybrid — a touchscreen laptop, which does report hover — capturing
+ *     the opening of a `touchmove` means calling preventDefault on a scroll the
+ *     browser has not started yet, which forfeits native inertial scrolling for
+ *     the whole gesture and leaves us hand-rolling momentum. It would also fight
+ *     the reader's own swipe-to-turn target, which already owns touch over the
+ *     mushaf. Trading real scrolling for 64px of bar is a bad deal, so a hybrid
+ *     keeps the idle timer and the top-zone tap and nothing else.
+ *
  * The caller animates with a transform, never by changing layout: reclaiming the
  * space by reflowing would make the mushaf jump, which is worse than the space.
  */
