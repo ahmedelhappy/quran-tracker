@@ -54,6 +54,37 @@ export const ensurePageFont = async (page) => {
   return family;
 };
 
+// ── Printed-line corrections ─────────────────────────────────────────────────
+// The API's per-word `line_number` matches the print everywhere we have checked
+// but for a handful of words, where it puts a word one line EARLIER than the
+// printed mushaf does.
+//
+// The tell is a line that stops fitting the measure. Every printed line is set
+// to the same width, so the canvas is sized to the widest of them; a line that
+// overflows has a word on it that the print does not put there. Page 443 line 12
+// came out 10.2% too wide — the only overflowing line in a 439-line sweep —
+// because وَصَدَقَ was placed at its end. In the print, line 12 ends at
+// ٱلرَّحْمَـٰنُ and line 13 opens with وَصَدَقَ ٱلْمُرْسَلُونَ (checked against a scan of
+// the page). The same wrong number comes back for mushaf=1 and mushaf=2, so it
+// is the dataset itself, not the layout we ask it for.
+//
+// Keyed "surah:ayah:wordPosition" → the printed line. A short list of individually
+// verified corrections, never a guess: nothing here alters a glyph or a word, only
+// which of the 15 lines it is drawn on.
+const LINE_CORRECTIONS = new Map([
+  ['36:52:11', 13],   // وَصَدَقَ — p443: the data ends line 12 with it, the print opens line 13
+]);
+
+const applyLineCorrections = (verses) => {
+  for (const v of verses) {
+    for (const w of v.words) {
+      const printed = LINE_CORRECTIONS.get(`${v.verse_key}:${w.position}`);
+      if (printed != null) w.line_number = printed;
+    }
+  }
+  return verses;
+};
+
 // ── Word/line data ───────────────────────────────────────────────────────────
 const fetchVersesByPage = async (page) => {
   // NOTE: `text_uthmani` is deliberately NOT requested at the word level. The
@@ -80,7 +111,7 @@ const fetchVersesByPage = async (page) => {
     if (!data.pagination?.next_page) break;
     p = data.pagination.next_page;
   }
-  return all;
+  return applyLineCorrections(all);
 };
 
 // Build the ordered list of (up to) 15 lines for a page, classifying the blank
