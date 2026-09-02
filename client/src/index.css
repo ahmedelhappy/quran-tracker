@@ -107,6 +107,45 @@ html[lang='ar'] body {
    value) so the reserved space scales with the card exactly like the canvas
    itself does — proportionally correct from a narrow single-column phone up
    to a wide two-page spread. */
+/* ── How large the mushaf may draw itself ────────────────────────────────────
+   Width is not what runs out first in single-page view: the page is a 576x852
+   PORTRAIT, so on any normal window HEIGHT binds long before width does — which
+   is why a wider window used to change nothing. So derive the width from the
+   height actually available and only then apply a hard cap.
+
+   The chain, from this box inward: minus 32px of card padding, times 0.82 (the
+   frame's 9% margin gutters either side) gives the canvas width; the canvas is
+   then 852/576 as tall. Inverting it:
+       box = availableHeight x (576/852) / 0.82 + 32px
+           = availableHeight x 0.8245 + 32px
+   --mushaf-chrome is everything sharing the window with the canvas: the navbar
+   offset, the card's running head and page-number foot, and the sticky audio bar.
+   The spread is two of those cards plus the 12px gap between them.
+
+   dvh where it exists (it accounts for mobile browser chrome); vh otherwise. */
+.mushaf-page-cap,
+.mushaf-spread-cap {
+  /* Everything that shares the window height with the canvas and sits above or
+     below it: the navbar offset (pt-20 = 80px), the card's running head and
+     page-number foot with its padding (~92px), and the sticky audio bar with its
+     offset (~82px).
+     The audio bar HAS to be counted. It was left out at first on the theory that
+     it only floats over the page's bottom margin — but the document scrolls (the
+     footer alone is ~200px), so the bar really is stuck to the window bottom, and
+     measuring it found it covering NINE WORDS of the page's last line. Text behind
+     a toolbar is not a trade-off worth making for a slightly larger page. */
+  --mushaf-chrome: 284px;
+  --mushaf-avail-h: calc(100vh - var(--mushaf-chrome));
+  width: 100%;
+  margin-inline: auto;
+}
+@supports (height: 100dvh) {
+  .mushaf-page-cap,
+  .mushaf-spread-cap { --mushaf-avail-h: calc(100dvh - var(--mushaf-chrome)); }
+}
+.mushaf-page-cap { max-width: min(920px, calc(var(--mushaf-avail-h) * 0.8245 + 32px)); }
+.mushaf-spread-cap { max-width: min(1560px, calc((var(--mushaf-avail-h) * 0.8245 + 32px) * 2 + 12px)); }
+
 .mushaf-canvas-frame {
   width: 100%;
   box-sizing: border-box;
@@ -240,22 +279,25 @@ html[lang='ar'] body {
 .mushaf-word.is-hard { box-shadow: inset 0 -0.14em 0 rgba(220, 38, 38, 0.55); }
 .dark .mushaf-word.is-hard { box-shadow: inset 0 -0.14em 0 rgba(248, 113, 113, 0.6); }
 
-/* The SELECTED verse is a NON-FILL indicator — a thin rounded brand-green ring
-   (with a barely-there wash) — so a click can never be mistaken for a user
-   highlight tint (a solid fill). The PLAYING verse stays a fill, but subtler than
-   any highlight, and it clears on pause. */
-.mushaf-word.is-hover { background: rgba(16, 185, 129, 0.10); }
-.mushaf-word.is-selected {
-  background: rgba(0, 79, 53, 0.08);
-  box-shadow: inset 0 0 0 1.5px rgba(0, 79, 53, 0.55);
-}
-.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.16); }
-.dark .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.14); }
-.dark .mushaf-word.is-selected {
-  background: rgba(52, 211, 153, 0.08);
-  box-shadow: inset 0 0 0 1.5px rgba(52, 211, 153, 0.5);
-}
-.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.17); }
+/* Verse-level states are FLAT TINTS spanning the whole verse — one band, not a
+   ring around every word (which read as a row of separate rectangles). Words in a
+   run square off their shared edges and MushafPage rounds only the run's two ends,
+   so a verse that wraps is capped correctly on each line.
+   Selected uses the deep brand green, playing the brighter emerald, so the two are
+   told apart by hue as well as weight; hover is deliberately far lighter than both
+   so "under the pointer" never reads as "chosen". Backgrounds and radii only —
+   no padding, no ring, no layout change. */
+.mushaf-word.is-hover { background: rgba(16, 185, 129, 0.055); }
+.mushaf-word.is-selected { background: rgba(0, 79, 53, 0.19); border-radius: 0; }
+.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.22); border-radius: 0; }
+.dark .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.075); }
+.dark .mushaf-word.is-selected { background: rgba(52, 211, 153, 0.20); }
+.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.24); }
+/* Cap the ends of a run. Logical corners, so they follow the mushaf's RTL flow:
+   the run's first word rounds its inline-START edge (the right one), the last its
+   inline-END. Must come after the rules above — same specificity, later wins. */
+.mushaf-word.is-run-start { border-start-start-radius: 6px; border-end-start-radius: 6px; }
+.mushaf-word.is-run-end { border-start-end-radius: 6px; border-end-end-radius: 6px; }
 
 /* Note indicator: a small dot pinned inside the ayah medallion's word box
    (never outside it, so the line's overflow:hidden can't clip it). */
@@ -274,6 +316,40 @@ html[lang='ar'] body {
   z-index: 2;
 }
 .dark .mushaf-note-dot { background: #60a5fa; box-shadow: 0 0 0 0.06em rgba(17, 24, 39, 0.9); }
+
+/* The reader's auto-hiding navbar. TRANSFORM only — the page keeps its top
+   padding, so hiding the bar frees the space visually without reflowing anything
+   under it. A mushaf that jumped every few seconds would be far worse than the
+   space it would win back. */
+.navbar-idle {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  will-change: transform;
+}
+.navbar-idle.is-idle-hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .navbar-idle { transition: none; }
+  .navbar-idle.is-idle-hidden { transform: none; visibility: hidden; }
+}
+
+/* ── Tafsir prose ───────────────────────────────────────────────────────────
+   Real paragraphs, modest spacing, normal leading. The panel used to render the
+   whole commentary as ONE <p> with `whitespace-pre-wrap` and line-height 2, so
+   every newline in the source became a hard break stacked on top of already very
+   airy leading — a book of short labelled definitions came out as a column of
+   lines floating in space. Justified: Arabic prose sets well justified, and the
+   panel is a narrow measure. */
+.tafsir-prose {
+  font-family: 'Noto Sans Arabic', 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.75;
+  text-align: justify;
+  text-justify: inter-word;
+}
+.tafsir-prose > p + p { margin-block-start: 0.5em; }
 
 /* ── Free-form ink layer ────────────────────────────────────────────────────
    Sibling of the marks layer inside `.mushaf-frame`; `inset: 12px` reproduces

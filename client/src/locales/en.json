@@ -613,6 +613,7 @@
     "reciter": "Choose who recites",
     "playFromHere": "Listen from this verse",
     "dragHandle": "Drag to move",
+    "collapseVerseActions": "Fold these actions away — the verse stays selected",
     "verseTafsir": "Read the explanation (tafsir) of this verse",
     "tafsirEdition": "Choose which scholar's explanation to read — or the verse's grammatical analysis (i'rab)",
     "close": "Close",
@@ -634,6 +635,7 @@
     "dailyReviewNone": "Nothing is due for review today.",
     "streak": "Your streak is how many days in a row you've kept up your practice.",
     "tafsir": "Tafsir is a scholar's explanation of what a verse means.",
+    "drawTools": "Keyboard: P pen, H highlighter, T text note, E eraser — they work whether or not you are already annotating. Press a tool's key again, or click it again, to stop drawing. The pencil cycles: draw, hide these tools (still drawing), stop. Escape closes this toolbar first, then leaves annotate mode.",
     "continuation": "A continuation page means picking up your memorization right where you left off.",
     "libraryVerseTap": "Tap any verse to listen to it or read its tafsir."
   },
@@ -646,7 +648,6 @@
     "halfMemorized": "Page {{n}} — {{pct}}% memorized",
     "pageLabel": "Page",
     "view": { "single": "1 page", "double": "2 pages" },
-    "focus": { "enter": "Focus mode", "exit": "Exit focus mode" },
     "markVerses": {
       "title": "Mark verses",
       "start": "Mark verses…",
@@ -662,6 +663,8 @@
       "highlighter": "Highlighter",
       "text": "Text note",
       "eraser": "Eraser",
+      "showTools": "Show drawing tools",
+      "hideTools": "Hide drawing tools (keeps drawing)",
       "undo": "Undo",
       "redo": "Redo",
       "clear": "Clear page",
@@ -756,6 +759,16 @@
     "irabTitle": "Grammar of the verse (I'rab)",
     "tafsirEdition": "Tafsir / I'rab book",
     "tafsirError": "Could not load the tafsir",
+    "tafsirPickVerse": "Tap any verse on the page to read its tafsir here.",
+    "tafsirResize": "Drag to resize the tafsir panel",
+    "tafsirCovers": "This commentary covers verses {{from}}–{{to}} together — the book explains the whole passage at once, so every verse in it shows this same text.",
+    "sidebar": {
+      "label": "Sidebar",
+      "show": "Show the sidebar",
+      "hide": "Hide the sidebar (S)"
+    },
+    "tafsirShow": "Show tafsir",
+    "tafsirHide": "Hide tafsir",
     "selfTest": {
       "label": "Self-test style",
       "mode": { "off": "Off", "hide": "Hide all", "cover": "Cover cursor" },
