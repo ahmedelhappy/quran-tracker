@@ -2856,8 +2856,14 @@ export default function Library() {
           {/* w-full so that when the layout stacks (below lg) the column fills the
               row — `items-start` otherwise shrinks it to content width and pins it
               to the start edge, leaving the page card off-centre on narrow screens.
-              In focus mode the sidebar is gone, so cap + centre the reading column. */}
-          <div className="flex-1 w-full flex flex-col gap-4 min-w-0 px-4 sm:px-6">
+
+              The PANELS are full-bleed to the window edges, but the column between
+              them still needs a measure: `main` lost its cap so the panels could
+              reach the edges, which left this column free to stretch across an
+              ultrawide monitor. 1620px is the widest spread (1560) plus this
+              column's own `sm:px-6` gutters, so the cap bounds the column without
+              ever squeezing the mushaf. */}
+          <div className="flex-1 w-full max-w-[1620px] mx-auto flex flex-col gap-4 min-w-0 px-4 sm:px-6">
 
             {/* Discoverability cue — the self-test hint stays while testing; the
                 plain "tap a verse" cue retires once the reader has selected one. */}
