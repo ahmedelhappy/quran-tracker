@@ -10,10 +10,17 @@ import { useState, useEffect, useRef } from 'react';
  * available here.
  *
  * It comes back on any of:
- *   - the pointer moving into the top `revealZone` px of the window,
+ *   - the pointer moving into the top `revealZone` px of the window, BUT ONLY
+ *     while the page is scrolled to the very top,
  *   - keyboard focus entering the bar (so Tab can always reach it),
  *   - Escape,
- *   - a touch anywhere in that top zone (touch has no hover to trigger on).
+ *   - a touch in that top zone, under the same at-the-top rule (touch has no
+ *     hover to trigger on).
+ *
+ * The at-the-top rule matters: once you have scrolled into the page, the top of
+ * the window is content you are reading, and a bar that drops over it whenever
+ * the pointer strays up there is just in the way. Scrolled down, the way back is
+ * to scroll back up — which spends its first stretch on the bar anyway.
  *
  * It never hides while `holdOpen` is true — one of the bar's own menus being open,
  * a tour running — and never on a device without hover at all, where there is no
@@ -84,13 +91,16 @@ export function useIdleHide({ enabled, holdOpen = false, delay = 2750, revealZon
       wheelSpentRef.current = 0;                  // a gesture that scrolls resets it
     };
 
+    // Reaching for the bar only counts at the top of the page; below that the
+    // top of the window belongs to the content.
+    const atTop = () => window.scrollY <= 0;
     const onPointerMove = (e) => {
-      if (e.clientY <= revealZone) reveal();
+      if (e.clientY <= revealZone && atTop()) reveal();
       else arm();                                  // active elsewhere: restart the clock
     };
     const onTouch = (e) => {
       const y = e.touches?.[0]?.clientY ?? 0;
-      if (y <= revealZone) reveal(); else arm();
+      if (y <= revealZone && atTop()) reveal(); else arm();
     };
     const onKey = (e) => { if (e.key === 'Escape') reveal(); else arm(); };
     const onFocusIn = (e) => { if (e.target?.closest?.('header')) reveal(); };
