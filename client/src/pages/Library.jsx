@@ -2360,6 +2360,9 @@ export default function Library() {
             they mirror correctly in Arabic without either being hard-coded to a
             side.
 
+            Both hang from the TOP of their panel rather than the middle of the
+            window, so each stays attached to its panel however short it gets.
+
             The chevron POINTS THE WAY THE PANEL WILL MOVE: with the sidebar open
             it points back toward the start edge (click to tuck it away), and when
             closed it points inward (click to bring it out). `rtl:rotate-180` flips
@@ -2370,7 +2373,7 @@ export default function Library() {
             across as the panel opens and closes. With the panel shut it rests
             against the window edge itself. */}
         <div
-          className="reader-edge-tab fixed top-1/2 -translate-y-1/2 z-40"
+          className="reader-edge-tab fixed top-24 z-40"
           style={{ insetInlineStart: sidebarOpen && isWide ? SIDEBAR_WIDTH : 0 }}
         >
           <Tooltip label={sidebarOpen ? t('library.sidebar.hide') : t('library.sidebar.show')} placement="bottom">
