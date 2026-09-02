@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,10 @@ import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import {
+  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
+  coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
+} from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
 
 function toPageRanges(sortedPages) {
@@ -139,9 +143,17 @@ export default function Onboarding() {
   const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
-  // Single source of truth: the set of page numbers the user has marked memorized.
-  // The Juz / Surah / Range tabs are just different views/editors over this set.
-  const [selectedPages, setSelectedPages] = useState(new Set());
+  // Single source of truth: the selection as VERSE ranges (global ayah numbers).
+  // Juz and Surah start at the top of a page, so page-rounding suits them; a Hizb
+  // or quarter-Hizb boundary falls mid-page and adjacent units SHARE that page, so
+  // rounding up used to spill a selection into both neighbours. Verses are the
+  // honest unit, and the page-shaped tabs read a derived view of them.
+  const [coverage, setCoverage] = useState([]);
+  const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
+  const setSelectedPages = (next) => {
+    const pages = typeof next === 'function' ? next(fullyCoveredPages(coverage)) : next;
+    setCoverage(mergeOrdRanges([...pages].map(pageOrdRange)));
+  };
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
@@ -163,8 +175,8 @@ export default function Onboarding() {
   const selectedCount = selectedPages.size;
   const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
   const selectedSurahCount = SURAH_PAGES.filter(s => isCovered(selectedPages, s.start, s.end)).length;
-  const selectedHizbCount = HIZB_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
-  const selectedRubCount = RUB_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
+  const selectedHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
+  const selectedRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
 
   // Client-side estimate
   const activeDays = 7 - offDays.length;
@@ -183,11 +195,16 @@ export default function Onboarding() {
 
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
   const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Hizb/¼-Hizb selections round to whole pages, same as Juz/Surah — a boundary
-  // that falls mid-page just includes that whole page. Verse-exact partial
-  // coverage is edited later from the Library ("mark verses") or Progress page.
-  const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
-  const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
+  // Hizb and quarter-Hizb are verse-exact: they add and remove the unit's own
+  // verse span, which is what stops a selection bleeding into the unit next door
+  // over the page the two share. Same span the server compiles for /progress/units.
+  const toggleUnitRange = (range) => {
+    if (!range) return;
+    if (coverageOf(coverage, range) === 'full') setCoverage((c) => subtractOrdRanges(c, [range]));
+    else setCoverage((c) => mergeOrdRanges([...c, range]));
+  };
+  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
+  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
   const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
@@ -243,7 +260,14 @@ export default function Onboarding() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      await progressAPI.completeOnboarding({ memorizedPages: Array.from(selectedPages).sort((a, b) => a - b), dailyNewPages: dailyPages });
+      // Whole pages through onboarding, then the sub-page remainder — the mid-page
+      // ends of a Hizb selection — as verse ranges, which the units endpoint stores
+      // as partial `segments` instead of rounding them up to whole pages.
+      const { fullPages, leftovers } = splitCoverageForSave(coverage);
+      await progressAPI.completeOnboarding({ memorizedPages: fullPages, dailyNewPages: dailyPages });
+      for (const ref of toVerseKeyRanges(leftovers)) {
+        await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
+      }
       await authAPI.updateProfile({
         offDays,
         memorizationDirection: direction === 'fromEnd' ? 'fromEnd' : 'fromStart',
@@ -373,16 +397,18 @@ export default function Onboarding() {
           {selectionMode === 'hizb' && (
             <div>
               <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-                {HIZB_RANGES.map(({ hizb, start, end }) => (
+                {HIZB_RANGES.map(({ hizb }) => (
                   <button
                     key={hizb}
                     data-tile-id={hizb}
                     onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
                     onClick={() => ds.handleClick(hizb, toggleHizb)}
                     className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                      isCovered(selectedPages, start, end)
+                      coverageOf(coverage, hizbOrdRange(hizb)) === 'full'
                         ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                        : coverageOf(coverage, hizbOrdRange(hizb)) === 'partial'
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                     }`}
                   >
                     {hizb}
@@ -398,16 +424,18 @@ export default function Onboarding() {
           {selectionMode === 'rub' && (
             <div>
               <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
-                {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => (
+                {RUB_RANGES.map(({ rub, hizb, quarter }) => (
                   <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
                     <button
                       data-tile-id={rub}
                       onPointerDown={(e) => ds.start(e, rub, toggleRub)}
                       onClick={() => ds.handleClick(rub, toggleRub)}
                       className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                        isCovered(selectedPages, start, end)
+                        coverageOf(coverage, rubOrdRange(rub)) === 'full'
                           ? 'bg-[#003527] text-white border-[#003527]'
-                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                          : coverageOf(coverage, rubOrdRange(rub)) === 'partial'
+                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                       }`}
                     >
                       {hizb}.{quarter}

@@ -9,6 +9,7 @@ const {
 const app = require('../app');
 const UserProgress = require('../models/UserProgress');
 const segments = require('../utils/segments');
+const { pageFraction } = require('../utils/segments');
 
 // --- Pure unit-compile tests (no DB — server/utils/segments.js reads straight
 // from the committed quranStructure.json, same as FROM_END_ORDER elsewhere). ---
@@ -83,6 +84,69 @@ describe('PUT /api/progress/units', () => {
   beforeEach(async () => {
     await clearDatabase();
     await seedMetadata(30);
+  });
+
+  // The bug this guards: the memorized-pages editors used to round a Hizb /
+  // quarter-Hizb selection UP TO WHOLE PAGES. Adjacent units share the page they
+  // meet on — rub 125 = pages 312-315, rub 126 = 315-317, rub 127 = 317-319 — so
+  // picking 32.2 claimed all of 315 and all of 317 and lit up both neighbours.
+  // Going through this endpoint instead keeps the boundary pages PARTIAL.
+  test("a rub selection does not fully cover its neighbours' boundary pages", async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+
+    const res = await request(app)
+      .put('/api/progress/units')
+      .set('Authorization', auth)
+      .send({ action: 'add', unit: 'rub', ref: 126 });   // 32.2
+    assert.equal(res.status, 200);
+
+    const docs = await UserProgress.find({ userId: user._id }).sort({ pageNumber: 1 });
+    const byPage = new Map(docs.map(d => [d.pageNumber, d]));
+
+    // The two pages rub 126 shares with its neighbours must be PARTIAL, not whole.
+    for (const shared of [315, 317]) {
+      const doc = byPage.get(shared);
+      assert.ok(doc, `page ${shared} should exist`);
+      assert.ok(doc.segments && doc.segments.length > 0,
+        `page ${shared} must be partial, not a whole page`);
+      assert.ok(pageFraction(shared, doc.segments) < 1,
+        `page ${shared} must not be fully covered by rub 126 alone`);
+    }
+
+    // And nothing outside rub 126's own verse span is touched at all.
+    const touched = docs.map(d => d.pageNumber);
+    const r126 = segments.compileUnitRange('rub', 126);
+    const spanned = segments.rangeToPages(r126.from, r126.to).map(p => p.pageNumber);
+    assert.deepEqual(touched, spanned);
+    assert.ok(!touched.includes(312), 'the start of rub 125 must be untouched');
+    assert.ok(!touched.includes(319), 'the end of rub 127 must be untouched');
+
+    // The neighbours are therefore NOT fully memorized: each still needs the
+    // rest of its own verses. Adding 125 completes page 315 between them.
+    const before = pageFraction(315, byPage.get(315).segments);
+    await request(app).put('/api/progress/units').set('Authorization', auth)
+      .send({ action: 'add', unit: 'rub', ref: 125 });
+    const after = await UserProgress.findOne({ userId: user._id, pageNumber: 315 });
+    assert.ok(!after.segments || after.segments.length === 0,
+      'page 315 is whole once BOTH rubs that share it are memorized');
+    assert.ok(before < 1);
+  });
+
+  test("a hizb selection leaves the next hizb's share of their boundary page free", async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    // hizb 27 = pages 262-272, hizb 28 = 272-281; page 272 is shared.
+    await request(app).put('/api/progress/units').set('Authorization', auth)
+      .send({ action: 'add', unit: 'hizb', ref: 27 });
+
+    const shared = await UserProgress.findOne({ userId: user._id, pageNumber: 272 });
+    assert.ok(shared, 'the boundary page should exist');
+    assert.ok(shared.segments && shared.segments.length > 0, 'page 272 must be partial');
+    assert.ok(pageFraction(272, shared.segments) < 1, 'hizb 27 must not claim all of page 272');
+
+    const first28 = await UserProgress.findOne({ userId: user._id, pageNumber: 273 });
+    assert.equal(first28, null, 'hizb 28 proper must be untouched');
   });
 
   test('protected: rejects requests without a token', async () => {
@@ -166,7 +230,11 @@ describe('PUT /api/progress/units', () => {
     assert.equal(allProgress.status, 200);
     assert.equal(allProgress.body.data.fullPages, 0);
     assert.ok(Math.abs(allProgress.body.data.totalMemorized - 4 / 7) < 1e-9);
-    assert.deepEqual(allProgress.body.data.partialPages, [{ pageNumber: 1, fraction: 4 / 7 }]);
+    assert.deepEqual(allProgress.body.data.partialPages, [{
+      pageNumber: 1,
+      fraction: 4 / 7,
+      segments: [{ from: '1:1', to: '1:4' }],
+    }]);
     // memorizedPages still lists the page — it has SOME progress.
     assert.deepEqual(allProgress.body.data.memorizedPages, [1]);
 

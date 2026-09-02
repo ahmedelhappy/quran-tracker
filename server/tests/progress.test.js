@@ -574,7 +574,13 @@ describe('Progress API — spaced repetition', () => {
 
     // The all-progress payload exposes the per-page fraction for the map (4/7 of page 1).
     const all = await request(app).get('/api/progress/all').set('Authorization', auth);
-    assert.deepEqual(all.body.data.partialPages, [{ pageNumber: 1, fraction: 4 / 7 }]);
+    assert.deepEqual(all.body.data.partialPages, [{
+      pageNumber: 1,
+      fraction: 4 / 7,
+      // The exact ranges too — the memorized-pages editors seed themselves from
+      // these, so a saved verse-exact selection survives a round trip.
+      segments: [{ from: '1:1', to: '1:4' }],
+    }]);
     assert.equal(all.body.data.fullPages, 0);
     assert.ok(all.body.data.memorizedPages.includes(1)); // still listed (has progress)
   });
@@ -646,7 +652,13 @@ describe('Progress API — spaced repetition', () => {
 
     // The all-progress fraction still reports page 1 as 4/7, confirming no flatten.
     const all = await request(app).get('/api/progress/all').set('Authorization', auth);
-    assert.deepEqual(all.body.data.partialPages, [{ pageNumber: 1, fraction: 4 / 7 }]);
+    assert.deepEqual(all.body.data.partialPages, [{
+      pageNumber: 1,
+      fraction: 4 / 7,
+      // The exact ranges too — the memorized-pages editors seed themselves from
+      // these, so a saved verse-exact selection survives a round trip.
+      segments: [{ from: '1:1', to: '1:4' }],
+    }]);
     assert.equal(all.body.data.fullPages, 2);
   });
 });

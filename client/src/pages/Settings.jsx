@@ -14,6 +14,10 @@ import InfoHint from '../components/InfoHint';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import {
+  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
+  coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
+} from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
@@ -96,10 +100,26 @@ function validateRanges(pageRanges) {
 }
 
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
-  // Single source of truth: the set of page numbers currently marked memorized.
-  // The Juz / Surah / Range tabs are just different views/editors over this one set.
-  const [selectedPages, setSelectedPages] = useState(new Set());
+function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partialPages }) {
+  // Single source of truth: the selection as VERSE ranges (global ayah numbers).
+  //
+  // It used to be a set of whole page numbers, which is fine for Juz / Surah /
+  // Range — those units start at the top of a page — but wrong for Hizb and
+  // quarter-Hizb, whose boundaries fall mid-page. Adjacent hizbs SHARE the page
+  // they meet on (rub 126 = pages 315-317, rub 127 = 317-319), so rounding a
+  // selection up to whole pages spilled it into both neighbours.
+  //
+  // Verses are the honest unit, and the page-shaped tabs read a derived view of
+  // them (`selectedPages` = the pages every verse of which is covered).
+  const [coverage, setCoverage] = useState([]);
+  const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
+  const addCoverage = (range) => { if (range) setCoverage((c) => mergeOrdRanges([...c, range])); };
+  const cutCoverage = (range) => { if (range) setCoverage((c) => subtractOrdRanges(c, [range])); };
+  const setSelectedPages = (next) => {
+    // The page-shaped tabs still think in pages; translate back onto the model.
+    const pages = typeof next === 'function' ? next(fullyCoveredPages(coverage)) : next;
+    setCoverage(mergeOrdRanges([...pages].map(pageOrdRange)));
+  };
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
   const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
@@ -113,10 +133,21 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   // Pages memorized when the modal opened — lets us flag (in red) anything the user removes.
   const origSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
   const countIn = (set, start, end) => { let c = 0; for (let p = start; p <= end; p++) if (set.has(p)) c++; return c; };
+  // Percentage of a unit's VERSES that are covered, for the tile badge.
+  const verseCoveragePct = (merged, range) => {
+    if (!range) return 0;
+    let covered = 0;
+    for (const m of merged) {
+      if (m.to < range.from) continue;
+      if (m.from > range.to) break;
+      covered += Math.min(m.to, range.to) - Math.max(m.from, range.from) + 1;
+    }
+    return Math.round((covered / (range.to - range.from + 1)) * 100);
+  };
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedPages(new Set(memorizedPageNums));
+      setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
       setSelectionMode('juz');
       setSurahSearch('');
       const initRanges = toPageRanges(memorizedPageNums);
@@ -124,7 +155,7 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
       setRangeErrors(initRanges.map(() => ({})));
       setPendingDeleteIdx(null);
     }
-  }, [isOpen, memorizedPageNums]);
+  }, [isOpen, memorizedPageNums, partialPages]);
 
   // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
   const toggleRange = (start, end) => setSelectedPages(prev => {
@@ -135,11 +166,17 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   });
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
   const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Rounds to whole pages, same as Juz/Surah — a Hizb/¼-Hizb boundary that falls
-  // mid-page just includes that whole page here. Verse-exact partial coverage is
-  // edited from the Library ("mark verses") instead.
-  const toggleHizb = (n) => { const r = HIZB_RANGES.find(h => h.hizb === n); if (r) toggleRange(r.start, r.end); };
-  const toggleRub = (n) => { const r = RUB_RANGES.find(x => x.rub === n); if (r) toggleRange(r.start, r.end); };
+  // Hizb and quarter-Hizb are verse-exact: their boundaries fall mid-page, so
+  // they add and remove the unit's own verse span rather than whole pages. That
+  // is what stops a selection bleeding into the unit next door, and it is the
+  // same span the server compiles for PUT /api/progress/units.
+  const toggleUnitRange = (range) => {
+    if (!range) return;
+    if (coverageOf(coverage, range) === 'full') cutCoverage(range);
+    else addCoverage(range);
+  };
+  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
+  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
   const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
@@ -181,7 +218,7 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   };
 
   const restoreOriginal = () => {
-    setSelectedPages(new Set(memorizedPageNums));
+    setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
     setSelectionMode('juz');
     setSurahSearch('');
     const initRanges = toPageRanges(memorizedPageNums);
@@ -194,14 +231,23 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
   const selectedCount = selectedPages.size;
   const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
   const fullSurahCount = SURAH_PAGES.filter(s => countIn(selectedPages, s.start, s.end) === (s.end - s.start + 1)).length;
-  const fullHizbCount = HIZB_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
-  const fullRubCount = RUB_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
+  const fullHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
+  const fullRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const finalPages = Array.from(selectedPages).sort((a, b) => a - b);
-      await progressAPI.updateMemorized({ memorizedPages: finalPages });
+      // The editor's contract is "this is exactly what I have memorized", so save
+      // it as a replace: every fully-covered page through the whole-page endpoint
+      // (which clears whatever was there before), then the sub-page remainder —
+      // the mid-page ends of a Hizb selection — added back as verse ranges through
+      // the units endpoint, which writes them as partial `segments`. The remainder
+      // is merged first, so a whole hizb of quarters costs one request, not four.
+      const { fullPages, leftovers } = splitCoverageForSave(coverage);
+      await progressAPI.updateMemorized({ memorizedPages: fullPages });
+      for (const ref of toVerseKeyRanges(leftovers)) {
+        await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
+      }
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
@@ -306,12 +352,12 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
             <div>
               <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
                 {HIZB_RANGES.map(({ hizb, start, end }) => {
-                  const size = end - start + 1;
-                  const sel = countIn(selectedPages, start, end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
-                  const pct = Math.round((sel / size) * 100);
+                  const range = hizbOrdRange(hizb);
+                  const state = coverageOf(coverage, range);
+                  const isFull = state === 'full';
+                  const isPartial = state === 'partial';
+                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
+                  const pct = verseCoveragePct(coverage, range);
                   return (
                     <button
                       key={hizb}
@@ -348,11 +394,10 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums }) {
             <div>
               <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
                 {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => {
-                  const size = end - start + 1;
-                  const sel = countIn(selectedPages, start, end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
+                  const state = coverageOf(coverage, rubOrdRange(rub));
+                  const isFull = state === 'full';
+                  const isPartial = state === 'partial';
+                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
                   return (
                     <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
                       <button
@@ -710,6 +755,9 @@ export default function Settings() {
 
   const [memorizedJuz, setMemorizedJuz] = useState([]);
   const [memorizedPageNums, setMemorizedPageNums] = useState([]);
+  // The verse ranges behind any page that is only partly memorized — the editor
+  // needs them to seed itself exactly, or saving would round them up to whole pages.
+  const [partialPages, setPartialPages] = useState([]);
   const [editProgressOpen, setEditProgressOpen] = useState(false);
 
   const [profileName, setProfileName] = useState(user?.name ?? '');
@@ -795,6 +843,7 @@ export default function Settings() {
     ]).then(([juzRes, allRes]) => {
       setMemorizedJuz(juzRes.data.data);
       setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
+      setPartialPages(allRes.data.data.partialPages ?? []);
     }).catch(() => {});
     progressAPI.getTodayTasks().then(res => setTodayStats(res.data.data.stats)).catch(() => {});
   }, []);
@@ -1810,6 +1859,7 @@ export default function Settings() {
           setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
         }).catch(() => {})}
         memorizedPageNums={memorizedPageNums}
+        partialPages={partialPages}
       />
 
       <ConfirmModal

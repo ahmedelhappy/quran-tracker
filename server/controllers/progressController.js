@@ -1100,11 +1100,18 @@ exports.getAllProgress = async (req, res) => {
     const pageNumbers = progress.map(p => p.pageNumber);
     const totalMemorized = totalMemorizedFraction(progress);
     const fullPages = progress.filter(p => !p.segments || p.segments.length === 0).length;
-    // Fraction of each partially-memorized page — the client uses this for a
-    // "½ memorized" footer-tick state distinct from the plain memorized tick.
+    // Each partially-memorized page: the fraction (the reader's "½ memorized"
+    // footer tick) AND the exact verse ranges behind it. The ranges are what lets
+    // the memorized-pages editors seed themselves EXACTLY — without them they can
+    // only see "page 315 has something on it", and saving would round that back up
+    // to the whole page and destroy the verse-exact selection.
     const partialPages = progress
       .filter(p => p.segments && p.segments.length > 0)
-      .map(p => ({ pageNumber: p.pageNumber, fraction: pageFraction(p.pageNumber, p.segments) }));
+      .map(p => ({
+        pageNumber: p.pageNumber,
+        fraction: pageFraction(p.pageNumber, p.segments),
+        segments: p.segments.map(s => ({ from: s.from, to: s.to })),
+      }));
 
     // Build date → count map for heatmap and chart
     const memorizedByDate = {};
