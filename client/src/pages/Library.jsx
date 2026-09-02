@@ -7,8 +7,10 @@ import {
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus,
   FiFlag, FiMessageSquare, FiCornerUpRight,
-  FiPenTool, FiEdit2, FiEdit3, FiDelete, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
+  FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
 } from 'react-icons/fi';
+// Feather has no eraser; this one actually looks like the thing it does.
+import { BsEraser } from 'react-icons/bs';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
@@ -99,7 +101,7 @@ const DRAW_TOOLS = [
   { k: 'pen',         key: 'p', icon: FiPenTool, labelKey: 'library.draw.pen' },
   { k: 'highlighter', key: 'h', icon: FiEdit3,   labelKey: 'library.draw.highlighter' },
   { k: 'text',        key: 't', icon: FiType,    labelKey: 'library.draw.text' },
-  { k: 'eraser',      key: 'e', icon: FiDelete,  labelKey: 'library.draw.eraser' },
+  { k: 'eraser',      key: 'e', icon: BsEraser,  labelKey: 'library.draw.eraser' },
 ];
 // The tool a key event selects, or null. Physical-key matching, so this works on
 // a non-Latin layout too — see utils/shortcutKeys.js.
@@ -338,20 +340,24 @@ export default function Library() {
   const [readTextNote, setReadTextNote] = useState(null);
 
   // ── Free-form drawing (annotate mode) ──────────────────────────────
-  // drawPage = the page currently in annotate mode (null = off). Only one page
-  // is annotated at a time; drawStrokes is that page's working strokes, seeded
-  // from its saved doc and auto-saved (debounced) via PUT /annotations/drawing.
+  // Annotate mode is on while drawPage != null. drawPage is the ANCHOR page — the
+  // one whose pencil started it, and where the toolbar hangs — but EVERY visible
+  // page is annotatable, so a spread can be drawn on across both halves without
+  // stopping to re-arm. That means the working strokes, the undo history and the
+  // unsaved-changes flags are all kept per page.
   const [drawPage, setDrawPage] = useState(null);
-  const [drawStrokes, setDrawStrokes] = useState([]);
+  const [drawStrokesByPage, setDrawStrokesByPage] = useState({});
   const [drawTool, setDrawTool] = useState('pen'); // 'pen' | 'highlighter' | 'eraser' | 'text'
   const [drawColor, setDrawColor] = useState('ink');
   const [clearConfirm, setClearConfirm] = useState(false);
-  const drawDirtyRef = useRef(false);
+  const drawDirtyRef = useRef(new Set());     // pages with unsaved strokes
   const drawSaveTimerRef = useRef(null);
-  const drawLatestRef = useRef({ page: null, strokes: [] });
-  const drawStrokesRef = useRef([]);          // synchronous mirror for undo/redo
-  const undoStackRef = useRef([]);            // past stroke-array snapshots (cap 50)
-  const redoStackRef = useRef([]);
+  const drawStrokesRef = useRef({});          // page -> strokes, synchronous mirror
+  const undoStacksRef = useRef({});           // page -> past snapshots (cap 50)
+  const redoStacksRef = useRef({});
+  // Undo, redo and clear act on the page last drawn on — in a spread, "the page
+  // I am working on" is the one the ink just went onto.
+  const lastDrawnPageRef = useRef(null);
   const [, bumpHistory] = useReducer((n) => n + 1, 0); // re-render undo/redo enabled state
   // Lets the keyboard handler (declared before these callbacks) reach the latest
   // exit/undo/redo without pulling later-declared callbacks into its deps.
@@ -1033,7 +1039,11 @@ export default function Library() {
       // Ctrl+Shift+Z / Ctrl+Y) undo/redo, and P/H/T/E pick a tool. Keys are gated
       // by the input-focus check above, so typing a text note isn't intercepted.
       const mod = e.ctrlKey || e.metaKey;
-      if (drawPage != null) {
+      // Page turns keep working while annotating, so a run of pages can be marked
+      // up without leaving the mode between each one. (Touch swipes still don't:
+      // the drawing layer owns touch over the page, so a swipe there is a stroke.)
+      const isPageTurnKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
+      if (drawPage != null && !isPageTurnKey) {
         if (e.key === 'Escape') {
           e.preventDefault();
           if (drawMenuOpen) setDrawMenuOpen(false);
@@ -1044,8 +1054,8 @@ export default function Library() {
         const y = isShortcutKey(e, 'y');
         if (mod && z && !e.altKey && !e.shiftKey) { e.preventDefault(); undoRef.current?.(); return; }
         if (mod && ((z && (e.altKey || e.shiftKey)) || y)) { e.preventDefault(); redoRef.current?.(); return; }
-        // A tool's own key selects it; pressing it again stops annotating, which
-        // mirrors clicking the active tool's button.
+        // A tool's own key picks it; pressing it again puts the tools away, and
+        // once away stops annotating — the same ladder as its button.
         if (!mod && !e.altKey) {
           const tool = toolForKey(e);
           if (tool) { e.preventDefault(); selectToolRef.current?.(tool); }
@@ -1054,7 +1064,7 @@ export default function Library() {
       }
       // Annotate mode is OFF: a tool's key turns it on AND picks that tool, so
       // reaching for the pen is one keystroke rather than two.
-      if (!mod && !e.altKey) {
+      if (drawPage == null && !mod && !e.altKey) {
         const tool = toolForKey(e);
         if (tool) { e.preventDefault(); startDrawRef.current?.(tool); return; }
         // 'S' shows/hides the sidebar. 'F' does the same — it used to toggle focus
@@ -1399,24 +1409,27 @@ export default function Library() {
   // ── Drawing (annotate mode) ────────────────────────────────────────
   // Keep the latest page+strokes in a ref so a flush (debounce fire, exit, page
   // change, unmount) always saves the freshest state without stale closures.
-  useEffect(() => { drawLatestRef.current = { page: drawPage, strokes: drawStrokes }; }, [drawPage, drawStrokes]);
-
   const flushDrawing = useCallback(async () => {
     if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
-    if (!drawDirtyRef.current) return;
-    const { page, strokes } = drawLatestRef.current;
-    drawDirtyRef.current = false;
-    if (page == null) return;
+    const pages = [...drawDirtyRef.current];
+    if (!pages.length) return;
+    drawDirtyRef.current = new Set();
     try {
-      await annotationsAPI.saveDrawing({ pageNumber: page, strokes });
+      // Both halves of a spread can be dirty at once, so save each of them.
+      await Promise.all(pages.map((page) =>
+        annotationsAPI.saveDrawing({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [] })));
       loadSummary();
+      // Refresh what we hold for those pages. Without this the cache still has the
+      // pre-save doc, and turning back to a page would reseed the working copy
+      // from it — showing the ink gone, and saving over it on the next stroke.
+      loadAnnotationsForPages(pages);
     } catch (e) {
       showToast(e.response?.data?.message || t('common.error'), 'error');
     }
-  }, [loadSummary, showToast, t]);
+  }, [loadSummary, loadAnnotationsForPages, showToast, t]);
 
-  const scheduleDrawSave = useCallback(() => {
-    drawDirtyRef.current = true;
+  const scheduleDrawSave = useCallback((page) => {
+    drawDirtyRef.current.add(page);
     if (drawSaveTimerRef.current) clearTimeout(drawSaveTimerRef.current);
     drawSaveTimerRef.current = setTimeout(() => { flushDrawing(); }, 1500); // ~1.5s after last stroke
   }, [flushDrawing]);
@@ -1424,44 +1437,74 @@ export default function Library() {
   // Apply a new strokes snapshot, recording history for undo/redo. Every ink
   // change (draw, erase, clear) funnels through here; `record` pushes the prior
   // snapshot onto the undo stack (capped at 50) and clears the redo stack.
-  const applyStrokes = useCallback((next, record = true) => {
+  const applyStrokes = useCallback((page, next, record = true) => {
     if (record) {
-      undoStackRef.current.push(drawStrokesRef.current);
-      if (undoStackRef.current.length > 50) undoStackRef.current.shift();
-      redoStackRef.current = [];
+      const undo = undoStacksRef.current[page] ?? (undoStacksRef.current[page] = []);
+      undo.push(drawStrokesRef.current[page] ?? []);
+      if (undo.length > 50) undo.shift();
+      redoStacksRef.current[page] = [];
     }
-    drawStrokesRef.current = next;
-    setDrawStrokes(next);
-    scheduleDrawSave();
+    drawStrokesRef.current = { ...drawStrokesRef.current, [page]: next };
+    setDrawStrokesByPage(drawStrokesRef.current);
+    lastDrawnPageRef.current = page;
+    scheduleDrawSave(page);
     bumpHistory();
   }, [scheduleDrawSave]);
 
-  const handleDrawChange = useCallback((next) => applyStrokes(next, true), [applyStrokes]);
+  const handleDrawChange = useCallback((page, next) => applyStrokes(page, next, true), [applyStrokes]);
+
+  // Keep a working copy of the ink for every page on screen.
+  //
+  // This has to react to the SAVED DOC ARRIVING, not just to the page changing:
+  // turning the page refetches its annotations, so seeding at turn time would
+  // seed from nothing and leave a page that has ink looking blank — and the next
+  // stroke would then save over what was there. A page with unsaved ink of its
+  // own is never reseeded, and pages that scroll away are dropped once clean.
+  useEffect(() => {
+    if (drawPage == null) return;
+    const next = { ...drawStrokesRef.current };
+    let changed = false;
+    for (const page of visiblePages) {
+      if (drawDirtyRef.current.has(page)) continue;
+      const saved = (annotationsByPage.get(page) ?? []).find((a) => a.kind === 'drawing')?.strokes ?? [];
+      const have = next[page];
+      if (have === undefined || (have.length === 0 && saved.length > 0)) {
+        next[page] = saved;
+        undoStacksRef.current[page] = [];    // history is session-local, per page
+        redoStacksRef.current[page] = [];
+        changed = true;
+      }
+    }
+    for (const key of Object.keys(next)) {
+      const page = Number(key);
+      if (!visiblePages.includes(page) && !drawDirtyRef.current.has(page)) { delete next[key]; changed = true; }
+    }
+    if (!changed) return;
+    drawStrokesRef.current = next;
+    setDrawStrokesByPage(next);
+    bumpHistory();
+  }, [drawPage, visiblePages, annotationsByPage]);
 
   const enterDraw = useCallback((page) => {
-    if (drawPage != null && drawPage !== page) flushDrawing(); // flush the other page first
     setSelectedVerseKey(null);
     setAnnoVisible(true);                 // drawing always shows what you're editing
-    const doc = (annotationsByPage.get(page) ?? []).find((a) => a.kind === 'drawing');
-    const seed = doc?.strokes ?? [];
-    drawStrokesRef.current = seed;
-    setDrawStrokes(seed);
-    undoStackRef.current = [];             // history is session-local, reset per page
-    redoStackRef.current = [];
-    drawDirtyRef.current = false;
-    setDrawPage(page);
-    setDrawMenuOpen(true);                 // the toolbar comes up with the mode
+    drawStrokesRef.current = {};          // the effect above seeds every visible page
+    setDrawStrokesByPage({});
+    drawDirtyRef.current = new Set();
+    lastDrawnPageRef.current = page;
+    setDrawPage(page);                    // the anchor: whose pencil, where the toolbar hangs
+    setDrawMenuOpen(true);                // the toolbar comes up with the mode
     bumpHistory();
-  }, [drawPage, flushDrawing, annotationsByPage]);
+  }, []);
 
   const exitDraw = useCallback(async () => {
-    const page = drawPage;
     await flushDrawing();
     setDrawPage(null);
     setDrawMenuOpen(false);
     setClearConfirm(false);
-    if (page != null && visiblePages.includes(page)) loadAnnotationsForPages([page]);
-  }, [drawPage, flushDrawing, visiblePages, loadAnnotationsForPages]);
+    lastDrawnPageRef.current = null;
+    loadAnnotationsForPages(visiblePages);
+  }, [flushDrawing, visiblePages, loadAnnotationsForPages]);
 
   // The pencil cycles through the three states, so one button covers all of them:
   //   1. off            -> annotating, toolbar shown
@@ -1489,12 +1532,26 @@ export default function Library() {
   const startDrawRef = useRef(null);
   useEffect(() => { startDrawRef.current = startDrawWithTool; }, [startDrawWithTool]);
 
-  // Picking the tool that is already active stops annotating: the same gesture
-  // that turned the tool on turns drawing off, by click or by its key.
+  // Picking the tool that is ALREADY active puts the tools away and leaves you
+  // drawing — that is the point of picking a tool, and the open menu is sitting
+  // over the page you want to draw on. Only once they are already away does the
+  // same gesture stop annotating, which keeps one rule for the button and its
+  // key: reach for the tool, then get the menu out of the way, then stop.
+  //
+  // (The button can only ever hit the first branch — with the menu shut there is
+  // no button to click — so the second is what a key press does from state 2.)
   const selectTool = useCallback((tool) => {
-    if (drawTool === tool) exitDraw();
-    else setDrawTool(tool);
-  }, [drawTool, exitDraw]);
+    if (drawTool !== tool) { setDrawTool(tool); return; }
+    if (drawMenuOpen) setDrawMenuOpen(false);
+    else exitDraw();
+  }, [drawTool, drawMenuOpen, exitDraw]);
+
+  // A colour swatch behaves the same way: choosing the one already in use means
+  // "yes, this one" — so get the tools out of the way and let the drawing start.
+  const selectColor = useCallback((color) => {
+    if (drawColor === color) setDrawMenuOpen(false);
+    else setDrawColor(color);
+  }, [drawColor]);
   useEffect(() => { selectToolRef.current = selectTool; }, [selectTool]);
 
   // A click anywhere outside the toolbar collapses it and leaves annotate mode
@@ -1539,23 +1596,31 @@ export default function Library() {
     return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
   }, [drawPage, drawMenuOpen, positionDrawMenu]);
 
+  // The page undo/redo/clear act on: whichever was drawn on last, or the anchor
+  // before any ink has been laid down.
+  const targetDrawPage = () => lastDrawnPageRef.current ?? drawPage;
   const undoStroke = useCallback(() => {
-    if (!undoStackRef.current.length) return;
-    redoStackRef.current.push(drawStrokesRef.current);
-    applyStrokes(undoStackRef.current.pop(), false);
-  }, [applyStrokes]);
+    const page = lastDrawnPageRef.current ?? drawPage;
+    const undo = undoStacksRef.current[page];
+    if (page == null || !undo?.length) return;
+    (redoStacksRef.current[page] ??= []).push(drawStrokesRef.current[page] ?? []);
+    applyStrokes(page, undo.pop(), false);
+  }, [applyStrokes, drawPage]);
   const redoStroke = useCallback(() => {
-    if (!redoStackRef.current.length) return;
-    undoStackRef.current.push(drawStrokesRef.current);
-    applyStrokes(redoStackRef.current.pop(), false);
-  }, [applyStrokes]);
+    const page = lastDrawnPageRef.current ?? drawPage;
+    const redo = redoStacksRef.current[page];
+    if (page == null || !redo?.length) return;
+    (undoStacksRef.current[page] ??= []).push(drawStrokesRef.current[page] ?? []);
+    applyStrokes(page, redo.pop(), false);
+  }, [applyStrokes, drawPage]);
   useEffect(() => { undoRef.current = undoStroke; }, [undoStroke]);
   useEffect(() => { redoRef.current = redoStroke; }, [redoStroke]);
 
   const clearDrawing = useCallback(() => {
-    applyStrokes([], true);
+    const page = lastDrawnPageRef.current ?? drawPage;
+    if (page != null) applyStrokes(page, [], true);
     setClearConfirm(false);
-  }, [applyStrokes]);
+  }, [applyStrokes, drawPage]);
 
   // ── Text notes (free-floating labels placed with the 'T' tool) ─────
   const createText = useCallback(async (page, x, y, text, color) => {
@@ -1582,17 +1647,22 @@ export default function Library() {
 
   // Flush + exit if the active drawing page scrolls out of view (bookmark / juz
   // jump / scrubber — the on-page turn controls are already suspended in draw mode).
+  // Turning the page while annotating used to drop you out of annotate mode. Now
+  // it saves what is on the old pages and re-arms on the new ones, so paging
+  // through a run of pages marking them up is one continuous act.
   useEffect(() => {
-    if (drawPage != null && !visiblePages.includes(drawPage)) {
-      flushDrawing().finally(() => { setDrawPage(null); setDrawMenuOpen(false); setClearConfirm(false); });
-    }
+    if (drawPage == null || visiblePages.includes(drawPage)) return;
+    flushDrawing().finally(() => {
+      lastDrawnPageRef.current = visiblePages[0];
+      setDrawPage(visiblePages[0]);       // the seeding effect picks up the new pages
+      setClearConfirm(false);
+    });
   }, [visiblePages, drawPage, flushDrawing]);
 
   // Save any pending drawing if the reader leaves the Library mid-stroke.
   useEffect(() => () => {
-    if (drawDirtyRef.current) {
-      const { page, strokes } = drawLatestRef.current;
-      if (page != null) annotationsAPI.saveDrawing({ pageNumber: page, strokes }).catch(() => {});
+    for (const page of drawDirtyRef.current) {
+      annotationsAPI.saveDrawing({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [] }).catch(() => {});
     }
   }, []);
 
@@ -2082,8 +2152,12 @@ export default function Library() {
     // Drawing: the active page renders the live working strokes; every other page
     // renders its saved doc (display-only). Only the active page captures input.
     const drawDoc = anns.find((a) => a.kind === 'drawing');
-    const isDrawingHere = drawPage === pd.page;
-    const layerStrokes = isDrawingHere ? drawStrokes : (drawDoc?.strokes ?? []);
+    // Annotate mode covers every page on screen; the anchor is only where the
+    // toolbar hangs. Each page draws its own working strokes.
+    const annotating = drawPage != null;
+    const isAnchor = drawPage === pd.page;
+    const isDrawingHere = annotating;
+    const layerStrokes = annotating ? (drawStrokesByPage[pd.page] ?? drawDoc?.strokes ?? []) : (drawDoc?.strokes ?? []);
     const textNotes = anns.filter((a) => a.kind === 'text');
     // Clean-reading toggle: while hidden (and not drawing this page), suppress all
     // annotation visuals AND their click targets.
@@ -2126,7 +2200,7 @@ export default function Library() {
               {/* Annotate (free-draw) toggle for this page */}
               <Tooltip label={isDrawingHere ? t('library.draw.exit') : t('library.draw.enter')}>
                 <button
-                  ref={isDrawingHere ? drawAnchorRef : undefined}
+                  ref={isAnchor ? drawAnchorRef : undefined}
                   type="button"
                   onClick={(e) => { e.stopPropagation(); toggleDraw(pd.page); }}
                   disabled={markVersesMode}
@@ -2180,7 +2254,7 @@ export default function Library() {
                   tool={drawTool}
                   color={drawColor}
                   width={drawWidth}
-                  onStrokesChange={handleDrawChange}
+                  onStrokesChange={(next) => handleDrawChange(pd.page, next)}
                   textNotes={textNotes}
                   onCreateText={(x, y, text, color) => createText(pd.page, x, y, text, color)}
                   onUpdateText={(id, patch) => updateText(pd.page, id, patch)}
@@ -2802,7 +2876,9 @@ export default function Library() {
                   Pure affordance — hidden on touch (swipe covers that), sit in the
                   margin outside the text frame, and step aside at the book's ends.
                   Hidden while annotating (page turns are suspended in draw mode). */}
-              {pagesData.length > 0 && !pageError && drawPage == null && (
+              {/* Still here while annotating: marking up a run of pages shouldn't
+                  mean stopping to leave annotate mode between each one. */}
+              {pagesData.length > 0 && !pageError && (
                 <>
                   <button
                     type="button"
@@ -3569,7 +3645,7 @@ export default function Library() {
               const isActive = drawTool === tl.k;
               const label = `${t(tl.labelKey)} (${tl.key.toUpperCase()})`;
               return (
-                <Tooltip key={tl.k} label={isActive ? `${label} — ${t('library.draw.exit')}` : label}>
+                <Tooltip key={tl.k} label={isActive ? `${label} — ${t('library.draw.hideTools')}` : label}>
                   <button
                     type="button"
                     onClick={() => selectTool(tl.k)}
@@ -3590,10 +3666,10 @@ export default function Library() {
           {drawTool !== 'eraser' && (
             <div className="flex items-center gap-2 px-1 py-0.5">
               {DRAW_COLORS.map(({ key, cls, labelKey }) => (
-                <Tooltip key={key} label={t(labelKey)}>
+                <Tooltip key={key} label={drawColor === key ? `${t(labelKey)} — ${t('library.draw.hideTools')}` : t(labelKey)}>
                   <button
                     type="button"
-                    onClick={() => setDrawColor(key)}
+                    onClick={() => selectColor(key)}
                     aria-label={t(labelKey)}
                     aria-pressed={drawColor === key}
                     className={`w-6 h-6 rounded-full transition-transform ${cls} ${
@@ -3609,19 +3685,19 @@ export default function Library() {
           {/* Actions row */}
           <div className="flex items-center gap-1 border-t border-[#dce2f3] dark:border-gray-700 pt-1.5">
             <Tooltip label={t('library.draw.undo')}>
-              <button type="button" onClick={undoStroke} disabled={undoStackRef.current.length === 0} aria-label={t('library.draw.undo')}
+              <button type="button" onClick={undoStroke} disabled={(undoStacksRef.current[targetDrawPage()] ?? []).length === 0} aria-label={t('library.draw.undo')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
                 <FiRotateCcw className="w-4 h-4" />
               </button>
             </Tooltip>
             <Tooltip label={t('library.draw.redo')}>
-              <button type="button" onClick={redoStroke} disabled={redoStackRef.current.length === 0} aria-label={t('library.draw.redo')}
+              <button type="button" onClick={redoStroke} disabled={(redoStacksRef.current[targetDrawPage()] ?? []).length === 0} aria-label={t('library.draw.redo')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
                 <FiRotateCw className="w-4 h-4" />
               </button>
             </Tooltip>
             <Tooltip label={t('library.draw.clear')}>
-              <button type="button" onClick={() => setClearConfirm(true)} disabled={drawStrokes.length === 0} aria-label={t('library.draw.clear')}
+              <button type="button" onClick={() => setClearConfirm(true)} disabled={(drawStrokesByPage[targetDrawPage()] ?? []).length === 0} aria-label={t('library.draw.clear')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-[#ba1a1a] dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors">
                 <FiTrash2 className="w-4 h-4" />
               </button>
