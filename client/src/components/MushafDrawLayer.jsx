@@ -218,7 +218,7 @@ export default function MushafDrawLayer({
     <>
       <svg
         ref={svgRef}
-        className={`mushaf-draw-svg${active ? ' is-active' : ''}`}
+        className={`mushaf-draw-svg${active ? ' is-active' : ''}${active && tool === 'eraser' ? ' is-eraser' : ''}`}
         viewBox={`${X_MIN} ${Y_MIN} ${VBW} ${VBH}`}
         preserveAspectRatio="none"
         style={active ? { touchAction: 'none' } : undefined}
