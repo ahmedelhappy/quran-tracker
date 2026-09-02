@@ -47,6 +47,18 @@ const JUZ_START_PAGES = [
 ];
 
 const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
+const SIDEBAR_WIDTH = 288;   // lg:w-72 — the offset the sidebar's edge tab rides to
+
+// "Clicking off the verse" has to mean clicking EMPTY SPACE. Reaching for the
+// tafsir panel, the sidebar, the audio bar or any control is the reader doing
+// something WITH the verse they picked — throwing the selection away there made
+// the panels almost unusable. Anything matching this keeps the selection exactly
+// as it is; only bare background walks the select -> hide -> deselect ladder.
+const KEEPS_VERSE_SELECTION = [
+  'button', 'a', 'input', 'select', 'textarea', 'label',
+  '[role="button"]', '[role="separator"]', '[contenteditable="true"]',
+  'aside', 'header', '[data-keeps-selection]',
+].join(', ');
 
 // The reader's two panel handles: a small tab hugging one edge of the viewport,
 // rounded on its inner side only so it reads as something tucked against the edge.
@@ -1912,14 +1924,19 @@ export default function Library() {
   // Place the popover near the clicked word: below the pointer when it's in the
   // top half of the viewport, above it in the bottom half; centred on x; clamped
   // to the viewport with a small offset (standard selection-toolbar flip/shift).
+  //
+  // The gap is deliberately generous — a toolbar right under the cursor hides the
+  // word just tapped — and larger still when it opens UPWARD, where it would
+  // otherwise sit over the line the reader is looking at.
   useLayoutEffect(() => {
     if (!selectedVerse || !popoverRef.current || !placeNextRef.current) return;
     placeNextRef.current = false;
     const el = popoverRef.current;
     const { width: w, height: h } = el.getBoundingClientRect();
     const p = lastPointerRef.current || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const gap = 14;
-    let top = p.y < window.innerHeight / 2 ? p.y + gap : p.y - h - gap;
+    const gapBelow = 34;
+    const gapAbove = 54;
+    let top = p.y < window.innerHeight / 2 ? p.y + gapBelow : p.y - h - gapAbove;
     let left = p.x - w / 2;
     left = Math.min(Math.max(left, 8), window.innerWidth - w - 8);
     top = Math.min(Math.max(top, 8), window.innerHeight - h - 8);
@@ -1938,8 +1955,10 @@ export default function Library() {
       if (popoverRef.current?.contains(e.target)) return;
       // A word click runs the ladder itself (handleWordSelect) — leave it alone.
       if (e.target.closest?.('.mushaf-word')) return;
-      // Same ladder as tapping the verse: first click puts the actions away,
-      // the next one drops the selection.
+      // A control, or somewhere inside a panel being used: not "off the verse".
+      if (e.target.closest?.(KEEPS_VERSE_SELECTION)) return;
+      // Empty space. Same ladder as tapping the verse: the first click puts the
+      // actions away, the next one drops the selection.
       if (!popoverHidden) setPopoverHidden(true);
       else setSelectedVerseKey(null);
     };
@@ -2257,7 +2276,10 @@ export default function Library() {
           nothing the navbar doesn't, and the mushaf wants the height. `pt-20`
           clears the navbar with a little less air than before, for the same
           reason. */}
-      <main className="grow w-full max-w-[1600px] mx-auto px-4 sm:px-6 pt-20 pb-6">
+      {/* Full-bleed: the panels dock against the WINDOW edges, the way an editor
+          docks its side bars, so neither is floating in a gutter. Only the reading
+          column between them gets padding and a measure. */}
+      <main className="grow w-full pt-20 pb-6">
         {/* The two panel handles: small chevron tabs flush to the viewport edges,
             the way an IDE hangs a panel handle. The sidebar's sits on the START
             edge it lives on, the tafsir's on the END edge its panel opens from, so
@@ -2269,41 +2291,55 @@ export default function Library() {
             closed it points inward (click to bring it out). `rtl:rotate-180` flips
             the glyph with the writing direction, so "outward" stays outward.
             No text label — the tooltip and aria-label carry the meaning. */}
-        <Tooltip label={sidebarOpen ? t('library.sidebar.hide') : t('library.sidebar.show')} placement="bottom" className="fixed top-1/2 -translate-y-1/2 start-0 z-40">
-          <button
-            onClick={() => setSidebarByUser(!sidebarOpen)}
-            data-testid="sidebar-toggle"
-            aria-label={sidebarOpen ? t('library.sidebar.hide') : t('library.sidebar.show')}
-            aria-pressed={sidebarOpen}
-            className={READER_EDGE_TAB('start')}
-          >
-            {sidebarOpen
-              ? <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
-              : <FiChevronRight className="w-4 h-4 rtl:rotate-180" />}
-          </button>
-        </Tooltip>
+        {/* Each tab rides its own panel's inner edge, so it reads as the panel's
+            handle rather than a button stranded at the window edge — and it slides
+            across as the panel opens and closes. With the panel shut it rests
+            against the window edge itself. */}
+        <div
+          className="reader-edge-tab fixed top-1/2 -translate-y-1/2 z-40"
+          style={{ insetInlineStart: sidebarOpen && isWide ? SIDEBAR_WIDTH : 0 }}
+        >
+          <Tooltip label={sidebarOpen ? t('library.sidebar.hide') : t('library.sidebar.show')} placement="bottom">
+            <button
+              onClick={() => setSidebarByUser(!sidebarOpen)}
+              data-testid="sidebar-toggle"
+              aria-label={sidebarOpen ? t('library.sidebar.hide') : t('library.sidebar.show')}
+              aria-pressed={sidebarOpen}
+              className={READER_EDGE_TAB('start')}
+            >
+              {sidebarOpen
+                ? <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
+                : <FiChevronRight className="w-4 h-4 rtl:rotate-180" />}
+            </button>
+          </Tooltip>
+        </div>
 
-        <Tooltip label={tafsirOpen ? t('library.tafsirHide') : t('library.tafsirShow')} placement="bottom" className="fixed top-1/2 -translate-y-1/2 end-0 z-40">
-          <button
-            onClick={toggleTafsir}
-            data-testid="tafsir-toggle"
-            aria-label={tafsirOpen ? t('library.tafsirHide') : t('library.tafsirShow')}
-            aria-pressed={tafsirOpen}
-            className={READER_EDGE_TAB('end')}
-          >
-            {tafsirOpen
-              ? <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
-              : <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />}
-          </button>
-        </Tooltip>
+        <div
+          className="reader-edge-tab fixed top-1/2 -translate-y-1/2 z-40"
+          style={{ insetInlineEnd: tafsirOpen && isWide ? tafsirWidth : 0 }}
+        >
+          <Tooltip label={tafsirOpen ? t('library.tafsirHide') : t('library.tafsirShow')} placement="bottom">
+            <button
+              onClick={toggleTafsir}
+              data-testid="tafsir-toggle"
+              aria-label={tafsirOpen ? t('library.tafsirHide') : t('library.tafsirShow')}
+              aria-pressed={tafsirOpen}
+              className={READER_EDGE_TAB('end')}
+            >
+              {tafsirOpen
+                ? <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
+                : <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />}
+            </button>
+          </Tooltip>
+        </div>
 
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className="flex flex-col lg:flex-row lg:gap-0 gap-6 items-start">
 
           {/* ── Sidebar — shown or hidden by its own toggle. Docking the tafsir
               hides it by default (that column of room is what the panel takes),
               but an explicit toggle outranks that; see the effect above. ── */}
           {showSidebar && (
-          <aside className="w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-28 lg:self-start">
+          <aside className="reader-panel reader-panel--start w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl lg:rounded-s-none border border-[#dce2f3] dark:border-gray-700 lg:border-s-0 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-20 lg:self-start">
 
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
@@ -2368,12 +2404,6 @@ export default function Library() {
                   <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
                 </button>
               </div>
-              <button
-                onClick={() => setSidebarByUser(false)}
-                className="hidden lg:inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg border border-[#dce2f3] dark:border-gray-600 px-3 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
-              >
-                <FiMinimize2 className="w-3.5 h-3.5" /> {t('library.sidebar.hide')}
-              </button>
             </div>
 
             {/* Jump to Juz / Surah — side by side: two controls of the same kind,
@@ -2487,6 +2517,44 @@ export default function Library() {
                 this short. */}
             <hr className="border-0 border-t border-[#dce2f3] dark:border-gray-700 -mx-4" />
 
+            {/* ── Method checklist (ephemeral ticks), collapsed by default ── */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setMethodOpen(o => !o)}
+                className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
+              >
+                {t('library.method.title')}
+                <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {methodOpen && (
+                <>
+                  <ol className="flex flex-col gap-0.5">
+                    {stepList.map((step, i) => (
+                      <li key={i}>
+                        <button
+                          onClick={() => toggleStep(i)}
+                          className="w-full flex items-start gap-2 text-start py-0.5 group"
+                        >
+                          {checkedSteps.has(i)
+                            ? <FiCheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                            : <FiSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#b0b6bd] dark:text-gray-500 group-hover:text-[#707974] dark:group-hover:text-gray-400 transition-colors" />}
+                          <span className={`text-xs leading-snug ${checkedSteps.has(i) ? 'line-through text-[#a0a6ab] dark:text-gray-600' : 'text-[#404944] dark:text-gray-300'}`}>
+                            {step.title}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                  <button
+                    onClick={() => setHowToOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 mt-0.5 w-max"
+                  >
+                    <FiHelpCircle className="w-3.5 h-3.5" /> {t('library.method.fullGuide')}
+                  </button>
+                </>
+              )}
+            </div>
+
             {/* ── Self-test (active recall) — always available ── */}
             <div className="flex flex-col gap-2.5 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-3.5">
               {/* Label + tappable explainer (the how-it-works text lives here). */}
@@ -2535,44 +2603,6 @@ export default function Library() {
                     {t('library.selfTest.hideAll')}
                   </button>
                 </div>
-              )}
-            </div>
-
-            {/* ── Method checklist (ephemeral ticks), collapsed by default ── */}
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => setMethodOpen(o => !o)}
-                className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
-              >
-                {t('library.method.title')}
-                <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {methodOpen && (
-                <>
-                  <ol className="flex flex-col gap-0.5">
-                    {stepList.map((step, i) => (
-                      <li key={i}>
-                        <button
-                          onClick={() => toggleStep(i)}
-                          className="w-full flex items-start gap-2 text-start py-0.5 group"
-                        >
-                          {checkedSteps.has(i)
-                            ? <FiCheckSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-                            : <FiSquare className="w-4 h-4 mt-0.5 shrink-0 text-[#b0b6bd] dark:text-gray-500 group-hover:text-[#707974] dark:group-hover:text-gray-400 transition-colors" />}
-                          <span className={`text-xs leading-snug ${checkedSteps.has(i) ? 'line-through text-[#a0a6ab] dark:text-gray-600' : 'text-[#404944] dark:text-gray-300'}`}>
-                            {step.title}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                  <button
-                    onClick={() => setHowToOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-[#004f35] dark:text-emerald-400 hover:underline underline-offset-2 mt-0.5 w-max"
-                  >
-                    <FiHelpCircle className="w-3.5 h-3.5" /> {t('library.method.fullGuide')}
-                  </button>
-                </>
               )}
             </div>
 
@@ -2747,7 +2777,7 @@ export default function Library() {
               row — `items-start` otherwise shrinks it to content width and pins it
               to the start edge, leaving the page card off-centre on narrow screens.
               In focus mode the sidebar is gone, so cap + centre the reading column. */}
-          <div className="flex-1 w-full flex flex-col gap-4 min-w-0">
+          <div className="flex-1 w-full flex flex-col gap-4 min-w-0 px-4 sm:px-6">
 
             {/* Discoverability cue — the self-test hint stays while testing; the
                 plain "tap a verse" cue retires once the reader has selected one. */}
@@ -2991,7 +3021,7 @@ export default function Library() {
             )}
 
             {/* ── Sticky audio bar — stays visible with the popover (reciter, speed, repeat live here) ── */}
-            <div data-tour="lib-audio" className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+            <div data-tour="lib-audio" data-keeps-selection className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
                   <button
@@ -3226,11 +3256,13 @@ export default function Library() {
               />
               <div
                 data-testid="tafsir-panel"
+                data-keeps-selection
                 className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                            bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
                            md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0
-                           lg:sticky lg:top-28 lg:self-start lg:inset-auto lg:z-auto lg:h-auto lg:max-h-[calc(100vh-8rem)]
-                           lg:shrink-0 lg:rounded-2xl lg:border lg:shadow-xl"
+                           lg:sticky lg:top-20 lg:self-start lg:inset-auto lg:z-auto lg:h-auto lg:max-h-[calc(100vh-6rem)]
+                           lg:shrink-0 lg:rounded-2xl lg:rounded-e-none lg:border lg:border-e-0 lg:shadow-xl
+                           reader-panel reader-panel--end"
                 style={isWide ? { width: tafsirWidth } : undefined}
               >
                 {/* Resize handle on the panel's inner edge — only where the panel is
@@ -3523,6 +3555,7 @@ export default function Library() {
         <div
           ref={drawMenuRef}
           data-testid="draw-menu"
+          data-keeps-selection
           style={{ top: drawMenuPos.top, left: drawMenuPos.left }}
           className="fixed z-40 bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-2 flex flex-col gap-1.5 select-none"
           onPointerDown={(e) => e.stopPropagation()}

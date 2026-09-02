@@ -317,6 +317,30 @@ html[lang='ar'] body {
 }
 .dark .mushaf-note-dot { background: #60a5fa; box-shadow: 0 0 0 0.06em rgba(17, 24, 39, 0.9); }
 
+/* A docked reader panel slides in from the edge it lives on, the way an editor's
+   side bar does. The slide direction follows the writing direction, so the start
+   panel comes from the left in English and the right in Arabic. */
+.reader-panel { animation: reader-panel-in 0.22s ease-out; }
+.reader-panel--start { --panel-from: -100%; }
+.reader-panel--end { --panel-from: 100%; }
+[dir="rtl"] .reader-panel--start { --panel-from: 100%; }
+[dir="rtl"] .reader-panel--end { --panel-from: -100%; }
+@keyframes reader-panel-in {
+  from { transform: translateX(var(--panel-from)); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* The handle rides its panel's inner edge rather than sitting at the window edge,
+   so it reads as part of the panel; it slides across as the panel opens. */
+.reader-edge-tab {
+  transition: inset-inline-start 0.22s ease, inset-inline-end 0.22s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-panel { animation: none; }
+  .reader-edge-tab { transition: none; }
+}
+
 /* The reader's auto-hiding navbar. TRANSFORM only — the page keeps its top
    padding, so hiding the bar frees the space visually without reflowing anything
    under it. A mushaf that jumped every few seconds would be far worse than the
