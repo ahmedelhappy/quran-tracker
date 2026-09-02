@@ -12,6 +12,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
+import { round1 } from '../utils/formatNumber';
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 // Sun..Sat rows; labels only on Mon/Wed/Fri like GitHub's contribution graph.
@@ -280,7 +281,6 @@ export default function Progress() {
     }
     return { full, frac, total: end - start + 1, partial };
   };
-  const round1 = (n) => Math.round(n * 10) / 10;
 
   // Projected completion (GET /api/progress/estimate). estimateDisplay is null
   // once nothing is left to memorize (whole Quran done).
@@ -418,7 +418,7 @@ export default function Progress() {
                     <div className="flex items-end gap-3 mb-3">
                       <span className="text-5xl font-extrabold text-[#1A1A1A] dark:text-gray-100">{percentage}%</span>
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-semibold px-2 py-1 rounded-lg mb-2">
-                        {t('progress.pagesCount', { count: totalMemorized })}
+                        {t('progress.pagesCount', { count: round1(totalMemorized) })}
                       </span>
                     </div>
                     <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -427,7 +427,7 @@ export default function Progress() {
                         style={{ width: `${percentage}%`, background: 'linear-gradient(90deg, #40916C, #1B4332)' }}
                       />
                     </div>
-                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{t('progress.pagesRemaining', { count: 604 - totalMemorized })}</p>
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-2">{t('progress.pagesRemaining', { count: round1(604 - totalMemorized) })}</p>
                   </>
                 )}
               </div>

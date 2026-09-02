@@ -13,6 +13,7 @@ import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
 import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSurahPage } from '../utils/surahDisplay';
 import { getDailyVerse } from '../services/dailyVerse';
+import { round1 } from '../utils/formatNumber';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -514,7 +515,7 @@ export default function Dashboard() {
   const currentJuzObj = juzData.find(j => !j.isComplete) || null;
   const currentJuzNumber = currentJuzObj?.juzNumber ?? null; // null only when all 30 are complete
   const currentJuzPct = currentJuzObj?.percentage ?? (juzData.length > 0 ? 100 : 0);
-  const memorizedPagesStat = stats ? `${stats.totalMemorized} / 604` : '— / 604';
+  const memorizedPagesStat = stats ? `${round1(stats.totalMemorized)} / 604` : '— / 604';
 
   const missedDay = (() => {
     if (!user?.lastActiveDate) return false;
