@@ -1038,3 +1038,37 @@ Quick plain-language definitions of the terms used throughout this guide.
   learned material decays roughly exponentially over time *unless* it's reinforced — fastest
   right after learning, then more slowly. It's the *why* behind spaced repetition: review
   freshly learned pages often (steepest decay) and older, more-stable pages less often.
+
+## Keyboard shortcuts must work on any keyboard layout
+
+Match letter shortcuts with `isShortcutKey` from `client/src/utils/shortcutKeys.js`,
+never with a bare `e.key === 'p'`.
+
+`e.key` is the character the reader's **layout produces**. On an Arabic layout the
+physical <kbd>P</kbd> key emits `'ح'`; on Russian it emits `'з'`, on Greek `'π'`.
+A shortcut written as `e.key === 'p'` therefore does nothing at all for a large
+share of this app's readers — silently, with no error to notice. `e.code` names
+the **physical** key (`'KeyP'`) and ignores the layout entirely.
+
+The helper accepts either, deliberately:
+
+```js
+import { isShortcutKey } from '../utils/shortcutKeys';
+
+if (isShortcutKey(e, 'p')) selectTool('pen');
+```
+
+- `e.code` is what rescues non-Latin layouts.
+- `e.key` keeps the letter the reader **sees printed on the key** on AZERTY and
+  Dvorak, and covers IMEs and on-screen keyboards, where `e.code` can be empty.
+
+`shortcutValue(e, { p: 'pen', h: 'highlighter' })` does the same for a whole map.
+
+**Not affected:** `Escape`, `ArrowLeft` / `ArrowRight`, `PageUp` / `PageDown`.
+Their `e.key` is already identical on every layout, so match those on `e.key` as
+before — adding `e.code` there would only add noise.
+
+Verify a shortcut the honest way: switching the UI language changes i18n, not the
+keyboard layout, and proves nothing. Dispatch an event that carries a non-Latin
+character on the right physical key — `key: 'ح'` with `code: 'KeyP'` — and assert
+the action actually happened.
