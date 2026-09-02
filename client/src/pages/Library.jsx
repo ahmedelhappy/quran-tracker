@@ -2388,8 +2388,11 @@ export default function Library() {
           </Tooltip>
         </div>
 
+        {/* Level with the panel's header rather than the middle of the window:
+            with no verse picked the panel is short, and a chevron floating beside
+            empty space read as unattached to anything. */}
         <div
-          className="reader-edge-tab fixed top-1/2 -translate-y-1/2 z-40"
+          className="reader-edge-tab fixed top-24 z-40"
           style={{ insetInlineEnd: tafsirOpen && isWide ? tafsirWidth : 0 }}
         >
           <Tooltip label={tafsirOpen ? t('library.tafsirHide') : t('library.tafsirShow')} placement="bottom">
@@ -3367,7 +3370,7 @@ export default function Library() {
                   </div>
                 )}
                 {/* Header */}
-                <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
+                <div className="px-5 lg:pe-[25px] py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
                     <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
@@ -3412,7 +3415,9 @@ export default function Library() {
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+                {/* pe-[25px]: the panel is flush against the window edge now, so the
+                    text needs a little room on that side to breathe. */}
+                <div className="flex-1 overflow-y-auto p-5 lg:pe-[25px] flex flex-col gap-4">
                   {/* Nothing selected at all: say so. An empty panel reads like a
                       load that never finished. (A selected verse whose page is
                       still arriving — a cross-page step — keeps the skeleton,
