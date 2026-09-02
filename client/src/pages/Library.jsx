@@ -492,6 +492,11 @@ export default function Library() {
   // ── Contextual onboarding (driver.js) ────────────────────
   const tourRef = useRef(null);
   const tourActiveRef = useRef(false);
+  // A render-visible mirror of the ref: the auto-hiding navbar has to know a tour
+  // is running so it doesn't fade out from under a walkthrough that scrolls the
+  // page around. Refs don't re-render, so the flag has to be state as well.
+  const [tourActive, setTourActive] = useState(false);
+  const markTour = useCallback((on) => { tourActiveRef.current = on; setTourActive(on); }, []);
   const libTourCheckedRef = useRef(false);
 
   // The pages currently on screen (the spread is anchored to the right/odd page).
@@ -763,11 +768,11 @@ export default function Library() {
         t,
         onDone: () => {
           localStorage.setItem('seenLibraryTour', '1');
-          tourActiveRef.current = false;
+          markTour(false);
           tourRef.current = null;
         },
       });
-      if (tour) { tourRef.current = tour; tourActiveRef.current = true; }
+      if (tour) { tourRef.current = tour; markTour(true); }
       else localStorage.setItem('seenLibraryTour', '1');
     }, 350);
     return () => clearTimeout(id);
@@ -790,8 +795,8 @@ export default function Library() {
       if (tourActiveRef.current || localStorage.getItem('seenVerseActionsHint')) return;
       if (!document.querySelector('[data-tour="verse-actions"]')) return;
       localStorage.setItem('seenVerseActionsHint', '1');
-      tourActiveRef.current = true;
-      startVerseActionsCoachmark({ t, onDone: () => { tourActiveRef.current = false; } });
+      markTour(true);
+      startVerseActionsCoachmark({ t, onDone: () => { markTour(false); } });
     }, 200);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2344,7 +2349,7 @@ export default function Library() {
           a few idle seconds and returns the moment the pointer nears the top, on
           Tab into it, or on Escape. It animates by TRANSFORM only and the page
           keeps its top padding, so the mushaf never jumps. */}
-      <Navbar autoHide holdOpen={notePanel != null || readTextNote != null} />
+      <Navbar autoHide holdOpen={tourActive || notePanel != null || readTextNote != null} />
 
       {/* The page header is gone: its title and subtitle told a returning reader
           nothing the navbar doesn't, and the mushaf wants the height. `pt-20`
