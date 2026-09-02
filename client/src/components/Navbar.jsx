@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIdleHide } from '../hooks/useIdleHide';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -15,7 +16,11 @@ const NAV_LINKS = [
   { to: '/leaderboard', labelKey: 'nav.leaderboard', icon: FiAward },
 ];
 
-const Navbar = () => {
+// `autoHide` lets a page hand the window over to its content: the bar fades out
+// after a few idle seconds and comes straight back when reached for. Off by
+// default, so every other page keeps a bar that never moves. `holdOpen` lets a
+// page pin it open (a tour walking the navbar, say).
+const Navbar = ({ autoHide = false, holdOpen = false }) => {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
@@ -23,6 +28,11 @@ const Navbar = () => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
+
+  // `autoHide` is opt-in per page — the reader turns it on to give the mushaf the
+  // window, everywhere else the bar stays put. It never hides while one of its own
+  // menus is open (holdOpen), which would yank the menu away mid-use.
+  const idleHidden = useIdleHide({ enabled: autoHide, holdOpen: mobileOpen || avatarOpen || holdOpen });
 
   const handleLogout = () => {
     logout();
@@ -40,7 +50,13 @@ const Navbar = () => {
   const isDark = theme === 'dark';
 
   return (
-    <header className="bg-white dark:bg-gray-900 fixed top-0 w-full z-50 border-b border-emerald-100/20 dark:border-gray-700/30 sacred-shadow">
+    <header
+      data-testid="navbar"
+      data-hidden={idleHidden ? 'true' : 'false'}
+      className={`bg-white dark:bg-gray-900 fixed top-0 w-full z-50 border-b border-emerald-100/20 dark:border-gray-700/30 sacred-shadow navbar-idle ${
+        idleHidden ? 'is-idle-hidden' : ''
+      }`}
+    >
       <div className="max-w-[1280px] mx-auto px-6 py-4 flex items-center justify-between">
 
         {/* Logo */}
