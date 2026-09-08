@@ -452,9 +452,15 @@ export default function Library() {
 
   // ── Verse selection + tafsir state (verses addressed by stable verseKey) ──
   const [selectedVerseKey, setSelectedVerseKey] = useState(null);
-  // The panel has no verse of its own: it always shows `selectedVerseKey`. That
-  // is what keeps it and the mushaf's highlight in step in BOTH directions
-  // without a pair of effects syncing each other into a render loop.
+  // The tafsir panel FOLLOWS the selection but does not share its life. Picking a
+  // verse moves the panel onto it; LOSING the selection does not move it back off:
+  // deselecting, clicking empty space, or reaching for the pencil (enterDraw clears
+  // the selection so the popover can't fire over the ink) all leave the panel
+  // showing the verse it already had. Nobody who starts annotating has asked to
+  // stop reading the tafsir. Only closing the panel, or picking another verse,
+  // changes it — and because the flow stays ONE-WAY (selection → panel) there is
+  // still no pair of effects syncing each other into a render loop.
+  const [tafsirVerseKey, setTafsirVerseKey] = useState(null);
   const [tafsirOpen, setTafsirOpen] = useState(false);
   const [tafsirEdition, setTafsirEdition] = useState(() => {
     const saved = localStorage.getItem('tafsirEdition');
@@ -1838,6 +1844,10 @@ export default function Library() {
   );
   const selectedVerse = selectedAudioIndex >= 0 ? verses[selectedAudioIndex] : null;
   const selectedOrd = ordOfKey(selectedVerseKey);
+  // What the tafsir panel's own prev/next step FROM. The panel outlives the
+  // selection now, so falling back to its verse is what keeps those arrows alive
+  // after the reader has deselected or started annotating.
+  const panelStepOrd = selectedOrd ?? ordOfKey(tafsirVerseKey);
   // Where the verse being recited sits among the on-screen verses (-1 while the
   // view is still catching up to it), for the audio bar's "verse N of M".
   const playingIndex = useMemo(
@@ -1857,7 +1867,7 @@ export default function Library() {
   // dead-ending at the page edge. Audio comes along if it was already going.
   // Programmatic, so it does NOT re-anchor the popover (only a word click does).
   const stepSelection = (dir) => {
-    const from = selectedOrd ?? ordOfKey(verses[0]?.verseKey);
+    const from = panelStepOrd ?? ordOfKey(verses[0]?.verseKey);
     if (from == null) return;
     const next = from + dir;
     if (next < 1 || next > TOTAL_AYAHS) return;
@@ -1880,10 +1890,33 @@ export default function Library() {
   };
 
   // ── Tafsir loading ───────────────────────────────────────
-  // The panel shows the SELECTED verse, full stop. Stepping inside the panel moves
-  // the selection (above), and picking a verse on the mushaf moves the panel — both
-  // for free, with no effects syncing two pieces of state into a loop.
-  const tafsirVerse = tafsirOpen ? selectedVerse : null;
+  // Stepping inside the panel moves the selection, and picking a verse on the
+  // mushaf moves the panel: the selection is still what drives it. What changed is
+  // the fallback — with no selection the panel reads its own MEMORY of the last
+  // verse it showed instead of going blank. Derived during render, so opening the
+  // panel and picking a verse never flash an empty frame first.
+  const panelVerseKey = tafsirOpen ? (selectedVerseKey ?? tafsirVerseKey) : null;
+  useEffect(() => {
+    if (selectedVerseKey != null) setTafsirVerseKey(selectedVerseKey);
+  }, [selectedVerseKey]);
+  // Closing the panel is the one thing that forgets it, so the next time it opens
+  // it starts on the "tap any verse" empty state again — which is precisely what
+  // that empty state is for: nothing has been shown HERE yet. Once a verse has
+  // been shown, deselecting never falls back to it.
+  useEffect(() => { if (!tafsirOpen) setTafsirVerseKey(null); }, [tafsirOpen]);
+
+  // The verse object the panel renders. Normally it is right there on the visible
+  // page; when it isn't, the last one resolved for this same key stands in, which
+  // is what lets the panel keep its verse (and its header keep naming it) after a
+  // range drag has turned the page out from under it. A key we have NEVER resolved
+  // is a different matter — that one really is loading, and gets the skeleton.
+  const lastTafsirVerseRef = useRef(null);
+  const onPageTafsirVerse = panelVerseKey != null
+    ? verses.find((v) => v.verseKey === panelVerseKey) ?? null
+    : null;
+  const tafsirVerse = onPageTafsirVerse
+    ?? (lastTafsirVerseRef.current?.verseKey === panelVerseKey ? lastTafsirVerseRef.current : null);
+  useEffect(() => { if (onPageTafsirVerse) lastTafsirVerseRef.current = onPageTafsirVerse; }, [onPageTafsirVerse]);
 
   useEffect(() => {
     if (!tafsirOpen || !tafsirVerse) return;
@@ -1983,14 +2016,17 @@ export default function Library() {
   };
 
   // The persistent panel toggle. Opened with nothing selected it falls back to the
-  // first verse of the page in front of the reader, so the panel always has a verse.
+  // first verse of the page in front of the reader, so the panel normally has a
+  // verse from the moment it appears. When there is no page to fall back to — the
+  // toggle pressed while the mushaf is still arriving — it opens ANYWAY, on its
+  // "tap any verse" empty state, rather than silently doing nothing. That is the
+  // one place that empty state belongs: a panel session that has shown nothing yet.
   const toggleTafsir = () => {
     if (tafsirOpen) { setTafsirOpen(false); return; }
     if (!selectedVerse) {
       const page = twoPage ? activePage : currentPage;
       const first = verses.find((v) => v.page === page) ?? verses[0];
-      if (!first) return;
-      setSelectedVerseKey(first.verseKey);
+      if (first) setSelectedVerseKey(first.verseKey);
     }
     setNotePanel(null);
     setTafsirOpen(true);
@@ -3399,7 +3435,7 @@ export default function Library() {
                     <Tooltip label={t('tooltips.prevVerse')}>
                       <button
                         onClick={() => stepSelection(-1)}
-                        disabled={selectedOrd == null || selectedOrd === 1}
+                        disabled={panelStepOrd == null || panelStepOrd === 1}
                         aria-label={t('tooltips.prevVerse')}
                         className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                       >
@@ -3409,7 +3445,7 @@ export default function Library() {
                     <Tooltip label={t('tooltips.nextVerse')}>
                       <button
                         onClick={() => stepSelection(1)}
-                        disabled={selectedOrd == null || selectedOrd === TOTAL_AYAHS}
+                        disabled={panelStepOrd == null || panelStepOrd === TOTAL_AYAHS}
                         aria-label={t('tooltips.nextVerse')}
                         className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
                       >
@@ -3436,7 +3472,7 @@ export default function Library() {
                       load that never finished. (A selected verse whose page is
                       still arriving — a cross-page step — keeps the skeleton,
                       because that one really IS loading.) */}
-                  {!tafsirVerse && !selectedVerseKey ? (
+                  {!tafsirVerse && !panelVerseKey ? (
                     <div data-testid="tafsir-empty" className="flex flex-col items-center gap-3 py-10 text-center">
                       <FiBookOpen className="w-8 h-8 text-[#b0b6bd] dark:text-gray-600" />
                       <p className="text-sm text-[#707974] dark:text-gray-400 max-w-[24ch]">{t('library.tafsirPickVerse')}</p>
