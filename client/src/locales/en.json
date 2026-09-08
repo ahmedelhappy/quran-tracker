@@ -751,6 +751,7 @@
       "repeatWholeRange": "Repeat the whole range",
       "rangeProgress": "Verse {{verse}} of {{total}} · pass {{pass}} of {{passes}}",
       "rangeProgressRep": "Verse {{verse}} of {{total}} · rep {{rep}} of {{reps}} · pass {{pass}} of {{passes}}",
+      "rangeDragHint": "Range picked — {{verses}} verses. Choose how many times to repeat, then play.",
       "rangeFrom": "From",
       "rangeTo": "To",
       "rangeSpan": "{{verses}} verses · pages {{from}}–{{to}}",

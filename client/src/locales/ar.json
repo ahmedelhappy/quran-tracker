@@ -751,6 +751,7 @@
       "repeatWholeRange": "تكرار النطاق كله",
       "rangeProgress": "الآية {{verse}} من {{total}} · الجولة {{pass}} من {{passes}}",
       "rangeProgressRep": "الآية {{verse}} من {{total}} · التكرار {{rep}} من {{reps}} · الجولة {{pass}} من {{passes}}",
+      "rangeDragHint": "تم تحديد النطاق — {{verses}} آية. اختر عدد مرات التكرار ثم شغّل.",
       "rangeFrom": "من",
       "rangeTo": "إلى",
       "rangeSpan": "{{verses}} آية · الصفحات {{from}}–{{to}}",

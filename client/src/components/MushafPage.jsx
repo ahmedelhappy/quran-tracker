@@ -45,6 +45,11 @@ export default function MushafPage({
   hardVerses,
   onOpenNote,
   noteIndicatorLabel,
+  // inRange(verseKey) → is this verse inside the playback range being dragged out
+  // (or already picked)? Painted with the same continuous band as a selected verse,
+  // one step behind it in precedence. Every word also carries `data-verse-key`, so
+  // the reader can hit-test a drag with elementFromPoint without knowing the layout.
+  inRange,
 }) {
   const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
   const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
@@ -153,12 +158,15 @@ export default function MushafPage({
   }, [pageData, fontFamily]);
 
   // Which verse-level tint a word carries, if any. Playing wins over selected,
-  // as before. Used to find the ends of each run of same-tinted words.
+  // which wins over a range — the one verse being recited, then the one chosen,
+  // then the span they sit in. Used to find the ends of each run of same-tinted
+  // words, so a range reads as ONE band across every verse it covers.
   const tintOf = (word) =>
     !word ? null
       : word.verseKey === playingVerseKey ? 'playing'
         : word.verseKey === selectedVerseKey ? 'selected'
-          : null;
+          : inRange?.(word.verseKey) ? 'range'
+            : null;
 
   return (
     <div
@@ -220,6 +228,7 @@ export default function MushafPage({
               return (
                 <span
                   key={`${w.verseKey}-${w.position}`}
+                  data-verse-key={w.verseKey}
                   className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}`}
                   style={fontFamily ? { fontFamily } : undefined}
                   onPointerDown={(e) => {

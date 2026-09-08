@@ -79,6 +79,13 @@ const REP_COUNTS = [2, 3, 5, Infinity]; // repeat-count choices (verse & range)
 // repeat verses too. Without it a range could no longer be played straight through.
 const RANGE_VERSE_COUNTS = [1, ...REP_COUNTS];
 
+// Drag-across-verses range picking (see the block in the component).
+const RANGE_DRAG_SLOP = 5;      // px before a press counts as a drag rather than a tap
+const RANGE_TOUCH_HOLD = 400;   // ms a finger must rest before it starts picking
+const RANGE_EDGE_W = 64;        // px of the viewport's sides that count as "at the edge"
+const RANGE_EDGE_DWELL = 550;   // ms the pointer must stay there before the page turns
+const RANGE_EDGE_REPEAT = 900;  // ms between further turns while it stays there
+
 // The four highlight colours offered in the verse popover (must match the
 // server's Annotation color enum). `cls` is the swatch's fill in the picker.
 const ANNOTATION_COLORS = [
@@ -258,7 +265,7 @@ export default function Library() {
   const { t, i18n } = useTranslation();
   const { showToast } = useToast();
   const isArabic = i18n.language === 'ar';
-  const fmtNum = (n) => (isArabic ? toArabicDigits(n) : String(n));
+  const fmtNum = useCallback((n) => (isArabic ? toArabicDigits(n) : String(n)), [isArabic]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPage = clampPage(searchParams.get('page') ?? 1);
@@ -1186,6 +1193,9 @@ export default function Library() {
     const start = touchStartRef.current;
     touchStartRef.current = null;
     if (!start || tourActiveRef.current || drawPage != null) return;
+    // That gesture was a range drag, not a swipe (either check can be the one that
+    // catches it — pointerup and touchend arrive in either order across browsers).
+    if (rangeDragRef.current?.dragging || suppressWordClickRef.current) return;
     const p = e.changedTouches[0];
     const dx = p.clientX - start.x;
     const dy = p.clientY - start.y;
@@ -1252,6 +1262,213 @@ export default function Library() {
       return prev;
     });
   }, [pageOrders]);
+
+  // ── Drag across verses to pick a playback range ──────────
+  // Press a verse and drag over the ones after it: the range starts where the
+  // press landed and ends where the pointer is let go. Both ends are GLOBAL ayah
+  // ordinals — the same addressing `rangeStartOrd`/`rangeEndOrd` already use — so a
+  // released drag simply hands its two numbers to the range machinery that plays
+  // and repeats them. There is no second, page-local idea of a range in here.
+  //
+  // Reaching the page's LEADING edge (visually LEFT — forward in a mushaf, in both
+  // UI languages, exactly as the edge arrows are) turns the page and the range goes
+  // on growing onto it, because the START ordinal never moves: a turn EXTENDS the
+  // selection, it does not restart it. The turn waits out a dwell first, so a fast
+  // drag across the width of the page can't flip it in passing.
+  //
+  // What it must not fight, and how:
+  //   annotate mode        — the ink layer takes the pointer; `canDragRange` is off
+  //   "mark verses"        — that two-tap mode owns taps; off
+  //   hide-mode self-test  — a drag there walks the reveal watermark; off
+  //   the swipe page-turn  — a finger has to press and HOLD first, and a gesture
+  //                          that became a range drag is not also read as a swipe
+  //   a plain word tap     — the trailing click is swallowed only after a real drag
+  //
+  // Not `useDragSelect`: that hook TOGGLES every tile a sweep crosses and has no
+  // idea of a start and an end, which is the whole of what a range is. The house
+  // habits it established are kept though — window-level moves, elementFromPoint
+  // over a `data-` attribute, and swallowing the click that ends a drag.
+  const canDragRange = drawPage == null && !markVersesMode && concealMode !== 'hide';
+  const viewportRef = useRef(null);
+  const rangeDragRef = useRef(null);
+  const suppressWordClickRef = useRef(false);
+  // The range being dragged out right now. On release it is handed to
+  // rangeStartOrd/rangeEndOrd and this goes back to null — the band below then
+  // reads the real range, so nothing the reader sees changes at the handover.
+  const [dragRange, setDragRange] = useState(null);
+
+  // What the mushaf paints as a band: the drag in progress, or else the range that
+  // range-repeat would actually play. It is the SAME continuous per-verse band the
+  // selection uses, so ten verses read as one shape rather than ten.
+  const bandStart = dragRange ? dragRange.startOrd : (repeatMode === 'range' ? rangeStartOrd : null);
+  const bandEnd = dragRange ? dragRange.endOrd : (repeatMode === 'range' ? rangeEndOrd : null);
+  const inRange = useCallback((verseKey) => {
+    if (bandStart == null) return false;
+    const ord = ordOfKey(verseKey);
+    return ord != null && ord >= bandStart && ord <= bandEnd;
+  }, [bandStart, bandEnd]);
+
+  // Page turns are fired from a TIMER, not from the next pointermove: a reader who
+  // parks the pointer at the edge and holds it perfectly still produces no further
+  // moves at all, and would otherwise wait there for a turn that never comes. It
+  // re-arms itself, so holding on keeps turning, one page per dwell.
+  const goNextRef = useRef(null);
+  const goPrevRef = useRef(null);
+  useEffect(() => { goNextRef.current = goNext; goPrevRef.current = goPrev; }, [goNext, goPrev]);
+
+  const endRangeDrag = useCallback(() => {
+    const d = rangeDragRef.current;
+    if (d?.holdTimer) clearTimeout(d.holdTimer);
+    if (d?.edgeTimer) clearTimeout(d.edgeTimer);
+    rangeDragRef.current = null;
+    setDragRange(null);
+    return d;
+  }, []);
+
+  const armEdgeTurn = useCallback((d, dir) => {
+    if (d.edgeDir === dir) return;      // already waiting out this same edge
+    clearTimeout(d.edgeTimer);
+    d.edgeDir = dir;
+    d.edgeTimer = null;
+    if (!dir) return;
+    const turn = () => {
+      if (rangeDragRef.current !== d || d.edgeDir !== dir) return;
+      selectTurnRef.current = true;     // this turn is ours: keep the selection and the panel
+      if (dir === 'next' ? goNextRef.current?.() : goPrevRef.current?.()) d.extendTo = dir;
+      else selectTurnRef.current = false;   // nothing to turn to — don't leave it armed
+      // Slower once it is running: the first turn answers "I want the next page",
+      // the ones after it are an unattended sweep, and a mushaf page holds a lot of
+      // verses to overshoot by.
+      d.edgeTimer = setTimeout(turn, RANGE_EDGE_REPEAT);
+    };
+    d.edgeTimer = setTimeout(turn, RANGE_EDGE_DWELL);
+  }, []);
+
+  const rangeDragDown = (e) => {
+    suppressWordClickRef.current = false;   // a new gesture owes nothing to the last one
+    if (!canDragRange || tourActiveRef.current) return;
+    if (e.button > 0) return;               // primary button only
+    const wordEl = e.target?.closest?.('[data-verse-key]');
+    const ord = wordEl ? ordOfKey(wordEl.getAttribute('data-verse-key')) : null;
+    if (ord == null) return;
+    const touch = e.pointerType !== 'mouse';
+    const d = {
+      pointerId: e.pointerId, touch, startOrd: ord, lastOrd: ord,
+      x: e.clientX, y: e.clientY,
+      armed: !touch, dragging: false, edgeDir: null, edgeTimer: null,
+      extendTo: null, holdTimer: null,
+    };
+    if (touch) {
+      // A finger presses and HOLDS, the way a phone starts a text selection.
+      // Anything shorter stays a tap or a swipe — both already mean something here.
+      d.holdTimer = setTimeout(() => {
+        const cur = rangeDragRef.current;
+        if (!cur || cur.pointerId !== e.pointerId) return;
+        cur.armed = true;
+        cur.dragging = true;   // the band appears on the hold itself, so the hold is visible
+        setDragRange({ startOrd: cur.startOrd, endOrd: cur.startOrd });
+      }, RANGE_TOUCH_HOLD);
+    }
+    rangeDragRef.current = d;
+  };
+
+  // A drag that really happened must not ALSO be read as a tap on whichever word it
+  // finished over. Capture phase, so the word's own onClick never runs.
+  const swallowRangeClick = (e) => {
+    if (!suppressWordClickRef.current) return;
+    suppressWordClickRef.current = false;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const paint = (d) => setDragRange({
+      startOrd: Math.min(d.startOrd, d.lastOrd),
+      endOrd: Math.max(d.startOrd, d.lastOrd),
+    });
+
+    const onMove = (e) => {
+      const d = rangeDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (!d.armed) {
+        // Moved before the hold finished: that gesture is a swipe or a scroll, and
+        // it belongs to them, not to us.
+        if (Math.abs(e.clientX - d.x) > RANGE_DRAG_SLOP || Math.abs(e.clientY - d.y) > RANGE_DRAG_SLOP) endRangeDrag();
+        return;
+      }
+      if (!d.dragging) {
+        if (Math.abs(e.clientX - d.x) <= RANGE_DRAG_SLOP && Math.abs(e.clientY - d.y) <= RANGE_DRAG_SLOP) return;
+        d.dragging = true;
+      }
+      // elementFromPoint rather than pointerenter on the words: touch never fires
+      // enter/leave mid-gesture, and the edge dwell needs the coordinates anyway.
+      const wordEl = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-verse-key]');
+      const ord = wordEl ? ordOfKey(wordEl.getAttribute('data-verse-key')) : null;
+      if (ord != null) { d.lastOrd = ord; d.extendTo = null; }
+      paint(d);
+
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      armEdgeTurn(d, e.clientX <= rect.left + RANGE_EDGE_W ? 'next'
+        : e.clientX >= rect.right - RANGE_EDGE_W ? 'prev'
+          : null);
+    };
+
+    const onUp = (e) => {
+      const d = rangeDragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      endRangeDrag();
+      if (!d.dragging) return;                  // a tap after all — the word keeps it
+      suppressWordClickRef.current = true;
+      const startOrd = Math.min(d.startOrd, d.lastOrd);
+      const endOrd = Math.max(d.startOrd, d.lastOrd);
+      if (startOrd === endOrd) return;          // never left the verse it started on
+      // The offer: point the range at what was just dragged out and open the repeat
+      // panel, which is where both counts and "Play range" already live.
+      setRangeStartOrd(startOrd);
+      setRangeEndOrd(endOrd);
+      setRepeatMode('range');
+      setRepeatOpen(true);
+      showToast(t('library.audio.rangeDragHint', { verses: fmtNum(endOrd - startOrd + 1) }), 'info');
+    };
+
+    const onCancel = () => { endRangeDrag(); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [armEdgeTurn, endRangeDrag, showToast, t, fmtNum]);
+
+  // A page turned under the drag: reach the range onto the verse just across the
+  // boundary, so the band grows even if the pointer never moves again. startOrd is
+  // untouched — that is what makes this extend the selection rather than restart it.
+  useEffect(() => {
+    const d = rangeDragRef.current;
+    if (!d?.extendTo || verses.length === 0) return;
+    const ords = verses.map((v) => ordOfKey(v.verseKey)).filter((o) => o != null);
+    if (!ords.length) return;
+    d.lastOrd = d.extendTo === 'next' ? Math.min(...ords) : Math.max(...ords);
+    d.extendTo = null;
+    setDragRange({ startOrd: Math.min(d.startOrd, d.lastOrd), endOrd: Math.max(d.startOrd, d.lastOrd) });
+  }, [verses]);
+
+  // While a FINGER is picking a range the page must not scroll under it. The hold
+  // has already passed by then and no scroll has begun, so cancelling the touch
+  // here still works — which it would not if we waited for the movement to start.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onTouchMove = (e) => {
+      const d = rangeDragRef.current;
+      if (d?.touch && d.dragging && e.cancelable) e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
 
   const selectVerse = useCallback((verseKey) => {
     setSelectedVerseKey(prev => (prev === verseKey ? null : verseKey));
@@ -2368,6 +2585,7 @@ export default function Library() {
                     hardVerses={showAnns ? hardVerses : EMPTY_SET}
                     onOpenNote={(markVersesMode || !showAnns) ? null : (vk) => openNote(pd.page, vk)}
                     noteIndicatorLabel={t('library.annotations.noteIndicator')}
+                    inRange={inRange}
                   />
                 </Flip>
                 {/* Free-form ink + text overlays are siblings of the Flip/page-grid,
@@ -3005,8 +3223,10 @@ export default function Library() {
                 target. In single view it hugs the card; in the spread it spans
                 the full row so the arrows flank the whole spread. */}
             <div
+              ref={viewportRef}
               className={`mushaf-viewport relative w-full ${twoPage ? 'mushaf-spread-cap' : 'mushaf-page-cap'}`}
-              onPointerDownCapture={(e) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; }}
+              onPointerDownCapture={(e) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; rangeDragDown(e); }}
+              onClickCapture={swallowRangeClick}
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
             >
