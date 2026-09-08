@@ -74,6 +74,10 @@ const READER_EDGE_TAB = (edge) =>
     : 'rounded-s-lg border-e-0');
 const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
 const REP_COUNTS = [2, 3, 5, Infinity]; // repeat-count choices (verse & range)
+// The PER-VERSE count inside a range needs one more choice than those: ×1, "say
+// each verse once and move on", which is what range repeat did before it could
+// repeat verses too. Without it a range could no longer be played straight through.
+const RANGE_VERSE_COUNTS = [1, ...REP_COUNTS];
 
 // The four highlight colours offered in the verse popover (must match the
 // server's Annotation color enum). `cls` is the swatch's fill in the picker.
@@ -111,6 +115,32 @@ const toolForKey = (e) => DRAW_TOOLS.find((tl) => isShortcutKey(e, tl.key))?.k ?
 // tafsir-panel preview. Taken verse-level from the API — word-level text is no
 // longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
 const verseText = (verse) => verse.textUthmani ?? '';
+
+// One repeat count, under its own words. The nested counts are only usable if it
+// is obvious which is which, so each gets a full-width label of its own rather
+// than sharing a "Times" caption with a row of numbers beside it.
+function RepeatCountRow({ label, counts, value, onChange, fmtNum, testId }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-[#707974] dark:text-gray-400">{label}</span>
+      <div className="flex items-center gap-1.5" data-testid={testId} role="group" aria-label={label}>
+        {counts.map((n) => (
+          <button
+            key={String(n)}
+            type="button"
+            onClick={() => onChange(n)}
+            aria-pressed={value === n}
+            className={`flex-1 text-xs font-bold rounded-md py-1 border transition-colors ${
+              value === n ? 'bg-[#004f35] text-white border-[#004f35]' : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300'
+            }`}
+          >
+            {n === Infinity ? '∞' : `×${fmtNum(n)}`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // One end of the repeat range. Any verse of the Quran is reachable, so this is a
 // surah picker plus that surah's ayah picker — two short lists — rather than one
@@ -423,7 +453,11 @@ export default function Library() {
 
   // ── Repetition for memorization ─────────────────────────
   // 'off' → continuous whole-Quran auto-advance. 'verse' → repeat the current
-  // verse N times then advance. 'range' → loop [rangeStartOrd..rangeEndOrd] M times.
+  // verse N times then advance. 'range' → work through [rangeStartOrd..rangeEndOrd]
+  // and loop it M times, with the two counts NESTED: each verse of the range is
+  // said `rangeVerseRepeat` times before the range moves on, and the whole range
+  // then runs `rangeRepeat` times. That nesting is how the memorisation actually
+  // goes — drill a verse, join it to its neighbours, then run the passage again.
   const [repeatMode, setRepeatMode] = useState('off');
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [verseRepeat, setVerseRepeat] = useState(3);      // 2 | 3 | 5 | Infinity
@@ -432,8 +466,20 @@ export default function Library() {
   const [rangeStartOrd, setRangeStartOrd] = useState(1);
   const [rangeEndOrd, setRangeEndOrd] = useState(1);
   const [rangeRepeat, setRangeRepeat] = useState(3);
-  const repeatsDoneRef = useRef(0);   // times the current verse has finished (verse mode)
-  const rangePassesRef = useRef(0);   // completed passes over the range (range mode)
+  // The inner count of the nesting. Starts at 1 — a range played straight through,
+  // exactly what range repeat meant before — so nobody's saved habit changes shape
+  // the first time they open the panel after this.
+  const [rangeVerseRepeat, setRangeVerseRepeat] = useState(1);
+  const repeatsDoneRef = useRef(0);   // times the current verse has finished
+  const rangePassesRef = useRef(0);   // completed passes over the range
+  // handleEnded reads those two through the refs, so it can never act on a stale
+  // closure. The audio bar has to SHOW them as well — "verse 2 of 5 · pass 1 of 3",
+  // otherwise a nested repeat is impossible to follow by ear — so every write goes
+  // through these setters, which keep a state mirror for the display alongside.
+  const [repeatsDone, setRepeatsDoneUI] = useState(0);
+  const [rangePasses, setRangePassesUI] = useState(0);
+  const setRepeatsDone = useCallback((n) => { repeatsDoneRef.current = n; setRepeatsDoneUI(n); }, []);
+  const setRangePasses = useCallback((n) => { rangePassesRef.current = n; setRangePassesUI(n); }, []);
   // Set just before a page turn that PLAYBACK asked for, so the turn doesn't stop
   // the recitation the way a manual turn does.
   const followTurnRef = useRef(false);
@@ -691,7 +737,9 @@ export default function Library() {
     setPlayingOrd(null);
     setIsPlaying(false);
     setAudioBuffering(false);
-  }, []); // bufEl only reads refs, so this stays stable across renders
+    setRepeatsDone(0);
+    setRangePasses(0);
+  }, [setRepeatsDone, setRangePasses]); // bufEl only reads refs, and both setters are stable
 
   // Page / view change: clear selection + close tafsir (the on-screen verse set
   // changed). Audio stops too — but NOT when the recitation itself asked for the
@@ -852,9 +900,14 @@ export default function Library() {
     localStorage.setItem('playbackRate', String(playbackRate));
   }, [playbackRate]);
 
-  // Reset repeat counters when the mode / range changes.
-  useEffect(() => { repeatsDoneRef.current = 0; rangePassesRef.current = 0; }, [repeatMode]);
-  useEffect(() => { rangePassesRef.current = 0; }, [rangeStartOrd, rangeEndOrd, rangeRepeat]);
+  // Reset both counters whenever what they are counting against changes — the
+  // mode, either end of the range, either repeat count, or the reciter (a new
+  // recording restarts the verse, so a half-finished tally would be a lie).
+  useEffect(() => {
+    setRepeatsDone(0);
+    setRangePasses(0);
+  }, [repeatMode, rangeStartOrd, rangeEndOrd, rangeRepeat, rangeVerseRepeat, verseRepeat,
+      reciter, setRepeatsDone, setRangePasses]);
 
   // Until the reader actually turns range repeat on, keep the range pickers
   // defaulted to what's in front of them: start at the selected verse if there is
@@ -891,7 +944,7 @@ export default function Library() {
       if (el && !isPlaying) { el.play().catch(() => {}); setIsPlaying(true); }
       return;
     }
-    repeatsDoneRef.current = 0;
+    setRepeatsDone(0);
     setPlayingOrd(ord);
     setIsPlaying(true);
   };
@@ -909,7 +962,7 @@ export default function Library() {
   // into it any more: the verse is addressed globally and the view follows it.
   const advanceOrd = (dir) => {
     const next = (playingOrd ?? 1) + dir;
-    repeatsDoneRef.current = 0;
+    setRepeatsDone(0);
     if (next < 1 || next > TOTAL_AYAHS) { stopAudio(); return; }
     setPlayingOrd(next);
     setIsPlaying(true);
@@ -950,21 +1003,35 @@ export default function Library() {
     if (e && e.currentTarget !== activeEl()) return;
     if (playingOrd == null) return;
     if (repeatMode === 'verse') {
-      repeatsDoneRef.current += 1;
-      if (verseRepeat === Infinity || repeatsDoneRef.current < verseRepeat) { replayCurrent(); return; }
-      repeatsDoneRef.current = 0;
+      const done = repeatsDoneRef.current + 1;
+      setRepeatsDone(done);
+      if (verseRepeat === Infinity || done < verseRepeat) { replayCurrent(); return; }
+      setRepeatsDone(0);
       advanceOrd(1);
       return;
     }
     if (repeatMode === 'range') {
+      // The two counts nest, INNER FIRST: this verse takes all of its turns before
+      // the range moves on, and only the last verse of the range having taken all
+      // of its own ends a pass. Both branches replay or hand over the SAME way the
+      // single counts did, so neither the verse repeat nor the range wrap costs a
+      // fetch — the gapless double buffer is untouched by the nesting.
+      const done = repeatsDoneRef.current + 1;
+      if (rangeVerseRepeat === Infinity || done < rangeVerseRepeat) {
+        setRepeatsDone(done);
+        replayCurrent();
+        return;
+      }
+      setRepeatsDone(0);
       if (playingOrd < rangeEndOrd) { setPlayingOrd(playingOrd + 1); setIsPlaying(true); return; }
-      rangePassesRef.current += 1; // finished one pass over the range
-      if (rangeRepeat === Infinity || rangePassesRef.current < rangeRepeat) {
+      const passes = rangePassesRef.current + 1; // finished one pass over the range
+      if (rangeRepeat === Infinity || passes < rangeRepeat) {
+        setRangePasses(passes);
         if (rangeStartOrd === playingOrd) replayCurrent();   // single-verse range
         else { setPlayingOrd(rangeStartOrd); setIsPlaying(true); }
         return;
       }
-      rangePassesRef.current = 0;
+      setRangePasses(0);
       stopAudio();
       return;
     }
@@ -1854,6 +1921,24 @@ export default function Library() {
     () => (playingOrd == null ? -1 : verses.findIndex((v) => ordOfKey(v.verseKey) === playingOrd)),
     [verses, playingOrd]
   );
+  // How far into a nested repeat playback is: "verse 2 of 5 - pass 1 of 3", with
+  // the per-verse tally folded in whenever that count is doing anything. Without it
+  // a reader hearing the same verse a third time has no way to tell whether the
+  // range is on its first pass or its last. Null unless a range is actually
+  // playing, so the ordinary listen shows nothing extra.
+  const countLabel = (n) => (n === Infinity ? '∞' : fmtNum(n));
+  const rangeProgress = (repeatMode === 'range' && playingOrd != null
+    && playingOrd >= rangeStartOrd && playingOrd <= rangeEndOrd)
+    ? t(rangeVerseRepeat === 1 ? 'library.audio.rangeProgress' : 'library.audio.rangeProgressRep', {
+      verse: fmtNum(playingOrd - rangeStartOrd + 1),
+      total: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+      rep: fmtNum(repeatsDone + 1),
+      reps: countLabel(rangeVerseRepeat),
+      pass: fmtNum(rangePasses + 1),
+      passes: countLabel(rangeRepeat),
+    })
+    : null;
+
   // Only tint the verse while it's actually playing — pausing clears the tint
   // (resuming restores it; the audio element keeps its position, so play() picks
   // up from the same offset).
@@ -3198,6 +3283,11 @@ export default function Library() {
                         ? t('library.verseOf', { current: fmtNum(playingIndex + 1), total: fmtNum(verses.length) })
                         : ordLabel(playingOrd)}
                 </p>
+                {rangeProgress && (
+                  <p data-testid="repeat-progress" className="mt-0.5 ps-5 text-[11px] text-[#707974] dark:text-gray-400">
+                    {rangeProgress}
+                  </p>
+                )}
               </div>
 
               {/* Playback speed */}
@@ -3251,21 +3341,14 @@ export default function Library() {
                       </div>
 
                       {repeatMode === 'verse' && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-[#707974] dark:text-gray-400">{t('library.audio.repeatTimes')}</span>
-                          {REP_COUNTS.map(n => (
-                            <button
-                              key={String(n)}
-                              type="button"
-                              onClick={() => setVerseRepeat(n)}
-                              className={`flex-1 text-xs font-bold rounded-md py-1 border transition-colors ${
-                                verseRepeat === n ? 'bg-[#004f35] text-white border-[#004f35]' : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300'
-                              }`}
-                            >
-                              {n === Infinity ? '∞' : `×${fmtNum(n)}`}
-                            </button>
-                          ))}
-                        </div>
+                        <RepeatCountRow
+                          label={t('library.audio.repeatEachVerse')}
+                          counts={REP_COUNTS}
+                          value={verseRepeat}
+                          onChange={setVerseRepeat}
+                          fmtNum={fmtNum}
+                          testId="repeat-verse-count"
+                        />
                       )}
 
                       {repeatMode === 'range' && (
@@ -3306,24 +3389,28 @@ export default function Library() {
                               }
                             )}
                           </p>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-[#707974] dark:text-gray-400">{t('library.audio.repeatTimes')}</span>
-                            {REP_COUNTS.map(n => (
-                              <button
-                                key={String(n)}
-                                type="button"
-                                onClick={() => setRangeRepeat(n)}
-                                className={`flex-1 text-xs font-bold rounded-md py-1 border transition-colors ${
-                                  rangeRepeat === n ? 'bg-[#004f35] text-white border-[#004f35]' : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300'
-                                }`}
-                              >
-                                {n === Infinity ? '∞' : `×${fmtNum(n)}`}
-                              </button>
-                            ))}
-                          </div>
+                          {/* The two counts, listed in the order they apply: the
+                              inner one drills each verse, the outer one runs the
+                              whole passage again. */}
+                          <RepeatCountRow
+                            label={t('library.audio.repeatEachVerse')}
+                            counts={RANGE_VERSE_COUNTS}
+                            value={rangeVerseRepeat}
+                            onChange={setRangeVerseRepeat}
+                            fmtNum={fmtNum}
+                            testId="repeat-range-verse-count"
+                          />
+                          <RepeatCountRow
+                            label={t('library.audio.repeatWholeRange')}
+                            counts={REP_COUNTS}
+                            value={rangeRepeat}
+                            onChange={setRangeRepeat}
+                            fmtNum={fmtNum}
+                            testId="repeat-range-count"
+                          />
                           <button
                             type="button"
-                            onClick={() => { setRepeatOpen(false); rangePassesRef.current = 0; playOrd(rangeStartOrd); }}
+                            onClick={() => { setRepeatOpen(false); setRangePasses(0); setRepeatsDone(0); playOrd(rangeStartOrd); }}
                             className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg py-1.5 transition-colors"
                           >
                             {t('library.audio.playRange')}
