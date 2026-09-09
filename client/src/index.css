@@ -283,9 +283,14 @@ html[lang='ar'] body {
    ring around every word (which read as a row of separate rectangles). Words in a
    run square off their shared edges and MushafPage rounds only the run's two ends,
    so a verse that wraps is capped correctly on each line.
-   Selected uses the deep brand green, playing the brighter emerald, so the two are
-   told apart by hue as well as weight; hover is deliberately far lighter than both
-   so "under the pointer" never reads as "chosen". A dragged-out playback RANGE is
+   SELECTED is the deep brand green and carries the most weight: it is the one the
+   reader put there, and the actions and the tafsir hang off it. PLAYING is a pale
+   emerald wash at roughly half that — a light following the recitation rather than
+   a mark on the page, and it moves verse by verse, so anything heavier turns into
+   a flashing block under the very words being recited. The two differ in weight
+   AND hue, which is what tells "I picked this" from "this is sounding now" when
+   they land on different verses. Hover is lighter still, so "under the pointer"
+   never reads as "chosen". A dragged-out playback RANGE is
    indigo — a span of verses is a different KIND of thing from the one verse being
    read or recited, and the four saved highlight colours already claim yellow,
    green, blue and pink, so it needs a hue of its own to avoid reading as one of
@@ -293,11 +298,12 @@ html[lang='ar'] body {
 .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.055); }
 .mushaf-word.is-range { background: rgba(99, 102, 241, 0.17); border-radius: 0; }
 .mushaf-word.is-selected { background: rgba(0, 79, 53, 0.19); border-radius: 0; }
-.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.22); border-radius: 0; }
+.mushaf-word.is-playing { background: rgba(16, 185, 129, 0.10); border-radius: 0; }
 .dark .mushaf-word.is-hover { background: rgba(16, 185, 129, 0.075); }
 .dark .mushaf-word.is-range { background: rgba(129, 140, 248, 0.22); }
 .dark .mushaf-word.is-selected { background: rgba(52, 211, 153, 0.20); }
-.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.24); }
+/* Dark needs a touch more alpha to read at all, but still well under selected. */
+.dark .mushaf-word.is-playing { background: rgba(16, 185, 129, 0.13); }
 /* Cap the ends of a run. Logical corners, so they follow the mushaf's RTL flow:
    the run's first word rounds its inline-START edge (the right one), the last its
    inline-END. Must come after the rules above — same specificity, later wins. */
