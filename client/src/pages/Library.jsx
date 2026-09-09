@@ -441,6 +441,17 @@ export default function Library() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioBuffering, setAudioBuffering] = useState(false);
   const [audioError, setAudioError] = useState(false);
+  // The audio CDN 502s on a COLD file and then serves the very same URL fine.
+  // Measured against cdn.islamic.network: a first request to an ayah nobody has
+  // fetched lately comes back 502, and every retry after it is a 200 — the origin
+  // fails while the edge fills, then the file is there. Across five reciters and a
+  // spread of 22 ayahs the failures moved around between runs, which is the same
+  // story from the other side. So ONE failure does not mean "this verse has no
+  // recitation", and treating it as fatal is exactly what produced "failed to
+  // play" on verses that play perfectly a second later.
+  const AUDIO_RETRIES = 3;
+  const AUDIO_RETRY_MS = 400;
+  const audioRetryRef = useRef({ ord: null, buf: -1, tries: 0, timer: null });
   // Two <audio> elements, ping-ponged: while one plays, the other preloads the verse
   // that comes next, so the handoff costs no fetch and no decode — that is what
   // removes the audible gap between verses. bufOrd records the verse each holds.
@@ -765,6 +776,8 @@ export default function Library() {
     setRepeatsDone(0);
     setRangePasses(0);
     readerLedRef.current = false;
+    clearTimeout(audioRetryRef.current.timer);
+    audioRetryRef.current = { ord: null, buf: -1, tries: 0, timer: null };
   }, [setRepeatsDone, setRangePasses]); // bufEl only reads refs, and both setters are stable
 
   // Page / view change: clear the selection, because the on-screen verse set
@@ -1088,6 +1101,30 @@ export default function Library() {
       return;
     }
     advanceOrd(1); // 'off' → continuous auto-advance through the whole Quran
+  };
+
+  // A failed load is retried on the SAME url before it is called an error: the
+  // retry is what warms the edge, so the second attempt is the one that plays.
+  // Backs off a little each time and gives up after AUDIO_RETRIES, which is when
+  // the bar finally says the recitation could not be loaded.
+  const handleAudioError = (e) => {
+    const el = e.currentTarget;
+    if (el !== activeEl() || playingOrd == null) return;
+    const r = audioRetryRef.current;
+    const buf = activeBufRef.current;
+    if (r.ord !== playingOrd || r.buf !== buf) { r.ord = playingOrd; r.buf = buf; r.tries = 0; }
+    if (r.tries >= AUDIO_RETRIES) { setAudioError(true); setIsPlaying(false); return; }
+    r.tries += 1;
+    setAudioBuffering(true);   // it is still trying, so say "loading", not "broken"
+    clearTimeout(r.timer);
+    r.timer = setTimeout(() => {
+      // Bail if playback moved on while we waited — a retry must never drag the
+      // reader back to the verse they have already left.
+      if (el !== activeEl() || bufOrdRef.current[buf] !== playingOrd) return;
+      el.src = getAyahAudioUrl(reciter, playingOrd);
+      el.load();
+      if (isPlaying) el.play().catch(() => {});
+    }, AUDIO_RETRY_MS * r.tries);
   };
 
   // Preload the verse that comes next into the idle buffer, so that by the time the
@@ -3797,13 +3834,9 @@ export default function Library() {
                 preload="auto"
                 onEnded={handleEnded}
                 onWaiting={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(true); }}
-                onPlaying={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(false); }}
-                onCanPlay={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(false); }}
-                onError={(e) => {
-                  if (e.currentTarget !== activeEl() || playingOrd == null) return;
-                  setAudioError(true);
-                  setIsPlaying(false);
-                }}
+                onPlaying={(e) => { if (e.currentTarget === activeEl()) { setAudioBuffering(false); setAudioError(false); } }}
+                onCanPlay={(e) => { if (e.currentTarget === activeEl()) { setAudioBuffering(false); setAudioError(false); } }}
+                onError={handleAudioError}
               />
             ))}
           </div>
