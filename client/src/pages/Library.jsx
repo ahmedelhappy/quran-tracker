@@ -467,6 +467,7 @@ export default function Library() {
   // goes — drill a verse, join it to its neighbours, then run the passage again.
   const [repeatMode, setRepeatMode] = useState('off');
   const [repeatOpen, setRepeatOpen] = useState(false);
+  const repeatMenuRef = useRef(null);
   const [verseRepeat, setVerseRepeat] = useState(3);      // 2 | 3 | 5 | Infinity
   // The range is addressed by GLOBAL ayah number, so it can start on the verse in
   // front of the reader and end pages later; playback turns the pages itself.
@@ -1419,10 +1420,16 @@ export default function Library() {
   };
 
   useEffect(() => {
-    const paint = (d) => setDragRange({
-      startOrd: Math.min(d.startOrd, d.lastOrd),
-      endOrd: Math.max(d.startOrd, d.lastOrd),
-    });
+    const paint = (d) => {
+      // Dragging out a span replaces whatever single verse was picked — there is
+      // one selection, and this drag is now it. (The reverse is handled where a
+      // word is clicked; between them, exactly one of the two is ever set.)
+      setSelectedVerseKey(null);
+      setDragRange({
+        startOrd: Math.min(d.startOrd, d.lastOrd),
+        endOrd: Math.max(d.startOrd, d.lastOrd),
+      });
+    };
 
     const onMove = (e) => {
       const d = rangeDragRef.current;
@@ -2397,7 +2404,11 @@ export default function Library() {
     if (!selectedVerse) {
       const page = twoPage ? activePage : currentPage;
       const first = verses.find((v) => v.page === page) ?? verses[0];
-      if (first) setSelectedVerseKey(first.verseKey);
+      // Quietly: opening the tafsir is a request to READ, not to act on a verse,
+      // and the seeded verse was chosen for the reader rather than by them. Same
+      // rule as a plain click — actions only ever come from asking for them.
+      if (first) { setPopoverHidden(true); setSelectedVerseKey(first.verseKey); }
+      setRangeSelection(null);
     }
     setNotePanel(null);
     setTafsirOpen(true);
@@ -2453,6 +2464,21 @@ export default function Library() {
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVerseKey, rangeSelection, popoverHidden]);
+
+  // The repeat menu goes away on a click anywhere, exactly as the verse actions do
+  // — and by the same means: a capture-phase listener that never preventDefaults,
+  // so whatever was clicked still gets its click. It used to be a full-screen
+  // backdrop div, which closed the menu but ATE the click, making every first
+  // click on the page a wasted one.
+  useEffect(() => {
+    if (!repeatOpen) return;
+    const onPointerDown = (e) => {
+      if (repeatMenuRef.current?.contains(e.target)) return;  // the menu, or the button that opens it
+      setRepeatOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [repeatOpen]);
 
   // The selected verse's own annotations, for the popover's active states.
   const selectedVerseAnns = selectedVerse ? (annotationsByPage.get(selectedVerse.page) ?? []) : [];
@@ -3600,7 +3626,7 @@ export default function Library() {
               </Tooltip>
 
               {/* Repeat for memorization (verse ×N / range loop) */}
-              <div className="relative">
+              <div className="relative" ref={repeatMenuRef}>
                 <Tooltip label={t('library.audio.repeat')}>
                   <button
                     type="button"
@@ -3617,108 +3643,105 @@ export default function Library() {
                   </button>
                 </Tooltip>
                 {repeatOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setRepeatOpen(false)} />
-                    <div className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
-                      <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
-                        {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => {
-                              setRepeatMode(m);
-                              // The span repeat is aimed at IS the selection while
-                              // Range is on; leaving Range drops it.
-                              setRangeSelection(m === 'range' ? { startOrd: rangeStartOrd, endOrd: rangeEndOrd } : null);
-                            }}
-                            className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
-                              repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
+                  <div className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
+                    <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
+                      {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            setRepeatMode(m);
+                            // The span repeat is aimed at IS the selection while
+                            // Range is on; leaving Range drops it.
+                            setRangeSelection(m === 'range' ? { startOrd: rangeStartOrd, endOrd: rangeEndOrd } : null);
+                          }}
+                          className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
+                            repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
 
-                      {repeatMode === 'verse' && (
+                    {repeatMode === 'verse' && (
+                      <RepeatCountRow
+                        label={t('library.audio.repeatEachVerse')}
+                        counts={REP_COUNTS}
+                        value={verseRepeat}
+                        onChange={setVerseRepeat}
+                        fmtNum={fmtNum}
+                        testId="repeat-verse-count"
+                      />
+                    )}
+
+                    {repeatMode === 'range' && (
+                      <div className="flex flex-col gap-2">
+                        {/* The range is addressed globally: any verse of the Quran can be
+                            picked, and playback turns the pages to follow it. */}
+                        <VerseRangePicker
+                          label={t('library.audio.rangeFrom')}
+                          surahName={`${t('library.audio.rangeFrom')} — ${t('library.surahLabel')}`}
+                          ayahName={`${t('library.audio.rangeFrom')} — ${t('library.verseLabel', { n: '' }).trim()}`}
+                          ord={rangeStartOrd}
+                          onChange={(ord) => setRange(ord, Math.max(ord, rangeEndOrd))}
+                          surahLabelFor={surahLabelFor}
+                          fmtNum={fmtNum}
+                          selectCls={selectCls}
+                        />
+                        <VerseRangePicker
+                          label={t('library.audio.rangeTo')}
+                          surahName={`${t('library.audio.rangeTo')} — ${t('library.surahLabel')}`}
+                          ayahName={`${t('library.audio.rangeTo')} — ${t('library.verseLabel', { n: '' }).trim()}`}
+                          ord={rangeEndOrd}
+                          onChange={(ord) => setRange(Math.min(ord, rangeStartOrd), ord)}
+                          surahLabelFor={surahLabelFor}
+                          fmtNum={fmtNum}
+                          selectCls={selectCls}
+                        />
+                        {/* Says out loud how far the range reaches — a range that
+                            spans pages is the whole point, so show the page span. */}
+                        <p className="text-[11px] text-[#707974] dark:text-gray-400">
+                          {t(
+                            pageOfOrd(rangeStartOrd) === pageOfOrd(rangeEndOrd)
+                              ? 'library.audio.rangeSpanOnePage'
+                              : 'library.audio.rangeSpan',
+                            {
+                              verses: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                              from: fmtNum(pageOfOrd(rangeStartOrd)),
+                              to: fmtNum(pageOfOrd(rangeEndOrd)),
+                            }
+                          )}
+                        </p>
+                        {/* The two counts, listed in the order they apply: the
+                            inner one drills each verse, the outer one runs the
+                            whole passage again. */}
                         <RepeatCountRow
                           label={t('library.audio.repeatEachVerse')}
-                          counts={REP_COUNTS}
-                          value={verseRepeat}
-                          onChange={setVerseRepeat}
+                          counts={RANGE_VERSE_COUNTS}
+                          value={rangeVerseRepeat}
+                          onChange={setRangeVerseRepeat}
                           fmtNum={fmtNum}
-                          testId="repeat-verse-count"
+                          testId="repeat-range-verse-count"
                         />
-                      )}
-
-                      {repeatMode === 'range' && (
-                        <div className="flex flex-col gap-2">
-                          {/* The range is addressed globally: any verse of the Quran can be
-                              picked, and playback turns the pages to follow it. */}
-                          <VerseRangePicker
-                            label={t('library.audio.rangeFrom')}
-                            surahName={`${t('library.audio.rangeFrom')} — ${t('library.surahLabel')}`}
-                            ayahName={`${t('library.audio.rangeFrom')} — ${t('library.verseLabel', { n: '' }).trim()}`}
-                            ord={rangeStartOrd}
-                            onChange={(ord) => setRange(ord, Math.max(ord, rangeEndOrd))}
-                            surahLabelFor={surahLabelFor}
-                            fmtNum={fmtNum}
-                            selectCls={selectCls}
-                          />
-                          <VerseRangePicker
-                            label={t('library.audio.rangeTo')}
-                            surahName={`${t('library.audio.rangeTo')} — ${t('library.surahLabel')}`}
-                            ayahName={`${t('library.audio.rangeTo')} — ${t('library.verseLabel', { n: '' }).trim()}`}
-                            ord={rangeEndOrd}
-                            onChange={(ord) => setRange(Math.min(ord, rangeStartOrd), ord)}
-                            surahLabelFor={surahLabelFor}
-                            fmtNum={fmtNum}
-                            selectCls={selectCls}
-                          />
-                          {/* Says out loud how far the range reaches — a range that
-                              spans pages is the whole point, so show the page span. */}
-                          <p className="text-[11px] text-[#707974] dark:text-gray-400">
-                            {t(
-                              pageOfOrd(rangeStartOrd) === pageOfOrd(rangeEndOrd)
-                                ? 'library.audio.rangeSpanOnePage'
-                                : 'library.audio.rangeSpan',
-                              {
-                                verses: fmtNum(rangeEndOrd - rangeStartOrd + 1),
-                                from: fmtNum(pageOfOrd(rangeStartOrd)),
-                                to: fmtNum(pageOfOrd(rangeEndOrd)),
-                              }
-                            )}
-                          </p>
-                          {/* The two counts, listed in the order they apply: the
-                              inner one drills each verse, the outer one runs the
-                              whole passage again. */}
-                          <RepeatCountRow
-                            label={t('library.audio.repeatEachVerse')}
-                            counts={RANGE_VERSE_COUNTS}
-                            value={rangeVerseRepeat}
-                            onChange={setRangeVerseRepeat}
-                            fmtNum={fmtNum}
-                            testId="repeat-range-verse-count"
-                          />
-                          <RepeatCountRow
-                            label={t('library.audio.repeatWholeRange')}
-                            counts={REP_COUNTS}
-                            value={rangeRepeat}
-                            onChange={setRangeRepeat}
-                            fmtNum={fmtNum}
-                            testId="repeat-range-count"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => { setRepeatOpen(false); setRangePasses(0); setRepeatsDone(0); playOrd(rangeStartOrd); }}
-                            className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg py-1.5 transition-colors"
-                          >
-                            {t('library.audio.playRange')}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
+                        <RepeatCountRow
+                          label={t('library.audio.repeatWholeRange')}
+                          counts={REP_COUNTS}
+                          value={rangeRepeat}
+                          onChange={setRangeRepeat}
+                          fmtNum={fmtNum}
+                          testId="repeat-range-count"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setRepeatOpen(false); setRangePasses(0); setRepeatsDone(0); playOrd(rangeStartOrd); }}
+                          className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg py-1.5 transition-colors"
+                        >
+                          {t('library.audio.playRange')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
