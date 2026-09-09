@@ -491,6 +491,11 @@ export default function Library() {
   // Set just before a page turn that PLAYBACK asked for, so the turn doesn't stop
   // the recitation the way a manual turn does.
   const followTurnRef = useRef(false);
+  // Set the moment the READER turns the page themselves. Playback keeps sounding
+  // through it, but from then on it stops STEERING the view: they went to look at
+  // something, and being dragged back mid-ayah is not what "keep playing" means.
+  // Cleared whenever playback is deliberately (re)aimed — see playOrd / stepVerse.
+  const readerLedRef = useRef(false);
   // The same idea for the SELECTION: set before a page turn that stepping the
   // selection asked for, so the turn keeps the selection and the tafsir panel.
   // pendingSelectRef holds the verseKey to land on once that page's verses are in.
@@ -759,13 +764,18 @@ export default function Library() {
     setAudioBuffering(false);
     setRepeatsDone(0);
     setRangePasses(0);
+    readerLedRef.current = false;
   }, [setRepeatsDone, setRangePasses]); // bufEl only reads refs, and both setters are stable
 
   // Page / view change: clear the selection, because the on-screen verse set
-  // changed and the highlight would be pointing at a verse that has gone. Audio
-  // stops too — but NOT when the recitation itself asked for the turn, which is
-  // how a range keeps playing straight across a page break; and the selection
-  // survives a turn IT asked for, landing on its verse below.
+  // changed and the highlight would be pointing at a verse that has gone. The
+  // selection survives a turn the RECITATION asked for, landing on its verse below.
+  //
+  // The recitation is no longer stopped here either. Turning the page while
+  // listening is an ordinary thing to do — checking the next page, glancing back at
+  // a verse — and having the audio cut out every time made it impossible. What a
+  // reader-made turn does instead is take the wheel: the sound carries on, and the
+  // page stops chasing it (see readerLedRef and the follow effect below).
   //
   // The tafsir panel is deliberately NOT closed here. It is a docked panel, not
   // something attached to one page: turning the page is "show me the next page",
@@ -777,7 +787,7 @@ export default function Library() {
   useEffect(() => {
     const audioTurn = followTurnRef.current;
     if (audioTurn) followTurnRef.current = false;
-    else stopAudio();
+    else readerLedRef.current = true;
     if (selectTurnRef.current) selectTurnRef.current = false;
     // A turn the recitation asked for keeps the selection too WHILE the selection
     // is riding along with it — the follower lands it on the new page's verse as
@@ -785,7 +795,7 @@ export default function Library() {
     else if (!(audioTurn && followingAudioRef.current)) {
       setSelectedVerseKey(null);
     }
-  }, [currentPage, view, stopAudio]);
+  }, [currentPage, view]);
 
   // Keep the selection on the verse being recited. While the two are in step,
   // every new verse carries the selection along — so the popover, the mushaf
@@ -973,6 +983,7 @@ export default function Library() {
       return;
     }
     setRepeatsDone(0);
+    readerLedRef.current = false;   // an aimed play takes the view with it again
     setPlayingOrd(ord);
     setIsPlaying(true);
   };
@@ -998,6 +1009,7 @@ export default function Library() {
 
   // Bar prev/next: start playback if idle, else step.
   const stepVerse = (dir) => {
+    readerLedRef.current = false;   // "next verse" means show me it, too
     if (playingOrd == null) {
       const fallback = dir > 0 ? verses[0] : verses[verses.length - 1];
       const ord = ordOfKey(fallback?.verseKey);
@@ -1121,6 +1133,10 @@ export default function Library() {
   // untouched by the turn, so the recitation itself never pauses for it.
   useEffect(() => {
     if (playingOrd == null) return;
+    // ...unless the reader has turned the page themselves since. Then they are
+    // steering and the recitation is only sound; it gets the wheel back the next
+    // time playback is aimed on purpose.
+    if (readerLedRef.current) return;
     const page = pageOfOrd(playingOrd);
     if (!page || visiblePages.includes(page)) return;
     followTurnRef.current = true;
