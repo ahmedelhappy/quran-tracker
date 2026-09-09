@@ -1300,6 +1300,9 @@ export default function Library() {
   const viewportRef = useRef(null);
   const rangeDragRef = useRef(null);
   const suppressWordClickRef = useRef(false);
+  // Set below, once showVerseActions exists: a long press that never became a drag
+  // is touch's right-click, and this is how the drag hands it over.
+  const showVerseActionsRef = useRef(null);
   // The range being dragged out right now. On release it is handed to
   // rangeStartOrd/rangeEndOrd and this goes back to null — the band below then
   // reads the real range, so nothing the reader sees changes at the handover.
@@ -1430,7 +1433,14 @@ export default function Library() {
       suppressWordClickRef.current = true;
       const startOrd = Math.min(d.startOrd, d.lastOrd);
       const endOrd = Math.max(d.startOrd, d.lastOrd);
-      if (startOrd === endOrd) return;          // never left the verse it started on
+      if (startOrd === endOrd) {
+        // Never left the verse it started on. Under a FINGER that is a completed
+        // long press and nothing else — touch has no right button, so this is the
+        // gesture that opens the verse's actions. Under a mouse it is a stray
+        // wobble, and a wobble should do nothing.
+        if (d.touch) showVerseActionsRef.current?.(keyOfOrd(d.startOrd));
+        return;
+      }
       // The offer: point the range at what was just dragged out and open the repeat
       // panel, which is where both counts and "Play range" already live.
       setRangeStartOrd(startOrd);
@@ -1526,10 +1536,17 @@ export default function Library() {
 
   // Routes word taps to the mark-verses flow while it's active, otherwise the
   // normal verse-selection behaviour.
-  // Tapping a verse cycles through three states, so one gesture covers the lot:
-  //   1. not selected      -> select it and show its actions
+  //
+  // A plain click SELECTS AND NOTHING ELSE. Picking out a verse is the common
+  // thing a reader does — to see where they are, to point at a line — and putting
+  // a toolbar over the page every single time made the mushaf hard to read. The
+  // actions are on the secondary gesture instead (see showVerseActions).
+  //
+  // The rest of the ladder is unchanged, so a popover that IS up still folds away
+  // before the selection drops:
+  //   1. not selected      -> select it, quietly
   //   2. selected, actions -> put the actions away, KEEP the verse selected
-  //   3. selected, no acts -> deselect entirely (and do NOT bring the actions back)
+  //   3. selected, no acts -> deselect entirely
   // Clicking off the verse does the same thing at each stage: away, then out.
   const handleWordSelect = useCallback((verseKey) => {
     if (markVersesMode) { handleMarkVersesTap(verseKey); return; }
@@ -1538,10 +1555,25 @@ export default function Library() {
       else { setPopoverHidden(false); setSelectedVerseKey(null); }   // 2 -> 3
       return;
     }
-    placeNextRef.current = true; // a fresh verse re-anchors the popover
-    setPopoverHidden(false);
+    placeNextRef.current = true; // anchor the popover here if it is asked for next
+    setPopoverHidden(true);
     selectVerse(verseKey);
   }, [markVersesMode, handleMarkVersesTap, selectVerse, popoverHidden, selectedVerseKey]);
+
+  // The secondary gesture: RIGHT-CLICK a verse, or — where there is no right
+  // button — press and hold it and let go without dragging, which is the touch
+  // equivalent and the same press that starts a range drag if you do move. Either
+  // way it selects the verse and opens its actions, anchored where the press
+  // landed. Unconditional, not a toggle: asking for the actions twice keeps them.
+  const showVerseActions = useCallback((verseKey) => {
+    if (markVersesMode) return;   // the two-tap picking mode owns taps
+    placeNextRef.current = true;
+    setPopoverHidden(false);
+    setSelectedVerseKey(verseKey);
+    setSeenVerseTap(true);
+    localStorage.setItem('seenVerseTapCue', '1');
+  }, [markVersesMode]);
+  useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
 
   // Entering "mark verses" clears any selected verse so its popover (with the
   // annotation actions) can't fire while the two-word picking mode owns taps.
@@ -2594,6 +2626,7 @@ export default function Library() {
                     onOpenNote={(markVersesMode || !showAnns) ? null : (vk) => openNote(pd.page, vk)}
                     noteIndicatorLabel={t('library.annotations.noteIndicator')}
                     inRange={inRange}
+                    onVerseContextMenu={markVersesMode ? null : showVerseActions}
                   />
                 </Flip>
                 {/* Free-form ink + text overlays are siblings of the Flip/page-grid,

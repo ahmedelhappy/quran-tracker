@@ -50,6 +50,11 @@ export default function MushafPage({
   // one step behind it in precedence. Every word also carries `data-verse-key`, so
   // the reader can hit-test a drag with elementFromPoint without knowing the layout.
   inRange,
+  // Right-click on a verse — what now opens its actions, since a plain click only
+  // selects. The browser's own menu is always suppressed over the text either way:
+  // it has nothing useful to offer on glyphs that can't be selected or copied, and
+  // on a touch screen it would otherwise fire in the middle of a long press.
+  onVerseContextMenu,
 }) {
   const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
   const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
@@ -248,6 +253,10 @@ export default function MushafPage({
                   onClick={() => {
                     if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                     handleWordClick(w);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onVerseContextMenu?.(w.verseKey);
                   }}
                 >
                   <span className={concealed ? 'mushaf-concealed' : undefined}>{w.glyph}</span>
