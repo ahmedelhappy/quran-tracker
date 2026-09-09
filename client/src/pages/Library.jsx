@@ -1007,15 +1007,27 @@ export default function Library() {
     advanceOrd(dir);
   };
 
+  // The bar's play/pause always does what its icon says. While it shows PAUSE it
+  // pauses, full stop. When it shows PLAY it starts what the reader has PICKED —
+  // a verse, or the start of a span — which need not be the verse still loaded
+  // from last time. It used to resume whatever was loaded and ignore the pick
+  // entirely, so choosing a new verse and pressing play replayed the old one.
   const togglePlayPause = () => {
+    const pickedOrd = rangeSelection
+      ? rangeSelection.startOrd
+      : ordOfKey(selectedVerseKey) ?? (repeatMode === 'range' ? rangeStartOrd : null);
+    // Nothing loaded: start from the pick, or from the top of the page if there
+    // is none — pressing play must never conjure a verse out of nowhere.
     if (playingOrd == null) {
-      playOrd(repeatMode === 'range' ? rangeStartOrd : ordOfKey(verses[0]?.verseKey));
+      playOrd(pickedOrd ?? ordOfKey(verses[0]?.verseKey));
       return;
     }
     const el = activeEl();
     if (!el) return;
-    if (isPlaying) { el.pause(); setIsPlaying(false); }
-    else { el.play().catch(() => {}); setIsPlaying(true); }
+    if (isPlaying) { el.pause(); setIsPlaying(false); return; }
+    if (pickedOrd != null && pickedOrd !== playingOrd) { playOrd(pickedOrd); return; }
+    el.play().catch(() => {});
+    setIsPlaying(true);
   };
 
   // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
