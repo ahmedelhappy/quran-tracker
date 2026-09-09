@@ -547,6 +547,18 @@ export default function Library() {
   // highlighted and the tafsir panel keeps tracking it. Tapping the verse again
   // brings the actions back (and a hint above the mushaf says so).
   const [popoverHidden, setPopoverHidden] = useState(false);
+  // A picked SPAN of verses is a selection in its own right, and it has to behave
+  // like one: a span you cannot get rid of is worse than no span at all. So it sits
+  // here beside the single-verse selection and goes away exactly the ways that one
+  // does — click a verse, click off the page, press Escape.
+  //
+  // Deliberately NOT read off `repeatMode === 'range'`, which is what the band used
+  // to be: clearing what is DRAWN must not throw away the range that repeat is set
+  // to play. `setRange` further down keeps the two pointed at the same verses
+  // whenever the reader picks a range, which is the only time they should agree.
+  // Only ever one of this and `selectedVerseKey` is set — picking either clears
+  // the other — so nothing has to decide which of the two a gesture meant.
+  const [rangeSelection, setRangeSelection] = useState(null);   // { startOrd, endOrd }
 
   // ── Contextual onboarding (driver.js) ────────────────────
   const tourRef = useRef(null);
@@ -1179,13 +1191,14 @@ export default function Library() {
           else if (notePanel) setNotePanel(null);
           else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
+          else if (rangeSelection) setRangeSelection(null);
           break;
         default: break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, popoverHidden, drawPage, drawMenuOpen]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -1308,16 +1321,29 @@ export default function Library() {
   // reads the real range, so nothing the reader sees changes at the handover.
   const [dragRange, setDragRange] = useState(null);
 
-  // What the mushaf paints as a band: the drag in progress, or else the range that
-  // range-repeat would actually play. It is the SAME continuous per-verse band the
-  // selection uses, so ten verses read as one shape rather than ten.
-  const bandStart = dragRange ? dragRange.startOrd : (repeatMode === 'range' ? rangeStartOrd : null);
-  const bandEnd = dragRange ? dragRange.endOrd : (repeatMode === 'range' ? rangeEndOrd : null);
+  // What the mushaf paints as a band: the drag in progress, else the span standing
+  // selected. It is the SAME continuous per-verse band a single verse uses, so ten
+  // verses read as one shape rather than ten.
+  const bandStart = dragRange ? dragRange.startOrd : rangeSelection?.startOrd ?? null;
+  const bandEnd = dragRange ? dragRange.endOrd : rangeSelection?.endOrd ?? null;
   const inRange = useCallback((verseKey) => {
     if (bandStart == null) return false;
     const ord = ordOfKey(verseKey);
     return ord != null && ord >= bandStart && ord <= bandEnd;
   }, [bandStart, bandEnd]);
+
+  // Point repeat at [a, b] AND show it as the selection on the page. The drag and
+  // the two pickers all come through here, so what is drawn and what will play can
+  // never drift apart. The defaults effect further up deliberately does NOT use it
+  // — keeping the pickers on the current page is bookkeeping, not a selection, and
+  // must not light up the mushaf.
+  const setRange = useCallback((a, b) => {
+    const startOrd = Math.min(a, b);
+    const endOrd = Math.max(a, b);
+    setRangeStartOrd(startOrd);
+    setRangeEndOrd(endOrd);
+    setRangeSelection({ startOrd, endOrd });
+  }, []);
 
   // Page turns are fired from a TIMER, not from the next pointermove: a reader who
   // parks the pointer at the edge and holds it perfectly still produces no further
@@ -1443,8 +1469,7 @@ export default function Library() {
       }
       // The offer: point the range at what was just dragged out and open the repeat
       // panel, which is where both counts and "Play range" already live.
-      setRangeStartOrd(startOrd);
-      setRangeEndOrd(endOrd);
+      setRange(startOrd, endOrd);
       setRepeatMode('range');
       setRepeatOpen(true);
       showToast(t('library.audio.rangeDragHint', { verses: fmtNum(endOrd - startOrd + 1) }), 'info');
@@ -1459,7 +1484,7 @@ export default function Library() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [armEdgeTurn, endRangeDrag, showToast, t, fmtNum]);
+  }, [armEdgeTurn, endRangeDrag, setRange, showToast, t, fmtNum]);
 
   // A page turned under the drag: reach the range onto the verse just across the
   // boundary, so the band grows even if the pointer never moves again. startOrd is
@@ -1550,6 +1575,9 @@ export default function Library() {
   // Clicking off the verse does the same thing at each stage: away, then out.
   const handleWordSelect = useCallback((verseKey) => {
     if (markVersesMode) { handleMarkVersesTap(verseKey); return; }
+    // Picking one verse replaces a picked span, the same way it replaces another
+    // single verse: there is one selection, and this click is now it.
+    setRangeSelection(null);
     if (verseKey === selectedVerseKey) {
       if (!popoverHidden) setPopoverHidden(true);   // 1 -> 2
       else { setPopoverHidden(false); setSelectedVerseKey(null); }   // 2 -> 3
@@ -1567,6 +1595,7 @@ export default function Library() {
   // landed. Unconditional, not a toggle: asking for the actions twice keeps them.
   const showVerseActions = useCallback((verseKey) => {
     if (markVersesMode) return;   // the two-tap picking mode owns taps
+    setRangeSelection(null);      // asking for one verse's actions replaces a span
     placeNextRef.current = true;
     setPopoverHidden(false);
     setSelectedVerseKey(verseKey);
@@ -2403,13 +2432,18 @@ export default function Library() {
   // tapping a WORD collapses on pointerdown and then unfolds again on the click
   // that selects it, which is why a fresh word tap still opens the actions.
   useEffect(() => {
-    if (!selectedVerseKey) return;
+    if (!selectedVerseKey && !rangeSelection) return;
     const onPointerDown = (e) => {
       if (popoverRef.current?.contains(e.target)) return;
       // A word click runs the ladder itself (handleWordSelect) — leave it alone.
       if (e.target.closest?.('.mushaf-word')) return;
       // A control, or somewhere inside a panel being used: not "off the verse".
+      // The repeat panel counts, so the pickers can be adjusted with the span lit.
       if (e.target.closest?.(KEEPS_VERSE_SELECTION)) return;
+      // A picked span carries no actions to fold away first, so it is one step:
+      // the span goes. (It and a single verse are never both selected — picking
+      // either clears the other.)
+      if (rangeSelection) { setRangeSelection(null); return; }
       // Empty space. Same ladder as tapping the verse: the first click puts the
       // actions away, the next one drops the selection.
       if (!popoverHidden) setPopoverHidden(true);
@@ -2418,7 +2452,7 @@ export default function Library() {
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVerseKey, popoverHidden]);
+  }, [selectedVerseKey, rangeSelection, popoverHidden]);
 
   // The selected verse's own annotations, for the popover's active states.
   const selectedVerseAnns = selectedVerse ? (annotationsByPage.get(selectedVerse.page) ?? []) : [];
@@ -3591,7 +3625,12 @@ export default function Library() {
                           <button
                             key={m}
                             type="button"
-                            onClick={() => setRepeatMode(m)}
+                            onClick={() => {
+                              setRepeatMode(m);
+                              // The span repeat is aimed at IS the selection while
+                              // Range is on; leaving Range drops it.
+                              setRangeSelection(m === 'range' ? { startOrd: rangeStartOrd, endOrd: rangeEndOrd } : null);
+                            }}
                             className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
                               repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
                             }`}
@@ -3621,7 +3660,7 @@ export default function Library() {
                             surahName={`${t('library.audio.rangeFrom')} — ${t('library.surahLabel')}`}
                             ayahName={`${t('library.audio.rangeFrom')} — ${t('library.verseLabel', { n: '' }).trim()}`}
                             ord={rangeStartOrd}
-                            onChange={(ord) => { setRangeStartOrd(ord); if (ord > rangeEndOrd) setRangeEndOrd(ord); }}
+                            onChange={(ord) => setRange(ord, Math.max(ord, rangeEndOrd))}
                             surahLabelFor={surahLabelFor}
                             fmtNum={fmtNum}
                             selectCls={selectCls}
@@ -3631,7 +3670,7 @@ export default function Library() {
                             surahName={`${t('library.audio.rangeTo')} — ${t('library.surahLabel')}`}
                             ayahName={`${t('library.audio.rangeTo')} — ${t('library.verseLabel', { n: '' }).trim()}`}
                             ord={rangeEndOrd}
-                            onChange={(ord) => { setRangeEndOrd(ord); if (ord < rangeStartOrd) setRangeStartOrd(ord); }}
+                            onChange={(ord) => setRange(Math.min(ord, rangeStartOrd), ord)}
                             surahLabelFor={surahLabelFor}
                             fmtNum={fmtNum}
                             selectCls={selectCls}
