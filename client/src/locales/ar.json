@@ -277,6 +277,7 @@
     "projectedCompletion": "الإنجاز المتوقّع",
     "projectedFinish": "تاريخ الإتمام المتوقّع",
     "atPace": "بمعدل {{count}} صفحة/يوم",
+    "atPaceDays": "بمعدل {{count}} صفحة/يوم، {{days}} من 7 أيام في الأسبوع",
     "alreadyComplete": "لقد أتممت حفظ القرآن كاملاً 🎉",
     "estimateUnavailable": "حدّد بعض أيام النشاط من الإعدادات لعرض التقدير.",
     "chartNow": "الآن"

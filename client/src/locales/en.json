@@ -277,6 +277,7 @@
     "projectedCompletion": "Projected completion",
     "projectedFinish": "Projected finish date",
     "atPace": "at {{count}} pages/day",
+    "atPaceDays": "at {{count}} pages/day, {{days}} of 7 days a week",
     "alreadyComplete": "You've memorized the whole Quran 🎉",
     "estimateUnavailable": "Set some active days in Settings to see an estimate.",
     "chartNow": "Now"

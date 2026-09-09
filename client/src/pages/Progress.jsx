@@ -484,7 +484,17 @@ export default function Progress() {
                       <span className="text-4xl font-extrabold text-[#1A1A1A] dark:text-gray-100 tabular-nums">{estimateDisplay.value}</span>
                       <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey)}</span>
                     </div>
-                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-1">{t('progress.atPace', { count: estimate.dailyPages })}</p>
+                    {/* Name the REST DAYS too, not just the daily pages. The estimate
+                        has always divided the daily rate by the active days — 2.5
+                        pages on one day a week is 2.5 a week, not 17.5 — but a caption
+                        that says only "2.5 pages/day" invites the reader to check it
+                        as 604 ÷ 2.5 and conclude the number is broken. Naming both
+                        halves of the pace makes the figure add up on the page. */}
+                    <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mt-1">
+                      {estimate.activeDaysPerWeek < 7
+                        ? t('progress.atPaceDays', { count: estimate.dailyPages, days: estimate.activeDaysPerWeek })
+                        : t('progress.atPace', { count: estimate.dailyPages })}
+                    </p>
                   </div>
                   {projectedDate && (
                     <div>
