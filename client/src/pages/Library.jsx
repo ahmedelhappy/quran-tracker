@@ -748,10 +748,19 @@ export default function Library() {
     setRangePasses(0);
   }, [setRepeatsDone, setRangePasses]); // bufEl only reads refs, and both setters are stable
 
-  // Page / view change: clear selection + close tafsir (the on-screen verse set
-  // changed). Audio stops too — but NOT when the recitation itself asked for the
-  // turn, which is how a range keeps playing straight across a page break; and
-  // the selection survives a turn IT asked for, landing on its verse below.
+  // Page / view change: clear the selection, because the on-screen verse set
+  // changed and the highlight would be pointing at a verse that has gone. Audio
+  // stops too — but NOT when the recitation itself asked for the turn, which is
+  // how a range keeps playing straight across a page break; and the selection
+  // survives a turn IT asked for, landing on its verse below.
+  //
+  // The tafsir panel is deliberately NOT closed here. It is a docked panel, not
+  // something attached to one page: turning the page is "show me the next page",
+  // never "put the tafsir away", and having to reopen it after every turn made it
+  // unusable for reading through a surah. It keeps the verse it was showing (its
+  // own key survives losing the selection) until a verse on the new page is
+  // tapped, or it is closed on purpose — Escape, its X, the toggle, or opening a
+  // note over it.
   useEffect(() => {
     const audioTurn = followTurnRef.current;
     if (audioTurn) followTurnRef.current = false;
@@ -762,7 +771,6 @@ export default function Library() {
     // soon as that page's verses arrive.
     else if (!(audioTurn && followingAudioRef.current)) {
       setSelectedVerseKey(null);
-      setTafsirOpen(false);
     }
   }, [currentPage, view, stopAudio]);
 
