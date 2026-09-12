@@ -460,8 +460,9 @@ export default function Library() {
   // is invisible: the verse is simply loaded again on the active element when it comes
   // round, with a fresh budget behind it. The ACTIVE verse giving up is what the
   // reader sees, so that is the one worth being patient with. Measured against this
-  // CDN, a cold file turned 200 somewhere between its 2nd and 8th request, so three
-  // retries sat under what it actually takes.
+  // CDN, a cold file turned 200 somewhere between its 2nd and 8th request, and three
+  // retries sat under that — a verse this reader had already been told was broken
+  // answered 200 on the very next request made for it.
   const AUDIO_RETRIES_ACTIVE = 6;
   const AUDIO_RETRIES_PREFETCH = 3;
   const AUDIO_RETRY_MS = 400;
@@ -864,6 +865,11 @@ export default function Library() {
       if (active) { setAudioBuffering(false); setAudioError(true); setIsPlaying(false); }
       return;
     }
+    // One extra ask at the edge alongside the element's own retry. Repeated requests
+    // are what actually fill the edge — a verse that failed here has been watched to
+    // answer 200 moments later, once enough of them had asked for it — and one per
+    // attempt keeps that pressure on without turning a dead file into a flood.
+    if (active) touchAyah(reciterRef.current, ord);
     r.tries += 1;
     if (active) setAudioBuffering(true);   // it is still trying, so say "loading", not "broken"
     clearTimeout(r.timer);
@@ -915,9 +921,74 @@ export default function Library() {
     setIsPlaying(true);
   };
 
+  // ── Warming the CDN edge ahead of the recitation ───────────────────
+  // The media prefetch on its own is too little runway: it starts when the current
+  // verse starts, and the short ayahs of Juz Amma last two seconds, so a cold 502 on
+  // the next verse has barely time to be retried before it is wanted. So the edge is
+  // warmed WARM_AHEAD verses out with a plain fetch — no media element, no playback
+  // state, nothing a failure there can break. A 502 costs nothing at that distance,
+  // and the file is touched again and again long before the recitation arrives, by
+  // which time it is sitting on the edge and the prefetch is no longer cold.
+  //
+  // Three things about this CDN decided the shape, each measured against it rather
+  // than assumed:
+  //
+  //  - The touches are BLIND. The fetch has to be no-cors, because the CDN sends no
+  //    access-control-allow-origin, and an opaque response hides everything: `ok` is
+  //    false either way, and Resource Timing reports responseStatus 0 (it reports a
+  //    real 200 for a same-origin entry, so that is the cross-origin rule and not
+  //    something to work around). Nothing in the page can tell a 502 from a 200 here,
+  //    so there is no condition to loop on — only a fixed number of touches.
+  //
+  //  - Blind is affordable, because a warm file is then free. Sampling cold ayahs,
+  //    a file turned 200 somewhere between the 2nd and the 8th request — one touch is
+  //    usually NOT enough — and once it has, every further touch is served out of the
+  //    browser's disk cache in about a millisecond (the CDN sends these files with
+  //    max-age=70 days). So the touches after the one that worked cost nothing, and
+  //    WARM_TOUCHES can cover the slow tail without paying for it every time.
+  //
+  //  - It is a whole-file GET, not a 2-byte range. A Range header would make this
+  //    nearly free, and the CDN does serve 206 (and a 206 warms the edge just as a
+  //    200 does — also checked). But Chrome strips Range from a no-cors fetch: it
+  //    never reaches the wire and the full file comes back anyway. So the honest cost
+  //    of this warm-up is about one extra download per ayah, since the <audio>
+  //    element fetches its own copy with a range request of its own. WARM_AHEAD is
+  //    the dial if that ever needs trading back for data.
+  const WARM_AHEAD = 3;
+  const WARM_TOUCHES = 6;
+  const WARM_GAP_MS = 500;
+  const warmedRef = useRef(new Set());   // reciter:ord pairs already warmed this session
+  const warmGenRef = useRef(0);          // bumped on stop / reciter change to retire warms in flight
+
+  // One blind request at the edge, and nothing else: no state, no element, no reader
+  // visible consequence either way.
+  const touchAyah = useCallback((rec, ord) => {
+    fetch(getAyahAudioUrl(rec, ord), { mode: 'no-cors' })
+      .catch(() => { /* a failed warm-up is a no-op by design */ });
+  }, []);
+
+  const warmAyah = useCallback((rec, ord) => {
+    const key = rec + ':' + ord;
+    if (warmedRef.current.has(key)) return;
+    if (warmedRef.current.size > 800) warmedRef.current.clear();   // a long sitting must not grow a set forever
+    warmedRef.current.add(key);
+    const gen = warmGenRef.current;
+    const touch = (n) => {
+      if (gen !== warmGenRef.current) return;   // playback stopped, or the reciter changed
+      touchAyah(rec, ord);
+      // Widening gaps: the early ones are what ask the origin for the file, the later
+      // ones are cache reads confirming it arrived.
+      if (n + 1 < WARM_TOUCHES) setTimeout(() => touch(n + 1), WARM_GAP_MS * (n + 1));
+    };
+    touch(0);
+  }, [touchAyah]);
+
   // Stop playback and release BOTH buffers — removing the src and reloading aborts
   // any download still in flight, so nothing keeps fetching once playback is over.
+  // The warm-up generation is bumped with them, so the reads running ahead of the
+  // recitation stop retrying for a recitation that is finished.
   const stopAudio = useCallback(() => {
+    warmGenRef.current += 1;
     releaseBuf(0);
     releaseBuf(1);
     activeBufRef.current = 0;
@@ -1059,6 +1130,7 @@ export default function Library() {
   // A reciter change invalidates both buffers — same verses, different files. Runs
   // before the playback effect below (declaration order), so that one reloads.
   useEffect(() => {
+    warmGenRef.current += 1;   // the verses warmed ahead belong to a different recording
     releaseBuf(1 - activeBufRef.current);
     markBuf(activeBufRef.current, null, 'idle');
     localStorage.setItem('reciter', reciter);
@@ -1287,6 +1359,19 @@ export default function Library() {
     loadBuf(idle, next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playingOrd, isPlaying, nextOrdAfter, reciter]);
+
+  // Warm the CDN edge WARM_AHEAD verses out (see warmAyah), so the prefetch above
+  // stops being the first request its file ever gets, and stops being the one that
+  // eats the cold 502.
+  useEffect(() => {
+    if (playingOrd == null || !isPlaying) return;
+    let ord = playingOrd;
+    for (let k = 0; k < WARM_AHEAD; k += 1) {
+      ord = nextOrdAfter(ord);
+      if (ord == null || ord === playingOrd) break;
+      warmAyah(reciter, ord);
+    }
+  }, [playingOrd, isPlaying, nextOrdAfter, reciter, warmAyah]);
 
   // Stall watchdog. A media element can go quiet without ever firing `error` — the
   // request hangs, or it was handed a src it never managed to load — while isPlaying
