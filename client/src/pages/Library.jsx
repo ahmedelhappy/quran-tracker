@@ -449,18 +449,53 @@ export default function Library() {
   // story from the other side. So ONE failure does not mean "this verse has no
   // recitation", and treating it as fatal is exactly what produced "failed to
   // play" on verses that play perfectly a second later.
-  const AUDIO_RETRIES = 3;
+  //
+  // The corollary took longer to see, and it is what made the recitation stall
+  // rather than recover: the PREFETCH is by definition always the cold request. The
+  // verse now sounding was fetched a verse ago, so its edge is warm; the only file
+  // nobody has touched yet is the next one. Every cold 502 therefore lands on the
+  // prefetch — precisely the request the retry below used to walk away from.
+  //
+  // Two budgets, because the two failures cost different things. A prefetch giving up
+  // is invisible: the verse is simply loaded again on the active element when it comes
+  // round, with a fresh budget behind it. The ACTIVE verse giving up is what the
+  // reader sees, so that is the one worth being patient with. Measured against this
+  // CDN, a cold file turned 200 somewhere between its 2nd and 8th request, so three
+  // retries sat under what it actually takes.
+  const AUDIO_RETRIES_ACTIVE = 6;
+  const AUDIO_RETRIES_PREFETCH = 3;
   const AUDIO_RETRY_MS = 400;
-  const audioRetryRef = useRef({ ord: null, buf: -1, tries: 0, timer: null });
   // Two <audio> elements, ping-ponged: while one plays, the other preloads the verse
   // that comes next, so the handoff costs no fetch and no decode — that is what
-  // removes the audible gap between verses. bufOrd records the verse each holds.
+  // removes the audible gap between verses.
   const audioARef = useRef(null);
   const audioBRef = useRef(null);
   const activeBufRef = useRef(0);
-  const bufOrdRef = useRef([null, null]);
+  // What each buffer holds AND how far it actually got. An ordinal on its own was
+  // not enough: it recorded the INTENT to load a verse, so a handover that trusted
+  // it would adopt an element whose download had 502'd and then sit in silence
+  // forever. `status` is what the element achieved — 'loading' until it reports it
+  // can play, 'ready' once it has, 'failed' when the load broke — and only a
+  // 'ready' buffer may ever be swapped into.
+  const bufStateRef = useRef([{ ord: null, status: 'idle' }, { ord: null, status: 'idle' }]);
+  // Retry bookkeeping per BUFFER, so the prefetch gets its own budget and its own
+  // backoff rather than sharing the active element's.
+  const audioRetryRef = useRef([{ ord: null, tries: 0, timer: null }, { ord: null, tries: 0, timer: null }]);
   const bufEl = (i) => (i === 0 ? audioARef.current : audioBRef.current);
   const activeEl = () => bufEl(activeBufRef.current);
+  const bufIndexOf = (el) => (el && el === audioARef.current ? 0 : el && el === audioBRef.current ? 1 : -1);
+  const bufHolds = (i, ord) => ord != null && bufStateRef.current[i].ord === ord;
+  const bufReady = (i, ord) => bufHolds(i, ord) && bufStateRef.current[i].status === 'ready';
+  const markBuf = (i, ord, status) => { bufStateRef.current[i] = { ord, status }; };
+  // Retry timers and play() rejections land a beat after the render that armed them,
+  // so they read the live values through refs instead of a stale closure.
+  const isPlayingRef = useRef(false);
+  const playingOrdRef = useRef(null);
+  const reciterRef = useRef(reciter);
+  const playbackRateRef = useRef(1);
+  // The watchdog's clock: when the active element last proved it was still moving.
+  const lastProgressRef = useRef(0);
+  const STALL_MS = 2500;
 
   // ── Playback speed (persisted) ──────────────────────────
   const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
@@ -468,6 +503,12 @@ export default function Library() {
     const v = parseFloat(localStorage.getItem('playbackRate'));
     return SPEEDS.includes(v) ? v : 1;
   });
+  // Kept current during render, so a timer or a promise callback never acts on a
+  // value from the render that scheduled it.
+  isPlayingRef.current = isPlaying;
+  playingOrdRef.current = playingOrd;
+  reciterRef.current = reciter;
+  playbackRateRef.current = playbackRate;
 
   // ── Repetition for memorization ─────────────────────────
   // 'off' → continuous whole-Quran auto-advance. 'verse' → repeat the current
@@ -758,17 +799,127 @@ export default function Library() {
     return () => { cancelled = true; };
   }, [visiblePages, pageResolved]);
 
+  // ── Audio buffer plumbing ──────────────────────────────────────────
+  // Everything that points an <audio> element at a verse goes through loadBuf, so
+  // the recorded status can never drift from what the element is really doing.
+  const loadBuf = (i, ord) => {
+    const el = bufEl(i);
+    if (!el) return;
+    markBuf(i, ord, 'loading');
+    el.src = getAyahAudioUrl(reciterRef.current, ord);
+    el.playbackRate = playbackRateRef.current;
+    el.load();
+  };
+
+  // Hand a buffer back empty: cancels its pending retry and aborts any download
+  // still in flight. The status is cleared BEFORE the src goes, because dropping a
+  // src fires `error` and that error must not be mistaken for a verse failing.
+  const releaseBuf = useCallback((i) => {
+    clearTimeout(audioRetryRef.current[i].timer);
+    audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+    bufStateRef.current[i] = { ord: null, status: 'idle' };
+    const el = i === 0 ? audioARef.current : audioBRef.current;
+    if (!el) return;
+    el.pause();
+    el.removeAttribute('src');
+    el.load();
+  }, []);   // refs only, so the callbacks that stop playback stay stable
+
+  // The element says it has real audio: this buffer is now safe to play from, and
+  // safe to swap into. Nothing else promotes a buffer to 'ready'.
+  const markBufReady = (el) => {
+    const i = bufIndexOf(el);
+    if (i < 0) return;
+    const { ord, status } = bufStateRef.current[i];
+    if (ord == null) return;
+    if (status !== 'ready') markBuf(i, ord, 'ready');
+    if (audioRetryRef.current[i].ord === ord) {
+      clearTimeout(audioRetryRef.current[i].timer);
+      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+    }
+    if (i === activeBufRef.current) {
+      lastProgressRef.current = performance.now();
+      setAudioBuffering(false);
+      setAudioError(false);
+    }
+  };
+
+  // One buffer's load broke. The SAME warm-the-edge retry now runs whichever buffer
+  // it was — the prefetch is the cold request, so it is the one that needs it most —
+  // backing off a little each time. What differs is what a failure is allowed to
+  // touch: the active buffer owns the spinner and, once its attempts are spent, the
+  // error line. A prefetch fails in silence — it never moves the current verse,
+  // never stops playback, never raises the error banner; it just keeps trying.
+  // Re-entrant calls while a retry is already armed are no-ops, so an `error` event
+  // and a rejected play() for the same verse cost one attempt between them, not two.
+  const failBuf = (i, ord) => {
+    if (ord == null || !bufHolds(i, ord)) return;          // playback has moved on
+    if (bufStateRef.current[i].status === 'failed') return; // a retry is already armed
+    markBuf(i, ord, 'failed');
+    const active = i === activeBufRef.current && ord === playingOrdRef.current;
+    const r = audioRetryRef.current[i];
+    if (r.ord !== ord) { r.ord = ord; r.tries = 0; }
+    if (r.tries >= (active ? AUDIO_RETRIES_ACTIVE : AUDIO_RETRIES_PREFETCH)) {
+      // Spent. Only the verse the reader is actually waiting on says so out loud.
+      if (active) { setAudioBuffering(false); setAudioError(true); setIsPlaying(false); }
+      return;
+    }
+    r.tries += 1;
+    if (active) setAudioBuffering(true);   // it is still trying, so say "loading", not "broken"
+    clearTimeout(r.timer);
+    r.timer = setTimeout(() => {
+      // Bail if playback moved on while we waited — a retry must never drag the
+      // reader back to the verse they have already left.
+      if (!bufHolds(i, ord)) return;
+      loadBuf(i, ord);
+      if (i === activeBufRef.current && ord === playingOrdRef.current) {
+        lastProgressRef.current = performance.now();   // a clean window for the watchdog
+        if (isPlayingRef.current) playEl(i, ord);
+      }
+    }, AUDIO_RETRY_MS * r.tries);
+  };
+
+  // play() rejects for three unrelated reasons, and swallowing all three is what let
+  // a dead element stall in silence. AbortError is ordinary ping-pong traffic — a new
+  // load or a pause cut the play short. NotAllowedError is the autoplay policy
+  // wanting a gesture, which no amount of retrying can supply. Anything else is the
+  // source refusing to start, which is the same failure an `error` event reports, so
+  // it takes the same road.
+  const playEl = (i, ord) => {
+    const el = bufEl(i);
+    const promise = el?.play();
+    if (!promise || typeof promise.catch !== 'function') return;
+    promise.catch((err) => {
+      if (err?.name === 'AbortError') return;
+      if (err?.name === 'NotAllowedError') { setIsPlaying(false); setAudioBuffering(false); return; }
+      failBuf(i, ord);
+    });
+  };
+
+  // Resume the verse already loaded. If its last load FAILED, pressing play is a
+  // deliberate second chance: the retry budget resets and the file is fetched again,
+  // so a reader who presses play after "could not load the recitation" is not stuck
+  // with the old verdict.
+  const resumeActive = () => {
+    const i = activeBufRef.current;
+    const ord = playingOrdRef.current;
+    lastProgressRef.current = performance.now();
+    if (ord != null && bufStateRef.current[i].status === 'failed') {
+      clearTimeout(audioRetryRef.current[i].timer);
+      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+      setAudioError(false);
+      setAudioBuffering(true);
+      loadBuf(i, ord);
+    }
+    playEl(i, ord);
+    setIsPlaying(true);
+  };
+
   // Stop playback and release BOTH buffers — removing the src and reloading aborts
   // any download still in flight, so nothing keeps fetching once playback is over.
   const stopAudio = useCallback(() => {
-    [0, 1].forEach((i) => {
-      const el = bufEl(i);
-      if (!el) return;
-      el.pause();
-      el.removeAttribute('src');
-      el.load();
-      bufOrdRef.current[i] = null;
-    });
+    releaseBuf(0);
+    releaseBuf(1);
     activeBufRef.current = 0;
     setPlayingOrd(null);
     setIsPlaying(false);
@@ -776,9 +927,7 @@ export default function Library() {
     setRepeatsDone(0);
     setRangePasses(0);
     readerLedRef.current = false;
-    clearTimeout(audioRetryRef.current.timer);
-    audioRetryRef.current = { ord: null, buf: -1, tries: 0, timer: null };
-  }, [setRepeatsDone, setRangePasses]); // bufEl only reads refs, and both setters are stable
+  }, [releaseBuf, setRepeatsDone, setRangePasses]);
 
   // Page / view change: clear the selection, because the on-screen verse set
   // changed and the highlight would be pointing at a verse that has gone. The
@@ -910,11 +1059,10 @@ export default function Library() {
   // A reciter change invalidates both buffers — same verses, different files. Runs
   // before the playback effect below (declaration order), so that one reloads.
   useEffect(() => {
-    bufOrdRef.current = [null, null];
-    const idle = bufEl(1 - activeBufRef.current);
-    if (idle) { idle.removeAttribute('src'); idle.load(); }
+    releaseBuf(1 - activeBufRef.current);
+    markBuf(activeBufRef.current, null, 'idle');
     localStorage.setItem('reciter', reciter);
-  }, [reciter]);
+  }, [reciter, releaseBuf]);
 
   // Drive the active <audio> element: point it at the current verse and play.
   useEffect(() => {
@@ -922,23 +1070,34 @@ export default function Library() {
     const cur = activeBufRef.current;
     const other = 1 - cur;
     // The idle buffer preloaded this verse while the previous one played — swap to
-    // it rather than fetching again. This swap is the gapless handoff.
-    if (bufOrdRef.current[other] === playingOrd && bufOrdRef.current[cur] !== playingOrd) {
+    // it rather than fetching again. This swap is the gapless handoff, and it is
+    // allowed ONLY into a buffer that has said it can play. Adopting one that had
+    // merely been TOLD to load this verse is what turned a prefetch 502 into
+    // permanent silence: the element was dead, the swap trusted it anyway, and
+    // nothing ever asked for that verse again.
+    if (bufReady(other, playingOrd) && !bufReady(cur, playingOrd)) {
       bufEl(cur)?.pause();
       activeBufRef.current = other;
+    } else if (bufHolds(other, playingOrd) && !bufReady(other, playingOrd)) {
+      // It holds this verse but never got it. Let it go: the active element takes
+      // the verse over below with the retry path behind it, and the preloader gets a
+      // clean buffer for the verse after this one. A late start is fine; a silent
+      // stall is not.
+      releaseBuf(other);
     }
     const idx = activeBufRef.current;
     const el = bufEl(idx);
     if (!el) return;
     setAudioError(false);
-    if (bufOrdRef.current[idx] !== playingOrd) {
-      el.src = getAyahAudioUrl(reciter, playingOrd);
-      bufOrdRef.current[idx] = playingOrd;
+    lastProgressRef.current = performance.now();
+    const held = bufStateRef.current[idx];
+    if (held.ord !== playingOrd || held.status === 'failed') {
+      loadBuf(idx, playingOrd);
     } else if (el.currentTime > 0) {
       try { el.currentTime = 0; } catch { /* not seekable yet — it starts at 0 anyway */ }
     }
     el.playbackRate = playbackRate;
-    if (isPlaying) el.play().catch(() => {});
+    if (isPlaying) playEl(idx, playingOrd);
     // Speed and pause/resume are applied by their own handlers; re-running here on
     // either would restart the verse.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -991,8 +1150,7 @@ export default function Library() {
     if (!(ord >= 1 && ord <= TOTAL_AYAHS)) return;
     setAudioError(false);
     if (ord === playingOrd) {
-      const el = activeEl();
-      if (el && !isPlaying) { el.play().catch(() => {}); setIsPlaying(true); }
+      if (!isPlaying) resumeActive();
       return;
     }
     setRepeatsDone(0);
@@ -1006,7 +1164,8 @@ export default function Library() {
     const el = activeEl();
     if (!el) return;
     el.currentTime = 0;
-    el.play().catch(() => {});
+    lastProgressRef.current = performance.now();
+    playEl(activeBufRef.current, playingOrd);
     setIsPlaying(true);
   };
 
@@ -1051,8 +1210,7 @@ export default function Library() {
     if (!el) return;
     if (isPlaying) { el.pause(); setIsPlaying(false); return; }
     if (pickedOrd != null && pickedOrd !== playingOrd) { playOrd(pickedOrd); return; }
-    el.play().catch(() => {});
-    setIsPlaying(true);
+    resumeActive();
   };
 
   // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
@@ -1103,28 +1261,15 @@ export default function Library() {
     advanceOrd(1); // 'off' → continuous auto-advance through the whole Quran
   };
 
-  // A failed load is retried on the SAME url before it is called an error: the
-  // retry is what warms the edge, so the second attempt is the one that plays.
-  // Backs off a little each time and gives up after AUDIO_RETRIES, which is when
-  // the bar finally says the recitation could not be loaded.
+  // A failed load is retried on the SAME url before it is called an error: the retry
+  // is what warms the edge, so the second attempt is the one that plays. BOTH
+  // elements report here now, the one that is merely preloading included — it used
+  // to return early on exactly the request that is always cold. failBuf holds the
+  // backoff and decides what each case may touch.
   const handleAudioError = (e) => {
-    const el = e.currentTarget;
-    if (el !== activeEl() || playingOrd == null) return;
-    const r = audioRetryRef.current;
-    const buf = activeBufRef.current;
-    if (r.ord !== playingOrd || r.buf !== buf) { r.ord = playingOrd; r.buf = buf; r.tries = 0; }
-    if (r.tries >= AUDIO_RETRIES) { setAudioError(true); setIsPlaying(false); return; }
-    r.tries += 1;
-    setAudioBuffering(true);   // it is still trying, so say "loading", not "broken"
-    clearTimeout(r.timer);
-    r.timer = setTimeout(() => {
-      // Bail if playback moved on while we waited — a retry must never drag the
-      // reader back to the verse they have already left.
-      if (el !== activeEl() || bufOrdRef.current[buf] !== playingOrd) return;
-      el.src = getAyahAudioUrl(reciter, playingOrd);
-      el.load();
-      if (isPlaying) el.play().catch(() => {});
-    }, AUDIO_RETRY_MS * r.tries);
+    const i = bufIndexOf(e.currentTarget);
+    if (i < 0) return;
+    failBuf(i, bufStateRef.current[i].ord);
   };
 
   // Preload the verse that comes next into the idle buffer, so that by the time the
@@ -1135,16 +1280,37 @@ export default function Library() {
     const next = nextOrdAfter(playingOrd);
     if (next == null || next === playingOrd) return;
     const idle = 1 - activeBufRef.current;
-    if (bufOrdRef.current[idle] === next) return;
-    const el = bufEl(idle);
-    if (!el) return;
-    el.pause();
-    el.src = getAyahAudioUrl(reciter, next);
-    el.playbackRate = playbackRate;
-    el.load();
-    bufOrdRef.current[idle] = next;
+    // Already on it, or already has it, or failed on it with its own retry pending —
+    // in none of those cases does starting over help.
+    if (bufHolds(idle, next)) return;
+    bufEl(idle)?.pause();
+    loadBuf(idle, next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playingOrd, isPlaying, nextOrdAfter, reciter]);
+
+  // Stall watchdog. A media element can go quiet without ever firing `error` — the
+  // request hangs, or it was handed a src it never managed to load — while isPlaying
+  // still says sound should be coming out. So if no timeupdate has landed for
+  // STALL_MS and the element has nothing buffered to play, treat the silence as the
+  // failure it is and put it through the same retry as a reported error.
+  useEffect(() => {
+    if (!isPlaying || playingOrd == null) return;
+    const id = setInterval(() => {
+      const i = activeBufRef.current;
+      const el = bufEl(i);
+      if (!el || el.ended) return;
+      if (performance.now() - lastProgressRef.current < STALL_MS) return;
+      if (el.readyState >= 3 /* HAVE_FUTURE_DATA */) {
+        // It has audio and simply isn't playing it — nudge it rather than refetch.
+        if (el.paused) { lastProgressRef.current = performance.now(); playEl(i, playingOrd); }
+        return;
+      }
+      setAudioBuffering(true);
+      failBuf(i, playingOrd);
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playingOrd]);
 
   // Returns whether it actually navigated — the playback follower needs to know,
   // so it doesn't leave its "this turn was mine" flag set on a no-op.
@@ -3825,8 +3991,11 @@ export default function Library() {
             </div>
 
             {/* The ping-pong pair: one plays while the other preloads the next verse.
-                Every handler ignores events from whichever element isn't the active
-                one, so a buffering preload never touches the playback state. */}
+                The playback-state handlers — spinner, error line, auto-advance —
+                still listen to the ACTIVE element only, so a buffering preload never
+                touches what the reader sees. Readiness and failure are recorded for
+                BOTH: a prefetch that 502s has to be seen and retried, and a buffer
+                may only be swapped into once it has said it can play. */}
             {[audioARef, audioBRef].map((ref, i) => (
               <audio
                 key={i}
@@ -3834,8 +4003,11 @@ export default function Library() {
                 preload="auto"
                 onEnded={handleEnded}
                 onWaiting={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(true); }}
-                onPlaying={(e) => { if (e.currentTarget === activeEl()) { setAudioBuffering(false); setAudioError(false); } }}
-                onCanPlay={(e) => { if (e.currentTarget === activeEl()) { setAudioBuffering(false); setAudioError(false); } }}
+                onPlaying={(e) => { if (e.currentTarget === activeEl()) { lastProgressRef.current = performance.now(); setAudioBuffering(false); setAudioError(false); } }}
+                onTimeUpdate={(e) => { if (e.currentTarget === activeEl()) lastProgressRef.current = performance.now(); }}
+                onLoadedData={(e) => markBufReady(e.currentTarget)}
+                onCanPlay={(e) => markBufReady(e.currentTarget)}
+                onCanPlayThrough={(e) => markBufReady(e.currentTarget)}
                 onError={handleAudioError}
               />
             ))}
