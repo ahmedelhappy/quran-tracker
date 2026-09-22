@@ -444,8 +444,12 @@ otherwise                  → streak = 1   (a real day was missed → reset)
 `lastActiveDate` is more than one day, it checks every in-between day and only breaks the
 streak if one of those days was **not** an off day.
 
-The same logic is also exposed read-only as `buildProgressSummary`, which the AI assistant
-reuses to answer "what should I memorize today?" from the user's real numbers (§6).
+The day's plan itself — targets, new items, both review buckets, the continuation page —
+is computed by one pure function, `planToday(user, pages)`: no queries, no writes. Both
+`getTodayTasks` and `buildProgressSummary` (the AI assistant's view of the same day, §9)
+call it, so the assistant can never name a different page than the dashboard shows. That
+is the general lesson: when two features must agree, give them one function, not two
+copies of the rules.
 
 ---
 
@@ -866,14 +870,27 @@ Two engineering details to point out:
 
 ### The AI assistant — [../server/controllers/chatController.js](../server/controllers/chatController.js)
 
-A chatbot that answers Hifz/Islamic questions, powered by **Groq** running the
-`llama-3.3-70b-versatile` model. What makes it more than a generic chatbot:
+A chatbot that answers questions about the app, the user's own plan, and Hifz/Islamic
+topics, powered by **Groq** (model `openai/gpt-oss-120b` by default, or the `GROQ_MODEL`
+environment variable — Groq retires models, and the one this first used now answers 404).
+What makes it more than a generic chatbot:
+
+- **It knows the app.** [../server/chat/appGuide.md](../server/chat/appGuide.md) is a short
+  guide to every page, the daily plan and the reader, with step-by-step answers. It is read
+  once at boot and sent as part of the system prompt, which also says where each kind of
+  answer must come from and to decline anything unrelated. Keep it current when a feature
+  changes — the assistant knows only what the guide says.
+- **It links into the app.** The model may mention the app's own paths
+  (`/library?page=291`); the widget turns them into react-router links, but only after
+  [chatLinks.js](../client/src/utils/chatLinks.js) checks them against a whitelist of pages
+  and parameters — model output is never trusted to produce a link on its own.
 
 - **It knows the user's real progress.** Before calling the model, `sendMessage` calls
   `buildProgressSummary(req.user)` (reused from the progress controller) and injects a
   system message containing the user's streak, pages memorized, pages left, and today's
-  tasks — instructing the model to answer from *that* data and never invent numbers. So
-  "what should I memorize today?" gets a real answer.
+  exact tasks (a half page with its verse range, the review pages) — instructing the model
+  to answer from *that* data and never invent numbers. So "what should I memorize today?"
+  gets the same answer the dashboard gives.
 - **It fails safe.** If the progress lookup throws, it's caught and the chat continues
   *without* the context block — a data hiccup never breaks the conversation.
 - **It's guarded.** Input validation requires a 1–10 message array, each message a non-empty

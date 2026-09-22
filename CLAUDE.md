@@ -52,6 +52,7 @@ PORT=5000
 MONGODB_URI=<MongoDB Atlas connection string>
 JWT_SECRET=<secret>
 GROQ_API_KEY=<key>           # AI chatbot (Groq); chat is disabled without it
+GROQ_MODEL=<model id>        # optional; defaults to openai/gpt-oss-120b
 CLIENT_URL=<deployed origin> # added to the CORS allow-list in production
 ```
 
