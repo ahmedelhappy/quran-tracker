@@ -846,7 +846,12 @@ browser:
 - **Audio** — `getAyahAudioUrl(reciterId, ayahNumber)` builds a URL on the
   `cdn.islamic.network` audio CDN. Five reciters are listed in `RECITERS`; the comment notes
   one reciter was dropped because the CDN returned 403 for it (a real, verified detail worth
-  mentioning — it shows the integrations were actually tested).
+  mentioning — it shows the integrations were actually tested). Some of that CDN's files
+  cannot be served at all, so each reciter also names a `fallback` folder on everyayah.com,
+  used only after the primary has spent its retries on the verse being played
+  (`getFallbackAyahAudioUrl`, and `failBuf` in Library.jsx). It was chosen by comparing
+  bytes, not names: the audio frames are identical to the primary's, so the fallback is
+  provably the same recording.
 - **Tafsir (commentary)** — four editions in `TAFSIR_EDITIONS`. Some come per-page from
   alquran.cloud, others per-ayah from a separate jsDelivr-hosted CDN.
 
