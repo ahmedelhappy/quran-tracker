@@ -152,6 +152,15 @@ const Landing = () => {
                 </span>
                 {t('landing.hero.seeHow')}
               </a>
+              {/* No account needed to read: the mushaf, the recitation and the
+                  tafsir are open to anyone. */}
+              <Link
+                to="/library"
+                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[#1A1A1A] dark:text-gray-200 px-6 py-3 rounded-lg font-semibold whitespace-nowrap hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+              >
+                <FiBookOpen className="w-5 h-5 text-[#1B4332] dark:text-emerald-400" />
+                {t('landing.hero.browseMushaf')}
+              </Link>
             </div>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
               {[t('landing.hero.trust1'), t('landing.hero.trust2'), t('landing.hero.trust3')].map((label) => (

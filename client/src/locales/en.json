@@ -772,6 +772,12 @@
       "show": "Show the sidebar",
       "hide": "Hide the sidebar (S)"
     },
+    "signedOut": {
+      "title": "Sign in to track your progress",
+      "body": "Mark pages memorized, save bookmarks, and add highlights, notes and drawings.",
+      "signIn": "Sign in",
+      "register": "Create an account"
+    },
     "zoom": {
       "group": "Page zoom",
       "toggle": "Zoom the page (or hold Ctrl and scroll over it)",
@@ -873,6 +879,7 @@
       "subtitle": "Transform your Hifz goals into daily habits. A serene, disciplined tracker that brings focus and peace to your memorization journey.",
       "cta": "Start Memorizing Free →",
       "seeHow": "See How It Works",
+      "browseMushaf": "Browse the Mushaf",
       "trust1": "100% free",
       "trust2": "Arabic & English",
       "trust3": "Light & dark mode",

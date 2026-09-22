@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useReducer } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
@@ -25,6 +25,8 @@ import MushafZoomControl from '../components/MushafZoomControl';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { loginPathFor } from '../utils/returnTo';
 import {
   fetchPageTafsir,
   fetchEditionAyahTafsir,
@@ -271,6 +273,18 @@ export default function Library() {
   const { showToast } = useToast();
   const isArabic = i18n.language === 'ar';
   const fmtNum = useCallback((n) => (isArabic ? toArabicDigits(n) : String(n)), [isArabic]);
+
+  // The reader is public: anyone can read, listen, look up tafsir, self-test and
+  // zoom. Everything that belongs to an ACCOUNT — the memorized ticks, marking
+  // verses, bookmarks, annotations, the hard list — is hidden and, more
+  // importantly, never REQUESTED while signed out: one 401 would clear the token
+  // and bounce the visitor to the login page (see the interceptor in api.js).
+  const { user, loading: authLoading } = useAuth();
+  const signedIn = !!user;
+  // Callbacks fired from events read this rather than closing over the flag.
+  const signedInRef = useRef(signedIn);
+  signedInRef.current = signedIn;
+  const location = useLocation();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPage = clampPage(searchParams.get('page') ?? 1);
@@ -726,31 +740,46 @@ export default function Library() {
   // request; the first-unmemorized fallback comes out of that same fetch (no
   // extra request). Resolved with `replace` so a refresh keeps landing on the
   // resolved page rather than re-resolving every time.
-  useEffect(() => {
-    const landOn = (target) => {
-      setSearchParams({ page: String(target) }, { replace: true });
-      setPageResolved(true);
-    };
-    const needsResolution = !hadExplicitPageRef.current;
-    if (needsResolution && lastOpenedPage) landOn(lastOpenedPage);
+  // An explicit ?page is already the answer, so nothing may land over it.
+  const landedRef = useRef(hadExplicitPageRef.current);
+  const landOn = useCallback((target) => {
+    if (landedRef.current) return;
+    landedRef.current = true;
+    setSearchParams({ page: String(target) }, { replace: true });
+    setPageResolved(true);
+  }, [setSearchParams]);
 
+  useEffect(() => {
+    if (!hadExplicitPageRef.current && lastOpenedPage) landOn(lastOpenedPage);
+    // Mount-only: resolves once against the URL/localStorage as they stood at
+    // that moment; every later navigation writes an explicit page itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The memorized pages, and — with neither a ?page nor a last-opened page — the
+  // first page not yet memorized. Both need an account, so this waits until it is
+  // known whether there is one: a visitor simply opens page 1.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!signedIn) {
+      setMemorizedPages(new Set());
+      setPartialPages(new Map());
+      landOn(1);
+      return;
+    }
     progressAPI.getAllProgress().then(res => {
       const pages = res.data?.data?.memorizedPages ?? [];
       const memorized = new Set(pages);
       setMemorizedPages(memorized);
       const partial = res.data?.data?.partialPages ?? [];
       setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
-      if (!needsResolution || lastOpenedPage) return;
       let nextNew = null;
       for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
       landOn(nextNew ?? 1);
     }).catch(() => {
-      if (needsResolution && !lastOpenedPage) landOn(1);
+      landOn(1);
     });
-    // Mount-only: resolves once against the URL/localStorage as they stood at
-    // that moment; every later navigation writes an explicit page itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [authLoading, signedIn, landOn]);
 
   // Remember the last page opened. Only once the landing page is resolved: before
   // that `currentPage` is just the un-resolved default, and writing it would
@@ -759,10 +788,12 @@ export default function Library() {
     if (pageResolved) localStorage.setItem('lastMushafPage', String(currentPage));
   }, [currentPage, pageResolved]);
 
-  // Mount: the user's saved bookmarks.
+  // The reader's saved bookmarks — an account feature, so nothing is asked for
+  // while signed out.
   useEffect(() => {
+    if (!signedIn) { setBookmarks([]); return; }
     bookmarksAPI.list().then(res => setBookmarks(res.data?.data ?? [])).catch(() => {});
-  }, []);
+  }, [signedIn]);
 
   // While the popover grip is held, suppress its "drag to move" tooltip.
   useEffect(() => {
@@ -1937,6 +1968,7 @@ export default function Library() {
   // Re-reads memorized/partial pages after a units mutation — cheaper to just
   // refetch than to reconcile every affected page's fraction locally.
   const refreshMemorizedPages = useCallback(() => {
+    if (!signedInRef.current) return;
     progressAPI.getAllProgress().then(res => {
       setMemorizedPages(new Set(res.data?.data?.memorizedPages ?? []));
       const partial = res.data?.data?.partialPages ?? [];
@@ -2029,6 +2061,7 @@ export default function Library() {
   // ── Annotations: highlights / notes / hard flags (verse-anchored) ──
   // Load all annotations for the given pages, replacing each page's cached list.
   const loadAnnotationsForPages = useCallback((pages) => {
+    if (!signedInRef.current) return;
     Promise.all(
       pages.map((p) =>
         annotationsAPI.listForPage(p)
@@ -2045,6 +2078,7 @@ export default function Library() {
   }, []);
 
   const loadHardList = useCallback(() => {
+    if (!signedInRef.current) return;
     annotationsAPI.listByKind('hard')
       .then((r) => setHardList(r.data?.data ?? []))
       .catch(() => {});
@@ -2053,6 +2087,7 @@ export default function Library() {
   // The per-page annotation summary powers the navigator; refetched after any
   // mutation so its counts/jump targets stay current.
   const loadSummary = useCallback(() => {
+    if (!signedInRef.current) return;
     annotationsAPI.getSummary()
       .then((r) => setAnnoSummary(r.data?.data ?? []))
       .catch(() => {});
@@ -2060,8 +2095,8 @@ export default function Library() {
 
   // Load the visible page(s)' annotations alongside the mushaf pages, and the
   // hard list + summary once (both span every page, kept independently).
-  useEffect(() => { if (pageResolved) loadAnnotationsForPages(visiblePages); }, [visiblePages, pageResolved, loadAnnotationsForPages]);
-  useEffect(() => { loadHardList(); loadSummary(); }, [loadHardList, loadSummary]);
+  useEffect(() => { if (pageResolved && signedIn) loadAnnotationsForPages(visiblePages); }, [visiblePages, pageResolved, signedIn, loadAnnotationsForPages]);
+  useEffect(() => { if (signedIn) { loadHardList(); loadSummary(); } }, [signedIn, loadHardList, loadSummary]);
 
   const findAnn = useCallback(
     (page, predicate) => (annotationsByPage.get(page) ?? []).find(predicate),
@@ -2265,6 +2300,7 @@ export default function Library() {
   }, [drawPage, visiblePages, annotationsByPage]);
 
   const enterDraw = useCallback((page) => {
+    if (!signedInRef.current) return;   // ink is saved to the account
     setSelectedVerseKey(null);
     setAnnoVisible(true);                 // drawing always shows what you're editing
     drawStrokesRef.current = {};          // the effect above seeds every visible page
@@ -2305,6 +2341,7 @@ export default function Library() {
   // front of the reader, with that tool already picked.
   const startDrawWithTool = useCallback((tool) => {
     if (markVersesMode) return;   // the picking mode owns taps; the pencil is disabled too
+    if (!signedInRef.current) return;   // ink belongs to an account; the pencil is hidden too
     setDrawTool(tool);
     enterDraw(twoPage ? activePage : currentPage);
   }, [markVersesMode, enterDraw, twoPage, activePage, currentPage]);
@@ -3046,6 +3083,7 @@ export default function Library() {
             <span className="shrink-0 flex items-center gap-1.5">
               {t('library.juzInfoLabel', { n: fmtNum(pageJuz) })}
               {/* Show/hide all annotation visuals (clean reading) */}
+              {signedIn && (
               <Tooltip label={annoVisible ? t('library.annotations.hideAll') : t('library.annotations.showAll')}>
                 <button
                   type="button"
@@ -3058,7 +3096,9 @@ export default function Library() {
                   {annoVisible ? <FiEye className="w-3.5 h-3.5" /> : <FiEyeOff className="w-3.5 h-3.5" />}
                 </button>
               </Tooltip>
+              )}
               {/* Annotate (free-draw) toggle for this page */}
+              {signedIn && (
               <Tooltip label={isDrawingHere ? t('library.draw.exit') : t('library.draw.enter')}>
                 <button
                   ref={isAnchor ? drawAnchorRef : undefined}
@@ -3076,6 +3116,7 @@ export default function Library() {
                   <FiEdit2 className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
+              )}
             </span>
           </div>
           {/* Fixed-size framed page, uniformly scaled to fit the column. The turn
@@ -3132,7 +3173,7 @@ export default function Library() {
           {/* Page number + an interactive per-page memorized toggle, so each half
               of a spread can be marked/unmarked on its own. */}
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
-            {(() => {
+            {signedIn && (() => {
               const done = memorizedPages.has(pd.page);
               const fraction = partialPages.get(pd.page);
               const isPartial = done && fraction != null;
@@ -3163,7 +3204,7 @@ export default function Library() {
             })()}
             {/* Whole-page "mark hard" flag — sits beside the memorized tick, same
                 round-icon-button treatment so the pair reads as one control set. */}
-            {(() => {
+            {signedIn && (() => {
               const label = isPageHard
                 ? t('library.annotations.unmarkPageHard', { n: fmtNum(pd.page) })
                 : t('library.annotations.markPageHard', { n: fmtNum(pd.page) });
@@ -3383,6 +3424,32 @@ export default function Library() {
               </div>
             </div>
 
+            {/* Signed out: ONE nudge in place of every account feature — the
+                memorized ticks, mark-verses, bookmarks, annotations and the hard
+                list are all hidden while there is no account to save them to. */}
+            {!signedIn && !authLoading && (
+              <div className="flex flex-col gap-2 rounded-xl border border-[#dce2f3] dark:border-gray-700 bg-[#f0f4ff] dark:bg-gray-700/40 px-3 py-3">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003527] dark:text-gray-100">
+                  <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
+                  {t('library.signedOut.title')}
+                </span>
+                <p className="text-xs leading-relaxed text-[#707974] dark:text-gray-400">{t('library.signedOut.body')}</p>
+                <div className="flex items-center gap-3">
+                  <Link
+                    to={loginPathFor(location)}
+                    className="text-xs font-semibold text-white bg-[#004f35] hover:bg-[#003527] rounded-lg px-3 py-1.5 transition-colors"
+                  >
+                    {t('library.signedOut.signIn')}
+                  </Link>
+                  <Link to="/register" className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:underline">
+                    {t('library.signedOut.register')}
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {signedIn && (
+            <>
             {/* Bookmarks */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.bookmarks.title')}</span>
@@ -3453,8 +3520,10 @@ export default function Library() {
                 </ul>
               )}
             </div>
+            </>
+            )}
 
-            {/* Everything above is about GETTING somewhere in the mushaf;
+                        {/* Everything above is about GETTING somewhere in the mushaf;
                 everything below is about memorizing it. The rule is the only
                 thing separating them — headings would be noise in a column
                 this short. */}
@@ -3549,6 +3618,8 @@ export default function Library() {
               )}
             </div>
 
+            {signedIn && (
+            <>
             {/* Mark verses — sub-page memorization by verse range */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.markVerses.title')}</span>
@@ -3580,7 +3651,11 @@ export default function Library() {
                 </Tooltip>
               )}
             </div>
+            </>
+            )}
 
+                        {signedIn && (
+            <>
             {/* Annotations navigator — prev/next annotated page + the full list */}
             <div className="flex flex-col gap-2">
               <button
@@ -3654,7 +3729,11 @@ export default function Library() {
                 )
               )}
             </div>
+            </>
+            )}
 
+                        {signedIn && (
+            <>
             {/* Hard verses & pages — the user's "hard" list with jump links */}
             <div className="flex flex-col gap-2">
               <button
@@ -3707,12 +3786,19 @@ export default function Library() {
                 )
               )}
             </div>
+            </>
+            )}
 
+                        {signedIn && (
+            <>
             {/* Stats */}
             <div className="text-sm text-[#707974] dark:text-gray-500">
               {t('library.pagesMemorizedStat', { count: memorizedCount })}
             </div>
-          </aside>
+            </>
+            )}
+
+                      </aside>
           )}
 
           {/* ── Mushaf column ─────────────────────────────── */}
@@ -3906,7 +3992,7 @@ export default function Library() {
                 {/* Annotation actions — highlight swatches, note, mark hard. Kept
                     off while the "mark verses" picking mode owns taps (it clears
                     the selection anyway, so this is a double guard). */}
-                {!markVersesMode && (
+                {signedIn && !markVersesMode && (
                   <div className="flex items-center gap-1.5" data-tour="verse-annotate">
                     <span className="w-px h-6 bg-[#dce2f3] dark:bg-gray-600" aria-hidden="true" />
                     {ANNOTATION_COLORS.map(({ key, cls, labelKey }) => {
