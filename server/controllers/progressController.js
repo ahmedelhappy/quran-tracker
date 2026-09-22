@@ -152,20 +152,6 @@ const memorizationWalkIndex = (user, pageNumber) => {
   return ((pageNumber - anchor) % 604 + 604) % 604;
 };
 
-// The next `count` unmemorized pages in the user's memorization order. A page
-// with ANY progress (full or partial) counts as memorized here — once started,
-// a page leaves the "new" pool and only advances via the half-page flow below
-// or a manual edit (Library "mark verses", Settings).
-const nextUnmemorizedPages = (user, memorizedSet, count) => {
-  const pages = [];
-  if (count <= 0) return pages;
-  for (const page of memorizationWalkOrder(user)) {
-    if (pages.length >= count) break;
-    if (!memorizedSet.has(page)) pages.push(page);
-  }
-  return pages;
-};
-
 // The next `count` new-memorization items in the user's walk order, SEGMENT-AWARE.
 // This is the single source of truth for "what to memorize next" and the fix for
 // the half-page bugs: a PARTIALLY-memorized page is never treated as done — it
@@ -226,13 +212,156 @@ const nextHalfPageTask = (user, fullSet, partialByPage) =>
 // hitting Mongo on every task computation.
 const getMetadataMap = (pageNumbers) => getMetadataForPages(pageNumbers);
 
-// Builds a compact, read-only snapshot of a user's plan & progress. Reuses the
-// same helpers and new-page/review rules as getTodayTasks but returns only counts
-// plus a handful of page numbers — small enough to inject into the AI assistant's
-// context. Runs a single lightweight query and performs no writes.
+// What today holds for a user who is NOT on an off day, computed from their
+// memorized-page docs (sorted by lastReviewedDate, then pageNumber). Pure: no
+// queries, no writes. This is the ONE place the day's plan is decided — the
+// dashboard (getTodayTasks) and the assistant's summary (buildProgressSummary)
+// both read it, so the assistant can never name a different next page than the
+// dashboard shows. (It used to: the summary walked whole pages while the
+// dashboard served a partly memorized page's remainder first.)
+const planToday = (user, allMemorizedPages, now = new Date()) => {
+  const todayString = getDateString(now);
+  const totalPagesWithProgress = allMemorizedPages.length;
+  const fullPages = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
+  const totalMemorized = totalMemorizedFraction(allMemorizedPages);
+  const isHafiz = fullPages === 604;
+  const isHalfPagePlan = (user.dailyNewPages || 1) < 1;
+
+  // --- REVIEW TARGET ---
+  const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
+    ? user.cycleReviewCount
+    : computeDailyReviewTarget(totalPagesWithProgress, user.reviewIntensity || 'standard', isHafiz);
+
+  // --- NEW MEMORIZATION TARGET ---
+  let targetNewPages = 0;
+  if (!isHafiz && !user.pauseNewMemorization) {
+    const planStart = user.planStartDate || user.createdAt;
+    targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, now);
+  }
+
+  // Pages memorized today
+  const newPagesCompletedToday = allMemorizedPages.filter(
+    p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
+  ).length;
+
+  const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
+
+  // --- NEW PAGE ITEMS (segment-aware) ---
+  // One generator drives both plans: a half-page plan splits fresh pages into
+  // halves, a whole-page plan takes them whole — and BOTH always finish a
+  // partially-memorized page's remainder first (so switching 0.5 → 1 page/day
+  // never skips the leftover half). Extras ("Want more?") are the next items
+  // beyond today's due batch — segment-aware too, so a 0.5/day plan offers the
+  // next new half rather than falling back to review-only.
+  const granularity = isHalfPagePlan ? 'half' : 'full';
+  const fullPageSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
+  const partialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
+  const newItems = nextNewItems(user, fullPageSet, partialByPage, remainingNewPages, granularity);
+  const extraItems = nextNewItems(user, fullPageSet, partialByPage, newItems.length + 3, granularity)
+    .slice(newItems.length);
+
+  // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
+  // The recent bucket is the user's most recently memorized pages during active
+  // plan use: memorizedDate on or after planStartDate (so onboarding pages, dated
+  // before the plan started, are excluded) and not today's. We take the N newest,
+  // where N is the "recent pages per day" setting — taking the N most recent rather
+  // than a fixed day-window means raising the setting actually surfaces more pages.
+  // Brand-new users (planStart today) have none yet → empty Recent Review.
+  const planStartDateString = getDateString(user.planStartDate || user.createdAt);
+  const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
+    ? user.recentReviewCount
+    : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
+  const recentPool = allMemorizedPages
+    .filter(p => p.memorizedDate
+      && getDateString(p.memorizedDate) !== todayString
+      && getDateString(p.memorizedDate) >= planStartDateString)
+    .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
+    .slice(0, maxRecent);
+
+  // Cycle review skips the recent pool so no page appears in both sections at once.
+  const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
+
+  // --- CYCLE REVIEW PAGES ---
+  // Excludes: pages memorized today, pages owned by the recent review window.
+  // Sorted by cycleReviewStartPage order when set, otherwise lastReviewedDate ASC.
+  const pagesForReview = allMemorizedPages.filter(
+    p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
+      && !recentEligibleNums.has(p.pageNumber)
+  );
+
+  if (user.cycleReviewStartPage) {
+    const startPg = user.cycleReviewStartPage;
+    // Staleness drives the rotation: oldest lastReviewedDate first. Reviewing a
+    // batch today makes those pages the freshest, so they sink and the next-stale
+    // batch surfaces tomorrow — that is what advances the cycle day to day. Pages
+    // that are equally stale (e.g. a fresh lap where everything shares a review
+    // date, or onboarding pages with the same date) are tie-broken by a rotated
+    // page index so they follow S → highest memorized page → 1 → S-1, which also
+    // makes the cycle wrap past the end back to page 1. Never-reviewed pages ('')
+    // count as the most stale. lastReviewedDate stays in the sort by design.
+    const rotatedIndex = (pageNumber) => ((pageNumber - startPg) % 604 + 604) % 604;
+    pagesForReview.sort((a, b) => {
+      const aDay = a.lastReviewedDate ? getDateString(a.lastReviewedDate) : '';
+      const bDay = b.lastReviewedDate ? getDateString(b.lastReviewedDate) : '';
+      if (aDay !== bDay) return aDay < bDay ? -1 : 1;
+      return rotatedIndex(a.pageNumber) - rotatedIndex(b.pageNumber);
+    });
+  }
+
+  const reviewsCompletedToday = pagesForReview.filter(
+    p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
+  ).length;
+
+  const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
+
+  const pendingReviews = pagesForReview.filter(
+    p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
+  );
+
+  const reviewPages = pendingReviews.slice(0, remainingReviews);
+  const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
+
+  // --- RECENT REVIEW PAGES ---
+  // The recent pool, minus any already reviewed today, shown in page order.
+  const cappedRecentPages = recentPool
+    .filter(p => !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString))
+    .sort((a, b) => a.pageNumber - b.pageNumber);
+
+  // --- CONTINUATION PAGE (paused users: show the most recently memorized page for
+  // extra practice). Half-page plans no longer hit targetNewPages === 0 — every
+  // active day now gets a half-page task from nextHalfPageTask instead.
+  let continuationPageNum = null;
+  if (targetNewPages === 0 && !isHafiz) {
+    const sortedByMemDate = [...allMemorizedPages]
+      .filter(p => p.memorizedDate && getDateString(p.memorizedDate) !== todayString)
+      .sort((a, b) => {
+        const dateDiff = new Date(b.memorizedDate) - new Date(a.memorizedDate);
+        if (dateDiff !== 0) return dateDiff;
+        // Same-date pages (e.g. an onboarding batch): the one furthest along the
+        // memorization walk is the one the user reached most recently.
+        return memorizationWalkIndex(user, b.pageNumber) - memorizationWalkIndex(user, a.pageNumber);
+      });
+    if (sortedByMemDate.length > 0) {
+      continuationPageNum = sortedByMemDate[0].pageNumber;
+    }
+  }
+
+  return {
+    totalPagesWithProgress, fullPages, totalMemorized, isHafiz,
+    dailyReviewTarget, targetNewPages, newPagesCompletedToday,
+    newItems, extraItems,
+    recentPool, pagesForReview, reviewsCompletedToday,
+    reviewPages, extraReviewPages, cappedRecentPages,
+    continuationPageNum,
+  };
+};
+
+// Builds a compact, read-only snapshot of a user's plan & progress for the AI
+// assistant's context: counts plus the exact items today holds, small enough to
+// inject into a prompt. The plan itself comes from planToday, exactly as the
+// dashboard's does. Runs a single lightweight query and performs no writes.
 const buildProgressSummary = async (user) => {
   const userId = user._id;
-  const todayString = getDateString(new Date());
   const offDays = user.offDays || [];
   const isOffDay = offDays.includes(new Date().getUTCDay());
 
@@ -241,78 +370,35 @@ const buildProgressSummary = async (user) => {
     { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1, segments: 1 }
   ).sort({ lastReviewedDate: 1, pageNumber: 1 });
 
-  const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
-  const totalPagesWithProgress = allMemorizedPages.length;
-  const totalMemorized = totalMemorizedFraction(allMemorizedPages);
-  const isHafiz = allMemorizedPages.every(p => !p.segments || p.segments.length === 0) && totalPagesWithProgress === 604;
+  const plan = planToday(user, allMemorizedPages);
+  const { totalMemorized, isHafiz } = plan;
   const percentage = parseFloat(((totalMemorized / 604) * 100).toFixed(1));
 
-  // --- NEW PAGES DUE TODAY (mirrors getTodayTasks) ---
-  let targetNewPages = 0;
-  if (!isHafiz && !user.pauseNewMemorization && !isOffDay) {
-    const planStart = user.planStartDate || user.createdAt;
-    targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
-  }
-  const newPagesCompletedToday = allMemorizedPages.filter(
-    p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
-  ).length;
-  const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
-
-  const newPageNumbers = nextUnmemorizedPages(user, memorizedPageNumbers, remainingNewPages);
-
-  // --- REVIEWS DUE TODAY (cycle + recent buckets, mirrors getTodayTasks) ---
-  let reviewsDueToday = 0;
-  if (!isOffDay) {
-    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
-      ? user.cycleReviewCount
-      : computeDailyReviewTarget(totalPagesWithProgress, user.reviewIntensity || 'standard', isHafiz);
-
-    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
-    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
-      ? user.recentReviewCount
-      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
-    const recentPool = allMemorizedPages
-      .filter(p => p.memorizedDate
-        && getDateString(p.memorizedDate) !== todayString
-        && getDateString(p.memorizedDate) >= planStartDateString)
-      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
-      .slice(0, maxRecent);
-    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
-
-    // Cycle bucket: memorized pages not memorized today and not owned by recent pool.
-    const pagesForReview = allMemorizedPages.filter(
-      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
-        && !recentEligibleNums.has(p.pageNumber)
-    );
-    const cycleCompletedToday = pagesForReview.filter(
-      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
-    ).length;
-    const cyclePending = pagesForReview.filter(
-      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
-    ).length;
-    const cycleDue = Math.min(Math.max(0, dailyReviewTarget - cycleCompletedToday), cyclePending);
-
-    // Recent bucket: the recent pool, minus any already reviewed today.
-    const recentDue = recentPool.filter(p =>
-      !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString)
-    ).length;
-
-    reviewsDueToday = cycleDue + recentDue;
-  }
+  // An off day holds nothing — the same answer getTodayTasks gives.
+  const newItems = isOffDay ? [] : plan.newItems.map((it) => (it.fromVerseKey
+    ? { pageNumber: it.pageNumber, fromVerseKey: it.fromVerseKey, toVerseKey: it.toVerseKey, half: it.half }
+    : { pageNumber: it.pageNumber }));
+  const reviewPageNumbers = isOffDay ? [] : plan.reviewPages.map((p) => p.pageNumber);
+  const recentReviewPageNumbers = isOffDay ? [] : plan.cappedRecentPages.map((p) => p.pageNumber);
 
   return {
     name: user.name,
     dailyNewPages: user.dailyNewPages || 1,
     isOffDay,
     isHafiz,
+    pauseNewMemorization: !!user.pauseNewMemorization,
     currentStreak: user.currentStreak || 0,
     totalMemorized,
     totalPages: 604,
     pagesLeft: 604 - totalMemorized,
     percentage,
-    newPagesDueToday: newPageNumbers.length,
-    newPageNumbers,
-    reviewsDueToday,
+    newPagesDueToday: newItems.length,
+    newPageNumbers: newItems.map((it) => it.pageNumber),
+    newItems,
+    reviewsDueToday: reviewPageNumbers.length + recentReviewPageNumbers.length,
+    reviewPageNumbers,
+    recentReviewPageNumbers,
+    continuationPage: isOffDay ? null : plan.continuationPageNum,
   };
 };
 
@@ -435,112 +521,15 @@ exports.getTodayTasks = async (req, res) => {
     const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
       .sort({ lastReviewedDate: 1, pageNumber: 1 });
 
-    const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
-    const totalPagesWithProgress = allMemorizedPages.length;
-    const fullPages = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
-    const totalMemorized = totalMemorizedFraction(allMemorizedPages);
-    const isHafiz = fullPages === 604;
-    const isHalfPagePlan = (user.dailyNewPages || 1) < 1;
-
-    // --- REVIEW TARGET ---
-    const dailyReviewTarget = user.cycleReviewCount !== null && user.cycleReviewCount !== undefined
-      ? user.cycleReviewCount
-      : computeDailyReviewTarget(totalPagesWithProgress, user.reviewIntensity || 'standard', isHafiz);
-
-    // --- NEW MEMORIZATION TARGET ---
-    let targetNewPages = 0;
-    if (!isHafiz && !user.pauseNewMemorization) {
-      const planStart = user.planStartDate || user.createdAt;
-      targetNewPages = computeNewPageTargetForDate(user.dailyNewPages || 1, planStart, new Date());
-    }
-
-    // Pages memorized today
-    const newPagesCompletedToday = allMemorizedPages.filter(
-      p => p.memorizedDate && getDateString(p.memorizedDate) === todayString
-    ).length;
-
-    const remainingNewPages = Math.max(0, targetNewPages - newPagesCompletedToday);
-
-    // --- NEW PAGE ITEMS (segment-aware) ---
-    // One generator drives both plans: a half-page plan splits fresh pages into
-    // halves, a whole-page plan takes them whole — and BOTH always finish a
-    // partially-memorized page's remainder first (so switching 0.5 → 1 page/day
-    // never skips the leftover half). Extras ("Want more?") are the next items
-    // beyond today's due batch — segment-aware too, so a 0.5/day plan offers the
-    // next new half rather than falling back to review-only.
-    const granularity = isHalfPagePlan ? 'half' : 'full';
-    const fullPageSet = new Set(allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).map(p => p.pageNumber));
-    const partialByPage = new Map(allMemorizedPages.filter(p => p.segments && p.segments.length > 0).map(p => [p.pageNumber, p.segments]));
-    const newItems = nextNewItems(user, fullPageSet, partialByPage, remainingNewPages, granularity);
-    const extraItems = nextNewItems(user, fullPageSet, partialByPage, newItems.length + 3, granularity)
-      .slice(newItems.length);
-
-    // --- RECENT REVIEW POOL (computed first — needed to exclude from cycle) ---
-    // The recent bucket is the user's most recently memorized pages during active
-    // plan use: memorizedDate on or after planStartDate (so onboarding pages, dated
-    // before the plan started, are excluded) and not today's. We take the N newest,
-    // where N is the "recent pages per day" setting — taking the N most recent rather
-    // than a fixed day-window means raising the setting actually surfaces more pages.
-    // Brand-new users (planStart today) have none yet → empty Recent Review.
-    const planStartDateString = getDateString(user.planStartDate || user.createdAt);
-    const maxRecent = user.recentReviewCount !== null && user.recentReviewCount !== undefined
-      ? user.recentReviewCount
-      : Math.max(3, Math.min(Math.ceil((user.dailyNewPages || 1) * 3), 6));
-    const recentPool = allMemorizedPages
-      .filter(p => p.memorizedDate
-        && getDateString(p.memorizedDate) !== todayString
-        && getDateString(p.memorizedDate) >= planStartDateString)
-      .sort((a, b) => new Date(b.memorizedDate) - new Date(a.memorizedDate))
-      .slice(0, maxRecent);
-
-    // Cycle review skips the recent pool so no page appears in both sections at once.
-    const recentEligibleNums = new Set(recentPool.map(p => p.pageNumber));
-
-    // --- CYCLE REVIEW PAGES ---
-    // Excludes: pages memorized today, pages owned by the recent review window.
-    // Sorted by cycleReviewStartPage order when set, otherwise lastReviewedDate ASC.
-    const pagesForReview = allMemorizedPages.filter(
-      p => (!p.memorizedDate || getDateString(p.memorizedDate) !== todayString)
-        && !recentEligibleNums.has(p.pageNumber)
-    );
-
-    if (user.cycleReviewStartPage) {
-      const startPg = user.cycleReviewStartPage;
-      // Staleness drives the rotation: oldest lastReviewedDate first. Reviewing a
-      // batch today makes those pages the freshest, so they sink and the next-stale
-      // batch surfaces tomorrow — that is what advances the cycle day to day. Pages
-      // that are equally stale (e.g. a fresh lap where everything shares a review
-      // date, or onboarding pages with the same date) are tie-broken by a rotated
-      // page index so they follow S → highest memorized page → 1 → S-1, which also
-      // makes the cycle wrap past the end back to page 1. Never-reviewed pages ('')
-      // count as the most stale. lastReviewedDate stays in the sort by design.
-      const rotatedIndex = (pageNumber) => ((pageNumber - startPg) % 604 + 604) % 604;
-      pagesForReview.sort((a, b) => {
-        const aDay = a.lastReviewedDate ? getDateString(a.lastReviewedDate) : '';
-        const bDay = b.lastReviewedDate ? getDateString(b.lastReviewedDate) : '';
-        if (aDay !== bDay) return aDay < bDay ? -1 : 1;
-        return rotatedIndex(a.pageNumber) - rotatedIndex(b.pageNumber);
-      });
-    }
-
-    const reviewsCompletedToday = pagesForReview.filter(
-      p => p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString
-    ).length;
-
-    const remainingReviews = Math.max(0, dailyReviewTarget - reviewsCompletedToday);
-
-    const pendingReviews = pagesForReview.filter(
-      p => !p.lastReviewedDate || getDateString(p.lastReviewedDate) !== todayString
-    );
-
-    const reviewPages = pendingReviews.slice(0, remainingReviews);
-    const extraReviewPages = pendingReviews.slice(remainingReviews, remainingReviews + 3);
-
-    // --- RECENT REVIEW PAGES ---
-    // The recent pool, minus any already reviewed today, shown in page order.
-    const cappedRecentPages = recentPool
-      .filter(p => !(p.lastReviewedDate && getDateString(p.lastReviewedDate) === todayString))
-      .sort((a, b) => a.pageNumber - b.pageNumber);
+    // The day's plan — decided in one place, shared with the assistant's summary.
+    const {
+      fullPages, totalMemorized, isHafiz,
+      dailyReviewTarget, targetNewPages, newPagesCompletedToday,
+      newItems, extraItems,
+      recentPool, pagesForReview, reviewsCompletedToday,
+      reviewPages, extraReviewPages, cappedRecentPages,
+      continuationPageNum,
+    } = planToday(user, allMemorizedPages);
 
     // --- CONSTANT DAILY REVIEW TARGETS ---
     // How many pages the day STARTED with for each bucket, independent of how many
@@ -551,25 +540,6 @@ exports.getTodayTasks = async (req, res) => {
     const cycleReviewTarget = Math.min(dailyReviewTarget, pagesForReview.length);
     const recentReviewTarget = recentPool.length;
     const dailyReviewTotal = cycleReviewTarget + recentReviewTarget;
-
-    // --- CONTINUATION PAGE (paused users: show the most recently memorized page for
-    // extra practice). Half-page plans no longer hit targetNewPages === 0 — every
-    // active day now gets a half-page task from nextHalfPageTask instead.
-    let continuationPageNum = null;
-    if (targetNewPages === 0 && !isHafiz) {
-      const sortedByMemDate = [...allMemorizedPages]
-        .filter(p => p.memorizedDate && getDateString(p.memorizedDate) !== todayString)
-        .sort((a, b) => {
-          const dateDiff = new Date(b.memorizedDate) - new Date(a.memorizedDate);
-          if (dateDiff !== 0) return dateDiff;
-          // Same-date pages (e.g. an onboarding batch): the one furthest along the
-          // memorization walk is the one the user reached most recently.
-          return memorizationWalkIndex(user, b.pageNumber) - memorizationWalkIndex(user, a.pageNumber);
-        });
-      if (sortedByMemDate.length > 0) {
-        continuationPageNum = sortedByMemDate[0].pageNumber;
-      }
-    }
 
     // --- METADATA (batched) ---
     const allPageNumsNeeded = [
