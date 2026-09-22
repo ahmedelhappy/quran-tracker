@@ -1,6 +1,12 @@
 const Groq = require('groq-sdk');
 const { buildProgressSummary } = require('./progressController');
 
+// Which Groq model answers. Groq retires models: the one this used to name,
+// llama-3.3-70b-versatile, now answers 404 model_not_found, which had quietly
+// turned every chat into "AI service unavailable". gpt-oss-120b is the nearest
+// replacement this key can use; GROQ_MODEL overrides it without a code change.
+const CHAT_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+
 const SYSTEM_MESSAGE = {
   role: 'system',
   content:
@@ -102,7 +108,7 @@ exports.sendMessage = async (req, res) => {
     }
 
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: CHAT_MODEL,
       messages: [...systemMessages, ...messages],
     });
 
