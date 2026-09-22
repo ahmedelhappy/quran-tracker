@@ -8,6 +8,7 @@ import { FiSettings, FiMoon, FiSun, FiMenu, FiX, FiLogOut, FiUser, FiHome, FiTre
 import Logo from './Logo';
 import LanguageToggle from './LanguageToggle';
 import Tooltip from './Tooltip';
+import { loginPathFor } from '../utils/returnTo';
 
 const NAV_LINKS = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: FiHome },
@@ -21,7 +22,7 @@ const NAV_LINKS = [
 // default, so every other page keeps a bar that never moves. `holdOpen` lets a
 // page pin it open (a tour walking the navbar, say).
 const Navbar = ({ autoHide = false, holdOpen = false }) => {
-  const { user, logout } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
   const location = useLocation();
@@ -48,6 +49,52 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
   };
 
   const isDark = theme === 'dark';
+
+  // A visitor on a public page (the Library) gets the bar the landing page shows:
+  // no links into pages they cannot open, and a way in. `loading` matters — with a
+  // token in hand the user arrives a moment later, and flashing "Log in" at
+  // someone who is signed in would be worse than waiting for it.
+  if (!user && !authLoading) {
+    return (
+      <header
+        data-testid="navbar"
+        data-signed-out="true"
+        data-hidden={idleHidden ? 'true' : 'false'}
+        className={`bg-white dark:bg-gray-900 fixed top-0 w-full z-50 border-b border-emerald-100/20 dark:border-gray-700/30 sacred-shadow navbar-idle ${
+          idleHidden ? 'is-idle-hidden' : ''
+        }`}
+      >
+        <div className="max-w-[1280px] mx-auto px-6 py-4 flex items-center justify-between gap-3">
+          <Logo size="md" />
+          <div className="flex items-center gap-3">
+            <LanguageToggle variant="icon" />
+            <Tooltip label={isDark ? t('tooltips.themeToLight') : t('tooltips.themeToDark')}>
+              <button
+                onClick={toggleTheme}
+                className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors w-8 h-8 flex items-center justify-center"
+              >
+                {isDark ? <FiSun className="w-5 h-5" /> : <FiMoon className="w-5 h-5" />}
+              </button>
+            </Tooltip>
+            <Link
+              to={loginPathFor(location)}
+              data-testid="nav-login"
+              className="text-sm font-medium whitespace-nowrap text-[#4A4A4A] dark:text-gray-200 hover:text-[#1B4332] dark:hover:text-white transition-colors"
+            >
+              {t('landing.navbar.login')}
+            </Link>
+            <Link
+              to="/register"
+              data-testid="nav-register"
+              className="bg-[#1B4332] text-white text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg whitespace-nowrap hover:bg-[#2D6A4F] transition-colors"
+            >
+              {t('landing.navbar.getStarted')}
+            </Link>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header
