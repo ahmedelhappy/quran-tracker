@@ -21,6 +21,7 @@ import MushafPage from '../components/MushafPage';
 import MushafMarks from '../components/MushafMarks';
 import MushafDrawLayer from '../components/MushafDrawLayer';
 import PageScrubber from '../components/PageScrubber';
+import MushafZoomControl from '../components/MushafZoomControl';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -40,6 +41,7 @@ import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
 } from '../utils/verseIndex';
 import { useDraggable } from '../hooks/useDraggable';
+import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 
 const JUZ_START_PAGES = [
@@ -85,6 +87,8 @@ const RANGE_TOUCH_HOLD = 400;   // ms a finger must rest before it starts pickin
 const RANGE_EDGE_W = 64;        // px of the viewport's sides that count as "at the edge"
 const RANGE_EDGE_DWELL = 550;   // ms the pointer must stay there before the page turns
 const RANGE_EDGE_REPEAT = 900;  // ms between further turns while it stays there
+const RANGE_SCROLL_EDGE = 40;   // px of a ZOOMED page's visible edge that scrolls it during a drag
+const RANGE_SCROLL_SPEED = 18;  // px per frame at the very edge
 
 // The four highlight colours offered in the verse popover (must match the
 // server's Annotation color enum). `cls` is the swatch's fill in the picker.
@@ -1525,7 +1529,8 @@ export default function Library() {
   const onTouchStart = (e) => {
     if (tourActiveRef.current || drawPage != null) { touchStartRef.current = null; return; }
     const p = e.touches[0];
-    touchStartRef.current = { x: p.clientX, y: p.clientY };
+    const s = scrollerRef.current;
+    touchStartRef.current = { x: p.clientX, y: p.clientY, left: s?.scrollLeft ?? 0, top: s?.scrollTop ?? 0 };
   };
   const onTouchEnd = (e) => {
     const start = touchStartRef.current;
@@ -1534,6 +1539,11 @@ export default function Library() {
     // That gesture was a range drag, not a swipe (either check can be the one that
     // catches it — pointerup and touchend arrive in either order across browsers).
     if (rangeDragRef.current?.dragging || suppressWordClickRef.current) return;
+    // On a zoomed page one finger pans it. A gesture that MOVED the page was a pan,
+    // not a swipe: only a swipe that found the page already against its edge (so
+    // there was nothing left to pan) turns it.
+    const s = scrollerRef.current;
+    if (s && (Math.abs(s.scrollLeft - start.left) > 2 || Math.abs(s.scrollTop - start.top) > 2)) return;
     const p = e.changedTouches[0];
     const dx = p.clientX - start.x;
     const dy = p.clientY - start.y;
@@ -1628,6 +1638,16 @@ export default function Library() {
   // over a `data-` attribute, and swallowing the click that ends a drag.
   const canDragRange = drawPage == null && !markVersesMode && concealMode !== 'hide';
   const viewportRef = useRef(null);
+
+  // ── Zoom ───────────────────────────────────────────────────────────────────
+  // The page sits in a scroller that only becomes one when zoomed; see
+  // useMushafZoom for how the level is applied and why it bypasses React state.
+  const scrollerRef = useRef(null);
+  const zoom = useMushafZoom({ scrollerRef, viewportRef, isBlocked: () => tourActiveRef.current });
+  const { isZoomed, toReadingStart: zoomToReadingStart } = zoom;
+  // A turn keeps the zoom level and opens the new page where a page is read from:
+  // its top, right-hand end.
+  useLayoutEffect(() => { zoomToReadingStart(); }, [visiblePages, zoomToReadingStart]);
   const rangeDragRef = useRef(null);
   const suppressWordClickRef = useRef(false);
   // Set below, once showVerseActions exists: a long press that never became a drag
@@ -1747,6 +1767,56 @@ export default function Library() {
       });
     };
 
+    // The range's moving end follows whatever word is under (x, y).
+    const extendAt = (d, x, y) => {
+      // elementFromPoint rather than pointerenter on the words: touch never fires
+      // enter/leave mid-gesture, and the edge dwell needs the coordinates anyway.
+      const wordEl = document.elementFromPoint(x, y)?.closest?.('[data-verse-key]');
+      const ord = wordEl ? ordOfKey(wordEl.getAttribute('data-verse-key')) : null;
+      if (ord != null) { d.lastOrd = ord; d.extendTo = null; }
+      paint(d);
+
+      // The PAGE's edge, not the window's: on a zoomed page the leading edge only
+      // counts once it has been scrolled into view.
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      armEdgeTurn(d, x <= rect.left + RANGE_EDGE_W ? 'next'
+        : x >= rect.right - RANGE_EDGE_W ? 'prev'
+          : null);
+    };
+
+    // On a zoomed page the verses the range wants can be out of view. Holding the
+    // pointer near an edge of the visible part scrolls it that way — the way a text
+    // selection does — faster the closer it gets, and the range keeps following the
+    // word under the (still) pointer. Once there is nothing left to scroll, the edge
+    // dwell above takes over and turns the page.
+    let autoRaf = 0;
+    const autoScroll = (d) => {
+      cancelAnimationFrame(autoRaf);
+      autoRaf = 0;
+      const s = scrollerRef.current;
+      if (!s || !isZoomed()) return;
+      const tick = () => {
+        autoRaf = 0;
+        if (rangeDragRef.current !== d || !d.dragging) return;
+        const b = s.getBoundingClientRect();
+        const top = Math.max(b.top, 0);
+        const bottom = Math.min(b.bottom, window.innerHeight);
+        const speed = (dist) => Math.min(1, Math.max(0, (RANGE_SCROLL_EDGE - dist) / RANGE_SCROLL_EDGE)) * RANGE_SCROLL_SPEED;
+        const vx = d.px < b.left + RANGE_SCROLL_EDGE ? -speed(d.px - b.left)
+          : d.px > b.right - RANGE_SCROLL_EDGE ? speed(b.right - d.px) : 0;
+        const vy = d.py < top + RANGE_SCROLL_EDGE ? -speed(d.py - top)
+          : d.py > bottom - RANGE_SCROLL_EDGE ? speed(bottom - d.py) : 0;
+        if (!vx && !vy) return;
+        const [left0, top0] = [s.scrollLeft, s.scrollTop];
+        s.scrollBy({ left: vx, top: vy, behavior: 'instant' });
+        if (s.scrollLeft === left0 && s.scrollTop === top0) return;   // against the edge already
+        extendAt(d, d.px, d.py);
+        autoRaf = requestAnimationFrame(tick);
+      };
+      autoRaf = requestAnimationFrame(tick);
+    };
+
     const onMove = (e) => {
       const d = rangeDragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
@@ -1760,18 +1830,10 @@ export default function Library() {
         if (Math.abs(e.clientX - d.x) <= RANGE_DRAG_SLOP && Math.abs(e.clientY - d.y) <= RANGE_DRAG_SLOP) return;
         d.dragging = true;
       }
-      // elementFromPoint rather than pointerenter on the words: touch never fires
-      // enter/leave mid-gesture, and the edge dwell needs the coordinates anyway.
-      const wordEl = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-verse-key]');
-      const ord = wordEl ? ordOfKey(wordEl.getAttribute('data-verse-key')) : null;
-      if (ord != null) { d.lastOrd = ord; d.extendTo = null; }
-      paint(d);
-
-      const rect = viewportRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      armEdgeTurn(d, e.clientX <= rect.left + RANGE_EDGE_W ? 'next'
-        : e.clientX >= rect.right - RANGE_EDGE_W ? 'prev'
-          : null);
+      d.px = e.clientX;
+      d.py = e.clientY;
+      extendAt(d, e.clientX, e.clientY);
+      autoScroll(d);
     };
 
     const onUp = (e) => {
@@ -1806,8 +1868,9 @@ export default function Library() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      cancelAnimationFrame(autoRaf);
     };
-  }, [armEdgeTurn, endRangeDrag, setRange, showToast, t, fmtNum]);
+  }, [armEdgeTurn, endRangeDrag, setRange, showToast, t, fmtNum, isZoomed]);
 
   // A page turned under the drag: reach the range onto the verse just across the
   // boundary, so the band grows even if the pointer never moves again. startOrd is
@@ -2552,6 +2615,16 @@ export default function Library() {
   // (resuming restores it; the audio element keeps its position, so play() picks
   // up from the same offset).
   const playingVerseKey = (isPlaying && playingOrd != null) ? keyOfOrd(playingOrd) : null;
+
+  // On a zoomed page the verse being recited (or stepped to from the popover) can
+  // move off the visible part; bring it back into view. A no-op when not zoomed,
+  // and when the verse is already visible — a tapped verse never jumps.
+  const { revealWords: zoomRevealWords } = zoom;
+  const followKey = playingVerseKey ?? selectedVerseKey;
+  useEffect(() => {
+    if (!followKey || !isZoomed()) return;
+    zoomRevealWords(viewportRef.current?.querySelectorAll(`.mushaf-word[data-verse-key="${followKey}"]`));
+  }, [followKey, pagesData, isZoomed, zoomRevealWords]);
 
   // Move the selection one verse in `dir`, through the WHOLE Quran. The popover
   // and the tafsir panel both step through here, which is what keeps them and the
@@ -3635,13 +3708,20 @@ export default function Library() {
               </p>
             )}
 
+            {/* The scroller spans the column and carries the size cap; at the
+                default fit it is not a scroll box at all. Zoomed, it becomes the
+                window the enlarged page is panned inside (see useMushafZoom). */}
+            <div
+              ref={scrollerRef}
+              className={`mushaf-scroller w-full ${twoPage ? 'mushaf-spread-cap' : 'mushaf-page-cap'}`}
+            >
             {/* Mushaf page(s) — the relative wrapper hosts the floating edge
                 arrows (they fade in on hover of this viewport) and the swipe
                 target. In single view it hugs the card; in the spread it spans
                 the full row so the arrows flank the whole spread. */}
             <div
               ref={viewportRef}
-              className={`mushaf-viewport relative w-full ${twoPage ? 'mushaf-spread-cap' : 'mushaf-page-cap'}`}
+              className="mushaf-viewport relative"
               onPointerDownCapture={(e) => { lastPointerRef.current = { x: e.clientX, y: e.clientY }; rangeDragDown(e); }}
               onClickCapture={swallowRangeClick}
               onTouchStart={onTouchStart}
@@ -3707,6 +3787,7 @@ export default function Library() {
                   )}
                 </div>
               )}
+            </div>
             </div>
 
             {/* ── Page scrubber — fast navigation without typing, tight
@@ -3909,7 +3990,7 @@ export default function Library() {
                 </Tooltip>
               </div>
 
-              <div className="flex-1 min-w-[120px]">
+              <div className="flex-1 min-w-25 sm:min-w-30">
                 <p className="text-xs font-semibold text-[#003527] dark:text-gray-200 flex items-center gap-1.5">
                   <FiHeadphones className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400 shrink-0" />
                   {audioError
@@ -3926,6 +4007,13 @@ export default function Library() {
                   </p>
                 )}
               </div>
+
+              {/* Page zoom. Not an audio control — it lives in this bar because the
+                  bar is always on screen and never over the text (see the
+                  component). Last in the bar from sm up. On a phone the bar wraps
+                  and only its first row has room, and the chat launcher sits over
+                  that row's END — so there it leads the bar instead. */}
+              <MushafZoomControl zoom={zoom} fmtNum={fmtNum} className="order-first sm:order-last" />
 
               {/* Playback speed */}
               <Tooltip label={t('library.audio.speed')}>

@@ -136,15 +136,76 @@ html[lang='ar'] body {
      a toolbar is not a trade-off worth making for a slightly larger page. */
   --mushaf-chrome: 284px;
   --mushaf-avail-h: calc(100vh - var(--mushaf-chrome));
+  /* The part of that chrome that belongs to the page CARD itself — its padding,
+     running head and footer — so the canvas plus this is the fitted card's
+     height. A zoomed page is shown through a window exactly that tall. */
+  --mushaf-card-chrome: 92px;
+  /* Set from script (useMushafZoom), never from React state: see there. */
+  --mushaf-zoom: 1;
   width: 100%;
-  margin-inline: auto;
 }
 @supports (height: 100dvh) {
   .mushaf-page-cap,
   .mushaf-spread-cap { --mushaf-avail-h: calc(100dvh - var(--mushaf-chrome)); }
 }
-.mushaf-page-cap { max-width: min(920px, calc(var(--mushaf-avail-h) * 0.8245 + 32px)); }
-.mushaf-spread-cap { max-width: min(1560px, calc((var(--mushaf-avail-h) * 0.8245 + 32px) * 2 + 12px)); }
+.mushaf-page-cap { --mushaf-fit-w: min(920px, calc(var(--mushaf-avail-h) * 0.8245 + 32px)); }
+.mushaf-spread-cap { --mushaf-fit-w: min(1560px, calc((var(--mushaf-avail-h) * 0.8245 + 32px) * 2 + 12px)); }
+/* The part of that width that is NOT page and must not grow with the zoom: the
+   card's side padding (px-3 below sm, px-4 above), and in the spread the 12px
+   between the two cards. Leaving it out of the multiplication is what makes
+   "150%" mean the text is exactly 1.5x — not 1.54x. (The spread only exists from
+   lg up, so it only needs the sm+ padding.) */
+.mushaf-page-cap { --mushaf-fixed-w: 24px; }
+@media (min-width: 640px) { .mushaf-page-cap { --mushaf-fixed-w: 32px; } }
+.mushaf-spread-cap { --mushaf-fixed-w: 76px; }
+
+/* ── Zoom ─────────────────────────────────────────────────────────────────────
+   The cap classes sit on `.mushaf-scroller`, which spans the reading column; the
+   page itself is `.mushaf-viewport` inside it. At zoom 1 — the default, and the
+   settled "page fits the window" rule — the viewport is exactly the box it always
+   was: the column's width, capped at the fit width, centred.
+
+   Zooming does not scale anything. It MULTIPLIES THAT CAP, so the page is laid
+   out larger for real: word taps, annotate-mode ink, drag-select and the edge
+   turns all hit-test real geometry, and the frame's fixed 576x852 space (which
+   every overlay is stored in) scales with it for free. A transform wrapper would
+   have meant un-transforming the pointer in every one of those paths.
+
+   A zoomed page is bigger than its window, so the scroller becomes one: exactly
+   as tall as the fitted card (the canvas height plus the card's own chrome), with
+   a floor so a very short window still shows something to pan.
+
+   With a mouse or trackpad, `contain` stops a wheel pan that reaches the page's
+   edge from dragging the whole document along. NOT on touch: on a phone the
+   zoomed page fills most of the screen, and a finger on it has to be able to
+   carry on into scrolling the document, or there is nowhere left to scroll from. */
+.mushaf-viewport {
+  width: 100%;
+  max-width: var(--mushaf-fit-w);
+  margin-inline: auto;
+}
+.mushaf-scroller[data-zoomed] {
+  overflow: auto;
+  max-height: max(16rem, calc(var(--mushaf-avail-h) + var(--mushaf-card-chrome)));
+}
+@media (hover: hover) and (pointer: fine) {
+  .mushaf-scroller[data-zoomed] { overscroll-behavior: contain; }
+}
+/* Below sm the audio bar wraps to two rows, ~48px taller than the one the height
+   budget counts. A fitted phone page is width-bound and never reaches it, but a
+   zoomed one fills its box — so the box leaves that room too. */
+@media (max-width: 639px) {
+  .mushaf-scroller[data-zoomed] { max-height: max(16rem, calc(var(--mushaf-avail-h) + var(--mushaf-card-chrome) - 48px)); }
+}
+.mushaf-scroller[data-zoomed] .mushaf-viewport {
+  max-width: none;
+  width: calc((min(100%, var(--mushaf-fit-w)) - var(--mushaf-fixed-w)) * var(--mushaf-zoom) + var(--mushaf-fixed-w));
+}
+/* Hold Space to pan with the mouse (the hand tool of every document viewer).
+   While it is held, nothing on the page answers the pointer but the pan. */
+.mushaf-scroller[data-panning] { cursor: grab; }
+.mushaf-scroller[data-panning="active"] { cursor: grabbing; }
+.mushaf-scroller[data-panning] * { cursor: inherit !important; }
 
 .mushaf-canvas-frame {
   width: 100%;
@@ -633,6 +694,11 @@ html[lang='ar'] body {
 }
 .mushaf-edge-zone--next { left: 0; transform: translate(-50%, -50%); }   /* left side → forward */
 .mushaf-edge-zone--prev { right: 0; transform: translate(50%, -50%); }   /* right side → back */
+/* Zoomed, the viewport is exactly as wide as the page, so an arrow hanging half
+   outside it would be clipped by the scroller (or widen what there is to scroll).
+   Tuck both fully onto the card's own margin gutter instead. */
+.mushaf-scroller[data-zoomed] .mushaf-edge-zone--next,
+.mushaf-scroller[data-zoomed] .mushaf-edge-zone--prev { transform: translate(0, -50%); }
 /* Fade in when the reader hovers anywhere over the page viewport. */
 .mushaf-viewport:hover .mushaf-edge-zone { opacity: 1; }
 .mushaf-edge-zone:hover { background: #fff; }

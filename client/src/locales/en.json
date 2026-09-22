@@ -772,6 +772,15 @@
       "show": "Show the sidebar",
       "hide": "Hide the sidebar (S)"
     },
+    "zoom": {
+      "group": "Page zoom",
+      "toggle": "Zoom the page (or hold Ctrl and scroll over it)",
+      "toggleZoomed": "Zoom: {{pct}}. While zoomed, scroll — or hold Space and drag — to move around",
+      "in": "Zoom in",
+      "out": "Zoom out",
+      "fit": "Fit the page to the window",
+      "percent": "{{n}}%"
+    },
     "tafsirShow": "Show tafsir",
     "tafsirHide": "Hide tafsir",
     "selfTest": {
