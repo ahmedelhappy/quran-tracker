@@ -14,13 +14,26 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-// Redirect to login on 401
+// A session that expired mid-use: drop the dead token and send the reader to the
+// login page — with where they were, so signing in brings them back.
+//
+// Two 401s must NOT do that, now that some pages are public (the Library):
+//   - a request made with NO token at all. That is a visitor, and bouncing them
+//     off a public page they are allowed to read would be wrong.
+//   - the startup session check. AuthContext handles that failure itself by
+//     dropping the stale token, and protected pages redirect through
+//     ProtectedRoute — a visitor with a stale token just carries on reading.
 API.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      const hadToken = !!error.config?.headers?.Authorization;
+      const isSessionCheck = error.config?.url === '/auth/me';
+      if (hadToken) localStorage.removeItem('token');
+      if (hadToken && !isSessionCheck) {
+        const here = `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/login?returnTo=${encodeURIComponent(here)}`;
+      }
     }
     return Promise.reject(error);
   }
