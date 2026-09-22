@@ -34,6 +34,9 @@ import { useState, useEffect, useRef } from 'react';
  * hiding purely on scroll direction, which a page that fits the window would
  * never trigger at all.
  *
+ * A wheel event carrying Ctrl or Cmd is left alone entirely — that is browser
+ * zoom (and trackpad pinch), not scrolling.
+ *
  * That capture is WHEEL ONLY, deliberately. Touch is not an oversight:
  *   - On a phone or tablet the bar never hides in the first place (the
  *     `hover: hover` gate below), so there is no gesture to spend.
@@ -79,6 +82,11 @@ export function useIdleHide({ enabled, holdOpen = false, delay = 2750, revealZon
 
     // Spend the first `scrollStep` px of a wheel gesture on the bar itself.
     const onWheel = (e) => {
+      // Ctrl/Cmd + wheel is not a scroll at all: it is the browser's zoom, and a
+      // trackpad pinch arrives as exactly this too. Swallowing it here (as this
+      // handler once did, for every downward notch) left the reader with no way
+      // to zoom the site, which people rely on for accessibility.
+      if (e.ctrlKey || e.metaKey) return;
       // Panels and lists do their own scrolling — never eat a gesture aimed at one.
       if (e.target?.closest?.('[data-testid="tafsir-panel"], aside, [data-scrolls]')) return;
       if (e.deltaY > 0 && !hiddenRef.current) {
