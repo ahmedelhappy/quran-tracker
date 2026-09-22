@@ -17,8 +17,8 @@ prompt's step 0 handles that explicitly.
 | Session | Role | Notes |
 |---------|------|-------|
 | **Planning session #1** — "wanna make some improvements to site…" (2026-07-02 → 2026-07-13) | Audit, roadmap, architecture decisions, all stage prompts through review-fixes round 2 | Retired 2026-07-13 (context full). Handed off via a handoff prompt + this doc + the shared memory directory |
-| **Planning session #2** (from 2026-07-13) | Same role: plans, writes prompts, reviews reports, maintains this doc + CODE_GUIDE.md; never implements | Active |
-| Implementation chats (named by stage) | One or more stages each | History: Stages 0–1.8a in one chat (commits `153dd3b`…`3d0457d`); 1.8b–2b in a second (`641d086`…`3cc1775`); Stage 3 → 5 in a third; Stage 6 onward in per-stage chats. Every implementation chat must hold commits until user acceptance and NEVER push while a review is pending |
+| **Planning session #2** (from 2026-07-13) | Same role: plans, writes prompts, reviews reports, verifies claims independently, maintains this doc + CODE_GUIDE.md | Active. Implemented Stages 7 and 8 directly at the user’s explicit request (2026-07-28); otherwise plans and reviews |
+| Implementation chats (named by stage) | One or more stages each | History: Stages 0–1.8a in one chat (commits `153dd3b`…`3d0457d`); 1.8b–2b in a second (`641d086`…`3cc1775`); Stage 3 → 5 in a third; Stage 6 onward in per-stage chats; 8b → 8d and the reader polish rounds ran as a sequence of rounds (2026-08 → 2026-09-09); the recitation-stalling fix in its own round (2026-09-12). Every implementation chat commits locally only and NEVER pushes — the user pushes after review |
 
 Workflow: the planning session writes a prompt → paste it into the active implementation
 session → paste its final report back into the planning session → it updates this doc and
@@ -28,18 +28,45 @@ writes the next prompt. Commits happen only after visual acceptance.
 
 ## Progress log
 
-> ✅ **PUSHED 2026-08-04:** the user accepted and everything through Stage 8b is now
-> on `origin/main` (`3cc1775..59eb241`, 24 commits — Stage 3 direction → hardening →
-> segments → annotations/ink/draw → interactive Progress → leaderboard → 6e tafsir
-> editions → the 8b fix round). Verified before the push: **118/118** server tests,
-> a clean client build, and lint carrying only the 5 pre-existing issues (3
-> react-refresh errors in the context files, 2 hook-dep warnings) — none new. Commit
-> messages audited: no AI/assistant mentions. Working tree clean at push time.
->
-> ⏳ **STILL AWAITING USER TESTING:** Stages 7, 8, 8b and 6e shipped but were only
-> ever code/lint/build/test verified — **NOT browser-verified**. The user is testing
-> them live and will report feedback. Stage 8c (five tafsir/annotation items) is
-> prompted and queued.
+> **How to read this log.** Each table row is one event — a stage delivered, a bug
+> found, a decision made — in chronological order, oldest first. **New entries are
+> APPENDED at the bottom; existing rows are history and are never rewritten.** Only
+> the two blocks directly below ("Current status" and "Open queue") are edited in
+> place, to stay current.
+
+### Current status — as of 2026-09-22
+
+- **Everything is on `origin/main`**: working tree clean, 0 unpushed commits. Last
+  commit `d5b4f79` (the recitation-stalling round).
+- **Health:** 120/120 server tests · client build clean · lint at 5 known
+  pre-existing problems (3 react-refresh errors in the context files, 2 hook-dep
+  warnings in Dashboard/Progress).
+- **Shipped and user-tested:** Stages 0–8d, 6e, the 8b/8c fix rounds, the reader
+  polish rounds, and the recitation-stalling fix.
+- **Settled decisions — don’t re-litigate:** the page fits the window by default
+  (Option D measured and rejected, 2026-09-08) · shortcuts match `e.code` OR `e.key`
+  · أيسر التفاسير reads per-ayah via hefzmoyaser, while at-Tabari and Ibn Kathir stay
+  on spa5k (hefzmoyaser truncates / abridges them) · a two-page spread shares ONE
+  undo stack · focus mode removed · the range band paints only for a live drag or
+  an explicit span selection, never while merely reading.
+- **Accepted limitations still standing:** a same-calendar-day undo of a half-page
+  day-2 completion can discard day-1’s segment · a verse straddling two pages
+  annotates on its selection page only.
+
+### Open queue — priority order
+
+- [ ] **1 · Stage 8e — mushaf zoom**, including the live Ctrl+wheel hijack in `useIdleHide`
+- [ ] **2 · Audio fallback source** — cdn.islamic.network has files it cannot serve
+  (global ayahs 5944 / 5953 / 5954 stayed 502 across 10 attempts)
+- [ ] **3 · Stage 8.5 — product-aware chatbot**, including a segment-aware `buildProgressSummary`
+- [ ] **4 · Stage 1.9 — public Library** (browse without an account)
+- [ ] **5 · Stage 9 — UX polish** (refreshed against the app on 2026-09-22)
+- [ ] **6 · Lint cleanup** — `npm run lint` exits non-zero at HEAD
+- [ ] **7 · Cross-browser smoke** — Firefox / WebKit (NFR-02)
+- [ ] **8 · Stage 1.8 — Library mobile redesign** — waits on the user’s UX notes
+- **User-owned, no code:** email provider for password reset · Sentry DSNs · Atlas backups
+
+Items 1–7 are one prepared prompt — see **Intensive session — 2026-09-22** in Part 3.
 
 | Date | Stage | Commit | Notes |
 |------|-------|--------|-------|
@@ -62,16 +89,16 @@ writes the next prompt. Commits happen only after visual acceptance.
 | 2026-07-08 | Stage 4 — committed locally | `602ff9f` `39bad64` `bea9944` `022dded` | Rate limits + validation; error responses + boot asserts + metadata cache; token hygiene; client splitting/boundary/font headers. NOT pushed |
 | 2026-07-08 | Stage 5 — verse segments | (uncommitted) | Implemented: UserProgress.segments, server/utils/segments.js unit-compile engine (reads quranStructure.json), PUT /api/progress/units, fractional stats + **isHafiz bug fix** (was "604 touched", now "604 fully memorized"), real half-page plan (continuationPage now paused-users-only), week-tab half-page simulation, Onboarding/Settings Hizb+¼-Hizb tabs (rounded to whole pages), Library mark-verses flow + amber ½-memorized tick, dashboard half labels. 64/64 tests (16 new), live-verified against real Atlas DB. Known limitation (documented): undoing a half-page day-2 completion may discard day-1's segment when both land on the same calendar day. **Uncommitted — step 0 of Stage 6 commits it; user review of 2b/3/4/5 still pending** |
 | 2026-07-08 | Stage 6 — annotations | — | Prompt prepared (chat version supersedes the doc's original: step-0 local commit of Stage 5, hard-flag beside the footer tick instead of the removed sidebar badge, unified sidebar wording, Stage 4 validation on the new routes, metadata-cache enrichment). ⚠ After Stage 6: user review REQUIRED before queueing more — 4 unreviewed layers by then |
+| 2026-07-08 | **Review checkpoint** | — | Consolidated 13-point checklist delivered (planning chat) covering 2b/3/4/5/6. On acceptance: push ALL local commits (Stage 3 → 6b); no prod reseed needed (data files unchanged). Stage 7 (interactive Progress + projected-completion card, segments-aware rewrite) gets its prompt only after acceptance |
 | 2026-07-09 | Stage 5 — committed locally | `f20a0fa` `22d2b2b` | Backend (segments engine/endpoint/stats/half-page, interleaved hunks → one server commit) + client. NOT pushed |
 | 2026-07-09 | Stage 6 — annotations | (uncommitted) | Implemented: Annotation model/routes/controller (per-kind validation, verseKey validated against real structure, 2000 cap), popover swatches/note/hard, page-hard flag beside the 3-state tick, hard list + dashboard chip, layout-neutral word-tint rendering. 88/88 tests (+24). Accepted limitations: whole-verse highlights only in UI (wordFrom/wordTo supported underneath), straddling verses annotate on their selection page only, small medallion indicators |
-| 2026-07-08 | **Review checkpoint** | — | Consolidated 13-point checklist delivered (planning chat) covering 2b/3/4/5/6. On acceptance: push ALL local commits (Stage 3 → 6b); no prod reseed needed (data files unchanged). Stage 7 (interactive Progress + projected-completion card, segments-aware rewrite) gets its prompt only after acceptance |
 | 2026-07-09 | Stage 6b — free ink + annotation navigation | (uncommitted) | Implemented (MushafDrawLayer SVG overlay in the fixed 524×800 space, PUT /annotations/drawing w/ strict stroke validator, annotate-mode input isolation, /annotations/summary + navigator sidebar + arrival pulse; 98/98 tests). **Crash found on user's first load: `<FiEdit2 />` used at Library.jsx:1317 but never imported → mount ReferenceError → error boundary. Fixed directly by the planning session (import added). Root cause of the blind spot: no eslint-plugin-react → core no-undef ignores JSX identifiers; follow-up dispatched to add react/jsx-no-undef. Also: the 6b "browser checklist" was evidently not executed against a running app — mount itself crashed** |
 | 2026-07-09 | Lint-gap + browser-verify round | (uncommitted) | eslint-plugin-react added with react/jsx-no-undef only (proven: fails on the removed import, 0 new noise). Full 6b click-through on an ISOLATED stack (in-memory Mongo :5099 + Vite :5174, CDP real pointer input, screenshots; Atlas untouched) — 20/20 checks: draw/erase/undo/persist/pixel-perfect scaling/navigator/pulse. Found + fixed a real setState-during-render bug in MushafDrawLayer (stroke commit moved out of the setLive updater into the event handler). This isolated-stack CDP approach is the new verification bar. Minor carry-item: word-tap isolation in draw mode confirmed only indirectly — fold an explicit assertion into 6c's verification |
 | 2026-07-09 | Stage 6c — draw UX + audio merge | (uncommitted) | Implemented + browser-verified on the isolated stack (25/25 feature + 6/6 regression checks, 0 console errors): undo/redo stacks + keys, Shift straight-line w/ angle snap, eye visibility toggle, draggable/collapsible toolbar, 'text' annotation kind (Arabic verified; eraser-safe), margin-extended overlay (x ∈ [-52,576]) + widened validators, audio-bar→popover merge with near-selection placement. 104/104 server tests. Cosmetic gap: navigator list lacks a text-kind icon. **REVIEW CHECKPOINT ACTIVE: 19-point consolidated checklist delivered; on acceptance commit 6/6b/6c and push Stage 3 → 6c; no reseed needed** |
-| 2026-07-13 | Review fixes round 1 (6d) — done | (uncommitted) | Root cause confirmed: memorizedSet treated any-progress pages as done → replaced with segment-aware nextNewItems (partial pages serve their remainder FIRST; want-more offers the next half). Plan-switch day = "remainder only" (documented choice). Partial pages render amber-fractional on the detailed map; drag-select via useDragSelect; audio round (bar visible + popover, speed, verse/range repeat, seamless cross-page playback w/ preload, tafsir play-toggle); tints lightened, pause clears playing tint + resume from position. 106/106 tests, 13/13 isolated-browser checks. Scoped: buildProgressSummary (chatbot) still whole-page |
-| 2026-07-13 | Review fixes round 2 — UPDATED prompt | — | Supersedes the earlier round-2 prompt; now ALSO includes: the page-top surah-start bug (plate + basmala belong on the previous page's trailing blanks — An-Nisa p76/77; general fix + all-114 sweep), dashboard rule change (multi-surah task pages show PAGE NUMBER ONLY — no names/ranges; half labels stay), selected-verse indicator becomes non-fill (outline/ring, not a tint), plus the original three (anchored pencil dropdown, icon-only text notes, language-aware motivational verse) |
 | 2026-07-10 | Stage 6e — tafsir expansion | — | Planned with ready prompt (below): add أيسر التفاسير + other worthwhile editions + إعراب الآيات, with mandatory verify-200-first discovery against spa5k CDN / quran.com resources / alquran.cloud; honest rejection if no reliable i'rab source exists |
 | 2026-07-10 | Review fixes round 1 (Stage 6d) | — | User's review findings dispatched: half-page "want more" ignores new memorization; half-memorized pages render fully green on the detailed map AND the walker skips the remaining half after a 0.5→1 plan switch (partial pages must count as pending); drag-to-multi-select pulled forward from Stage 9; audio-bar hiding REVERTED (bar + popover coexist); new audio features (speed, verse/range repeat, continuous cross-page playback); tafsir play button must toggle pause; selected/playing tints lightened; pause clears the playing tint but resume continues from position |
+| 2026-07-13 | Review fixes round 1 (6d) — done | (uncommitted) | Root cause confirmed: memorizedSet treated any-progress pages as done → replaced with segment-aware nextNewItems (partial pages serve their remainder FIRST; want-more offers the next half). Plan-switch day = "remainder only" (documented choice). Partial pages render amber-fractional on the detailed map; drag-select via useDragSelect; audio round (bar visible + popover, speed, verse/range repeat, seamless cross-page playback w/ preload, tafsir play-toggle); tints lightened, pause clears playing tint + resume from position. 106/106 tests, 13/13 isolated-browser checks. Scoped: buildProgressSummary (chatbot) still whole-page |
+| 2026-07-13 | Review fixes round 2 — UPDATED prompt | — | Supersedes the earlier round-2 prompt; now ALSO includes: the page-top surah-start bug (plate + basmala belong on the previous page's trailing blanks — An-Nisa p76/77; general fix + all-114 sweep), dashboard rule change (multi-surah task pages show PAGE NUMBER ONLY — no names/ranges; half labels stay), selected-verse indicator becomes non-fill (outline/ring, not a tint), plus the original three (anchored pencil dropdown, icon-only text notes, language-aware motivational verse) |
 | 2026-07-28 | **Stage 7 — interactive Progress page** | (uncommitted) | Implemented by the PLANNING session directly (user asked to "just start implementing, I'll review later"). In-place edit mode on `Progress.jsx`: an "Edit progress" toggle in the Memorization Map header opens a draft; detailed map toggles single pages, compact map toggles a whole Juz, surah cards toggle their page span; draft `Set` + Save/Cancel + "{{count}} changed" hint bar + pending-change rings + `aria-pressed`; Save calls `updateMemorized` then reloads. **Segments-aware fix** (the doc's original Stage-7 prompt predated segments): `updateMemorized` now sets `segments: []` only in `$setOnInsert`, so a ½-memorized page that stays in the set is NEVER silently flattened to a full page on save — also fixes the Settings "edit my pages" editor; +1 server test (**107/107**). New **Projected completion** card from `GET /api/progress/estimate` (time-to-finish + projected Gregorian date via `ar-u-ca-gregory-nu-arab`, reuses `formatEstimate`/`onboarding.time*`). Settings "Edit my pages" kept as a secondary link. EN/AR locales added. Verified: 107/107 server tests (in-memory Mongo, Atlas untouched), client build clean, lint clean of NEW issues (the 3 react-refresh context errors + the `chartData` hooks-dep warning are pre-existing, in files not touched here). ⚠ **NOT browser-verified on the isolated CDP stack yet** — user will review. Files: `progressController.js` (updateMemorized), `progress.test.js` (+1), `Progress.jsx`, `en/ar.json`. Held UNCOMMITTED atop the in-flight Stage 6 tree (no collision — Stage 7 lives in Progress.jsx / progressController, not the in-flight Library.jsx); nothing committed or pushed. |
 | 2026-07-28 | **Stage 8 — leaderboard (opt-in)** | (uncommitted) | Implemented by the PLANNING session directly. Backend: `User` gains `leaderboardOptIn` + `displayName` (3–30 chars — the ONLY public identity, never email/real name); `updateProfile` validates both and requires a name to opt in; all three auth payloads (login/getMe/updateProfile) return them; `UserProgress` gains a `{ memorizedDate: 1 }` index. New `GET /api/leaderboard?period=week|all` (protected, type-gated): opted-in users only, **segment-aware fractional page counts**, week = last 7 UTC days, sorted by pages desc (streak tie-break), returns top 50 + the caller's own rank when outside it, behind a 5-minute in-memory per-period cache (single-instance; Redis noted for scale). New `leaderboardController` (+`_clearCache` test hook) and `leaderboardRoutes` mounted in `app.js`. **+9 tests** (opt-in filtering, ranking, week vs all-time, fractional counting, own-rank-outside-top-50 via 51 users, opt-in-requires-name, short-name reject) → **116/116**. Frontend: lazy `/leaderboard` route + Navbar link (FiAward); new `Leaderboard.jsx` (This Week / All Time tabs, medals for the top 3, own-row highlight, a "your rank" card when outside the visible top, a join/opt-in card, loading/error/empty states); a Settings **Community** card (`CommunityCard`, self-contained opt-in toggle + display-name save, mirrors `ChangePasswordCard`); EN/AR locales (`nav.leaderboard`, `leaderboard.*`, `settings.community.*`). Verified: **116/116** server tests (in-memory Mongo, Atlas untouched), client lint clean on all changed files, build clean (Leaderboard chunk ~6.4 KB, lazy). ⚠ **NOT browser-verified yet** — awaiting user testing. No collision with the in-flight Library.jsx (all new files + Settings/Navbar/App/api). Held UNCOMMITTED; nothing pushed. Files: `User.js`, `UserProgress.js`, `authController.js`, `authRoutes.js`, `app.js`, `leaderboardController.js` (new), `leaderboardRoutes.js` (new), `leaderboard.test.js` (new), `api.js`, `App.jsx`, `Navbar.jsx`, `Leaderboard.jsx` (new), `Settings.jsx`, `en/ar.json`. |
 | 2026-07-28 | **Stage 8b — user fix round** | — | Four user-reported items dispatched as a fresh-session prompt (below), bundled with Stage 6e. Root causes confirmed in code by the planning session: (1) **leaderboard staleness** — the 5-min board cache is invalidated ONLY on leaderboard-settings changes, never on progress writes, so pages/rank lag up to 5 minutes (my Stage 8 bug); (2) **range repeat is page-bound** — `rangeStart`/`rangeEnd` are indices into `verses`, which only ever holds the visible page(s), so a range can't span pages; needs global verse addressing + cross-page fetch; (3) **inter-verse gap** — one `<audio>` whose `src` is reassigned per verse (Library.jsx ~558-568) pays a fetch+decode per verse; the existing preload covers page data + font only, not audio → needs double-buffered audio elements; (4) **landing page** — `lastMushafPage` is only a fallback behind "first unmemorized page"; user wants last-opened to win, which **reverses the Stage 1.7c decision** (explicit `?page` still wins). ⚠ Item 2's "end verse: the end of the current verse" read as a typo → default chosen: **end of the current page** (flagged in the prompt for user confirmation). |
@@ -90,6 +117,8 @@ writes the next prompt. Commits happen only after visual acceptance.
 | 2026-09-09 | **Stage 8d COMPLETE — items 3, 5, 6 delivered** | `1f64318` `9441f2b` `ab8061f` | Planning session verified independently: **120/120** tests, clean build, only the 5 known lint problems, harness cleaned up, tree clean. **Item 3:** new `tafsirVerseKey`; panel renders `panelVerseKey = tafsirOpen ? (selectedVerseKey ?? tafsirVerseKey) : null` — derived during render so no empty frame flashes; `lastTafsirVerseRef` keeps the verse object when its page unmounts; `toggleTafsir` now opens on the empty state instead of doing nothing. **Item 5:** drag-select via `rangeDragDown`/`armEdgeTurn`/`endRangeDrag` + window pointermove/up/cancel and a non-passive touchmove guard; edge-dwell turn (550ms first, 900ms repeat) EXTENDS rather than restarts; conflicts explicitly tested — plain tap still selects, drag while annotating draws (0 range), drag in self-test advances the watermark (0 range); touch needs a 650ms hold first so quick swipes still turn pages. **Item 6:** `rangeVerseRepeat` nests inside `rangeRepeat`; progress readout stepped all 8 states in exact order then stopped with counters cleared; **gapless handover measured — 0–1ms at a verse repeat, 52ms at a verse change AND at the range wrap, i.e. the wrap costs nothing beyond a normal advance**. Fixed-frame invariant re-proved: band bbox as a fraction of the page identical at canvas widths 298/317/379/625 (left .0553 · right .9494 · top .4006 · bottom .6014, aspect 0.655). **Planning session rulings on the six flagged decisions: APPROVED 1 (×1 in RANGE_VERSE_COUNTS — without it a range cannot be played straight through), 2 (separate `rangeVerseRepeat` defaulting to 1), 3 (reuse the repeat popover rather than a bespoke bubble), 5 (edge-turn dwell timings), 6 (toggleTafsir opening the empty state — a button that did nothing was a bug). REVISE 4** — tinting the mushaf unprompted whenever repeat mode is Range is the one to reconsider: this is sacred text and a persistent tint while merely reading is noise; show the band while the repeat popover is open or during playback of that range, then fade. ⚠ Known gap: verified in headless Chrome only — **NFR-02 requires Firefox, Safari and Edge too**, and this round added non-passive touchmove and pointer-capture handling, which is exactly where engines differ. 23 commits still unpushed (single-machine risk). |
 | 2026-09-09 | **Stage 8e — mushaf zoom (queued)** | — | User request: Ctrl+wheel/pinch with the pointer OVER the mushaf zooms the MUSHAF (scrolling allowed); with the pointer outside it, the browser zooms the whole site as normal. Plus a zoom affordance. Motivation: the mushaf reads small on small screens. Planning-session grounding: (a) sizing today is `--mushaf-chrome` → `--mushaf-avail-h` → the `.mushaf-page-cap` / `.mushaf-spread-cap` **max-width** caps (index.css ~137-147, capped 920px single / 1560px spread), so **zoom must be a multiplier on that same cap** (a `--mushaf-zoom` factor) and NOT a `transform: scale()` wrapper — going through the cap keeps layout real so word taps, drawing and drag-select hit-test natively, and keeps the fixed 524×800 overlay invariant true for free; (b) **LIVE BUG FOUND: `useIdleHide`’s wheel handler never checks `e.ctrlKey` (useIdleHide.js ~81-95) and preventDefaults every downward wheel, so Ctrl+wheel browser zoom is ALREADY hijacked inside the Library reader** — it hides the navbar instead of zooming; must be fixed regardless of this feature; (c) `.mushaf-viewport` has no overflow rule, so a zoomed page needs a real scroll/pan container; (d) this does NOT contradict the 2026-09-08 decision A (page fits the window) — fit stays the DEFAULT and zoom is the deliberate opt-in escape from it; (e) recommend NOT intercepting native touch pinch (fragile, and native browser pinch already works) — give explicit +/− controls on touch instead, and leave keyboard Ctrl +/−/0 as browser-level so accessibility zoom is never trapped. |
 | 2026-09-12 | **Recitation stalling — root-caused and fixed** | `2bffb25` `e9921a3` | The reader's recitation stopped partway through a page and never resumed, while the bar kept showing the pause button and the verse counter — no error, no spinner, just silence. **Three compounding defects, all in `Library.jsx`:** (1) the preloader recorded which verse an element had been TOLD to load, never whether the load succeeded — intent, not arrival; (2) `handleAudioError` returned early unless the failing element was the ACTIVE one, so the PREFETCH — by definition always the cold request, since the playing verse was fetched a verse ago and its edge is warm — was the one request never retried; (3) the handover swapped into that dead element on the strength of the recorded intent, and `el.play().catch(() => {})` threw the rejection away. **Fixed:** per-buffer `{ord, status}` (`loading` → `ready` on canplay/loadeddata/canplaythrough, `failed` on error); a swap is allowed ONLY into a `ready` buffer, otherwise the ACTIVE element takes the verse over with the retry behind it (a late start, not silence); BOTH elements now report failures and are retried, the active one owning the spinner/error line and the prefetch failing silently; split budgets (6 active / 3 prefetch); `play()` rejections routed by name (AbortError ignored, NotAllowedError drops out of playing, anything else retried); a 2.5s stall watchdog for requests that hang without ever firing `error`; and a blind no-cors fetch warming the edge 3 verses ahead. **Verified on an isolated stack** (in-memory Mongo + server on 5321 + Vite on 5322) driven over CDP with real pointer input, forcing failures with `Fetch.fulfillRequest` rather than waiting for them — **30/30 checks across 6 scenarios**. Before/after on the identical forced 502: BEFORE 3/8 with a **14.9s terminal silence**, one request never repeated, bar still saying "Pause"; AFTER 8/8, retry fired 6.6s BEFORE verse N ended (so it is genuinely the prefetch path). Live 7-8 min continuous runs, no injection: BEFORE 2 verses then **465s of SILENT stall**; AFTER 0 silent stalls, the one silence correctly reported as an error. Same-region pair: before skipped a verse entirely (`ended 5952` → `loadstart 5954`) and sat silent 264s; after played it and ended honestly errored. **Gapless unchanged:** verse repeat re-issues `play()` at +0.1ms, verse change at +57ms — identical to three figures before and after (the ~53ms to audible is Chrome's pipeline resume, not app code). **CDN measurements taken this round** (worth keeping): cdn.islamic.network sends **no `access-control-allow-origin`**; Resource Timing `responseStatus` is **0** for opaque cross-origin entries (200 same-origin), so warm reads cannot see a 502 and must be blind; a cold file needs **2–8 requests** to warm, not 2; repeat touches of a warm file are **disk-cache hits (~1ms, max-age 70 days)**; Chrome **strips `Range` from a no-cors fetch**, so the warm-up is a whole-file GET costing ~1 extra download per ayah (`WARM_AHEAD` is the dial). **Still true and NOT fixable client-side:** some files are unservable right now (5944/5953/5954 stayed 502 over 10 touches) — those correctly end at the visible error within ~16s, and one press of play gives a fresh budget and recovers (verified). 120/120 server tests, clean build, lint at the 5 pre-existing problems. |
+| 2026-09-22 | **Everything pushed; carry-over audit** | — | Observed by the planning session: the user had pushed the whole local stack — `origin/main` at `d5b4f79`, tree clean, 0 unpushed — so the long-running "push before the stack grows" item is closed. Audit of what was still carried as open: **8d decision #4 is RESOLVED** in code — the band now paints only for a live drag (`dragRange`) or an explicit span (`rangeSelection`), and the pickers’ defaults deliberately never light up the mushaf (Library.jsx ~1640-1655), so a page is no longer tinted while merely reading; **the Ctrl+wheel hijack is STILL LIVE** — `useIdleHide`’s wheel handler has no `ctrlKey`/`metaKey` check, so browser zoom is swallowed inside the reader; `buildProgressSummary` (progressController.js ~261) still walks whole pages while `getTodayTasks` is segment-aware, so the chatbot can name a different next page than the dashboard; the Axios 401 interceptor hard-redirects to `/login` and clears the token, which makes any ungated request a trap for the public Library. **Stage 9 audit:** keyboard turns, audio across page turns and tile drag-select are DONE; scroll-to-top on route change is missing; `client/index.html` has one relevant meta tag and no OpenGraph; focus-visible and screen-reader labels are partial; manual page turns don’t prefetch (only playback does). |
+| 2026-09-22 | **Log restructured; intensive session prepared** | — | At the user’s request this file now reads as a strict history: the Progress-log rows were stable-sorted by date (7 rows had been out of order, in the 2026-07-08…13 stretch), new entries are appended at the bottom, and the stale "pushed through 8b / 8c queued" callout was replaced by a live **Current status** and a priority-ordered **Open queue**. Queue items 1–7 — zoom (8e) with the Ctrl+wheel fix, an audio fallback source, the product-aware chatbot (8.5) with a segment-aware summary, the public Library (1.9) with the 401-redirect trap called out, a refreshed UX polish pass (9), a lint cleanup that makes `npm run lint` exit 0 (including a real stale-language bug in the Progress chart memo), and a Firefox/WebKit smoke — were written up as ONE phased prompt (Part 3, *Intensive session — 2026-09-22*). Implementation sessions append their own row after each phase. |
 ` produced a double newline. Also beyond brief: **both-page annotation across a spread (8d item 4)**, eraser cursor, and a mushaf line-placement fix. **A3 STILL OPEN** — while measuring, the session found the sticky audio bar was covering 9 words of the last line and fixed it by counting the bar in the height budget, which shrank the single page to **416px at 1440×900** (vs 548 originally). Options given: A=416 fits / B=548 with 33px scroll / C=728 with 300px scroll (+ non-sticky bar). ⚠ Planning-session concerns to raise: scroll-capture uses a non-passive `wheel` + `preventDefault`, so **touch devices get none of it** (no wheel events) and trackpad momentum may feel sticky; and `max-w-[1600px]` was dropped from `main`, leaving the reading column unbounded on ultrawide screens. |
 
 ---
@@ -238,6 +267,8 @@ Recommended order. Stages 1–4 are “fix + go-live”; stages 5–9 are featur
 | 8c | Tafsir UX round: panel sync/toggle/side-by-side layout, grouped-tafsir labelling, annotation toolbar collapse + shortcuts | M |
 | 8d | Per-ayah tafsir source swap, tafsir persistence, both-page annotation, drag-select verse ranges, nested repeat | M |
 | 8e | Mushaf zoom: pointer-scoped Ctrl+wheel zoom, zoom affordance, scroll/pan when zoomed | M |
+| 8f | Audio fallback source for files the primary CDN cannot serve | S–M |
+| 9b | Lint cleanup (split context hooks, real hook-dep fixes) + Firefox/WebKit smoke | S |
 | 8.5 | Product-aware chatbot: feature help, how-tos, deep links | S–M |
 | 9 | UX polish pass | M |
 
@@ -837,6 +868,8 @@ Stage 1.8a. Remaining scope for when the prompt is written:
 
 ### Stage 1.9 — Public Library (browse without an account)
 
+> **Superseded 2026-09-22** — this stage is Phase 4 of the *Intensive session — 2026-09-22* prompt, which refreshes it for the app as it is now. The original prompt below is kept as history.
+
 **Goal:** anyone can read the mushaf, listen, and open tafsir without signing up; account-only
 actions degrade to a sign-in nudge.
 
@@ -1316,7 +1349,333 @@ The ready-to-paste prompt lives in the chat handoff (planning session, 2026-08-0
 
 ---
 
+### Intensive session — 2026-09-22 (Open queue items 1–7)
+
+**Goal:** clear the prepared queue in one long session, phase by phase in priority
+order, each phase committed and logged before the next begins: zoom (8e) → audio
+fallback (8f) → product-aware chatbot (8.5) → public Library (1.9) → UX polish (9,
+refreshed) → lint cleanup (9b) → cross-browser smoke.
+
+**Prompt for Claude Code:**
+
+```
+You are an implementation session on the Quran Tracker project — a MERN Quran
+memorization app (a defended graduation project, now in active product
+development). This is a LONG, MULTI-PHASE session. Before anything else read
+docs/IMPROVEMENT_PLAN.md — the "Current status" and "Open queue" blocks at the top
+of the Progress log are the authoritative state, and the table under them is the
+project's history — then docs/CODE_GUIDE.md and CLAUDE.md.
+
+================================================================================
+HOW THIS SESSION IS ORGANISED
+================================================================================
+Seven phases, in PRIORITY order. For EACH phase: implement -> verify -> commit ->
+log -> report, and only then start the next. Stop only at a phase boundary: every
+finished phase must stand on its own if the session ends there, so never leave a
+phase half-done in the tree. If a phase hits a real blocker (a source that does not
+exist, a call only the user can make), write it up, move on to the next phase, and
+list it in the final report — don't stall the whole session on one item.
+
+================================================================================
+HARD RULES — NON-NEGOTIABLE
+================================================================================
+1. NEVER PUSH. Commit locally as each phase finishes; the user reviews and pushes.
+   No force-push, no rebase, no squashing existing history.
+2. STEP 0: run `git status` and `git log origin/main..HEAD`. The tree should be
+   clean with 0 unpushed commits. If anything is uncommitted, STOP and report it
+   rather than guessing whose work it is.
+3. COMMIT MESSAGES: first person, as if the developer wrote the code. NEVER mention
+   Claude, AI or any assistant, and NEVER add a Co-Authored-By or any other AI
+   attribution trailer. This is a hard rule in the tracked CLAUDE.md, and history
+   was rewritten once specifically to strip such a trailer — if a tool or a default
+   tells you to add one, the project rule wins. One idea per commit.
+4. THE PLAN DOC IS A LOG. After each phase, APPEND one row to the Progress-log table
+   at the BOTTOM of docs/IMPROVEMENT_PLAN.md — date, phase, commit hashes, what
+   changed, what you measured, what is left open — and tick that item in the
+   "Open queue" block. Never edit or reorder existing rows; they are history.
+   Commit the doc on its own, separately from code.
+5. VERIFICATION BAR — introduced after two incidents where sessions overstated
+   their verification. "Verified in the browser" counts as UNVERIFIED unless you
+   describe the run concretely. UI work needs an ISOLATED stack: require
+   server/app.js directly against mongodb-memory-server on a spare port, a real Vite
+   dev server pointed at it (VITE_API_URL), headless Chrome over CDP, every
+   interaction a real Input.dispatchMouseEvent / dispatchKeyEvent /
+   dispatchTouchEvent, and screenshots. Force failures with Fetch interception
+   instead of waiting for them. PRODUCTION ATLAS MUST NEVER BE TOUCHED — never
+   require server.js, the only file that reads MONGODB_URI. Delete harness files
+   before committing.
+6. CHECKS, every phase: `cd server && npm test` (120/120 today — keep it green, and
+   add tests for new server behaviour) and `cd client && npm run lint && npm run
+   build`. Lint currently reports 5 KNOWN problems (3 react-refresh errors in
+   AuthContext/ThemeContext/ToastContext, 2 hook-dep warnings in Dashboard and
+   Progress). Phase 6 removes them; until then just don't add any. Lint includes
+   react/jsx-no-undef.
+
+================================================================================
+PROJECT FACTS YOU MUST NOT BREAK
+================================================================================
+- The mushaf is ALWAYS an RTL book: forward/next = LEFTWARD, in both UI languages.
+- It is the exact Madinah mushaf, rendered with per-page QCF glyph fonts. Each page
+  is a fixed 576x852 frame with a 524x800 text area on a 15-slot grid, scaled
+  UNIFORMLY. Every overlay (free ink, margin ornaments, text notes, highlight
+  bands) stores its coordinates in that fixed space. That invariant is what makes
+  everything scale — PROTECT IT, and prove it by measuring an overlay's bounding
+  box as a FRACTION of the canvas at several sizes (identical to three decimals).
+- The page FITS THE WINDOW by default. Settled 2026-09-08 after "Option D" was
+  measured and rejected — it covered glyphs below ~720px of viewport and made the
+  page card's own controls unclickable. Zoom (Phase 1) is an opt-in escape from
+  that rule, never a new default.
+- The verse is the atom of what is memorized (UserProgress.segments); the page is
+  the scheduling atom. Annotations anchor to verseKey + word position, never pixels.
+- Keyboard shortcuts match the PHYSICAL key through the helper in
+  client/src/utils/shortcutKeys.js (e.code OR e.key). A bare e.key === 'x' dies on
+  an Arabic keyboard layout. The convention is written at the end of CODE_GUIDE.md.
+- Every new string goes in BOTH client/src/locales/en.json and ar.json. Check RTL
+  and dark mode on everything you touch.
+
+================================================================================
+PHASE 1 — MUSHAF ZOOM  (Stage 8e, highest priority)
+================================================================================
+Why: the mushaf reads too small on small screens.
+Goal: Ctrl+wheel — and trackpad pinch, which browsers deliver as a wheel event with
+ctrlKey set — while the POINTER IS OVER THE MUSHAF zooms the MUSHAF ONLY (bigger
+than the window is fine; the user then scrolls/pans). The same gesture ANYWHERE
+ELSE zooms the whole site exactly as the browser does today. Plus a discoverable
+zoom control on the page.
+
+1a. FIX THIS FIRST — a live bug sitting in the way. client/src/hooks/useIdleHide.js
+    (~lines 81-95) calls preventDefault on every downward wheel event and never
+    checks ctrlKey or metaKey. So inside the Library reader, Ctrl+wheel browser
+    zoom is hijacked TODAY: it hides the navbar instead of zooming. Make that handler
+    ignore any wheel event carrying ctrlKey or metaKey. It is a real bug on its own —
+    fix it and say so.
+
+1b. HOW TO SCALE — read this before coding. The page's size comes from a
+    height-derived max-width cap in client/src/index.css (~lines 137-147):
+      --mushaf-avail-h: calc(100vh - var(--mushaf-chrome));
+      .mushaf-page-cap   { max-width: min(920px,  calc(var(--mushaf-avail-h) * 0.8245 + 32px)); }
+      .mushaf-spread-cap { max-width: min(1560px, calc((var(--mushaf-avail-h) * 0.8245 + 32px) * 2 + 12px)); }
+    Implement zoom as a MULTIPLIER ON THAT CAP — for example a --mushaf-zoom custom
+    property folded into those calc()s. Do NOT wrap the reader in transform: scale().
+    Word taps, annotate-mode drawing, drag-select verse ranges and edge-click page
+    turns all hit-test against real element geometry, and a transform wrapper forces
+    you to un-transform pointer coordinates in every one of those paths. Going
+    through the cap keeps layout real, keeps hit-testing native, and keeps the
+    524x800 overlay space true for free.
+
+1c. BEHAVIOUR
+    - Scope strictly by pointer position. Never install a global zoom trap.
+    - Zoom TO THE CURSOR: the point under the pointer stays under it while the page
+      scales (adjust the scroll offsets by the scale delta, the way a map does).
+    - .mushaf-viewport has no overflow rule today — give it a real scroll/pan
+      container. Panning must not collide with drag-select or annotate drawing;
+      choose a scheme (scrollbars, wheel-scroll, space-drag, …) and justify it.
+    - Bounds: minimum = fit (smaller has no purpose); maximum around 300% (justify
+      the number). One obvious reset-to-fit. Persist the level in localStorage.
+    - A small zoom control on or near the page (a magnifier revealing +/- and
+      reset, or similar). It must not crowd the pencil, the eye or the footer tick,
+      and must never cover glyphs. Tooltip + aria-label in both locales, RTL-correct.
+
+1d. EDGE CASES — handle each, and report on each:
+    - Two-page spread: both pages scale together, pan horizontally, RTL order intact.
+    - Page turn while zoomed: keep the zoom level; state what happens to the scroll
+      position (top of the new page is the sane default).
+    - Tafsir panel docked, sidebar open, and RESIZING the tafsir panel while zoomed.
+    - Annotate mode: strokes land exactly under the pointer at every zoom level, and
+      saved ink reloads in place after a zoom change AND after a full reload.
+    - Drag-select ranges, self-test drag-to-reveal, edge-click turns, swipe turns:
+      none may break or trigger by accident while zoomed or panning.
+    - Window resize while zoomed: re-clamp so the user can never be stranded.
+    - TOUCH: do NOT intercept native pinch — it is fragile across engines and native
+      pinch already works on phones. Give touch users the +/- controls instead.
+    - KEYBOARD: leave Ctrl +/-/0 as browser zoom, site-wide. Never trap it — people
+      rely on browser zoom for accessibility.
+    - prefers-reduced-motion: no animated zoom easing.
+    - Performance: the per-page QCF fonts are large; zooming must not refetch them
+      or cause visible jank, and rapid wheel zooming must stay smooth.
+
+1e. PROVE: the ctrlKey bug is fixed (browser zoom works again outside the mushaf);
+    pointer-scoped zoom works both ways; zoom-to-cursor anchoring holds; the overlay
+    invariant, measured as canvas fractions, across at least three zoom levels; a
+    stroke drawn while zoomed lands under the pointer and survives a reload; and the
+    behaviour at a SMALL viewport — that is the whole reason for this feature.
+
+================================================================================
+PHASE 2 — AUDIO FALLBACK SOURCE
+================================================================================
+Background (measured 2026-09-12 — read that Progress-log row): the
+recitation-stalling bug is FIXED. There is per-buffer {ord, status}, a swap happens
+only into a 'ready' buffer, both elements are retried, a 2.5s stall watchdog runs,
+and a blind no-cors fetch warms the CDN edge 3 verses ahead. What is NOT fixable
+client-side: cdn.islamic.network has files it cannot serve at all right now —
+global ayahs 5944, 5953 and 5954 stayed 502 across 10 attempts. Today those end,
+correctly, at the visible error. Give them a way to play.
+
+2a. Add a SECONDARY audio source, used ONLY once the primary has exhausted its
+    active retry budget for a verse. The primary stays first for every request.
+2b. DISCOVER AND VERIFY BEFORE WIRING — the project's "verified 200 first"
+    convention (see the comments above TAFSIR_EDITIONS in quranApi.js). Candidates
+    to test, not assume: everyayah.com per-ayah MP3s, and quran.com's recitation
+    audio via api.quran.com. For each one: does it cover all five reciters in
+    RECITERS (ar.alafasy, ar.husary, ar.minshawi, ar.hudhaify, ar.muhammadayyoub)?
+    Is it the SAME recitation — same qari, same riwaya, comparable bitrate — rather
+    than a different recording passed off as the same one? Does an <audio> element
+    play it cross-origin? Test the three stuck ayahs above AND several ordinary ones.
+2c. Addressing differs by source: the primary uses the GLOBAL ayah number, while
+    everyayah uses a zero-padded surah+ayah file name (SSSAAA) under per-reciter
+    folder names. Build an explicit per-reciter mapping. A reciter with no verified
+    fallback simply keeps today's behaviour.
+2d. Keep everything the stall fix established — the gapless ping-pong swap,
+    readiness tracking, the split retry budgets, the watchdog, the warm-up. The
+    fallback plugs in where the active budget runs out; do not restructure the
+    playback engine.
+2e. PROVE it with forced failures (Fetch interception returning 502 for the primary):
+    playback falls through to the fallback and keeps going; the gapless handover is
+    unchanged when nothing fails (baseline: +0.1ms at a verse repeat, ~57ms at a
+    verse change); and a verse that fails on BOTH sources still ends at the visible
+    error, never an infinite spinner. If no fallback is trustworthy for a reciter,
+    say so plainly instead of wiring a doubtful one.
+
+================================================================================
+PHASE 3 — PRODUCT-AWARE CHATBOT  (Stage 8.5)
+================================================================================
+POST /api/chat (server/controllers/chatController.js, Groq-powered, rate-limited by
+middleware/chatRateLimit.js) already injects a per-user summary built by
+buildProgressSummary. The widget is client/src/components/Chatbot.jsx.
+
+3a. FIX THE SUMMARY FIRST. It is an accepted limitation that turns into a visible
+    bug the moment someone asks the bot "what should I do today?":
+    buildProgressSummary (progressController.js ~line 261) still picks new pages
+    with the WHOLE-PAGE nextUnmemorizedPages walker, while getTodayTasks uses the
+    SEGMENT-AWARE nextNewItems (a partly memorized page serves its remainder first).
+    So the bot can name a different next page than the dashboard shows. Make it use
+    the same segment-aware logic, and add a server test proving the summary and
+    GET /api/progress/today agree — for a half-page plan and for a partly memorized
+    page.
+3b. Knowledge base: server/chat/appGuide.md — concise, and ACCURATE TO THE APP AS IT
+    IS NOW, which has changed a great deal since this stage was first planned: the
+    unified Library reader (there has been no separate "memorize mode" since Stage
+    1.8a), the self-test styles, the tafsir panel and its editions, annotations
+    (highlights, notes, hard flags, free ink across a two-page spread), verse
+    selection, drag-to-select a verse range, nested repeat, gapless audio,
+    bookmarks, the docked panels and their edge handles, zoom (if Phase 1 landed),
+    the leaderboard, editing progress on the Progress page, and the daily plan (new
+    pages, cycle + recent review, off days, intensities, half-page plans,
+    memorization direction). Include step-by-step answers for the common tasks.
+    Keep it under ~1500 tokens — tighten the wording rather than truncating a topic.
+    Load it at boot and inject it into the system prompt next to the summary.
+3c. Deep links: the assistant may return internal app paths (/library?page=291,
+    /settings?tab=memorization, …) and Chatbot.jsx renders them as react-router
+    links, not full reloads. WHITELIST internal paths — never render an external
+    URL as a link.
+3d. Guardrails: app and how-to questions answered from the guide, personal
+    questions from the summary, unrelated topics politely declined, and replies in
+    the user's language (keep today's tone).
+3e. 3-4 tappable starter chips driven by i18n strings in both locales. Note: the
+    original plan listed "How do I use memorize mode?" — that mode no longer exists.
+    Write chips for the app as it is.
+3f. A server test that mocks the Groq client (no external calls) and asserts the
+    system prompt contains BOTH the guide and the progress summary for an
+    authenticated call.
+
+================================================================================
+PHASE 4 — PUBLIC LIBRARY  (Stage 1.9)
+================================================================================
+Anyone can read the mushaf, listen and open tafsir without an account; account
+features degrade to a sign-in nudge.
+
+4a. CRITICAL GOTCHA — read first. The Axios response interceptor in
+    client/src/services/api.js CLEARS the token and HARD-REDIRECTS to /login on ANY
+    401. So a single ungated protected request from a logged-out /library bounces
+    the visitor straight to the login page. The gating must be airtight. Prove it
+    by watching the network: ZERO requests to protected endpoints while logged out.
+4b. Move /library out of ProtectedRoute in client/src/App.jsx.
+4c. Many account features were added after this stage was first planned, so audit
+    ALL of them, not just the original list: progress ticks, mark-verses, bookmarks,
+    annotations (highlights, notes, hard flags, free ink, the annotation
+    navigator), the hard-verses list, and anything that reads the user. Skip their
+    API calls entirely when logged out, and replace the controls with ONE compact
+    "Sign in to track your progress" nudge linking to /login with a returnTo that
+    restores the exact page after login (add returnTo support to the login flow).
+    Client-only features must keep working logged out: navigation, audio, tafsir,
+    self-test, drag-select range playback, repeat, and zoom.
+4d. The navbar on /library shows its public state (Login / Register) when logged
+    out, like the landing page. The chatbot stays logged-in only (already true).
+4e. Landing page: add a "Browse the Mushaf" link to /library.
+4f. PROVE it logged out: the deep link /library?page=291 works; EN and AR; light and
+    dark; mobile width; zero protected requests; and logging in from the nudge
+    returns to the same page.
+
+================================================================================
+PHASE 5 — UX POLISH  (Stage 9, refreshed)
+================================================================================
+ALREADY DONE — do not redo: keyboard page turns, audio continuing across page
+turns, drag-to-multi-select in Onboarding/Settings. The planning session audited
+the rest on 2026-09-22; these are what remain:
+5a. Scroll-to-top on route change — MISSING (nothing in the client does it today).
+5b. Landing/About: a proper meta description, OpenGraph tags and a favicon set in
+    client/index.html — only one relevant tag exists today.
+5c. Focus-visible outlines in the brand colour for keyboard users — partially
+    present; make it consistent across the whole app.
+5d. Mushaf words reachable by screen readers — a coarse per-verse label ("surah X,
+    ayah Y") is fine. It must not change glyph layout or disturb the 524x800
+    overlay space.
+5e. Dashboard: stable min-heights so the task list doesn't jump when the data
+    arrives — check it under network throttling.
+5f. Prefetch the next and previous page's data AND QCF font when a page finishes
+    loading (today only playback triggers a page prefetch), so manual page turns
+    feel instant. Mind the audio warm-up — don't let the two fight for bandwidth.
+5g. Arabic i18n sweep: walk every page in Arabic and fix anything rendering in
+    English or overflowing its box — Settings and Onboarding especially.
+5h. NFR-01 (every page under 3s): npm run build, npm run preview, then Lighthouse on
+    /, /dashboard and /library — report the scores BEFORE and AFTER this phase.
+
+================================================================================
+PHASE 6 — LINT CLEANUP  (make `npm run lint` exit 0)
+================================================================================
+6a. The 3 react-refresh/only-export-components ERRORS (AuthContext, ThemeContext,
+    ToastContext) mean `npm run lint` exits non-zero at HEAD. Split each context
+    file so it exports only components — move the hooks (useAuth / useTheme /
+    useToast) into their own modules — and update every import. Mechanical but
+    wide, so afterwards run the build and a browser smoke of login, the theme
+    toggle and a toast.
+6b. The 2 hook-dep WARNINGS: Dashboard (~line 369, missing showToast and t) and
+    Progress. The Progress one is a REAL BUG, not noise: the chartData memo reads
+    i18n.language for its date labels but doesn't list it as a dependency, so
+    switching language leaves the chart in the old language until the data
+    reloads. Fix both properly — don't silence them.
+6c. The annotation navigator list has no icon for the text-note kind (a known
+    cosmetic gap) — fold it in here.
+6d. Goal: `npm run lint` reports 0 problems. Update CODE_GUIDE.md if any hook import
+    paths change.
+
+================================================================================
+PHASE 7 — CROSS-BROWSER SMOKE  (NFR-02, optional)
+================================================================================
+Nothing has ever been tested outside Chrome, and the reader leans on exactly the
+APIs where engines differ: pointer capture, non-passive wheel and touchmove
+handlers, media-element events, CSS dvh units. Run a smoke pass of the core reader
+flows in Firefox and in WebKit (Safari's engine) — Playwright's bundled browsers
+are the practical route — covering page turns, verse selection, drag-select,
+annotate-then-reload, audio play and advance, the tafsir panel, and zoom. Edge is
+Chromium and low-risk. If those browsers can't be installed here, say so plainly;
+never claim a pass you did not run.
+
+================================================================================
+FINAL REPORT
+================================================================================
+For each phase: what changed, file by file; commit hashes; test, lint and build
+results; and the concrete browser verification (ports, what you clicked,
+screenshots, console errors). Then: every decision you want the user to confirm,
+anything you skipped and why, and the new "Open queue" state.
+Local commits only — DO NOT PUSH.
+```
+
+---
+
 ### Stage 8.5 — Product-aware chatbot
+
+> **Superseded 2026-09-22** — this stage is Phase 3 of the *Intensive session — 2026-09-22* prompt above, which refreshes it for the app as it is now (the original asked for a "memorize mode" chip; that mode no longer exists). The original prompt below is kept as history.
 
 **Goal:** turn the Groq assistant from a generic chat into an in-app guide: it knows every
 feature, answers "how do I…" questions, and can point users at the right page.
@@ -1360,6 +1719,8 @@ Run cd server && npm test and cd client && npm run lint && npm run build.
 ---
 
 ### Stage 9 — UX polish pass
+
+> **Superseded 2026-09-22** — this stage is Phase 5 of the *Intensive session — 2026-09-22* prompt, which refreshes it for the app as it is now. The original prompt below is kept as history.
 
 **Goal:** the “feels professional” details.
 
