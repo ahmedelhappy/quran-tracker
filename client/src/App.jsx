@@ -1,10 +1,11 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
 
 // Pages are lazy-loaded so each route ships its own chunk — this keeps heavy,
@@ -48,11 +49,13 @@ const PersistentChatbot = () => {
   return user && user.onboardingComplete ? <Chatbot /> : null;
 };
 
-// Redirect authenticated users away from public pages
+// Redirect authenticated users away from public pages — to wherever they were
+// headed when they were asked to sign in, if that is a page of this app.
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
+  const [params] = useSearchParams();
   if (loading) return <PageLoader />;
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to={safeReturnTo(params.get('returnTo')) ?? '/dashboard'} replace />;
   return children;
 };
 
@@ -74,6 +77,10 @@ function App() {
               {/* Public routes */}
               <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
               <Route path="/about"    element={<About />} />
+              {/* The mushaf reads without an account: the reader, the recitation and
+                  the tafsir are public, and everything that saves to an account is
+                  hidden behind a sign-in nudge (see Library). */}
+              <Route path="/library"  element={<Library />} />
               <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
@@ -82,7 +89,6 @@ function App() {
               <Route path="/onboarding" element={<ProtectedRoute><OnboardingWrapper /></ProtectedRoute>} />
               <Route path="/settings"  element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/progress"  element={<ProtectedRoute><Progress /></ProtectedRoute>} />
-              <Route path="/library"   element={<ProtectedRoute><Library /></ProtectedRoute>} />
               <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
               {/* Catch-all */}

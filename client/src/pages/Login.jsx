@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -8,12 +8,17 @@ import Footer from '../components/Footer';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
 import Tooltip from '../components/Tooltip';
+import { safeReturnTo } from '../utils/returnTo';
 
 const Login = () => {
   const { login } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // Signing in from a public page (the Library's nudge, or a session that expired
+  // there) comes back to where the reader was.
+  const [params] = useSearchParams();
+  const afterLogin = safeReturnTo(params.get('returnTo')) ?? '/dashboard';
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,7 +29,7 @@ const Login = () => {
     const result = await login(form.email, form.password);
     setLoading(false);
     if (result.success) {
-      navigate('/dashboard');
+      navigate(afterLogin);
     } else {
       showToast(result.message || t('auth.invalidCredentials'), 'error');
     }
