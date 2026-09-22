@@ -642,6 +642,31 @@ itself doesn't navigate, and so doesn't reload, until release (`onPointerUp`/
 `onPointerCancel`), at which point `goToPage` is called once, which already handles the
 two-page snap.
 
+### Zoom
+
+By default the page **fits the window** (a settled decision). Zoom is the opt-in
+escape from that: Ctrl+wheel or a trackpad pinch *with the pointer over the page*,
+or the magnifier in the audio bar (the only way on touch screens). The same gesture
+anywhere else is left to the browser, and Ctrl +/−/0 are never touched.
+
+The interesting part is **how** it scales. The page's size comes from a CSS cap
+(`--mushaf-fit-w` in [index.css](../client/src/index.css)); zoom multiplies that
+cap through a `--mushaf-zoom` variable instead of wrapping the page in
+`transform: scale()`. So the page is really laid out larger, and every
+pointer-driven feature — word taps, ink, drag-select, edge turns — keeps
+hit-testing real geometry with no coordinate maths. A zoomed page sits in a scroll
+box (`.mushaf-scroller`) as tall as the fitted card.
+
+[useMushafZoom.js](../client/src/hooks/useMushafZoom.js) is worth reading for two
+techniques:
+- **State outside React.** A pinch fires dozens of wheel events a second; storing
+  the level in the reader's state would re-render both pages per event. The hook
+  writes the CSS variable straight onto the DOM and keeps a tiny store that only
+  the zoom control subscribes to (`useSyncExternalStore`).
+- **Anchoring.** "Zoom to the cursor" remembers the point under the pointer as a
+  *fraction of the page canvas* (the one box that scales exactly), then scrolls so
+  that fraction lands back under the pointer — the way a map zooms.
+
 ### Bookmarks
 
 Account-saved, multiple per user, backed by the `Bookmark` model (§2) via
