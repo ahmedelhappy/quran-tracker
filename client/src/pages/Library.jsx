@@ -30,6 +30,7 @@ import {
   fetchEditionAyahTafsir,
   findTafsirRun,
   getAyahAudioUrl,
+  getFallbackAyahAudioUrl,
   toArabicDigits,
   RECITERS,
   DEFAULT_RECITER,
@@ -470,6 +471,14 @@ export default function Library() {
   const AUDIO_RETRIES_ACTIVE = 6;
   const AUDIO_RETRIES_PREFETCH = 3;
   const AUDIO_RETRY_MS = 400;
+  // Some files the primary cannot serve at all, however often it is asked (three
+  // stayed 502 across ten attempts on 2026-09-12). For the verse the reader is
+  // waiting on, a verse whose ACTIVE budget is spent gets one more road: the same
+  // recording from a second source (getFallbackAyahAudioUrl — verified
+  // byte-identical, see quranApi.js), with a short budget of its own. The primary
+  // stays first for every load; the prefetch never falls back — it has nobody
+  // waiting on it, and its verse gets a fresh primary budget when it becomes active.
+  const AUDIO_RETRIES_FALLBACK = 2;
   // Two <audio> elements, ping-ponged: while one plays, the other preloads the verse
   // that comes next, so the handoff costs no fetch and no decode — that is what
   // removes the audible gap between verses.
@@ -484,8 +493,9 @@ export default function Library() {
   // 'ready' buffer may ever be swapped into.
   const bufStateRef = useRef([{ ord: null, status: 'idle' }, { ord: null, status: 'idle' }]);
   // Retry bookkeeping per BUFFER, so the prefetch gets its own budget and its own
-  // backoff rather than sharing the active element's.
-  const audioRetryRef = useRef([{ ord: null, tries: 0, timer: null }, { ord: null, tries: 0, timer: null }]);
+  // backoff rather than sharing the active element's. `fallback` marks that this
+  // buffer's verse has moved on to the second source.
+  const audioRetryRef = useRef([{ ord: null, tries: 0, timer: null, fallback: false }, { ord: null, tries: 0, timer: null, fallback: false }]);
   const bufEl = (i) => (i === 0 ? audioARef.current : audioBRef.current);
   const activeEl = () => bufEl(activeBufRef.current);
   const bufIndexOf = (el) => (el && el === audioARef.current ? 0 : el && el === audioBRef.current ? 1 : -1);
@@ -811,7 +821,9 @@ export default function Library() {
     const el = bufEl(i);
     if (!el) return;
     markBuf(i, ord, 'loading');
-    el.src = getAyahAudioUrl(reciterRef.current, ord);
+    const r = audioRetryRef.current[i];
+    el.src = (r.ord === ord && r.fallback && getFallbackAyahAudioUrl(reciterRef.current, keyOfOrd(ord)))
+      || getAyahAudioUrl(reciterRef.current, ord);
     el.playbackRate = playbackRateRef.current;
     el.load();
   };
@@ -821,7 +833,7 @@ export default function Library() {
   // src fires `error` and that error must not be mistaken for a verse failing.
   const releaseBuf = useCallback((i) => {
     clearTimeout(audioRetryRef.current[i].timer);
-    audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+    audioRetryRef.current[i] = { ord: null, tries: 0, timer: null, fallback: false };
     bufStateRef.current[i] = { ord: null, status: 'idle' };
     const el = i === 0 ? audioARef.current : audioBRef.current;
     if (!el) return;
@@ -840,7 +852,7 @@ export default function Library() {
     if (status !== 'ready') markBuf(i, ord, 'ready');
     if (audioRetryRef.current[i].ord === ord) {
       clearTimeout(audioRetryRef.current[i].timer);
-      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null, fallback: false };
     }
     if (i === activeBufRef.current) {
       lastProgressRef.current = performance.now();
@@ -863,8 +875,34 @@ export default function Library() {
     markBuf(i, ord, 'failed');
     const active = i === activeBufRef.current && ord === playingOrdRef.current;
     const r = audioRetryRef.current[i];
-    if (r.ord !== ord) { r.ord = ord; r.tries = 0; }
-    if (r.tries >= (active ? AUDIO_RETRIES_ACTIVE : AUDIO_RETRIES_PREFETCH)) {
+    if (r.ord !== ord) { r.ord = ord; r.tries = 0; r.fallback = false; }
+    // Load the verse into this buffer again after `delay`. Bail if playback moved on
+    // while we waited — a retry must never drag the reader back to the verse they
+    // have already left.
+    const retryIn = (delay) => {
+      clearTimeout(r.timer);
+      r.timer = setTimeout(() => {
+        if (!bufHolds(i, ord)) return;
+        loadBuf(i, ord);
+        if (i === activeBufRef.current && ord === playingOrdRef.current) {
+          lastProgressRef.current = performance.now();   // a clean window for the watchdog
+          if (isPlayingRef.current) playEl(i, ord);
+        }
+      }, delay);
+    };
+    const budget = !active ? AUDIO_RETRIES_PREFETCH : r.fallback ? AUDIO_RETRIES_FALLBACK : AUDIO_RETRIES_ACTIVE;
+    if (r.tries >= budget) {
+      // The primary has had its whole budget for the verse the reader is waiting on.
+      // If this reciter has a verified second source, that is the next road — same
+      // spinner, a budget of its own, and its first ask goes at once (the primary's
+      // backoff has already been waited out). Only when it too is spent is it an error.
+      if (active && !r.fallback && getFallbackAyahAudioUrl(reciterRef.current, keyOfOrd(ord))) {
+        r.fallback = true;
+        r.tries = 0;
+        setAudioBuffering(true);
+        retryIn(0);
+        return;
+      }
       // Spent. Only the verse the reader is actually waiting on says so out loud.
       if (active) { setAudioBuffering(false); setAudioError(true); setIsPlaying(false); }
       return;
@@ -872,21 +910,12 @@ export default function Library() {
     // One extra ask at the edge alongside the element's own retry. Repeated requests
     // are what actually fill the edge — a verse that failed here has been watched to
     // answer 200 moments later, once enough of them had asked for it — and one per
-    // attempt keeps that pressure on without turning a dead file into a flood.
-    if (active) touchAyah(reciterRef.current, ord);
+    // attempt keeps that pressure on without turning a dead file into a flood. (The
+    // second source is an ordinary origin with no cold edge to warm.)
+    if (active && !r.fallback) touchAyah(reciterRef.current, ord);
     r.tries += 1;
     if (active) setAudioBuffering(true);   // it is still trying, so say "loading", not "broken"
-    clearTimeout(r.timer);
-    r.timer = setTimeout(() => {
-      // Bail if playback moved on while we waited — a retry must never drag the
-      // reader back to the verse they have already left.
-      if (!bufHolds(i, ord)) return;
-      loadBuf(i, ord);
-      if (i === activeBufRef.current && ord === playingOrdRef.current) {
-        lastProgressRef.current = performance.now();   // a clean window for the watchdog
-        if (isPlayingRef.current) playEl(i, ord);
-      }
-    }, AUDIO_RETRY_MS * r.tries);
+    retryIn(AUDIO_RETRY_MS * r.tries);
   };
 
   // play() rejects for three unrelated reasons, and swallowing all three is what let
@@ -916,7 +945,7 @@ export default function Library() {
     lastProgressRef.current = performance.now();
     if (ord != null && bufStateRef.current[i].status === 'failed') {
       clearTimeout(audioRetryRef.current[i].timer);
-      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null };
+      audioRetryRef.current[i] = { ord: null, tries: 0, timer: null, fallback: false };
       setAudioError(false);
       setAudioBuffering(true);
       loadBuf(i, ord);

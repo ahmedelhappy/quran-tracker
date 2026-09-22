@@ -1,5 +1,6 @@
 const ALQURAN_API = 'https://api.alquran.cloud/v1';
 const AUDIO_CDN = 'https://cdn.islamic.network/quran/audio/128';
+const FALLBACK_AUDIO_BASE = 'https://everyayah.com/data';
 const TAFSIR_CDN = 'https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir';
 // hefzmoyaser's backend. Verified browser-callable: it answers with
 // `access-control-allow-origin: *` and a 204 preflight allowing GET. Two things
@@ -12,18 +13,48 @@ const HEFZ_RIWAYA_HAFS = 1;
 
 // Reciters verified against cdn.islamic.network (HEAD 200 on per-ayah files).
 // ar.abdulbasitmurattal returns 403 on this CDN — excluded.
+//
+// `fallback` is each reciter's folder on everyayah.com — the SECOND source, used
+// only for a verse the primary has already failed its full retry budget on (see
+// failBuf in Library.jsx). Verified 2026-09-22, not assumed:
+//   - Same recording, same encode. For 19 ayahs across the whole mushaf (1:1, 2:255,
+//     16:99, 86:13, 87:5, 87:6, 114:6 and 12 random ones) the MPEG audio frames are
+//     BYTE-IDENTICAL to the primary's for every reciter below — only the ID3 tags
+//     differ. cdn.islamic.network is, in effect, a re-tagged mirror of everyayah.
+//   - Muhammad Ayyoub is the one to watch: the primary's "128" folder actually holds
+//     his 64 kbps / 22.05 kHz encode, which matches everyayah's
+//     Muhammad_Ayyoub_64kbps exactly. Their Muhammad_Ayyoub_128kbps is a different
+//     encode, so it is NOT used — the fallback must sound like the primary.
+//   - It covers all five, including the three ayahs that sat at 502 on the primary
+//     (global 5944 / 5953 / 5954 = 86:13, 87:5, 87:6), serves audio/mpeg over https
+//     with range requests, and an <audio> element plays it cross-origin without
+//     CORS (the same as the primary, which sends none).
+//   - quran.com's recitation audio was the other candidate and was rejected: it
+//     carries only three of these five reciters (no Hudhaify, no Ayyoub), serves
+//     Husary at 64 kbps rather than the primary's 128, and needs an API call per
+//     verse just to learn the file's address.
+// A reciter without a `fallback` simply keeps the single-source behaviour.
 export const RECITERS = [
-  { id: 'ar.alafasy',         nameEn: 'Mishary Rashid Al-Afasy',     nameAr: 'مشاري راشد العفاسي' },
-  { id: 'ar.husary',          nameEn: 'Mahmoud Khalil Al-Husary',    nameAr: 'محمود خليل الحصري' },
-  { id: 'ar.minshawi',        nameEn: 'Mohamed Siddiq El-Minshawi',  nameAr: 'محمد صديق المنشاوي' },
-  { id: 'ar.hudhaify',        nameEn: 'Ali Al-Hudhaify',             nameAr: 'علي بن عبدالرحمن الحذيفي' },
-  { id: 'ar.muhammadayyoub',  nameEn: 'Muhammad Ayyoub',             nameAr: 'محمد أيوب' },
+  { id: 'ar.alafasy',         nameEn: 'Mishary Rashid Al-Afasy',     nameAr: 'مشاري راشد العفاسي',        fallback: 'Alafasy_128kbps' },
+  { id: 'ar.husary',          nameEn: 'Mahmoud Khalil Al-Husary',    nameAr: 'محمود خليل الحصري',         fallback: 'Husary_128kbps' },
+  { id: 'ar.minshawi',        nameEn: 'Mohamed Siddiq El-Minshawi',  nameAr: 'محمد صديق المنشاوي',        fallback: 'Minshawy_Murattal_128kbps' },
+  { id: 'ar.hudhaify',        nameEn: 'Ali Al-Hudhaify',             nameAr: 'علي بن عبدالرحمن الحذيفي',  fallback: 'Hudhaify_128kbps' },
+  { id: 'ar.muhammadayyoub',  nameEn: 'Muhammad Ayyoub',             nameAr: 'محمد أيوب',                 fallback: 'Muhammad_Ayyoub_64kbps' },
 ];
 
 export const DEFAULT_RECITER = RECITERS[0].id;
 
 export const getAyahAudioUrl = (reciterId, globalAyahNumber) =>
   `${AUDIO_CDN}/${reciterId}/${globalAyahNumber}.mp3`;
+
+// The second source addresses a verse by zero-padded surah + ayah ("086013"), not
+// by the global number. Null when the reciter has no verified fallback.
+export const getFallbackAyahAudioUrl = (reciterId, verseKey) => {
+  const folder = RECITERS.find((r) => r.id === reciterId)?.fallback;
+  const [surah, ayah] = String(verseKey ?? '').split(':');
+  if (!folder || !surah || !ayah) return null;
+  return `${FALLBACK_AUDIO_BASE}/${folder}/${surah.padStart(3, '0')}${ayah.padStart(3, '0')}.mp3`;
+};
 
 // Tafsir editions verified to return 200:
 //  - page editions come from api.alquran.cloud (one request per page)
