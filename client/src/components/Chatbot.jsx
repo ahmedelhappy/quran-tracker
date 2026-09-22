@@ -1,8 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { FiMessageSquare, FiSend } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { chatAPI } from '../services/api';
 import { useDraggable } from '../hooks/useDraggable';
+import { splitChatLinks, splitBold } from '../utils/chatLinks';
+
+// An assistant reply, with any of the app's own pages it mentions turned into
+// in-app links. Only whitelisted paths ever become links — see utils/chatLinks.
+function ReplyText({ text, onNavigate }) {
+  return splitChatLinks(text).map((part, i) => (part.to ? (
+    <Link
+      key={i}
+      to={part.to}
+      onClick={onNavigate}
+      className="font-semibold underline underline-offset-2 text-[#004f35] dark:text-emerald-300 hover:opacity-80"
+    >
+      {part.label}
+    </Link>
+  ) : (
+    <span key={i}>
+      {splitBold(part.text).map((p, j) => (p.bold ? <strong key={j} className="font-semibold">{p.text}</strong> : p.text))}
+    </span>
+  )));
+}
 
 export default function Chatbot() {
   const { t } = useTranslation();
@@ -24,8 +45,15 @@ export default function Chatbot() {
     }
   }, [messages, open]);
 
-  // Prompts offered when the conversation is empty (only the welcome message shown).
-  const suggestionKeys = ['plan', 'memorized', 'streak'];
+  // Prompts offered when the conversation is empty (only the welcome message shown):
+  // one about the reader's own day, three about using the app as it is now.
+  const suggestionKeys = ['plan', 'review', 'repeat', 'tafsir'];
+
+  // Following a link on a phone should show the page it opens, which the panel
+  // would otherwise cover; on a wider screen the conversation can stay open.
+  const afterLink = () => {
+    if (window.matchMedia?.('(max-width: 639px)').matches) setOpen(false);
+  };
   const showSuggestions = !loading && messages.every((m) => m.isWelcome);
 
   const send = async (textArg) => {
@@ -119,6 +147,7 @@ export default function Chatbot() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
+                  dir="auto"
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.role === 'user'
                       ? 'text-white'
@@ -126,7 +155,9 @@ export default function Chatbot() {
                   }`}
                   style={msg.role === 'user' ? { backgroundColor: '#004f35' } : undefined}
                 >
-                  {msg.content}
+                  {msg.role === 'assistant' && !msg.isWelcome
+                    ? <ReplyText text={msg.content} onNavigate={afterLink} />
+                    : msg.content}
                 </div>
               </div>
             ))}
