@@ -290,8 +290,11 @@ API.interceptors.request.use((config) => {
 });
 ```
 
-There's also a *response* interceptor: if any call comes back `401 Unauthorized`, it wipes
-the token and bounces the user to `/login`. That's how an expired session self-heals.
+There's also a *response* interceptor: if a call **that carried a token** comes back
+`401 Unauthorized`, it wipes the token and bounces the user to `/login?returnTo=…`, so an
+expired session self-heals and lands the reader back where they were. A 401 on a request
+with **no** token is left alone — that is a visitor on a public page (the Library), and
+throwing them off a page they are allowed to read would be a bug, not a self-heal.
 
 ### Step 4 — The server verifies it on protected routes
 [../server/middleware/auth.js](../server/middleware/auth.js) exports `protect`:
@@ -468,8 +471,12 @@ copies of the rules.
 
 Routes fall into two kinds:
 - **Public** (`/`, `/about`, `/login`, `/register`) — wrapped in `PublicRoute`, which
-  *redirects logged-in users away* to the dashboard.
-- **Protected** (`/dashboard`, `/onboarding`, `/settings`, `/progress`, `/library`) —
+  *redirects logged-in users away* to the dashboard (or to `returnTo`, if they were sent to
+  sign in from somewhere).
+- **Public, but not wrapped** (`/library`) — the mushaf reads without an account. The page
+  itself decides what to show: everything that saves to an account is hidden AND never
+  requested while signed out, and one sign-in nudge stands in its place (§6).
+- **Protected** (`/dashboard`, `/onboarding`, `/settings`, `/progress`, `/leaderboard`) —
   wrapped in [`ProtectedRoute`](../client/src/components/ProtectedRoute.jsx), which shows a
   spinner while auth is being checked and redirects to `/login` if there's no user.
 
@@ -670,6 +677,22 @@ techniques:
 - **Anchoring.** "Zoom to the cursor" remembers the point under the pointer as a
   *fraction of the page canvas* (the one box that scales exactly), then scrolls so
   that fraction lands back under the pointer — the way a map zooms.
+
+### Reading without an account
+
+`/library` is public. The reader, the page turns, the recitation, the tafsir, the
+self-test, verse selection, drag-select ranges, repeat and zoom are all client-side or
+public-API features, so they work for anyone. Everything else — the memorized tick, the
+page's hard flag, the pencil and the annotations eye, mark-verses, bookmarks, the
+annotation navigator, the hard list — is hidden behind `signedIn`, replaced by a single
+"Sign in to track your progress" nudge.
+
+Hiding the controls is only half of it: the loaders (`refreshMemorizedPages`,
+`loadAnnotationsForPages`, `loadHardList`, `loadSummary`) return early without an
+account, and the annotate shortcuts refuse too. The reason is the 401 interceptor in §3 —
+before it was made careful, a single protected request from a logged-out reader would have
+cleared the token and redirected them to the login page. When a page goes public, auditing
+what it *requests* matters as much as what it *shows*.
 
 ### Bookmarks
 

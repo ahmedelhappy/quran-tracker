@@ -84,8 +84,9 @@ Frontend reads the backend URL from `VITE_API_URL` (`client/src/services/api.js`
 **Entry point**: `client/src/main.jsx` → `App.jsx`
 
 `App.jsx` defines all routes and wraps the app in `ThemeProvider` → `AuthProvider` → `ToastProvider`. Route layout:
-- Public: `/`, `/about`, `/login`, `/register`
-- Protected (via `ProtectedRoute`): `/dashboard`, `/onboarding`, `/progress`, `/library`, `/settings`
+- Public: `/`, `/about`, `/login`, `/register`, `/library` (the mushaf reads without an
+  account; anything that saves to one is hidden behind a sign-in nudge)
+- Protected (via `ProtectedRoute`): `/dashboard`, `/onboarding`, `/progress`, `/settings`, `/leaderboard`
 
 After login, if `user.onboardingComplete === false`, the app redirects to `/onboarding`.
 
