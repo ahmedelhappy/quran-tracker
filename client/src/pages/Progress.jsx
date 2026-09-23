@@ -329,7 +329,9 @@ export default function Progress() {
     const sampled = all.filter((_, i) => i % step === 0);
     if (sampled[sampled.length - 1] !== all[all.length - 1]) sampled.push(all[all.length - 1]);
     return sampled;
-  }, [overallStats, totalMemorized]);
+    // The labels are formatted HERE, so a language switch must rebuild them —
+    // without these two the chart kept the old language's dates until reload.
+  }, [overallStats, totalMemorized, t, i18n.language]);
 
   const hasActivity = totalMemorized > 0;
 
