@@ -34,6 +34,14 @@ html { scroll-behavior: smooth; }
 .dark :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline-color: #34d399;
 }
+/* A word of the mushaf is focusable per VERSE (see MushafPage): ring the whole
+   verse, not the one glyph, and never round it — the band already shapes it. */
+:where(.mushaf-word):focus-visible {
+  outline: 2px solid #004f35;
+  outline-offset: 1px;
+  border-radius: 0;
+}
+.dark :where(.mushaf-word):focus-visible { outline-color: #34d399; }
 
 body {
   font-family: 'Inter', sans-serif;
@@ -278,6 +286,19 @@ html[lang='ar'] body {
 }
 /* A reserved-but-empty printed row: holds its grid slot, draws nothing. */
 .mushaf-blank { grid-column: 1; }
+
+/* The page's verses as TEXT, for screen readers (the glyphs themselves are
+   private-use codepoints, so they are hidden from assistive tech). Absolutely
+   positioned, so it is out of the 15-slot grid and cannot take a row, and
+   clipped to a pixel so nothing of it is ever seen. */
+.mushaf-sr-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 /* Ayah-end medallions render gold, like the printed mushaf, while the body
    text stays ink. (QCF glyphs are monochrome outlines, so `color` themes them.) */

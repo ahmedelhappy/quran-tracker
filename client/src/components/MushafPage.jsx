@@ -55,6 +55,9 @@ export default function MushafPage({
   // it has nothing useful to offer on glyphs that can't be selected or copied, and
   // on a touch screen it would otherwise fire in the middle of a long press.
   onVerseContextMenu,
+  // How a verse is named to a screen reader — "Surah Al-Isra, ayah 87". Passed in
+  // so it can be said in the interface's language; the fallback is the bare key.
+  verseLabel = (v) => `${v.surahNumber}:${v.ayahNumber}`,
 }) {
   const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
   const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
@@ -62,6 +65,29 @@ export default function MushafPage({
   const dragRef = useRef(null);                           // active mouse drag { word, x, y, moved }
   const suppressClickRef = useRef(false);                 // swallow the click after a handled mouse press
   const { lines, ornamental } = pageData;
+
+  // Reaching the page with a screen reader or the keyboard.
+  //
+  // The glyphs are private-use codepoints from this page's own QCF font: to
+  // anything that is not this font they are noise, so every glyph is hidden from
+  // assistive tech and the page carries the verses' real Uthmani text in a clipped
+  // block instead (absolutely positioned, so the 15-slot grid never sees it).
+  //
+  // Tapping a verse is a real action, so each verse needs a real control — but one
+  // per WORD would be hundreds of tab stops on a page. So the verse's first word on
+  // the page is the button for the whole verse, and the rest are decoration.
+  const verseAnchors = useMemo(() => {
+    const first = new Map();
+    for (const line of lines) {
+      if (!line.words) continue;   // a blank row, a surah plate or the basmala
+      for (const w of line.words) if (!first.has(w.verseKey)) first.set(w.verseKey, w.position);
+    }
+    return first;
+  }, [lines]);
+  const verseByKey = useMemo(
+    () => new Map((pageData?.verses ?? []).map((v) => [v.verseKey, v])),
+    [pageData]
+  );
   const rootRef = useRef(null);
 
   // Touch screens have no hover — in "cover" mode a tap stands in for it.
@@ -179,6 +205,14 @@ export default function MushafPage({
       className={`mushaf-page${ornamental ? ' is-ornamental' : ''}`}
       onMouseLeave={() => setHoverWord(null)}
     >
+      {/* What a screen reader reads: this page's verses, in order, as text. Clipped
+          to a pixel and absolutely positioned, so it is outside the 15-slot grid and
+          changes nothing about the printed page. */}
+      <div className="mushaf-sr-text">
+        {(pageData?.verses ?? []).map((v) => (
+          <p key={v.verseKey} lang="ar">{verseLabel(v)}: {v.textUthmani}</p>
+        ))}
+      </div>
       {lines.map((line) => {
         // Each row is pinned to its true printed line number (1..15). Ornamental
         // pages 1–2 aren't a 15-line grid — they flow centred, so no row pinning.
@@ -230,10 +264,24 @@ export default function MushafPage({
               const isHardWord = hardVerses?.has(w.verseKey);
               const annCls = `${hlColor ? ` is-hl-${hlColor}` : ''}${isHardWord ? ' is-hard' : ''}`;
               const isNoteMedallion = w.charType === 'end' && noteVerses?.has(w.verseKey);
+              const isVerseAnchor = verseAnchors.get(w.verseKey) === w.position;
+              const a11y = isVerseAnchor
+                ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  'aria-label': verseLabel(verseByKey.get(w.verseKey) ?? { verseKey: w.verseKey }),
+                  onKeyDown: (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    handleWordClick(w);
+                  },
+                }
+                : {};
               return (
                 <span
                   key={`${w.verseKey}-${w.position}`}
                   data-verse-key={w.verseKey}
+                  {...a11y}
                   className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}`}
                   style={fontFamily ? { fontFamily } : undefined}
                   onPointerDown={(e) => {
@@ -259,7 +307,7 @@ export default function MushafPage({
                     onVerseContextMenu?.(w.verseKey);
                   }}
                 >
-                  <span className={concealed ? 'mushaf-concealed' : undefined}>{w.glyph}</span>
+                  <span className={concealed ? 'mushaf-concealed' : undefined} aria-hidden="true">{w.glyph}</span>
                   {/* Note indicator — an inset dot on the ayah medallion (kept
                       inside the word box so the line's overflow clip never cuts
                       it). Absolutely positioned ⇒ zero effect on glyph spacing.

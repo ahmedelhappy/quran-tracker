@@ -2636,6 +2636,11 @@ export default function Library() {
     const s = SURAH_PAGES.find(x => x.number === surahNumber);
     return isArabic ? (s?.arabic ?? '') : (s?.name ?? '');
   };
+  // How a verse is announced to a screen reader, in the interface's language.
+  const verseAriaLabel = (v) => t('library.verseAria', {
+    surah: surahLabelFor(v.surahNumber),
+    ayah: fmtNum(v.ayahNumber),
+  });
   // Every distinct surah actually on a page, in reading order — multi-surah
   // pages (e.g. the short-surah pages near the end) list them all, joined by ' · '.
   const pageSurahLabels = (pageVerses) =>
@@ -3145,6 +3150,7 @@ export default function Library() {
                     onOpenNote={(markVersesMode || !showAnns) ? null : (vk) => openNote(pd.page, vk)}
                     noteIndicatorLabel={t('library.annotations.noteIndicator')}
                     inRange={inRange}
+                    verseLabel={verseAriaLabel}
                     onVerseContextMenu={markVersesMode ? null : showVerseActions}
                   />
                 </Flip>

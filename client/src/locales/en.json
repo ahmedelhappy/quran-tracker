@@ -772,6 +772,7 @@
       "show": "Show the sidebar",
       "hide": "Hide the sidebar (S)"
     },
+    "verseAria": "Surah {{surah}}, ayah {{ayah}}",
     "signedOut": {
       "title": "Sign in to track your progress",
       "body": "Mark pages memorized, save bookmarks, and add highlights, notes and drawings.",
