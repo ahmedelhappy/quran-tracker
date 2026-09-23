@@ -485,6 +485,13 @@ Two small wrappers enforce the onboarding flow: `DashboardWrapper` sends users t
 users to `/dashboard`. A `useEffect` also sets `document.dir` to `rtl` when the language is
 Arabic — that's what makes the whole UI mirror for Arabic.
 
+`ScrollToTop`, rendered once inside the router, scrolls the window back to the top whenever
+the **path** changes. A single-page app doesn't do that on its own: the browser only resets
+scroll on a real page load, so without it `/progress` scrolled halfway down would open
+`/dashboard` halfway down too. It deliberately watches `pathname` and not the query string —
+the Library turns pages by changing `?page=`, and jumping to the top on every turn would
+fight the reader.
+
 ### Auth state — [../client/src/context/AuthContext.jsx](../client/src/context/AuthContext.jsx)
 
 A React Context is the app-wide store for "the current user." It exposes `user`, `loading`,
@@ -576,6 +583,21 @@ CSS grid (`repeat(15, minmax(0,1fr))`) inside a fixed-size frame that is uniform
 its column — so a line can never overflow at any screen size. Every word is a `<span>` keyed
 by `verseKey` (`"surah:ayah"`) + word `position`, which is the stable anchor that selection,
 audio, self-test, and (future) annotations all share.
+
+**Screen readers.** The glyph fonts draw the page correctly, but the characters underneath are
+private-use codepoints — to a screen reader they mean nothing. So `MushafPage` marks every
+glyph `aria-hidden`, makes the *first word of each verse* a focusable button labelled
+"Surah Al-Baqarah, ayah 5" (Enter/Space selects the verse, like a click), and renders the
+page's verses as real Arabic text in a visually clipped `.mushaf-sr-text` block. That block
+is absolutely positioned, so it never takes one of the 15 grid rows. One stop per verse, not
+per word, is the right grain: the verse is what the reader selects, plays and memorizes.
+
+**Turning ahead of the reader.** Once a page has settled, `Library` fetches the pages on
+either side in idle time (forward first — that's how a mushaf is read), with their fonts.
+The font is warmed with `warmPageFont`, which only pulls the file into the HTTP cache, not
+`ensurePageFont`, which also registers it with `document.fonts` — registering a face makes
+the browser re-check every text style on the page, and doing that for neighbours measurably
+slowed the page being read. The real registration happens on arrival, straight from cache.
 
 [../client/src/pages/Library.jsx](../client/src/pages/Library.jsx) is the mushaf reader
 (§9 covers where the Arabic text comes from). Its sidebar is a single flat sequence, in
