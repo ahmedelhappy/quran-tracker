@@ -290,7 +290,7 @@ const Landing = () => {
                 {planDays.map((d) => (
                   <div key={d} className="flex-1 bg-white dark:bg-gray-700 rounded-lg p-2.5 text-center border border-gray-100 dark:border-gray-600">
                     <p className="text-xs text-[#4A4A4A] dark:text-gray-400 mb-0.5">{d}</p>
-                    <p className="text-xs font-semibold text-[#1B4332] dark:text-emerald-400">5 Ayahs</p>
+                    <p className="text-xs font-semibold text-[#1B4332] dark:text-emerald-400">{t('landing.features.planAyahs', { count: 5 })}</p>
                   </div>
                 ))}
               </div>
