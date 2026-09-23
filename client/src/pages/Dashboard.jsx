@@ -719,7 +719,9 @@ export default function Dashboard() {
           </div>
 
           <div className="col-span-1 md:col-span-2 grid grid-cols-2 gap-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center">
+            {/* Each stat card keeps the height it will have once its number arrives,
+                so the page below does not lift when the data lands. */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center min-h-[165px]">
               {loading ? (
                 <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-16" /><Sk h="h-6" w="w-20" /></>
               ) : (
@@ -734,7 +736,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center min-h-[165px]">
               {loading ? (
                 <><Sk h="h-16" w="w-16" /><Sk h="h-3" w="w-16" /><Sk h="h-5" w="w-20" /></>
               ) : (
@@ -758,7 +760,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center col-span-2">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col justify-center items-center text-center min-h-[126px] col-span-2">
               {loading ? (
                 <><Sk h="h-8" w="w-8" /><Sk h="h-3" w="w-24" /><Sk h="h-7" w="w-32" /></>
               ) : (
@@ -806,12 +808,34 @@ export default function Dashboard() {
           </div>
 
           {/* ── TODAY TAB ─────────────────────────────────────── */}
+          {/* A floor under the day's tasks, so the sections below hold still while
+              the plan is on its way. */}
+          <div className="min-h-[24rem]">
           {activeTab === 'today' && (
             loading ? (
+              /* The skeleton stands in for the REAL shape — two columns, a heading
+                 and a couple of task cards each — so that when the data lands, the
+                 page below it (the week plan, the tip of the day) doesn't jump. The
+                 panel's min-height holds that floor for both states. */
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {Array(4).fill(0).map((_, i) => (
-                  <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 space-y-2">
-                    <Sk h="h-5" w="w-24" /><Sk h="h-4" w="w-36" />
+                {[0, 1].map((col) => (
+                  <div key={col} className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <Sk h="h-6" w="w-40" />
+                      <Sk h="h-4" w="w-16" />
+                    </div>
+                    {[0, 1].map((i) => (
+                      <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-4 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <Sk h="h-9" w="w-9" />
+                          <div className="flex-1 space-y-2">
+                            <Sk h="h-5" w="w-28" />
+                            <Sk h="h-4" w="w-40" />
+                          </div>
+                        </div>
+                        <Sk h="h-9" w="w-full" />
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -1080,6 +1104,7 @@ export default function Dashboard() {
               )}
             </div>
           )}
+          </div>
         </section>
 
         {/* ── Tip of the Day ───────────────────────────────── */}
