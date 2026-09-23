@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -49,6 +49,16 @@ const PersistentChatbot = () => {
   return user && user.onboardingComplete ? <Chatbot /> : null;
 };
 
+// A new page starts at its top. Only a change of PAGE counts: the reader moves
+// around the Library with ?page=…, and yanking that back to the top on every turn
+// would fight them. Instant, because this is a new page appearing, not a journey
+// across the current one — and a smooth ride would be one more thing to wait for.
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [pathname]);
+  return null;
+};
+
 // Redirect authenticated users away from public pages — to wherever they were
 // headed when they were asked to sign in, if that is a page of this app.
 const PublicRoute = ({ children }) => {
@@ -72,6 +82,7 @@ function App() {
     <AuthProvider>
       <ToastProvider>
         <Router>
+          <ScrollToTop />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Public routes */}
