@@ -20,6 +20,21 @@ input[type=number] { -moz-appearance: textfield; }
 
 html { scroll-behavior: smooth; }
 
+/* ── Keyboard focus ──────────────────────────────────────────────────────────
+   One visible focus ring for everything that can be focused, in the brand
+   colour, shown only for KEYBOARD focus (:focus-visible), so a mouse click
+   never leaves a ring behind. Written with :where() so its specificity is zero:
+   any component that already styles its own focus still wins, and this is only
+   the floor for everything that doesn't. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid #004f35;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.dark :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline-color: #34d399;
+}
+
 body {
   font-family: 'Inter', sans-serif;
   background-color: #f9f9ff;
