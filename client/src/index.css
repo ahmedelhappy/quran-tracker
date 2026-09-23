@@ -20,6 +20,10 @@ input[type=number] { -moz-appearance: textfield; }
 
 html { scroll-behavior: smooth; }
 
+/* Tell the browser the page is dark, so what it draws ITSELF — the native face of
+   a <select>, the scrollbars — is dark too. Without it WebKit painted its own light
+   select surface under the light dark-mode text, leaving blank white boxes. */
+html.dark { color-scheme: dark; }
 
 /* ── Keyboard focus ──────────────────────────────────────────────────────────
    One visible focus ring for everything that can be focused, in the brand
