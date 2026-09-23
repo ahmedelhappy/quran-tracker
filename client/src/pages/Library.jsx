@@ -38,7 +38,7 @@ import {
   DEFAULT_RECITER,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
-import { fetchMushafPage, ensurePageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
+import { fetchMushafPage, ensurePageFont, warmPageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { SURAH_PAGES } from '../data/surahPages';
 import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
@@ -90,6 +90,8 @@ const RANGE_TOUCH_HOLD = 400;   // ms a finger must rest before it starts pickin
 const RANGE_EDGE_W = 64;        // px of the viewport's sides that count as "at the edge"
 const RANGE_EDGE_DWELL = 550;   // ms the pointer must stay there before the page turns
 const RANGE_EDGE_REPEAT = 900;  // ms between further turns while it stays there
+const PREFETCH_DELAY = 1200;         // ms after a page settles before warming its neighbours
+const PREFETCH_DELAY_PLAYING = 2500; // …and longer while the recitation is warming its own files
 const RANGE_SCROLL_EDGE = 40;   // px of a ZOOMED page's visible edge that scrolls it during a drag
 const RANGE_SCROLL_SPEED = 18;  // px per frame at the very edge
 
@@ -1505,6 +1507,56 @@ export default function Library() {
     fetchMushafPage(page).catch(() => {});
     ensurePageFont(page).catch(() => {});
   }, [playingOrd, isPlaying, nextOrdAfter, visiblePages]);
+
+  // Warm the pages on either side of the one being read — data AND its glyph font,
+  // which is the slow half — so turning by hand is as instant as the turns playback
+  // already makes. Forward first, because that is the way a mushaf is read.
+  //
+  // It waits until the current page has settled, and waits longer while the
+  // recitation is running: the audio warm-up is already pulling files three verses
+  // ahead, and a font is ~80 KB, so the two should not be reaching for the line at
+  // the same moment. Each step then runs in IDLE time, one page at a time, and the
+  // font is only brought into the cache (warmPageFont), not registered: registering
+  // a face re-checks every text style on this page, and a first measurement of this
+  // prefetch doing that had Lighthouse's blocking time on /library go 230 → 510ms.
+  // Failures are ignored — this is a head start, never something anyone waits on.
+  useEffect(() => {
+    if (!pageResolved || pageLoading || pageError || pagesData.length === 0) return;
+    const forward = [];
+    const back = [];
+    for (let i = 0; i < pageStep; i += 1) {
+      const next = currentPage + pageStep + i;
+      const prev = currentPage - pageStep + i;
+      if (next <= 604) forward.push(next);
+      if (prev >= 1) back.push(prev);
+    }
+    const targets = [...forward, ...back];
+    if (!targets.length) return;
+    let cancelled = false;
+    let idleId = null;
+    const whenIdle = (fn) => (typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(fn, { timeout: 3000 })
+      : setTimeout(fn, 0));
+    const step = (i) => {
+      if (cancelled || i >= targets.length) return;
+      idleId = whenIdle(async () => {
+        try {
+          await fetchMushafPage(targets[i]);
+          await warmPageFont(targets[i]);
+        } catch { /* a page that refuses to warm is simply fetched on arrival */ }
+        step(i + 1);
+      });
+    };
+    const id = setTimeout(() => step(0), isPlaying ? PREFETCH_DELAY_PLAYING : PREFETCH_DELAY);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+      if (idleId != null) {
+        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
+        else clearTimeout(idleId);
+      }
+    };
+  }, [currentPage, pageStep, pageResolved, pageLoading, pageError, pagesData.length, isPlaying]);
 
   // ── Keyboard page-turning + shortcuts ────────────────────
   // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both

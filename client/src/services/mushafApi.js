@@ -54,6 +54,19 @@ export const ensurePageFont = async (page) => {
   return family;
 };
 
+// Bring a page's font file into the HTTP cache WITHOUT registering it. Registering
+// a face (document.fonts.add) makes the browser re-check the text styles of the
+// whole page, which is real main-thread work on a page of several hundred word
+// spans — too much to spend on a page the reader may never turn to. A warm cache
+// alone already takes the network out of the ensurePageFont that runs on arrival.
+export const warmPageFont = (page) => {
+  if (loadedFonts.has(page)) return Promise.resolve();
+  return fetch(`/fonts/qcf/${FONT_VERSION}/p${page}.woff2`)
+    .then((r) => r.arrayBuffer())      // read to the end, so the cache entry completes
+    .then(() => undefined)
+    .catch(() => undefined);
+};
+
 // ── Printed-line corrections ─────────────────────────────────────────────────
 // The API's per-word `line_number` matches the print everywhere we have checked
 // but for a handful of words, where it puts a word one line EARLIER than the
