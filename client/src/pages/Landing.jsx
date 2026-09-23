@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FiPlay, FiCalendar, FiActivity, FiTrendingUp, FiZap, FiChevronDown, FiMoon, FiSun, FiBookOpen, FiHeadphones, FiFileText, FiGlobe, FiGift, FiCheck } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../hooks/useTheme';
 
 const CircleRing = ({ pct = 75, size = 88, stroke = 7 }) => {
   const { theme } = useTheme();

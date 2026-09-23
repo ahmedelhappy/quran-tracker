@@ -1,18 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../services/api';
+import { AuthContext } from '../hooks/useAuth';
 import i18n from '../i18n';
 
-// Create the context
-const AuthContext = createContext();
-
-// Custom hook to use auth context
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+// The context object and its useAuth() hook live in hooks/useAuth.js, so that
+// this file exports only a component.
 
 // Provider component
 export const AuthProvider = ({ children }) => {

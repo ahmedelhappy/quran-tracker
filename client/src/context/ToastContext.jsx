@@ -1,8 +1,6 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { FiCheckCircle, FiAlertCircle, FiInfo, FiX } from 'react-icons/fi';
-
-const ToastContext = createContext(null);
-export const useToast = () => useContext(ToastContext);
+import { ToastContext } from '../hooks/useToast';
 
 const STYLES = {
   success: { bg: 'bg-[#1B4332]', icon: <FiCheckCircle className="w-4 h-4 flex-shrink-0" /> },

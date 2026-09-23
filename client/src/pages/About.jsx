@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { FiMoon, FiSun } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../hooks/useTheme';
 
 const About = () => {
   const { t } = useTranslation();

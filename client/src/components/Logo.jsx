@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const Logo = ({ className = '', size = 'md' }) => {
   const cfg = { sm: [18, 'text-base'], md: [22, 'text-lg'], lg: [26, 'text-2xl'] };

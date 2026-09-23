@@ -24,8 +24,8 @@ import PageScrubber from '../components/PageScrubber';
 import MushafZoomControl from '../components/MushafZoomControl';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
-import { useToast } from '../context/ToastContext';
-import { useAuth } from '../context/AuthContext';
+import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
 import { loginPathFor } from '../utils/returnTo';
 import {
   fetchPageTafsir,

@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAward } from 'react-icons/fi';
 import { leaderboardAPI, authAPI } from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
+import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 

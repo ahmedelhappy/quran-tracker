@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { FiGlobe } from 'react-icons/fi';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../services/api';
 import Tooltip from './Tooltip';
 
