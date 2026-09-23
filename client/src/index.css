@@ -20,6 +20,7 @@ input[type=number] { -moz-appearance: textfield; }
 
 html { scroll-behavior: smooth; }
 
+
 /* ── Keyboard focus ──────────────────────────────────────────────────────────
    One visible focus ring for everything that can be focused, in the brand
    colour, shown only for KEYBOARD focus (:focus-visible), so a mouse click
@@ -249,7 +250,12 @@ html[lang='ar'] body {
   width: 576px;
   height: 852px;
   transform-origin: top left;
-  transform: scale(calc(100cqw / 576px));
+  /* Scale = the canvas width ÷ 576px, as a plain number. `calc(100cqw / 576px)`
+     would say it directly, but dividing a length by a length ("typed arithmetic")
+     is not supported in Firefox, which drops the whole declaration: the page then
+     drew at 576px whatever its canvas, overflowing it. tan(atan2(a, b)) is a ÷ b
+     through trigonometry, which every engine supports. */
+  transform: scale(tan(atan2(100cqw, 576px)));
   border: 14px solid transparent;
   border-image: url('/mushaf-frame.svg') 20 round;
   border-radius: 2px;
