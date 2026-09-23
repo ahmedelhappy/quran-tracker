@@ -501,6 +501,21 @@ rehydrate the user (so a refresh keeps you logged in). `login`/`register` store 
 and set the user; `logout` clears both. Any component calls `useAuth()` to read or change
 this.
 
+The hook itself lives in [hooks/useAuth.js](../client/src/hooks/useAuth.js), together with
+the context object, and not in `AuthContext.jsx` — the same split applies to `useTheme`
+([hooks/useTheme.js](../client/src/hooks/useTheme.js)) and `useToast`
+([hooks/useToast.js](../client/src/hooks/useToast.js)). The reason is **React Fast Refresh**:
+Vite can only hot-swap a file in place (keeping state) if it exports nothing but components.
+A provider file that also exports a hook is reloaded from scratch on every edit — and lint
+(`react-refresh/only-export-components`) flags it. So: import providers from `context/`,
+hooks from `hooks/`.
+
+One trap worth knowing when writing effects: react-i18next hands out a **new** `t` *and* a new
+`i18n` wrapper whenever the language changes. Listing either as a dependency means "re-run on
+every language switch" — right for a memo that formats labels (Progress's chart), wrong for an
+effect that fetches data (Dashboard's plan). An effect that only needs a translated string
+when something fails can read it from the app's instance (`import appI18n from '../i18n'`).
+
 ### One page in detail — [../client/src/pages/Dashboard.jsx](../client/src/pages/Dashboard.jsx)
 
 This is the canonical "fetch then render" pattern:

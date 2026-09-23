@@ -90,7 +90,7 @@ Frontend reads the backend URL from `VITE_API_URL` (`client/src/services/api.js`
 
 After login, if `user.onboardingComplete === false`, the app redirects to `/onboarding`.
 
-**State management**: React Context — `context/AuthContext.jsx` holds the logged-in user and exposes `login`, `logout`, `updateUser` (token persisted in `localStorage` under key `'token'`); `ThemeContext.jsx` drives light/dark mode; `ToastContext.jsx` provides toasts. UI language (EN/AR) is handled by `react-i18next` (`src/i18n.js`, locales in `src/locales/`), which also sets `dir="rtl"` for Arabic.
+**State management**: React Context — `context/AuthContext.jsx` holds the logged-in user and exposes `login`, `logout`, `updateUser` (token persisted in `localStorage` under key `'token'`); `ThemeContext.jsx` drives light/dark mode; `ToastContext.jsx` provides toasts. The context files export only their providers; the hooks (`useAuth`, `useTheme`, `useToast`) and context objects live in `hooks/` so Fast Refresh works. UI language (EN/AR) is handled by `react-i18next` (`src/i18n.js`, locales in `src/locales/`), which also sets `dir="rtl"` for Arabic.
 
 **HTTP**: `services/api.js` — Axios instance with a request interceptor that automatically attaches `Authorization: Bearer <token>` from localStorage. `services/quranApi.js` fetches Quran content from external sources (page text, per-ayah audio, tafsir) with in-memory caching.
 
