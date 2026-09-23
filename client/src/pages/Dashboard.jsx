@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import appI18n from '../i18n';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { progressAPI, authAPI, annotationsAPI } from '../services/api';
@@ -352,22 +353,31 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [i18n.language]);
 
+  // Today's plan loads ONCE, on mount. The error message is read through the
+  // app's i18next instance at the moment of failure, not through `t` or the
+  // hook's `i18n`: react-i18next hands out a NEW one of each whenever the
+  // language changes, so depending on them would refetch the whole plan on
+  // every language switch just to translate a toast. `alive` drops a result
+  // that lands after the dashboard has gone (no toast for a page you left).
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
         const [taskRes, juzRes] = await Promise.all([
           progressAPI.getTodayTasks(),
           progressAPI.getJuzProgress(),
         ]);
+        if (!alive) return;
         setData(taskRes.data.data);
         setJuzData(juzRes.data.data);
       } catch {
-        showToast(t('dashboard.failedTasks'), 'error');
+        if (alive) showToast(appI18n.t('dashboard.failedTasks'), 'error');
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-  }, []);
+    return () => { alive = false; };
+  }, [showToast]);
 
   // The hard-annotations summary loads independently — it never blocks the tasks.
   useEffect(() => {
