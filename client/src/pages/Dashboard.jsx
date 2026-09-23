@@ -800,6 +800,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => setHowToOpen(true)}
+              aria-label={t('howTo.open')}
               className="ms-auto -mb-px inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-[#707974] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-400 transition-colors"
             >
               <FiHelpCircle className="w-4 h-4" />

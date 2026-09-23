@@ -3450,8 +3450,9 @@ export default function Library() {
 
             {/* Jump to Juz / Surah — side by side: two controls of the same kind,
                 and stacked they cost a lot of height for what they do. */}
+            {/* Each is a <label>, so its heading names the select for screen readers. */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-2 min-w-0">
+              <label className="flex flex-col gap-2 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToJuz')}</span>
                 <select
                   value={currentJuz}
@@ -3462,8 +3463,8 @@ export default function Library() {
                     <option key={i + 1} value={i + 1}>{t('library.juzInfoLabel', { n: fmtNum(i + 1) })}</option>
                   ))}
                 </select>
-              </div>
-              <div className="flex flex-col gap-2 min-w-0">
+              </label>
+              <label className="flex flex-col gap-2 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.jumpToSurah')}</span>
                 <select
                   value={sidebarSurah?.number ?? ''}
@@ -3479,7 +3480,7 @@ export default function Library() {
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
             </div>
 
             {/* Signed out: ONE nudge in place of every account feature — the
@@ -4507,6 +4508,7 @@ export default function Library() {
                         <Tooltip label={t('tooltips.tafsirEdition')} className="w-full">
                           <select
                             value={tafsirEdition}
+                            aria-label={t('library.tafsirEdition')}
                             onChange={e => setTafsirEdition(e.target.value)}
                             className={selectCls}
                           >
