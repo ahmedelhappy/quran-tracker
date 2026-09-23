@@ -3775,6 +3775,7 @@ export default function Library() {
                               {s.counts.highlight > 0 && <span className="inline-flex items-center gap-0.5"><FiDroplet className="w-3 h-3 text-amber-500" />{fmtNum(s.counts.highlight)}</span>}
                               {s.counts.note > 0 && <span className="inline-flex items-center gap-0.5"><FiMessageSquare className="w-3 h-3 text-blue-500" />{fmtNum(s.counts.note)}</span>}
                               {s.counts.hard > 0 && <span className="inline-flex items-center gap-0.5"><FiFlag className="w-3 h-3 text-red-500" />{fmtNum(s.counts.hard)}</span>}
+                              {s.counts.text > 0 && <span className="inline-flex items-center gap-0.5"><FiType className="w-3 h-3 text-violet-500 dark:text-violet-400" />{fmtNum(s.counts.text)}</span>}
                               {s.counts.drawing > 0 && <FiPenTool className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
                             </span>
                           </span>
