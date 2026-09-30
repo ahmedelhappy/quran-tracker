@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { SURAH_PAGES } from '../data/surahPages';
 import BasmalaGlyph from './BasmalaGlyph';
+import { hideModeStep } from '../utils/selfTestCycle';
 
 const surahName = (n) => SURAH_PAGES.find((s) => s.number === n)?.arabic ?? '';
 
@@ -47,8 +48,9 @@ export default function MushafPage({
   noteIndicatorLabel,
   // inRange(verseKey) → is this verse inside the playback range being dragged out
   // (or already picked)? Painted with the same continuous band as a selected verse,
-  // one step behind it in precedence. Every word also carries `data-verse-key`, so
-  // the reader can hit-test a drag with elementFromPoint without knowing the layout.
+  // one step behind it in precedence. Every word also carries `data-verse-key` (and
+  // `data-word-position`), so the reader can hit-test a drag — or a right-click
+  // through the ink layer — with elementFromPoint without knowing the layout.
   inRange,
   // Right-click on a verse — what now opens its actions, since a plain click only
   // selects. The browser's own menu is always suppressed over the text either way:
@@ -121,8 +123,12 @@ export default function MushafPage({
       // Three-state cycle per verse: reveal → select → hide + deselect. Gated
       // on THIS word's own concealed state (the watermark can leave a verse
       // partially revealed after a drag stopped mid-verse).
-      if (isConcealed?.(w.verseKey, w.position)) onRevealVerse?.(w.verseKey);
-      else if (w.verseKey === selectedVerseKey) onHideVerse?.(w.verseKey);
+      const step = hideModeStep({
+        concealed: !!isConcealed?.(w.verseKey, w.position),
+        selected: w.verseKey === selectedVerseKey,
+      });
+      if (step === 'reveal') onRevealVerse?.(w.verseKey);
+      else if (step === 'hide') onHideVerse?.(w.verseKey);
       else onSelectVerse?.(w.verseKey);
       return;
     }
@@ -281,6 +287,7 @@ export default function MushafPage({
                 <span
                   key={`${w.verseKey}-${w.position}`}
                   data-verse-key={w.verseKey}
+                  data-word-position={w.position}
                   {...a11y}
                   className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}`}
                   style={fontFamily ? { fontFamily } : undefined}

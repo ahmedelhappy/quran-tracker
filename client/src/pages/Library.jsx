@@ -46,6 +46,7 @@ import {
 import { useDraggable } from '../hooks/useDraggable';
 import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
+import { hideModeStep } from '../utils/selfTestCycle';
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -2103,6 +2104,43 @@ export default function Library() {
   }, [markVersesMode]);
   useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
 
+  // ── Self-test while annotating ──
+  // With annotate mode AND the hide-all self-test both on, the ink layer covers
+  // the words, so a plain click draws and can never reach them. The right button
+  // (never used for ink) takes over the verse cycle instead: the layer hands over
+  // the press's screen point, we look THROUGH the layer for the word underneath
+  // and run the same reveal → select → hide ladder a plain click runs when not
+  // annotating. Nothing here touches the ink, so Ctrl+Z still only undoes ink.
+  //
+  // "Select" stays quiet exactly as a plain click's does — the verse is banded,
+  // the tafsir follows it, no popover opens over the page being drawn on. The
+  // actions that popover holds are a right-click away outside annotate mode.
+  //
+  // Hit-testing the point (not the layer's page) means a spread and a zoomed page
+  // need nothing special: whichever word is under the pointer is the one meant,
+  // and its concealed state is read from ITS page's watermark, as the click path
+  // reads it. Blank margin finds no word and does nothing.
+  const selfTestWhileDrawing = drawPage != null && concealMode === 'hide';
+  const cycleVerseAtPoint = useCallback((x, y) => {
+    const word = document.elementsFromPoint(x, y)
+      .map((el) => el.closest?.('.mushaf-word[data-verse-key]'))
+      .find(Boolean);
+    if (!word) return;
+    const verseKey = word.getAttribute('data-verse-key');
+    const key = `${verseKey}:${word.getAttribute('data-word-position')}`;
+    let concealed = false;
+    for (const [page, order] of pageOrders) {
+      const idx = order.indexOf.get(key);
+      if (idx == null) continue;
+      concealed = idx > (watermarks[page] ?? -1);
+      break;
+    }
+    const step = hideModeStep({ concealed, selected: verseKey === selectedVerseKey });
+    if (step === 'reveal') revealVerse(verseKey);
+    else if (step === 'hide') hideVerse(verseKey);
+    else handleWordSelect(verseKey);
+  }, [pageOrders, watermarks, selectedVerseKey, revealVerse, hideVerse, handleWordSelect]);
+
   // Entering "mark verses" clears any selected verse so its popover (with the
   // annotation actions) can't fire while the two-word picking mode owns taps.
   const startMarkVerses = useCallback(() => {
@@ -2963,6 +3001,11 @@ export default function Library() {
       // A control, or somewhere inside a panel being used: not "off the verse".
       // The repeat panel counts, so the pickers can be adjusted with the span lit.
       if (e.target.closest?.(KEEPS_VERSE_SELECTION)) return;
+      // Self-test while annotating: the ink layer is where the verse cycle runs
+      // (right-click) and drawing there is working WITH the verse just checked —
+      // a stroke must not drop it, or the next right-click would select it again
+      // instead of hiding it.
+      if (selfTestWhileDrawing && e.target.closest?.('.mushaf-draw-svg, .mushaf-text-layer')) return;
       // A picked span carries no actions to fold away first, so it is one step:
       // the span goes. (It and a single verse are never both selected — picking
       // either clears the other.)
@@ -2975,7 +3018,7 @@ export default function Library() {
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVerseKey, rangeSelection, popoverHidden]);
+  }, [selectedVerseKey, rangeSelection, popoverHidden, selfTestWhileDrawing]);
 
   // The repeat menu goes away on a click anywhere, exactly as the verse actions do
   // — and by the same means: a capture-phase listener that never preventDefaults,
@@ -3223,6 +3266,7 @@ export default function Library() {
                   onDeleteText={(id) => deleteText(pd.page, id)}
                   onReadText={(n) => setReadTextNote({ text: n.text, color: n.color || 'ink' })}
                   placeholder={t('library.draw.textPlaceholder')}
+                  onSecondaryPress={selfTestWhileDrawing ? cycleVerseAtPoint : undefined}
                 />
                 <MushafMarks pageData={pd} outerEdge={outerEdge} prevLastRub={prevLastRub} />
               </div>
@@ -3633,7 +3677,15 @@ export default function Library() {
                 <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
                   {t('library.selfTest.label')}
                 </span>
-                <InfoHint text={t(`library.selfTest.hint.${selfTest}`)} label={t('library.selfTest.label')} size="xs" />
+                {/* Hide-all also says how to use it while annotating — right-click
+                    — for anyone who can annotate, so it is found before it's needed. */}
+                <InfoHint
+                  text={selfTest === 'hide' && signedIn
+                    ? `${t('library.selfTest.hint.hide')} ${t('library.selfTest.hint.hideDrawing')}`
+                    : t(`library.selfTest.hint.${selfTest}`)}
+                  label={t('library.selfTest.label')}
+                  size="xs"
+                />
               </div>
               {/* Segmented control: pick a testing style (or turn it off). */}
               <div
@@ -3879,7 +3931,9 @@ export default function Library() {
             {(concealMode || !seenVerseTap) && (
               <p data-tour="lib-verse" className="w-full max-w-[650px] mx-auto -mb-1 flex items-center justify-center gap-1.5 text-center text-xs text-[#707974] dark:text-gray-500">
                 <FiInfo className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
-                {concealMode ? t(`library.selfTest.hint.${concealMode}`) : t('hints.libraryVerseTap')}
+                {selfTestWhileDrawing
+                  ? t('library.selfTest.hint.hideDrawing')
+                  : concealMode ? t(`library.selfTest.hint.${concealMode}`) : t('hints.libraryVerseTap')}
               </p>
             )}
 

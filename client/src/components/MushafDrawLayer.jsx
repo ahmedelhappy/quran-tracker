@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { FiCheck, FiX, FiMessageSquare } from 'react-icons/fi';
+import { isSecondaryPress } from '../utils/selfTestCycle';
 
 // ── Free-form ink + text layer for one mushaf page ───────────────────────────
 // An SVG overlay (ink) plus an HTML overlay (text notes), both siblings of the
@@ -14,6 +15,11 @@ import { FiCheck, FiX, FiMessageSquare } from 'react-icons/fi';
 // (pen/highlighter), erases whole strokes (eraser, never text), and places/edits/
 // moves/deletes free-floating text notes (the 'text' tool). When not `active`
 // (and not `visible`) it renders nothing — the reader's clean-view toggle.
+//
+// The right button never draws. While the hide-all self-test is ALSO on, the
+// reader passes `onSecondaryPress`, and a right-click (or Ctrl+click — macOS's
+// right-click) anywhere on the layer hands its screen point over so the verse
+// underneath can be revealed without leaving annotate mode. Left input is untouched.
 
 const CANVAS_W = 524;
 const CANVAS_H = 800;
@@ -82,6 +88,7 @@ export default function MushafDrawLayer({
   onDeleteText,
   onReadText,
   placeholder = 'Note',
+  onSecondaryPress,
 }) {
   const svgRef = useRef(null);
   const [live, setLive] = useState(null);
@@ -126,7 +133,13 @@ export default function MushafDrawLayer({
   };
 
   const onDown = (e) => {
-    if (!active || e.button === 2) return;
+    if (!active) return;
+    if (onSecondaryPress && isSecondaryPress(e)) {
+      e.preventDefault();
+      onSecondaryPress(e.clientX, e.clientY);
+      return;
+    }
+    if (e.button === 2) return;
     e.preventDefault();
     const [x, y] = clientToXY(e.clientX, e.clientY);
     if (tool === 'text') { openEditor(null, x, y); return; }
@@ -141,6 +154,13 @@ export default function MushafDrawLayer({
 
   const onMove = (e) => {
     if (!active) return;
+    // The primary button let go while another (the right) is still held: a
+    // chorded press reports that as a move, not an up, and the stroke would
+    // otherwise go on following the right button. End it where the left let go.
+    if (e.pointerType === 'mouse' && !(e.buttons & 1) && (drawingRef.current || erasingRef.current)) {
+      endStroke(e);
+      return;
+    }
     if (tool === 'eraser') { if (erasingRef.current) { const [x, y] = clientToXY(e.clientX, e.clientY); eraseAt(x, y); } return; }
     if (!drawingRef.current) return;
     const [x, y] = clientToXY(e.clientX, e.clientY);
@@ -194,6 +214,14 @@ export default function MushafDrawLayer({
   // ── Text-note drag (draw mode only): move updates x/y; a tap opens the editor ──
   const onNoteDown = (e, note) => {
     if (!active) return;
+    // A right-click on a note's icon reaches through to the verse, like anywhere
+    // else on the layer, rather than opening the note's editor.
+    if (onSecondaryPress && isSecondaryPress(e)) {
+      e.stopPropagation();
+      e.preventDefault();
+      onSecondaryPress(e.clientX, e.clientY);
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
     const start = { px: e.clientX, py: e.clientY, moved: false };
@@ -259,6 +287,7 @@ export default function MushafDrawLayer({
                 title={excerpt}
                 aria-label={excerpt}
                 onPointerDown={active ? (e) => onNoteDown(e, n) : undefined}
+                onContextMenu={active && onSecondaryPress ? (e) => e.preventDefault() : undefined}
                 onClick={active ? undefined : (e) => { e.stopPropagation(); onReadText?.(n); }}
               >
                 <FiMessageSquare className="w-full h-full" />

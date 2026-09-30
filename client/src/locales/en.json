@@ -796,6 +796,7 @@
       "hint": {
         "off": "Pick a self-test style to check your memory.",
         "hide": "Everything is hidden — hover a word to peek at just that word; click a verse to reveal it fully.",
+        "hideDrawing": "While drawing, right-click a verse to reveal it — again to select it, once more to hide it.",
         "cover": "The text stays visible — hover to blur a few words at the cursor and test your recall. On touch, tap a verse to hide it briefly."
       },
       "revealAll": "Reveal all",
