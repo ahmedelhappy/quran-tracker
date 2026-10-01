@@ -68,6 +68,8 @@ export const progressAPI = {
 export const bookmarksAPI = {
   list: () => API.get('/bookmarks'),
   add: (data) => API.post('/bookmarks', data),
+  // { label?, pageNumber?, replace? } — rename and/or move; replace takes over an occupied page.
+  update: (id, data) => API.put(`/bookmarks/${id}`, data),
   remove: (id) => API.delete(`/bookmarks/${id}`),
 };
 
