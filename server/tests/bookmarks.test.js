@@ -190,4 +190,202 @@ describe('Bookmarks API', () => {
     const count = await Bookmark.countDocuments({ userId: user._id });
     assert.equal(count, 100);
   });
+
+  // ── PUT /api/bookmarks/:id — rename and move ──────────────
+
+  // Creates a bookmark over the API and returns its id.
+  const addBm = async (auth, body) => {
+    const res = await request(app).post('/api/bookmarks').set('Authorization', auth).send(body);
+    assert.equal(res.status, 201);
+    return res.body.data._id;
+  };
+  const put = (auth, id, body) => request(app).put(`/api/bookmarks/${id}`).set('Authorization', auth).send(body);
+
+  test('rename: sets a trimmed label, and an empty label clears it', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 12 });
+
+    const renamed = await put(auth, id, { label: '  Morning review  ' });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.data.label, 'Morning review');
+    assert.equal(renamed.body.data.pageNumber, 12);
+
+    const cleared = await put(auth, id, { label: '   ' });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.data.label, '');
+    assert.equal((await Bookmark.findById(id)).label, '');
+  });
+
+  test('rename: a label another bookmark already has is a 409, case-insensitively', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    await addBm(auth, { pageNumber: 1, label: 'Al-Fatiha' });
+    const id = await addBm(auth, { pageNumber: 2, label: 'Start of Baqarah' });
+
+    const res = await put(auth, id, { label: 'AL-FATIHA' });
+    assert.equal(res.status, 409);
+    assert.match(res.body.message, /already have a bookmark with this name/i);
+    assert.equal((await Bookmark.findById(id)).label, 'Start of Baqarah');
+  });
+
+  test('rename: re-saving its own label in a different case succeeds', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 7, label: 'juz amma' });
+
+    const res = await put(auth, id, { label: 'Juz Amma' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.label, 'Juz Amma');
+  });
+
+  test('rename: rejects a label longer than 50 characters', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 7, label: 'keep' });
+    const res = await put(auth, id, { label: 'a'.repeat(51) });
+    assert.equal(res.status, 400);
+    assert.equal((await Bookmark.findById(id)).label, 'keep');
+  });
+
+  test('move: to a free page', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 50, label: 'Here' });
+
+    const res = await put(auth, id, { pageNumber: 77 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.pageNumber, 77);
+    assert.equal(res.body.data.label, 'Here');
+    assert.equal(res.body.replaced, undefined);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id, pageNumber: 50 }), 0);
+  });
+
+  test('move: to its own page is a no-op success', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 60, label: 'Same' });
+
+    const res = await put(auth, id, { pageNumber: 60 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.pageNumber, 60);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
+  });
+
+  test('move: onto an occupied page is a 409 naming the other bookmark, and nothing changes', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10, label: 'Mover' });
+    const otherId = await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+
+    const res = await put(auth, id, { pageNumber: 20, label: 'Renamed too' });
+    assert.equal(res.status, 409);
+    assert.match(res.body.message, /Page 20 is already bookmarked/);
+    assert.equal(res.body.conflict._id, otherId);
+    assert.equal(res.body.conflict.pageNumber, 20);
+    assert.equal(res.body.conflict.label, 'Sitting here');
+
+    // Neither the move nor the rename was applied.
+    const mover = await Bookmark.findById(id);
+    assert.equal(mover.pageNumber, 10);
+    assert.equal(mover.label, 'Mover');
+    assert.ok(await Bookmark.findById(otherId));
+  });
+
+  test('move: replace:true removes the other bookmark and moves this one in one request', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10, label: 'Mover' });
+    const otherId = await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+
+    const res = await put(auth, id, { pageNumber: 20, replace: true });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data._id, id);
+    assert.equal(res.body.data.pageNumber, 20);
+    assert.equal(res.body.replaced._id, otherId);
+
+    assert.equal(await Bookmark.findById(otherId), null);
+    const onPage = await Bookmark.find({ userId: user._id, pageNumber: 20 });
+    assert.equal(onPage.length, 1);
+    assert.equal(String(onPage[0]._id), id);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
+  });
+
+  test('move: replace:true may take over the replaced bookmark\'s label', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10 });
+    await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+
+    const res = await put(auth, id, { pageNumber: 20, label: 'sitting HERE', replace: true });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.label, 'sitting HERE');
+    assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
+  });
+
+  test('move + rename: a duplicate label blocks the whole request, even with replace', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10, label: 'Mover' });
+    const otherId = await addBm(auth, { pageNumber: 20 });
+    await addBm(auth, { pageNumber: 30, label: 'Taken' });
+
+    const res = await put(auth, id, { pageNumber: 20, label: 'taken', replace: true });
+    assert.equal(res.status, 409);
+    // The occupant was NOT removed and the mover did not move.
+    assert.ok(await Bookmark.findById(otherId));
+    assert.equal((await Bookmark.findById(id)).pageNumber, 10);
+  });
+
+  test('ownership: a user cannot rename or move another user\'s bookmark', async () => {
+    const alice = await createUser({ email: 'alice3@example.com' });
+    const bob = await createUser({ email: 'bob3@example.com' });
+    const aliceAuth = `Bearer ${tokenFor(alice._id)}`;
+    const bobAuth = `Bearer ${tokenFor(bob._id)}`;
+    const aliceId = await addBm(aliceAuth, { pageNumber: 100, label: 'Mine' });
+
+    const rename = await put(bobAuth, aliceId, { label: 'Stolen' });
+    assert.equal(rename.status, 404);
+    const move = await put(bobAuth, aliceId, { pageNumber: 5, replace: true });
+    assert.equal(move.status, 404);
+
+    const stored = await Bookmark.findById(aliceId);
+    assert.equal(stored.label, 'Mine');
+    assert.equal(stored.pageNumber, 100);
+  });
+
+  test('update: missing / malformed id returns 404, and no token returns 401', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    assert.equal((await put(auth, '64b7f9f9f9f9f9f9f9f9f9f9', { label: 'x' })).status, 404);
+    assert.equal((await put(auth, 'not-an-id', { label: 'x' })).status, 404);
+    const anon = await request(app).put('/api/bookmarks/64b7f9f9f9f9f9f9f9f9f9f9').send({ label: 'x' });
+    assert.equal(anon.status, 401);
+  });
+
+  test('update validation: out-of-range pages and non-scalar bodies are rejected with 400', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 9, label: 'Stay' });
+
+    for (const pageNumber of [0, 605, -3, 2.5, 'x']) {
+      const res = await put(auth, id, { pageNumber });
+      assert.equal(res.status, 400, `pageNumber=${pageNumber} should be rejected`);
+    }
+    for (const body of [
+      { pageNumber: { $gt: 0 } },
+      { label: { $ne: '' } },
+      { label: ['a'] },
+      { pageNumber: 20, replace: { $exists: true } },
+      { pageNumber: 20, replace: 'yes' },
+    ]) {
+      const res = await put(auth, id, body);
+      assert.equal(res.status, 400, `${JSON.stringify(body)} should be rejected`);
+      assert.equal(res.body.success, false);
+    }
+
+    const stored = await Bookmark.findById(id);
+    assert.equal(stored.pageNumber, 9);
+    assert.equal(stored.label, 'Stay');
+  });
 });
