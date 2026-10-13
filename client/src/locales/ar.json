@@ -769,6 +769,9 @@
     "playThisVerse": "تشغيل هذه الآية",
     "audio": {
       "speed": "سرعة التشغيل",
+      "versePause": "الفاصل بين الآيات",
+      "versePauseNatural": "فاصل طبيعي",
+      "versePauseTight": "فاصل قصير",
       "repeat": "التكرار",
       "repeatOff": "إيقاف",
       "repeatVerse": "آية",

@@ -162,12 +162,37 @@ export const getAyahAudioUrl = (reciterId, globalAyahNumber) => {
     : everyayahUrl(r.everyayah, keyOfOrd(globalAyahNumber));
 };
 
+// A copy of the verse's file that the page may READ (CORS), for measuring its edges
+// (verseEdges.js): everyayah, primary or the byte-identical fallback. Null for the
+// CDN-only reciters — the CDN sends no CORS headers.
+export const getAyahEdgeUrl = (reciterId, globalAyahNumber) =>
+  everyayahUrl(getReciter(reciterId).everyayah, keyOfOrd(globalAyahNumber));
+
 // How the warm-up asks for a verse it only wants the edge to have ready. HEAD for the
 // CDN: it warms the edge exactly as a GET does (cold object: HEAD → MISS, the next GET
 // → HIT, 5/5) and has no body, so nothing gzip-encoded is left in the HTTP cache for
 // the <audio> element to inherit (see getAyahAudioUrl). everyayah sends MP3s
 // uncompressed, so its warm-up stays the GET it always was.
 export const ayahWarmMethod = (reciterId) => (getReciter(reciterId).cdn ? 'HEAD' : 'GET');
+
+// The digital silence every file of a reciter OPENS with — encoder delay, not the
+// recording: exact zero samples ahead of the room tone. The player starts the next
+// verse this much early (Library.jsx, the handover), so these zeros play under the
+// last instant of the verse before instead of as a gap after it — and being exact
+// zeros they add nothing to it. Measured 2026-10-13 with Chrome's decoder over 60
+// ayahs per reciter (surah openings and random ayahs): each value is the SMALLEST run
+// seen, less 3 ms, so it never reaches the room tone, let alone a word. Reciters left
+// out are 0: LAME-tagged files (Chrome trims the delay itself — Afasy, Ayyoub,
+// Jibreel, Maher, …), or a reciter whose runs vary down to under 13 ms (Husary's are
+// 44 ms in 47 files of 60, but one is 8.9 ms; Minshawi's go down to 4.8 ms).
+const LEADING_SILENCE_MS = {
+  'ar.abdulbasitmurattal': 13, 'ar.hudhaify': 14, 'ar.abdurrahmaansudais': 11,
+  'ar.shaatree': 24, 'ar.abdullahbasfar': 13, 'ar.hanirifai': 12, 'ar.ibrahimakhbar': 143,
+  'ar.aymanswoaid': 16, 'ea.ghamdi': 26, 'ea.qatami': 12, 'ea.muhsinqasim': 11,
+  'ea.alijaber': 33, 'ea.faresabbad': 25, 'ea.tablawi': 25, 'ea.neana': 37,
+  'ea.abdulbasitmujawwad': 38, 'ea.minshawimujawwad': 11, 'ea.husarymuallim': 39,
+};
+export const getLeadingSilenceMs = (reciterId) => LEADING_SILENCE_MS[resolveReciterId(reciterId)] ?? 0;
 
 // The verified second source. Null when the reciter has none — including every
 // reciter whose primary already IS everyayah.

@@ -35,10 +35,12 @@ import {
   getAyahAudioUrl,
   getFallbackAyahAudioUrl,
   ayahWarmMethod,
+  getLeadingSilenceMs,
   toArabicDigits,
   resolveReciterId,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
+import { verseEdges, peekVerseEdges, matchesDuration } from '../services/verseEdges';
 import { fetchMushafPage, ensurePageFont, decodePageFont, takeReadyPages, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { setPrefetchFocus, holdPrefetch, resumePrefetch, stopPrefetch } from '../services/pagePrefetch';
 import { SURAH_PAGES } from '../data/surahPages';
@@ -95,6 +97,28 @@ const RANGE_EDGE_DWELL = 550;   // ms the pointer must stay there before the pag
 const RANGE_EDGE_REPEAT = 900;  // ms between further turns while it stays there
 const RANGE_SCROLL_EDGE = 40;   // px of a ZOOMED page's visible edge that scrolls it during a drag
 const RANGE_SCROLL_SPEED = 18;  // px per frame at the very edge
+
+// The verse-to-verse handover (see the effect that schedules it in the component).
+// The guess is only used until this device's own play()-to-sound delay has been
+// measured, and it is deliberately LOW: guessing short starts the next verse a hair
+// late, never early. The margin aims every start a little late for the same reason.
+const HANDOVER_LATENCY_GUESS_MS = 20;
+const HANDOVER_MARGIN_MS = 8;
+// Measured silence is never used right up to the sound beside it: this much of it is
+// left alone, against the edge of a 10 ms analysis window landing on a fading letter.
+const EDGE_GUARD_MS = 30;
+// What the 'tight' pause setting trims the silence between two verses down to.
+const TIGHT_PAUSE_MS = 150;
+// How much leading digital silence is an encoder's doing rather than the recording's:
+// within 50 ms of the reciter's measured floor (getLeadingSilenceMs) — 15-86 ms across
+// the reciters here, measured 2026-10-13 — and never over 100 ms (one reciter's encode
+// runs to 146 ms and simply keeps the remainder).
+const ENCODER_DELAY_SPREAD_MS = 50;
+const ENCODER_DELAY_MAX_MS = 100;
+// The leading-silence lead was measured with Chrome's decoder; another engine may
+// trim an MP3's start differently, so elsewhere the next verse just starts on time.
+const HANDOVER_LEAD_OK = typeof navigator !== 'undefined'
+  && !!navigator.userAgentData?.brands?.some((b) => b.brand === 'Chromium');
 
 // The four highlight colours offered in the verse popover (must match the
 // server's Annotation color enum). `cls` is the swatch's fill in the picker.
@@ -541,6 +565,18 @@ export default function Library() {
   // The watchdog's clock: when the active element last proved it was still moving.
   const lastProgressRef = useRef(0);
   const STALL_MS = 2500;
+  // The handover (see the effect that schedules it, below the stall watchdog): the
+  // next verse's element is started a beat before the current one runs out, so it is
+  // heard as that one finishes. preStartRef holds such an early start until the
+  // current verse's `ended` commits it; the start-latency samples are start-to-sound
+  // delays measured on this device; concurrentOk drops to false for the session if
+  // the platform ever pauses one element because the other one started.
+  const preStartRef = useRef(null);       // { idx, ord } while the next verse sounds early
+  const latencyProbeRef = useRef(null);   // { idx, at, from, got } a start being timed
+  const startLatencyRef = useRef([]);     // recent start → audible delays, ms
+  const concurrentOkRef = useRef(true);
+  const letGoRef = useRef(null);          // { idx, at } a verse the 'tight' setting stopped early
+  const handleEndedRef = useRef(null);    // the current render's handleEnded, for timers
 
   // ── Playback speed (persisted) ──────────────────────────
   const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
@@ -548,6 +584,12 @@ export default function Library() {
     const v = parseFloat(localStorage.getItem('playbackRate'));
     return SPEEDS.includes(v) ? v : 1;
   });
+  // The pause between verses (persisted): 'natural' plays the reciter's pause exactly as
+  // recorded; 'tight' trims the silence at the two edges of each handover down to about
+  // TIGHT_PAUSE_MS, never into a word. See the handover effect.
+  const [versePause, setVersePause] = useState(() => (localStorage.getItem('versePause') === 'tight' ? 'tight' : 'natural'));
+  useEffect(() => { localStorage.setItem('versePause', versePause); }, [versePause]);
+
   // Kept current during render, so a timer or a promise callback never acts on a
   // value from the render that scheduled it.
   isPlayingRef.current = isPlaying;
@@ -908,6 +950,7 @@ export default function Library() {
     clearTimeout(audioRetryRef.current[i].timer);
     audioRetryRef.current[i] = { ord: null, tries: 0, timer: null, fallback: false };
     bufStateRef.current[i] = { ord: null, status: 'idle' };
+    if (preStartRef.current?.idx === i) preStartRef.current = null;
     const el = i === 0 ? audioARef.current : audioBRef.current;
     if (!el) return;
     el.pause();
@@ -946,6 +989,8 @@ export default function Library() {
     if (ord == null || !bufHolds(i, ord)) return;          // playback has moved on
     if (bufStateRef.current[i].status === 'failed') return; // a retry is already armed
     markBuf(i, ord, 'failed');
+    // An early start that broke is no handover: `ended` takes the ordinary road.
+    if (preStartRef.current?.idx === i) preStartRef.current = null;
     const active = i === activeBufRef.current && ord === playingOrdRef.current;
     const r = audioRetryRef.current[i];
     if (r.ord !== ord) { r.ord = ord; r.tries = 0; r.fallback = false; }
@@ -999,6 +1044,12 @@ export default function Library() {
   // it takes the same road.
   const playEl = (i, ord) => {
     const el = bufEl(i);
+    // Time how long a READY element takes from play() to sound — exactly what an early
+    // start is, and what the handover has to start ahead by. Starts that must load or
+    // seek first (a cold verse, a repeat rewinding) would be timing those instead.
+    if (el?.paused && el.readyState >= 3 /* HAVE_FUTURE_DATA */) {
+      latencyProbeRef.current = { idx: i, at: performance.now(), from: el.currentTime, got: [] };
+    }
     const promise = el?.play();
     if (!promise || typeof promise.catch !== 'function') return;
     promise.catch((err) => {
@@ -1006,6 +1057,19 @@ export default function Library() {
       if (err?.name === 'NotAllowedError') { setIsPlaying(false); setAudioBuffering(false); return; }
       failBuf(i, ord);
     });
+  };
+
+  // Take back an early start that is not going to be committed — playback paused, the
+  // verse replays instead, or the platform would not play two at once. The element is
+  // silenced and rewound, so it is still a ready buffer to swap into.
+  const cancelPreStart = () => {
+    const pre = preStartRef.current;
+    if (!pre) return;
+    preStartRef.current = null;
+    const el = bufEl(pre.idx);
+    if (!el) return;
+    el.pause();
+    try { el.currentTime = 0; } catch { /* it starts from 0 on its next load anyway */ }
   };
 
   // Resume the verse already loaded. If its last load FAILED, pressing play is a
@@ -1245,6 +1309,27 @@ export default function Library() {
   // Drive the active <audio> element: point it at the current verse and play.
   useEffect(() => {
     if (playingOrd == null) return;
+    // The handover already started this verse, so it would be heard the instant the
+    // last one ran out: adopt it exactly as it is — no rewind, no second play(). An
+    // early start for some OTHER verse (playback was re-aimed meanwhile) is taken back.
+    const pre = preStartRef.current;
+    if (pre) {
+      preStartRef.current = null;
+      const preEl = bufEl(pre.idx);
+      if (pre.ord === playingOrd && bufHolds(pre.idx, playingOrd) && preEl && !preEl.paused) {
+        if (activeBufRef.current !== pre.idx) {
+          bufEl(activeBufRef.current)?.pause();
+          activeBufRef.current = pre.idx;
+        }
+        setAudioError(false);
+        lastProgressRef.current = performance.now();
+        return;
+      }
+      if (preEl) {
+        preEl.pause();
+        try { preEl.currentTime = 0; } catch { /* it starts from 0 on its next load anyway */ }
+      }
+    }
     const cur = activeBufRef.current;
     const other = 1 - cur;
     // The idle buffer preloaded this verse while the previous one played — swap to
@@ -1341,6 +1426,7 @@ export default function Library() {
   const replayCurrent = () => {
     const el = activeEl();
     if (!el) return;
+    cancelPreStart();   // the end replays the verse, so nothing may have started after it
     el.currentTime = 0;
     lastProgressRef.current = performance.now();
     playEl(activeBufRef.current, playingOrd);
@@ -1386,7 +1472,7 @@ export default function Library() {
     }
     const el = activeEl();
     if (!el) return;
-    if (isPlaying) { el.pause(); setIsPlaying(false); return; }
+    if (isPlaying) { cancelPreStart(); el.pause(); setIsPlaying(false); return; }
     if (pickedOrd != null && pickedOrd !== playingOrd) { playOrd(pickedOrd); return; }
     resumeActive();
   };
@@ -1394,7 +1480,7 @@ export default function Library() {
   // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
   const toggleVerseAudio = (ord) => {
     if (ord == null) return;
-    if (ord === playingOrd && isPlaying) { activeEl()?.pause(); setIsPlaying(false); }
+    if (ord === playingOrd && isPlaying) { cancelPreStart(); activeEl()?.pause(); setIsPlaying(false); }
     else playOrd(ord);
   };
 
@@ -1438,6 +1524,7 @@ export default function Library() {
     }
     advanceOrd(1); // 'off' → continuous auto-advance through the whole Quran
   };
+  handleEndedRef.current = handleEnded;
 
   // A failed load is retried on the SAME url before it is called an error: the retry
   // is what warms the edge, so the second attempt is the one that plays. BOTH
@@ -1456,6 +1543,9 @@ export default function Library() {
   useEffect(() => {
     if (playingOrd == null || !isPlaying) return;
     const next = nextOrdAfter(playingOrd);
+    // The edges of both files of the coming handover (see the handover effect).
+    verseEdges(reciter, playingOrd);
+    if (next != null && next !== playingOrd) verseEdges(reciter, next);
     if (next == null || next === playingOrd) return;
     const idle = 1 - activeBufRef.current;
     // Already on it, or already has it, or failed on it with its own retry pending —
@@ -1502,6 +1592,236 @@ export default function Library() {
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, playingOrd]);
+
+  // ── The handover: start the next verse in time to be HEARD on time ──
+  // Waiting for `ended` puts dead air between every two verses: it fires once the last
+  // sample has played, then React renders, then the next element's play() still has to
+  // start its audio pipeline — 92-177 ms of silence at every verse change, measured
+  // 2026-10-13, cutting off the room tone mid-breath. So while a verse plays, its clock
+  // is read every frame, and the next verse's element — only once it is 'ready' — is
+  // started so that it becomes audible as this one runs out: ahead by the start latency
+  // measured on this device, and by the next file's leading digital silence, which then
+  // plays under the last instant of this verse — exact zeros, adding nothing. How far
+  // ahead is capped PER BOUNDARY by the silence this verse ends with plus those zeros,
+  // both measured on the files themselves (verseEdges.js): were the latency somehow
+  // zero, the next verse could still only land on silence, never on a final letter. A
+  // verse whose edges are unknown gets no lead beyond the zeros. Nothing is faded and
+  // no sound overlaps sound. The reciter's own pause between verses lives in the room
+  // tone at the end of one file and the start of the next, and with the pause setting
+  // on 'natural' (the default) it plays exactly as recorded; 'tight' trims that
+  // silence to about TIGHT_PAUSE_MS, from the edges inward, never into a word.
+  //
+  // `ended` still drives everything else — the repeat counts, the range wrap, the page
+  // follower, the highlight — so the verse shown switches when the new one is heard,
+  // never when its element is started. Anything uncertain leaves the handover to
+  // `ended`, which is exactly the road it always took: the next file not ready, a
+  // duration that moved while playing, a hidden tab (no frames), a replay, a stop.
+  useEffect(() => {
+    if (!isPlaying || playingOrd == null) { cancelPreStart(); return; }
+    let raf = 0;
+    let timer = 0;
+    let cutTimer = 0;
+    let firstDur = null;   // the duration this verse started with; if it moves, it isn't known
+    // Where the end of THIS verse leads, read exactly as handleEnded will act on it.
+    // null whenever that is not a different verse: a replay, a stop, the last ayah.
+    const ordAfterEnd = () => {
+      const ord = playingOrdRef.current;
+      if (ord == null) return null;
+      const done = repeatsDoneRef.current + 1;
+      if (repeatMode === 'verse') {
+        if (verseRepeat === Infinity || done < verseRepeat) return null;
+        return ord < TOTAL_AYAHS ? ord + 1 : null;
+      }
+      if (repeatMode === 'range') {
+        if (rangeVerseRepeat === Infinity || done < rangeVerseRepeat) return null;
+        if (ord < rangeEndOrd) return ord + 1;
+        const passes = rangePassesRef.current + 1;
+        if (rangeRepeat !== Infinity && passes >= rangeRepeat) return null;
+        return rangeStartOrd === ord ? null : rangeStartOrd;
+      }
+      return ord < TOTAL_AYAHS ? ord + 1 : null;
+    };
+    // Lower median of the recent measurements: an estimate that errs SHORT starts the
+    // next verse a touch late — a hair of extra silence — never early.
+    const startLatency = () => {
+      const a = [...startLatencyRef.current].sort((x, y) => x - y);
+      return a.length ? a[Math.floor((a.length - 1) / 2)] : HANDOVER_LATENCY_GUESS_MS;
+    };
+    // The verse's clock, as wall-time readings. currentTime does not move smoothly: it
+    // holds still for 17-30 ms at a time (worst near the end of a file) and then jumps,
+    // so a reading taken at the moment of decision can be stale by that much. Only
+    // FRESH readings — the value just moved — are kept, and the end is projected from
+    // the median of the last half second of them. Fired from that projection by the
+    // wall clock, a stall-free verse is handed over on time even while its clock freezes.
+    const seen = [];   // [performance.now(), currentTime, rate] — fresh readings only
+    const readClock = (el) => {
+      const ct = el.currentTime;
+      const last = seen[seen.length - 1];
+      if (last && last[1] === ct) return;
+      // A clock that went BACK is a replay (verse repeat) or a seek: what it said before
+      // describes a pass that is over. Kept, it projected that pass's end onto the new
+      // one and started the next verse over the repeat.
+      if (last && ct < last[1]) seen.length = 0;
+      const now = performance.now();
+      seen.push([now, ct, el.playbackRate || 1]);
+      while (seen.length && now - seen[0][0] > 500) seen.shift();
+    };
+    // When, in performance.now() terms, this verse runs out — or null if not yet known.
+    const endsAt = (dur) => {
+      if (seen.length < 4) return null;
+      const at = seen.map(([t, ct, r]) => t + (dur - ct) * 1000 / r).sort((x, y) => x - y);
+      return at[Math.floor(at.length / 2)];
+    };
+    // The plan for this handover: when to call play() on the next verse and from where
+    // in its file, and ('tight' only) when to let go of this one — all in
+    // performance.now() terms. null when there is to be no early start.
+    const plan = () => {
+      if (preStartRef.current || !concurrentOkRef.current) return null;
+      const next = ordAfterEnd();
+      if (next == null) return null;
+      const cur = activeBufRef.current;
+      const idle = 1 - cur;
+      if (!bufHolds(cur, playingOrdRef.current) || !bufReady(idle, next)) return null;
+      const el = bufEl(cur);
+      const nx = bufEl(idle);
+      if (!el || !nx || el.paused || el.ended || el.seeking || !nx.paused || nx.seeking) return null;
+      const dur = el.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return null;
+      if (firstDur == null) firstDur = dur;
+      if (dur !== firstDur) return null;
+      // The media clock runs at the playback rate: file times are divided by it.
+      const rate = el.playbackRate || 1;
+      const rec = reciterRef.current;
+      // The edges of the two files, if measured — and only if the measurement is of
+      // these very files (verseEdges.js). Unknown counts as no silence at all.
+      const eN = peekVerseEdges(rec, playingOrdRef.current);
+      const eN1 = peekVerseEdges(rec, next);
+      const okN = matchesDuration(eN, dur);
+      const okN1 = matchesDuration(eN1, nx.duration);
+      // Where the sound really runs out. `duration` is the browser's estimate, and on a
+      // file without a Xing header it counts the trailing ID3 tag as audio (8-32 ms
+      // too long); the measured length counts frames, so where it is known it wins.
+      const endPos = okN ? Math.min(dur, eN.durMs / 1000) : dur;
+      const end = endsAt(endPos);
+      if (end == null) return null;
+      // The projection must agree with the clock as it reads right now; if it doesn't,
+      // the readings are from some other stretch of playback, and nothing is started.
+      if (Math.abs(end - performance.now() - (endPos - el.currentTime) * 1000 / rate) > 150) return null;
+      const tail = okN ? eN.tailSilenceMs : 0;
+      // Only encoder delay counts as padding to play under this verse: up to 50 ms past
+      // this reciter's measured floor of it, and 100 ms at most. A longer run of zeros is
+      // the recording's own pause, edited down to digital silence (Hani ar-Rifai opens
+      // some files with 500-800 ms of it), and 'natural' plays it as it is.
+      const floorZeros = getLeadingSilenceMs(rec);
+      const zeros = HANDOVER_LEAD_OK
+        ? Math.min(okN1 ? eN1.headZerosMs : floorZeros, floorZeros + ENCODER_DELAY_SPREAD_MS, ENCODER_DELAY_MAX_MS)
+        : 0;
+      // 'tight': whatever silence the two edges add up to beyond TIGHT_PAUSE_MS comes
+      // off — the next verse's opening silence first (it simply starts further in),
+      // then this verse's closing silence (it is let go of early). Never within
+      // EDGE_GUARD_MS of a sound, so not a letter is touched.
+      let skip = 0;
+      let cut = 0;
+      if (versePause === 'tight' && okN && okN1) {
+        let excess = (tail + eN1.headSilenceMs) / rate - TIGHT_PAUSE_MS;
+        if (excess > 0) {
+          skip = Math.min(excess * rate, Math.max(0, eN1.headSilenceMs - EDGE_GUARD_MS));
+          excess -= skip / rate;
+          cut = Math.max(0, Math.min(excess * rate, tail - EDGE_GUARD_MS));
+        }
+      }
+      // The next verse has to be waiting at the point it will start from.
+      if (Math.abs(nx.currentTime * 1000 - skip) > 2) { nx.currentTime = skip / 1000; return null; }
+      const stopAt = end - cut / rate;
+      // Ahead by this device's start-up time, and by the next file's remaining exact
+      // zeros — but never further ahead than the silence this verse still has before
+      // it stops, plus those zeros: so even if the next verse sounded the instant
+      // play() was called, it could only ever land on silence, never on a letter.
+      const zerosLeft = Math.max(0, zeros - skip);
+      const budget = (Math.max(0, tail - cut - EDGE_GUARD_MS) + zerosLeft) / rate;
+      const early = Math.max(0, Math.min(startLatency() - HANDOVER_MARGIN_MS + zerosLeft / rate, budget));
+      return { idle, next, at: stopAt - early, stopAt: cut > 0 ? stopAt : null };
+    };
+    // 'tight' only: this verse's remaining silence is let go of, and `ended` is run as
+    // if it had come — the next verse is already sounding.
+    const letGo = (idx, ord) => {
+      cutTimer = 0;
+      const pre = preStartRef.current;
+      const el = bufEl(idx);
+      if (!pre || pre.ord === ord || activeBufRef.current !== idx || !el || el.paused) return;
+      letGoRef.current = { idx, at: performance.now() };   // so handleAudioPause knows it was us
+      el.pause();
+      handleEndedRef.current?.();
+    };
+    const fire = () => {
+      timer = 0;
+      const p = plan();
+      if (!p) return;                                       // the next frame looks again
+      const wait = p.at - performance.now();
+      if (wait > 4) { timer = setTimeout(fire, wait); return; }
+      preStartRef.current = { idx: p.idle, ord: p.next };
+      playEl(p.idle, p.next);
+      if (p.stopAt != null) {
+        const cur = activeBufRef.current;
+        const ord = playingOrdRef.current;
+        cutTimer = setTimeout(() => letGo(cur, ord), Math.max(0, p.stopAt - performance.now()));
+      }
+    };
+    // How long a timed play() took to be heard. A clock's first readings
+    // can't say: for its first ~100 ms it runs AHEAD of where it settles, which read as
+    // 3-19 ms against a steady 59-76 ms (measured 2026-10-13) and started verses 60 ms
+    // early. So it is back-dated only from fresh readings 0.25-0.6 s in, by their median.
+    const measure = () => {
+      const probe = latencyProbeRef.current;
+      if (!probe) return;
+      const el = bufEl(probe.idx);
+      const now = performance.now();
+      const done = () => {
+        latencyProbeRef.current = null;
+        if (probe.got.length < 3) return;
+        const ms = probe.got.sort((x, y) => x - y)[Math.floor(probe.got.length / 2)];
+        if (ms >= 0 && ms < 300) startLatencyRef.current = [...startLatencyRef.current.slice(-6), ms];
+      };
+      if (!el || el.paused) { done(); return; }
+      const ct = el.currentTime;
+      const into = ct - probe.from;
+      if (into > 0.6) { done(); return; }
+      if (into < 0.25 || ct === probe.lastCt) return;
+      probe.lastCt = ct;
+      probe.got.push(now - probe.at - into * 1000 / (el.playbackRate || 1));
+    };
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      measure();
+      const el = activeEl();
+      if (el && !el.paused) readClock(el);
+      if (timer) return;
+      const p = plan();
+      // Two frames out is close enough to hand the last stretch to a timer.
+      if (p && p.at - performance.now() <= 40) timer = setTimeout(fire, Math.max(0, p.at - performance.now()));
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer); clearTimeout(cutTimer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playingOrd, repeatMode, verseRepeat, rangeVerseRepeat, rangeRepeat, rangeStartOrd, rangeEndOrd, versePause]);
+
+  // Some platforms (older iOS among them) will not play two media elements at once and
+  // pause the one already playing when another starts — which an early start would
+  // turn into the end of a verse cut off. If that is ever seen, the early start is
+  // taken back, the verse is finished, and the handover stays on `ended` for the rest
+  // of the session. Pauses the app makes itself never get here: each of them takes
+  // the early start back first, and a natural end has `ended` set.
+  const handleAudioPause = (e) => {
+    const el = e.currentTarget;
+    const i = activeBufRef.current;
+    const ours = letGoRef.current;   // the 'tight' setting letting go of a verse's tail
+    if (ours && ours.idx === bufIndexOf(el) && performance.now() - ours.at < 1000) { letGoRef.current = null; return; }
+    if (!preStartRef.current || el !== activeEl() || el.ended) return;
+    if (!bufHolds(i, playingOrdRef.current)) return;   // being released, not interrupted
+    concurrentOkRef.current = false;
+    cancelPreStart();
+    playEl(i, playingOrdRef.current);
+  };
 
   // Where a turn steps FROM. The router re-renders in a transition, so on a busy
   // device several key presses can land before `currentPage` catches up — and a
@@ -4501,6 +4821,20 @@ export default function Library() {
                 </select>
               </Tooltip>
 
+              {/* Pause between verses: the reciter's own, or trimmed short */}
+              <Tooltip label={t('library.audio.versePause')}>
+                <select
+                  value={versePause}
+                  onChange={e => setVersePause(e.target.value === 'tight' ? 'tight' : 'natural')}
+                  aria-label={t('library.audio.versePause')}
+                  data-testid="verse-pause"
+                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                >
+                  <option value="natural">{t('library.audio.versePauseNatural')}</option>
+                  <option value="tight">{t('library.audio.versePauseTight')}</option>
+                </select>
+              </Tooltip>
+
               {/* Repeat for memorization (verse ×N / range loop) */}
               <div className="relative" ref={repeatMenuRef}>
                 <Tooltip label={t('library.audio.repeat')}>
@@ -4636,6 +4970,7 @@ export default function Library() {
                 ref={ref}
                 preload="auto"
                 onEnded={handleEnded}
+                onPause={handleAudioPause}
                 onWaiting={(e) => { if (e.currentTarget === activeEl()) setAudioBuffering(true); }}
                 onPlaying={(e) => { if (e.currentTarget === activeEl()) { lastProgressRef.current = performance.now(); setAudioBuffering(false); setAudioError(false); } }}
                 onTimeUpdate={(e) => { if (e.currentTarget === activeEl()) lastProgressRef.current = performance.now(); }}

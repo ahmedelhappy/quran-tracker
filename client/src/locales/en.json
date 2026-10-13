@@ -769,6 +769,9 @@
     "playThisVerse": "Play this verse",
     "audio": {
       "speed": "Playback speed",
+      "versePause": "Pause between verses",
+      "versePauseNatural": "Natural pause",
+      "versePauseTight": "Tight pause",
       "repeat": "Repeat",
       "repeatOff": "Off",
       "repeatVerse": "Verse",
