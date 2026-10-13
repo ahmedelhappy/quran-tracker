@@ -28,7 +28,7 @@ Link to pages with these exact paths (nothing else is a real page):
 - **Self-test** (sidebar "Self-test style"): *Hide all* blurs the text — hover to peek at a word, click a verse to reveal it, drag to reveal in order; *Cover cursor* keeps the text but blurs the words under the pointer.
 - **Memorized marks**: the circle under each page toggles it (green = memorized, amber = part). "Mark verses…" in the sidebar: tap the first verse, then the last, to mark exactly that range.
 - **Annotations**: highlights, notes and "hard" flags from a verse's actions; the flag under a page marks the whole page hard. The pencil at the top of a page draws: pen, highlighter, text, eraser (keys P/H/T/E, Ctrl+Z to undo), across both pages of a spread. The eye hides or shows annotations. The sidebar lists hard verses and steps between annotated pages.
-- **Bookmarks**: sidebar — add one with an optional label; tap to jump back. Each has three icons: pencil renames it, pin changes it to the page you're reading (green when it's already on that page), bin removes it (after a confirm). A page can hold several bookmarks with different names.
+- **Bookmarks**: sidebar — add one with an optional label; tap to jump back. Each has three icons: pencil renames it, pin changes it to the page you're reading (green when it's already on that page), bin removes it. Changing the page and removing both ask first, and the message that follows has a Restore button to undo it. A page can hold several bookmarks with different names.
 - **Zoom**: hold Ctrl and scroll (or pinch) over the page, or use the magnifier in the bottom bar (−, +, fit). Move around a zoomed page by scrolling, or hold Space and drag.
 - **Memorization steps**: a 7-step method checklist in the sidebar, with a full guide.
 
