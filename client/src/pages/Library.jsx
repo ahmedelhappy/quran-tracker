@@ -1502,23 +1502,45 @@ export default function Library() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, playingOrd]);
 
+  // Where a turn steps FROM. The router re-renders in a transition, so on a busy
+  // device several key presses can land before `currentPage` catches up — and a
+  // handler bound in an earlier render still sees an older page. Stepping from
+  // either lost presses (5 quick presses at 4x CPU landed 1–4 pages short). So the
+  // base is kept in refs: the page last ASKED for, until it is on screen, else the
+  // page on screen — mirrored in a layout effect, which runs in the same task as
+  // the commit, so no input can slip in between.
+  const shownPageRef = useRef(currentPage);
+  const requestedPageRef = useRef(null);
+  useLayoutEffect(() => {
+    shownPageRef.current = currentPage;
+    if (requestedPageRef.current === currentPage) requestedPageRef.current = null;
+  }, [currentPage]);
+
   // Returns whether it actually navigated — the playback follower needs to know,
   // so it doesn't leave its "this turn was mine" flag set on a no-op.
   const goToPage = useCallback((n) => {
     let page = clampPage(n);
     // In the spread, anchor navigation to the right (odd) page of the pair.
     if (twoPage && page % 2 === 0) page = Math.max(1, page - 1);
-    if (page === currentPage) return false;
-    turnDirRef.current = page > currentPage ? 'fwd' : 'back'; // for the turn animation
+    const from = requestedPageRef.current ?? shownPageRef.current;
+    if (page === from) return false;
+    turnDirRef.current = page > from ? 'fwd' : 'back'; // for the turn animation
+    requestedPageRef.current = page === shownPageRef.current ? null : page;
     setSearchParams({ page: String(page) }, { replace: true });
     return true;
-  }, [twoPage, currentPage, setSearchParams]);
+  }, [twoPage, setSearchParams]);
 
   // Directional turns for a right-to-left book: "next" always moves forward
   // (higher page number), "prev" back — independent of UI language. The pager,
   // keyboard, edge-clicks and swipe all route through these two.
-  const goNext = useCallback(() => goToPage(currentPage + pageStep), [goToPage, currentPage, pageStep]);
-  const goPrev = useCallback(() => goToPage(currentPage - pageStep), [goToPage, currentPage, pageStep]);
+  const goNext = useCallback(
+    () => goToPage((requestedPageRef.current ?? shownPageRef.current) + pageStep),
+    [goToPage, pageStep]
+  );
+  const goPrev = useCallback(
+    () => goToPage((requestedPageRef.current ?? shownPageRef.current) - pageStep),
+    [goToPage, pageStep]
+  );
 
   // Keep the mushaf on the verse being recited. When playback reaches a verse that
   // isn't on screen — a repeat range spanning pages, or continuous recitation
