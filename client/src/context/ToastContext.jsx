@@ -11,7 +11,7 @@ const STYLES = {
 
 const DURATION = 4000;
 // A toast with an action (e.g. "Restore") stays longer, so there's time to reach it.
-const ACTION_DURATION = 7000;
+const ACTION_DURATION = 10000;
 
 const ToastItem = ({ id, message, type, action, duration, onDismiss }) => {
   const { t } = useTranslation();
