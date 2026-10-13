@@ -4,5 +4,7 @@ import { createContext, useContext } from 'react';
 // component (see useAuth.js for why).
 export const ToastContext = createContext(null);
 
-// { showToast(message, type = 'info') } — type is 'success' | 'error' | 'info'.
+// { showToast(message, type = 'info', { action, duration }) } — type is
+// 'success' | 'error' | 'info'; action = { label, onClick } adds a button
+// (e.g. "Restore") and keeps the toast up longer.
 export const useToast = () => useContext(ToastContext);
