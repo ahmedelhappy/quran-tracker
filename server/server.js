@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = require('./app');
+const Bookmark = require('./models/Bookmark');
 
 // Fail fast on missing critical configuration rather than booting a broken server
 // that only errors on the first request (or, worse, signs tokens with an
@@ -24,6 +25,17 @@ const PORT = process.env.PORT || 5000;
   try {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('✅ MongoDB Connected');
+    // Bring the bookmark indexes in line with the model. Idempotent; on the
+    // first boot after bookmarks went from one-per-page to several-per-page it
+    // drops the old UNIQUE { userId, pageNumber } index, which Mongoose would
+    // otherwise leave in place (it never alters an existing index). A failure
+    // is logged, not fatal — the app still serves everything else.
+    try {
+      const dropped = await Bookmark.syncIndexes();
+      if (dropped.length) console.log(`🔧 Bookmark indexes synced (dropped: ${dropped.join(', ')})`);
+    } catch (err) {
+      console.error('⚠️ Bookmark index sync failed:', err.message);
+    }
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   } catch (err) {
     console.error('❌ MongoDB Error:', err);

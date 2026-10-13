@@ -26,7 +26,14 @@ const bookmarkSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One bookmark per page per user — also the fast lookup index for a user's list.
-bookmarkSchema.index({ userId: 1, pageNumber: 1 }, { unique: true });
+// A page may hold several bookmarks as long as their names differ. Non-empty
+// labels are unique per user (case-insensitive, checked in the controller); an
+// unnamed bookmark displays as "Page N", so a page holds at most ONE of those —
+// enforced here by a partial unique index, which also catches races.
+bookmarkSchema.index({ userId: 1, pageNumber: 1 });
+bookmarkSchema.index(
+  { userId: 1, pageNumber: 1, label: 1 },
+  { unique: true, partialFilterExpression: { label: { $eq: '' } }, name: 'one_unnamed_per_page' }
+);
 
 module.exports = mongoose.model('Bookmark', bookmarkSchema);

@@ -73,18 +73,59 @@ describe('Bookmarks API', () => {
     }
   });
 
-  test('uniqueness: rejects a second bookmark for an already-bookmarked page', async () => {
+  test('a page may hold several bookmarks with different names (and one unnamed)', async () => {
     const user = await createUser();
     const auth = `Bearer ${tokenFor(user._id)}`;
-    const first = await request(app).post('/api/bookmarks').set('Authorization', auth).send({ pageNumber: 20 });
-    assert.equal(first.status, 201);
-
-    const second = await request(app).post('/api/bookmarks').set('Authorization', auth).send({ pageNumber: 20, label: 'Different label' });
-    assert.equal(second.status, 409);
-    assert.equal(second.body.success, false);
+    const post = (body) => request(app).post('/api/bookmarks').set('Authorization', auth).send(body);
+    assert.equal((await post({ pageNumber: 20 })).status, 201);
+    assert.equal((await post({ pageNumber: 20, label: 'Morning' })).status, 201);
+    assert.equal((await post({ pageNumber: 20, label: 'Evening' })).status, 201);
 
     const count = await Bookmark.countDocuments({ userId: user._id, pageNumber: 20 });
-    assert.equal(count, 1);
+    assert.equal(count, 3);
+  });
+
+  test('uniqueness: a second UNNAMED bookmark on the same page is a 409', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const first = await request(app).post('/api/bookmarks').set('Authorization', auth).send({ pageNumber: 20, label: 'Named' });
+    const second = await request(app).post('/api/bookmarks').set('Authorization', auth).send({ pageNumber: 20 });
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+
+    const third = await request(app).post('/api/bookmarks').set('Authorization', auth).send({ pageNumber: 20, label: '   ' });
+    assert.equal(third.status, 409);
+    assert.match(third.body.message, /Page 20 already has a bookmark without a name/);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id, pageNumber: 20 }), 2);
+  });
+
+  test('uniqueness: the database itself refuses a second unnamed bookmark on a page (race net)', async () => {
+    const user = await createUser();
+    await Bookmark.init();
+    await Bookmark.create({ userId: user._id, pageNumber: 9 });
+    await assert.rejects(Bookmark.create({ userId: user._id, pageNumber: 9 }), (e) => e.code === 11000);
+    // Named ones on the same page are fine at the index level too.
+    await Bookmark.create({ userId: user._id, pageNumber: 9, label: 'a' });
+    await Bookmark.create({ userId: user._id, pageNumber: 9, label: 'b' });
+  });
+
+  test('migration: syncIndexes replaces the old one-per-page UNIQUE index', async () => {
+    const user = await createUser();
+    // Recreate the pre-change state: the old unique { userId, pageNumber } index.
+    await Bookmark.collection.dropIndexes();
+    await Bookmark.collection.createIndex({ userId: 1, pageNumber: 1 }, { unique: true });
+    await Bookmark.create({ userId: user._id, pageNumber: 4, label: 'x' });
+    await assert.rejects(Bookmark.create({ userId: user._id, pageNumber: 4, label: 'y' }), (e) => e.code === 11000);
+
+    await Bookmark.syncIndexes();
+
+    const indexes = await Bookmark.collection.indexes();
+    const pageIdx = indexes.find((i) => i.name === 'userId_1_pageNumber_1');
+    assert.ok(pageIdx, 'lookup index exists');
+    assert.ok(!pageIdx.unique, 'lookup index is no longer unique');
+    assert.ok(indexes.find((i) => i.name === 'one_unnamed_per_page')?.unique);
+    await Bookmark.create({ userId: user._id, pageNumber: 4, label: 'y' });
+    assert.equal(await Bookmark.countDocuments({ userId: user._id, pageNumber: 4 }), 2);
   });
 
   test('uniqueness: rejects a second bookmark with the same label, case-insensitively and across whitespace', async () => {
@@ -272,31 +313,55 @@ describe('Bookmarks API', () => {
     assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
   });
 
-  test('move: onto an occupied page is a 409 naming the other bookmark, and nothing changes', async () => {
+  test('move: a named bookmark joins a page that already has bookmarks — no conflict', async () => {
     const user = await createUser();
     const auth = `Bearer ${tokenFor(user._id)}`;
     const id = await addBm(auth, { pageNumber: 10, label: 'Mover' });
-    const otherId = await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+    await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+    await addBm(auth, { pageNumber: 20 });
 
-    const res = await put(auth, id, { pageNumber: 20, label: 'Renamed too' });
+    const res = await put(auth, id, { pageNumber: 20 });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.pageNumber, 20);
+    assert.equal(res.body.replaced, undefined);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id, pageNumber: 20 }), 3);
+  });
+
+  test('move: an UNNAMED bookmark onto a page with an unnamed one is a 409 naming it, and nothing changes', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10 });
+    const otherId = await addBm(auth, { pageNumber: 20 });
+    await addBm(auth, { pageNumber: 20, label: 'Named neighbour' });
+
+    const res = await put(auth, id, { pageNumber: 20 });
     assert.equal(res.status, 409);
-    assert.match(res.body.message, /Page 20 is already bookmarked/);
+    assert.match(res.body.message, /Page 20 already has a bookmark without a name/);
     assert.equal(res.body.conflict._id, otherId);
     assert.equal(res.body.conflict.pageNumber, 20);
-    assert.equal(res.body.conflict.label, 'Sitting here');
+    assert.equal(res.body.conflict.label, '');
 
-    // Neither the move nor the rename was applied.
-    const mover = await Bookmark.findById(id);
-    assert.equal(mover.pageNumber, 10);
-    assert.equal(mover.label, 'Mover');
+    assert.equal((await Bookmark.findById(id)).pageNumber, 10);
     assert.ok(await Bookmark.findById(otherId));
   });
 
-  test('move: replace:true removes the other bookmark and moves this one in one request', async () => {
+  test('rename: clearing the label on a page that already has an unnamed bookmark is a 409', async () => {
     const user = await createUser();
     const auth = `Bearer ${tokenFor(user._id)}`;
-    const id = await addBm(auth, { pageNumber: 10, label: 'Mover' });
-    const otherId = await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+    await addBm(auth, { pageNumber: 20 });
+    const id = await addBm(auth, { pageNumber: 20, label: 'Named' });
+
+    const res = await put(auth, id, { label: '' });
+    assert.equal(res.status, 409);
+    assert.match(res.body.message, /without a name/);
+    assert.equal((await Bookmark.findById(id)).label, 'Named');
+  });
+
+  test('move: replace:true removes the other unnamed bookmark and moves this one in one request', async () => {
+    const user = await createUser();
+    const auth = `Bearer ${tokenFor(user._id)}`;
+    const id = await addBm(auth, { pageNumber: 10 });
+    const otherId = await addBm(auth, { pageNumber: 20 });
 
     const res = await put(auth, id, { pageNumber: 20, replace: true });
     assert.equal(res.status, 200);
@@ -311,16 +376,16 @@ describe('Bookmarks API', () => {
     assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
   });
 
-  test('move: replace:true may take over the replaced bookmark\'s label', async () => {
+  test('move + rename: naming an unnamed bookmark as it moves avoids the unnamed clash', async () => {
     const user = await createUser();
     const auth = `Bearer ${tokenFor(user._id)}`;
     const id = await addBm(auth, { pageNumber: 10 });
-    await addBm(auth, { pageNumber: 20, label: 'Sitting here' });
+    await addBm(auth, { pageNumber: 20 });
 
-    const res = await put(auth, id, { pageNumber: 20, label: 'sitting HERE', replace: true });
+    const res = await put(auth, id, { pageNumber: 20, label: 'Now named' });
     assert.equal(res.status, 200);
-    assert.equal(res.body.data.label, 'sitting HERE');
-    assert.equal(await Bookmark.countDocuments({ userId: user._id }), 1);
+    assert.equal(res.body.replaced, undefined);
+    assert.equal(await Bookmark.countDocuments({ userId: user._id, pageNumber: 20 }), 2);
   });
 
   test('move + rename: a duplicate label blocks the whole request, even with replace', async () => {
@@ -332,7 +397,7 @@ describe('Bookmarks API', () => {
 
     const res = await put(auth, id, { pageNumber: 20, label: 'taken', replace: true });
     assert.equal(res.status, 409);
-    // The occupant was NOT removed and the mover did not move.
+    // Nothing was removed and the mover did not move.
     assert.ok(await Bookmark.findById(otherId));
     assert.equal((await Bookmark.findById(id)).pageNumber, 10);
   });
