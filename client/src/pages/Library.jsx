@@ -34,6 +34,7 @@ import {
   findTafsirRun,
   getAyahAudioUrl,
   getFallbackAyahAudioUrl,
+  ayahWarmMethod,
   toArabicDigits,
   resolveReciterId,
   TAFSIR_EDITIONS,
@@ -1045,20 +1046,20 @@ export default function Library() {
   //    something to work around). Nothing in the page can tell a 502 from a 200 here,
   //    so there is no condition to loop on — only a fixed number of touches.
   //
-  //  - Blind is affordable, because a warm file is then free. Sampling cold ayahs,
-  //    a file turned 200 somewhere between the 2nd and the 8th request — one touch is
-  //    usually NOT enough — and once it has, every further touch is served out of the
-  //    browser's disk cache in about a millisecond (the CDN sends these files with
-  //    max-age=70 days). So the touches after the one that worked cost nothing, and
-  //    WARM_TOUCHES can cover the slow tail without paying for it every time.
+  //  - Blind is affordable, because a touch is cheap. Sampling cold ayahs, a file
+  //    turned 200 somewhere between the 2nd and the 8th request — one touch is usually
+  //    NOT enough — so WARM_TOUCHES covers the slow tail.
   //
-  //  - It is a whole-file GET, not a 2-byte range. A Range header would make this
-  //    nearly free, and the CDN does serve 206 (and a 206 warms the edge just as a
-  //    200 does — also checked). But Chrome strips Range from a no-cors fetch: it
-  //    never reaches the wire and the full file comes back anyway. So the honest cost
-  //    of this warm-up is about one extra download per ayah, since the <audio>
-  //    element fetches its own copy with a range request of its own. WARM_AHEAD is
-  //    the dial if that ever needs trading back for data.
+  //  - For the CDN it is a HEAD (ayahWarmMethod). It used to be a whole-file GET —
+  //    Chrome strips Range from a no-cors fetch, so a cheap ranged GET was never on
+  //    the table — and that GET turned out to be harmful, not just costly: this CDN
+  //    answers a fetch GZIP-ENCODED, and the <audio> element later revalidated that
+  //    cached gzip copy and played it CUT SHORT (measured 2026-10-13: up to 24% of a
+  //    file, words included — see getAyahAudioUrl). A HEAD warms the edge exactly as
+  //    the GET did (a cold object answers HEAD with MISS and the next GET with HIT)
+  //    and carries no body, so it costs a header's worth and leaves nothing behind.
+  //    everyayah sends MP3s uncompressed, so for it the GET stays, and its repeat
+  //    touches are disk-cache reads.
   const WARM_AHEAD = 3;
   const WARM_TOUCHES = 6;
   const WARM_GAP_MS = 500;
@@ -1068,7 +1069,7 @@ export default function Library() {
   // One blind request at the edge, and nothing else: no state, no element, no reader
   // visible consequence either way.
   const touchAyah = useCallback((rec, ord) => {
-    fetch(getAyahAudioUrl(rec, ord), { mode: 'no-cors' })
+    fetch(getAyahAudioUrl(rec, ord), { mode: 'no-cors', method: ayahWarmMethod(rec) })
       .catch(() => { /* a failed warm-up is a no-op by design */ });
   }, []);
 

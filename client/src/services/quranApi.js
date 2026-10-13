@@ -22,7 +22,7 @@ const HEFZ_RIWAYA_HAFS = 1;
 //     not always the real bitrate either (Ayyoub's, Jibreel's "128" hold 64 kbps).
 //   everyayah.com — addressed by folder and zero-padded surah+ayah ("086013").
 //     Behind BunnyCDN with a ~300-day max-age, so the warm-up's repeat touches are
-//     cache reads here too.
+//     cache reads here.
 //
 // How an entry plays:
 //   cdn set              → primary is the CDN. `everyayah` (if set) is the FALLBACK,
@@ -143,12 +143,31 @@ const everyayahUrl = (folder, verseKey) => {
 
 // The primary source for a verse, by its GLOBAL ayah number — whichever source
 // that reciter's primary is.
+//
+// A CDN address ends in a bare "?". The CDN serves the very same file for it (the
+// same edge object — a cold "…mp3?" is a MISS and the plain "…mp3" right after it
+// a HIT, and the other way round; measured 2026-10-13), but to the browser it is a
+// different cache key, and that is the point. The warm-up used to GET these files,
+// which this CDN answers GZIP-ENCODED; an <audio> element that later found that copy
+// in the HTTP cache revalidated it (one weak ETag for both encodings, so a 304) and
+// was handed the compressed length — so it stopped early: 0.7–24% of the file never
+// played (Hani ar-Rifai 112:1 lost its last 0.84 s, words included). Those copies sit
+// in listeners' caches for up to 70 days, renewed by every revalidation; the "?"
+// leaves them behind for good. The warm-up now asks with HEAD (ayahWarmMethod), so
+// it makes no new ones.
 export const getAyahAudioUrl = (reciterId, globalAyahNumber) => {
   const r = getReciter(reciterId);
   return r.cdn
-    ? `${AUDIO_CDN}/${r.cdn}/${r.id}/${globalAyahNumber}.mp3`
+    ? `${AUDIO_CDN}/${r.cdn}/${r.id}/${globalAyahNumber}.mp3?`
     : everyayahUrl(r.everyayah, keyOfOrd(globalAyahNumber));
 };
+
+// How the warm-up asks for a verse it only wants the edge to have ready. HEAD for the
+// CDN: it warms the edge exactly as a GET does (cold object: HEAD → MISS, the next GET
+// → HIT, 5/5) and has no body, so nothing gzip-encoded is left in the HTTP cache for
+// the <audio> element to inherit (see getAyahAudioUrl). everyayah sends MP3s
+// uncompressed, so its warm-up stays the GET it always was.
+export const ayahWarmMethod = (reciterId) => (getReciter(reciterId).cdn ? 'HEAD' : 'GET');
 
 // The verified second source. Null when the reciter has none — including every
 // reciter whose primary already IS everyayah.
