@@ -2713,13 +2713,36 @@ export default function Library() {
     }
   };
 
-  const removeBookmark = async (id) => {
-    const prev = bookmarks;
-    setBookmarks(prev.filter(b => b._id !== id)); // optimistic
+  // Re-create a removed bookmark (same page and name; it gets a new id). Returns
+  // the new bookmark, or null if it couldn't be restored (e.g. the name has
+  // since been reused).
+  const restoreBookmark = async ({ pageNumber, label }) => {
     try {
-      await bookmarksAPI.remove(id);
+      const res = await bookmarksAPI.add({ pageNumber, ...(label ? { label } : {}) });
+      setBookmarks(list => [...list, res.data.data].sort(byBookmarkOrder));
+      return res.data.data;
     } catch {
-      setBookmarks(prev); // roll back
+      return null;
+    }
+  };
+
+  // Removal (after its confirm) is optimistic; the toast that follows offers
+  // Restore, which re-creates it.
+  const removeBookmark = async (b) => {
+    setBookmarks(list => list.filter(x => x._id !== b._id));
+    try {
+      await bookmarksAPI.remove(b._id);
+      showToast(t('library.bookmarks.removed'), 'success', {
+        action: {
+          label: t('library.bookmarks.restore'),
+          onClick: async () => {
+            const back = await restoreBookmark(b);
+            showToast(t(back ? 'library.bookmarks.restored' : 'library.bookmarks.restoreFailed'), back ? 'success' : 'error');
+          },
+        },
+      });
+    } catch {
+      setBookmarks(list => [...list, b].sort(byBookmarkOrder)); // roll back
       showToast(t('common.error'), 'error');
     }
   };
@@ -2764,19 +2787,40 @@ export default function Library() {
     }
   };
 
-  // Change a bookmark to `page` (the active page). Pages hold any number of
-  // differently-named bookmarks, so a named one just moves. The one clash is an
-  // UNNAMED bookmark landing where an unnamed one already is (both would read
-  // "Page N"): ask first, and Replace re-sends with replace:true so the server
-  // swaps them in one request. The list we hold catches that before any request;
-  // a server 409 (another device added one) lands in the same confirm.
-  const moveBookmark = async (b, page, replace = false) => {
+  // Changing a bookmark to `page` (the active page) always asks first. Pages hold
+  // any number of differently-named bookmarks, so usually that is a plain
+  // "Change … to page N?". The one clash is an UNNAMED bookmark landing where an
+  // unnamed one already is (both would read "Page N"): then the same single
+  // dialog asks to replace it instead, and Replace sends replace:true so the
+  // server swaps them in one request.
+  const requestMoveBookmark = (b, page) => {
     if (b.pageNumber === page) return;
     const occupant = b.label ? null : bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id);
-    if (occupant && !replace) {
-      setBookmarkConfirm({ kind: 'replace', bookmark: b, conflict: occupant, page });
-      return;
+    setBookmarkConfirm(occupant
+      ? { kind: 'replace', bookmark: b, conflict: occupant, page }
+      : { kind: 'move', bookmark: b, page });
+  };
+
+  // Undo a change: move the bookmark back to the page it came from and, if it
+  // had replaced an unnamed bookmark, re-create that one (after the move back,
+  // so the page's one unnamed slot is free again).
+  const undoMoveBookmark = async (b, replaced) => {
+    try {
+      const res = await bookmarksAPI.update(b._id, { pageNumber: b.pageNumber });
+      setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)).sort(byBookmarkOrder));
+      const back = replaced ? await restoreBookmark(replaced) : true;
+      showToast(t(back ? 'library.bookmarks.restored' : 'library.bookmarks.restoreFailed'), back ? 'success' : 'error');
+    } catch {
+      showToast(t('library.bookmarks.restoreFailed'), 'error');
     }
+  };
+
+  // Runs once the change is confirmed. Optimistic; the toast that follows offers
+  // Restore. A server 409 (another device added an unnamed bookmark there since
+  // the list loaded) rolls back and opens the replace dialog.
+  const moveBookmark = async (b, page, replace = false) => {
+    if (b.pageNumber === page) return;
+    const occupant = replace ? bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id) : null;
     const before = bookmarks;
     setBookmarks(before
       .filter(x => x._id !== occupant?._id)
@@ -2790,7 +2834,9 @@ export default function Library() {
         .filter(x => x._id !== replacedId)
         .map(x => (x._id === b._id ? res.data.data : x))
         .sort(byBookmarkOrder));
-      showToast(t('library.bookmarks.moved', { n: fmtNum(page) }), 'success');
+      showToast(t('library.bookmarks.moved', { n: fmtNum(page) }), 'success', {
+        action: { label: t('library.bookmarks.restore'), onClick: () => undoMoveBookmark(b, res.data.replaced) },
+      });
     } catch (e) {
       setBookmarks(before);
       const conflict = e.response?.status === 409 ? e.response.data?.conflict : null;
@@ -3160,6 +3206,39 @@ export default function Library() {
     return `${pageLbl} · ${surahsForPage(h.pageNumber) || t('library.annotations.wholePage')}`;
   };
   const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
+  // What the bookmark confirm dialog says, by kind: change the page, replace
+  // an unnamed bookmark (an unnamed one landing on another), or remove.
+  const bookmarkDialog = (() => {
+    const c = bookmarkConfirm;
+    if (!c) return {};
+    const b = c.bookmark;
+    const from = fmtNum(b.pageNumber);
+    if (c.kind === 'move') return {
+      icon: FiMapPin,
+      title: t('library.bookmarks.changeTitle'),
+      message: b.label
+        ? t('library.bookmarks.changeMessage', { label: isolate(b.label), from, to: fmtNum(c.page) })
+        : t('library.bookmarks.changeMessageUnnamed', { from, to: fmtNum(c.page) }),
+      confirmText: t('library.bookmarks.change'),
+      isDanger: false,
+    };
+    if (c.kind === 'replace') return {
+      icon: FiBookmark,
+      title: t('library.bookmarks.replaceTitle'),
+      message: t('library.bookmarks.replaceMessageUnnamed', { n: fmtNum(c.page) }),
+      confirmText: t('library.bookmarks.replace'),
+      isDanger: true,
+    };
+    return {
+      icon: FiTrash2,
+      title: t('library.bookmarks.removeTitle'),
+      message: b.label
+        ? t('library.bookmarks.removeMessage', { n: from, label: isolate(b.label) })
+        : t('library.bookmarks.removeMessageUnnamed', { n: from }),
+      confirmText: t('library.bookmarks.remove'),
+      isDanger: true,
+    };
+  })();
 
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
@@ -3735,7 +3814,7 @@ export default function Library() {
                             : t('library.bookmarks.moveTo', { n: fmtNum(bookmarkTargetPage) })}>
                             <button
                               data-bm-action="move"
-                              onClick={() => { if (!onTarget) moveBookmark(b, bookmarkTargetPage); }}
+                              onClick={() => { if (!onTarget) requestMoveBookmark(b, bookmarkTargetPage); }}
                               aria-disabled={onTarget || undefined}
                               aria-label={onTarget
                                 ? t('library.bookmarks.onThisPageFor', { name })
@@ -4956,8 +5035,8 @@ export default function Library() {
         </div>
       )}
 
-      {/* Confirm removing a bookmark, or an unnamed bookmark replacing another
-          unnamed one on the page it is changed to */}
+      {/* Confirm changing a bookmark's page (a replace when an unnamed one would
+          land on another unnamed one), or removing a bookmark */}
       <ConfirmModal
         isOpen={!!bookmarkConfirm}
         onClose={() => {
@@ -4968,19 +5047,11 @@ export default function Library() {
         }}
         onConfirm={() => {
           const c = bookmarkConfirm;
-          if (c.kind === 'replace') moveBookmark(c.bookmark, c.page, true);
-          else removeBookmark(c.bookmark._id);
+          if (c.kind === 'move') moveBookmark(c.bookmark, c.page);
+          else if (c.kind === 'replace') moveBookmark(c.bookmark, c.page, true);
+          else removeBookmark(c.bookmark);
         }}
-        icon={bookmarkConfirm?.kind === 'replace' ? FiBookmark : FiTrash2}
-        title={bookmarkConfirm?.kind === 'replace' ? t('library.bookmarks.replaceTitle') : t('library.bookmarks.removeTitle')}
-        message={!bookmarkConfirm ? null
-          : bookmarkConfirm.kind === 'replace'
-            ? t('library.bookmarks.replaceMessageUnnamed', { n: fmtNum(bookmarkConfirm.page) })
-            : bookmarkConfirm.bookmark.label
-              ? t('library.bookmarks.removeMessage', { n: fmtNum(bookmarkConfirm.bookmark.pageNumber), label: isolate(bookmarkConfirm.bookmark.label) })
-              : t('library.bookmarks.removeMessageUnnamed', { n: fmtNum(bookmarkConfirm.bookmark.pageNumber) })}
-        confirmText={bookmarkConfirm?.kind === 'replace' ? t('library.bookmarks.replace') : t('library.bookmarks.remove')}
-        isDanger
+        {...bookmarkDialog}
       />
 
       {/* Confirm before wiping a page's ink */}

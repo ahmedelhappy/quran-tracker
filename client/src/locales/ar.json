@@ -733,7 +733,15 @@
       "replace": "استبدال",
       "removeTitle": "إزالة العلامة؟",
       "removeMessage": "هل تريد إزالة العلامة «{{label}}» من الصفحة {{n}}؟",
-      "removeMessageUnnamed": "هل تريد إزالة العلامة من الصفحة {{n}}؟"
+      "removeMessageUnnamed": "هل تريد إزالة العلامة من الصفحة {{n}}؟",
+      "changeTitle": "تغيير العلامة؟",
+      "changeMessage": "هل تريد تغيير «{{label}}» من الصفحة {{from}} إلى الصفحة {{to}}؟",
+      "changeMessageUnnamed": "هل تريد تغيير العلامة من الصفحة {{from}} إلى الصفحة {{to}}؟",
+      "change": "تغيير",
+      "removed": "تمت إزالة العلامة",
+      "restore": "استعادة",
+      "restored": "تمت استعادة العلامة",
+      "restoreFailed": "تعذّرت استعادة العلامة"
     },
     "gotoPagePlaceholder": "اذهب إلى صفحة…",
     "prevPage": "الصفحة السابقة",

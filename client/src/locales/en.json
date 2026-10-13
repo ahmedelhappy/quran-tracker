@@ -733,7 +733,15 @@
       "replace": "Replace",
       "removeTitle": "Remove bookmark?",
       "removeMessage": "Remove the bookmark '{{label}}' on page {{n}}?",
-      "removeMessageUnnamed": "Remove the bookmark on page {{n}}?"
+      "removeMessageUnnamed": "Remove the bookmark on page {{n}}?",
+      "changeTitle": "Change bookmark?",
+      "changeMessage": "Change '{{label}}' from page {{from}} to page {{to}}?",
+      "changeMessageUnnamed": "Change the bookmark on page {{from}} to page {{to}}?",
+      "change": "Change",
+      "removed": "Bookmark removed",
+      "restore": "Restore",
+      "restored": "Bookmark restored",
+      "restoreFailed": "Couldn't restore the bookmark"
     },
     "gotoPagePlaceholder": "Go to page…",
     "prevPage": "Previous page",
