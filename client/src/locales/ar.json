@@ -784,6 +784,18 @@
       "rangeSpanOnePage": "{{verses}} آية · صفحة {{from}}",
       "playRange": "تشغيل النطاق"
     },
+    "reciters": {
+      "search": "ابحث عن قارئ",
+      "clear": "مسح البحث",
+      "recent": "المستخدمة مؤخرًا",
+      "noMatch": "لا يوجد قارئ يطابق «{{query}}»",
+      "hafsNote": "جميع التلاوات هنا برواية حفص عن عاصم، رواية هذا المصحف.",
+      "style": {
+        "murattal": "مرتّل",
+        "mujawwad": "مجوّد",
+        "muallim": "المعلّم (تعليمي)"
+      }
+    },
     "tafsir": "التفسير",
     "tafsirTitle": "تفسير الآية",
     "irabTitle": "إعراب الآية",

@@ -22,6 +22,7 @@ import MushafMarks from '../components/MushafMarks';
 import MushafDrawLayer from '../components/MushafDrawLayer';
 import PageScrubber from '../components/PageScrubber';
 import MushafZoomControl from '../components/MushafZoomControl';
+import ReciterPicker from '../components/ReciterPicker';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -34,8 +35,7 @@ import {
   getAyahAudioUrl,
   getFallbackAyahAudioUrl,
   toArabicDigits,
-  RECITERS,
-  DEFAULT_RECITER,
+  resolveReciterId,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
 import { fetchMushafPage, ensurePageFont, warmPageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
@@ -458,10 +458,9 @@ export default function Library() {
   const [handleDragging, setHandleDragging] = useState(false);
 
   // ── Audio state ─────────────────────────────────────────
-  const [reciter, setReciter] = useState(() => {
-    const saved = localStorage.getItem('reciter');
-    return RECITERS.some(r => r.id === saved) ? saved : DEFAULT_RECITER;
-  });
+  // A saved id from an older build always resolves; one this build doesn't know
+  // quietly becomes the default.
+  const [reciter, setReciter] = useState(() => resolveReciterId(localStorage.getItem('reciter')));
   // The verse being recited, as a GLOBAL ayah number (1–6236) rather than an index
   // into `verses`: playback has to be able to name verses that aren't on screen —
   // a repeat range ending two pages later, or plain continuous recitation running
@@ -4599,18 +4598,7 @@ export default function Library() {
                 )}
               </div>
 
-              <Tooltip label={t('tooltips.reciter')}>
-                <select
-                  value={reciter}
-                  onChange={e => setReciter(e.target.value)}
-                  aria-label={t('tooltips.reciter')}
-                  className="rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 max-w-[160px]"
-                >
-                  {RECITERS.map(r => (
-                    <option key={r.id} value={r.id}>{isArabic ? r.nameAr : r.nameEn}</option>
-                  ))}
-                </select>
-              </Tooltip>
+              <ReciterPicker value={reciter} onChange={setReciter} isArabic={isArabic} />
             </div>
 
             {/* The ping-pong pair: one plays while the other preloads the next verse.
