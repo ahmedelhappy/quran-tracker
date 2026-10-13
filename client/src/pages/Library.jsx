@@ -2685,17 +2685,29 @@ export default function Library() {
   };
 
   // ── Bookmarks ────────────────────────────────────────────
+  // List order, matching the server's: by page, then by name (unnamed first) —
+  // a page can hold several bookmarks with different names.
+  const byBookmarkOrder = (a, c) => a.pageNumber - c.pageNumber || (a.label < c.label ? -1 : a.label > c.label ? 1 : 0);
+  // Wrap a user's label in Unicode isolates (FSI…PDI) before putting it in a
+  // sentence, so an English name inside Arabic text (or the reverse) can't drag
+  // the quotes and brackets around it into the wrong order.
+  const isolate = (s) => `⁨${s}⁩`;
+
   const addBookmark = async () => {
     if (savingBookmark) return;
     setSavingBookmark(true);
+    const label = bookmarkLabel.trim();
     try {
-      const label = bookmarkLabel.trim();
       const res = await bookmarksAPI.add({ pageNumber: bookmarkTargetPage, ...(label ? { label } : {}) });
-      setBookmarks(prev => [...prev, res.data.data].sort((a, b) => a.pageNumber - b.pageNumber));
+      setBookmarks(prev => [...prev, res.data.data].sort(byBookmarkOrder));
       setBookmarkLabel('');
       showToast(t('library.bookmarks.added', { n: fmtNum(bookmarkTargetPage) }), 'success');
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      // 409: an unnamed bookmark already sits on this page, or the name is taken.
+      const msg = e.response?.status === 409
+        ? (label ? t('library.bookmarks.duplicateName') : t('library.bookmarks.unnamedTaken', { n: fmtNum(bookmarkTargetPage) }))
+        : e.response?.data?.message || t('common.error');
+      showToast(msg, 'error');
     } finally {
       setSavingBookmark(false);
     }
@@ -2712,17 +2724,12 @@ export default function Library() {
     }
   };
 
-  // A named bookmark is worth one confirming click before it goes; an unnamed
-  // one ("Page N") is trivially re-added from the page itself, so it goes at once.
-  const requestRemoveBookmark = (b) => {
-    if (b.label) setBookmarkConfirm({ kind: 'remove', bookmark: b });
-    else removeBookmark(b._id);
-  };
+  // Every removal asks first.
+  const requestRemoveBookmark = (b) => setBookmarkConfirm({ kind: 'remove', bookmark: b });
 
   // Put focus back on one of a row's action buttons once the list has
   // re-rendered — after a rename, a move that re-sorted the row, or a confirm.
-  // Falls back to Rename when that button is gone (Move hides once the bookmark
-  // sits on the active page); a no-op once the row itself is gone.
+  // Falls back to Rename if that button is missing; a no-op once the row is gone.
   const focusBookmarkAction = (id, action) => requestAnimationFrame(() => {
     const row = bookmarkRowRefs.current.get(id);
     (row?.querySelector(`[data-bm-action="${action}"]`) ?? row?.querySelector('[data-bm-action="rename"]'))?.focus();
@@ -2748,27 +2755,33 @@ export default function Library() {
       setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)));
     } catch (e) {
       setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label: b.label } : x)));
-      showToast(e.response?.status === 409 ? t('library.bookmarks.duplicateName') : t('common.error'), 'error');
+      // 409: the name is taken — or, when clearing it, this page already has
+      // an unnamed bookmark (two would both read "Page N").
+      const msg = e.response?.status !== 409 ? t('common.error')
+        : label ? t('library.bookmarks.duplicateName')
+        : t('library.bookmarks.unnamedTaken', { n: fmtNum(b.pageNumber) });
+      showToast(msg, 'error');
     }
   };
 
-  // Move a bookmark onto `page` (the active page). If another bookmark already
-  // sits there, ask first; Replace re-sends with replace:true so the server swaps
-  // them in one request. The list we hold catches the usual case before any
-  // request; a server 409 (another device added one) lands in the same confirm.
+  // Change a bookmark to `page` (the active page). Pages hold any number of
+  // differently-named bookmarks, so a named one just moves. The one clash is an
+  // UNNAMED bookmark landing where an unnamed one already is (both would read
+  // "Page N"): ask first, and Replace re-sends with replace:true so the server
+  // swaps them in one request. The list we hold catches that before any request;
+  // a server 409 (another device added one) lands in the same confirm.
   const moveBookmark = async (b, page, replace = false) => {
     if (b.pageNumber === page) return;
-    const occupant = bookmarks.find(x => x.pageNumber === page && x._id !== b._id);
+    const occupant = b.label ? null : bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id);
     if (occupant && !replace) {
       setBookmarkConfirm({ kind: 'replace', bookmark: b, conflict: occupant, page });
       return;
     }
     const before = bookmarks;
-    const byPage = (a, c) => a.pageNumber - c.pageNumber;
     setBookmarks(before
       .filter(x => x._id !== occupant?._id)
       .map(x => (x._id === b._id ? { ...x, pageNumber: page } : x))
-      .sort(byPage));
+      .sort(byBookmarkOrder));
     focusBookmarkAction(b._id, 'move');
     try {
       const res = await bookmarksAPI.update(b._id, { pageNumber: page, ...(replace ? { replace: true } : {}) });
@@ -2776,13 +2789,13 @@ export default function Library() {
       setBookmarks(list => list
         .filter(x => x._id !== replacedId)
         .map(x => (x._id === b._id ? res.data.data : x))
-        .sort(byPage));
+        .sort(byBookmarkOrder));
       showToast(t('library.bookmarks.moved', { n: fmtNum(page) }), 'success');
     } catch (e) {
       setBookmarks(before);
       const conflict = e.response?.status === 409 ? e.response.data?.conflict : null;
       if (conflict) setBookmarkConfirm({ kind: 'replace', bookmark: b, conflict, page });
-      else showToast(e.response?.status === 409 ? t('library.bookmarks.pageTaken', { n: fmtNum(page) }) : t('common.error'), 'error');
+      else showToast(e.response?.status === 409 ? t('library.bookmarks.unnamedTaken', { n: fmtNum(page) }) : t('common.error'), 'error');
     }
   };
 
@@ -3147,9 +3160,6 @@ export default function Library() {
     return `${pageLbl} · ${surahsForPage(h.pageNumber) || t('library.annotations.wholePage')}`;
   };
   const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
-  // The bookmark (if any) already saved for the active/current page — when set,
-  // the add control swaps for this bookmark's own remove affordance.
-  const targetBookmark = bookmarks.find(b => b.pageNumber === bookmarkTargetPage) ?? null;
 
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
@@ -3637,43 +3647,29 @@ export default function Library() {
             {/* Bookmarks */}
             <div className="flex flex-col gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.bookmarks.title')}</span>
-              {targetBookmark ? (
-                // The active/current page is already bookmarked — swap the
-                // add control for this bookmark's own state + remove action.
-                <div className="flex items-center justify-between gap-2 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 px-3 py-2 rounded-lg">
-                  <span className="inline-flex items-center gap-1.5 min-w-0">
-                    <FiBookmark className="w-3.5 h-3.5 shrink-0 fill-current" />
-                    <span className="truncate">{targetBookmark.label || t('library.bookmarks.pageLabel', { n: fmtNum(bookmarkTargetPage) })}</span>
-                  </span>
+              {/* Add a bookmark for the active page — always available: a page
+                  can hold several bookmarks as long as their names differ. The
+                  rows already on this page show a green pin. */}
+              <div className="flex items-center gap-2">
+                <input
+                  value={bookmarkLabel}
+                  onChange={e => setBookmarkLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
+                  maxLength={50}
+                  placeholder={t('library.bookmarks.labelPlaceholder')}
+                  className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                />
+                <Tooltip label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}>
                   <button
-                    onClick={() => requestRemoveBookmark(targetBookmark)}
-                    className="shrink-0 text-[11px] font-medium text-green-800/70 dark:text-green-300/70 hover:underline underline-offset-2"
+                    onClick={addBookmark}
+                    disabled={savingBookmark}
+                    aria-label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}
+                    className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    {t('library.bookmarks.remove')}
+                    <FiPlus className="w-4 h-4" />
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    value={bookmarkLabel}
-                    onChange={e => setBookmarkLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
-                    maxLength={50}
-                    placeholder={t('library.bookmarks.labelPlaceholder')}
-                    className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
-                  />
-                  <Tooltip label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}>
-                    <button
-                      onClick={addBookmark}
-                      disabled={savingBookmark}
-                      aria-label={t('library.bookmarks.add', { n: fmtNum(bookmarkTargetPage) })}
-                      className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#004f35] text-white hover:bg-[#003527] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <FiPlus className="w-4 h-4" />
-                    </button>
-                  </Tooltip>
-                </div>
-              )}
+                </Tooltip>
+              </div>
               {bookmarks.length === 0 ? (
                 <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
               ) : (
@@ -3729,23 +3725,28 @@ export default function Library() {
                               <FiEdit2 className="w-3.5 h-3.5" />
                             </button>
                           </Tooltip>
-                          {/* Move here — kept as an empty slot when the bookmark
-                              already marks the active page, so the icon columns
-                              stay aligned down the list. */}
-                          {onTarget ? (
-                            <span className="shrink-0 w-7 h-7" aria-hidden="true" />
-                          ) : (
-                            <Tooltip label={t('library.bookmarks.moveTo', { n: fmtNum(bookmarkTargetPage) })}>
-                              <button
-                                data-bm-action="move"
-                                onClick={() => moveBookmark(b, bookmarkTargetPage)}
-                                aria-label={t('library.bookmarks.moveFor', { name, n: fmtNum(bookmarkTargetPage) })}
-                                className={`${iconBtn} text-[#9aa3a0] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700`}
-                              >
-                                <FiMapPin className="w-3.5 h-3.5" />
-                              </button>
-                            </Tooltip>
-                          )}
+                          {/* Change the bookmark to the active page. Always shown;
+                              on the bookmark that already marks the active page
+                              it turns green as a "you are here" marker and does
+                              nothing (aria-disabled, still focusable so its
+                              tooltip reads by keyboard too). */}
+                          <Tooltip label={onTarget
+                            ? t('library.bookmarks.onThisPage')
+                            : t('library.bookmarks.moveTo', { n: fmtNum(bookmarkTargetPage) })}>
+                            <button
+                              data-bm-action="move"
+                              onClick={() => { if (!onTarget) moveBookmark(b, bookmarkTargetPage); }}
+                              aria-disabled={onTarget || undefined}
+                              aria-label={onTarget
+                                ? t('library.bookmarks.onThisPageFor', { name })
+                                : t('library.bookmarks.moveFor', { name, n: fmtNum(bookmarkTargetPage) })}
+                              className={`${iconBtn} ${onTarget
+                                ? 'text-[#004f35] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 cursor-default'
+                                : 'text-[#9aa3a0] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'}`}
+                            >
+                              <FiMapPin className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
                           <Tooltip label={t('library.bookmarks.remove')}>
                             <button
                               data-bm-action="remove"
@@ -4955,7 +4956,8 @@ export default function Library() {
         </div>
       )}
 
-      {/* Confirm a bookmark move onto an occupied page, or removing a named one */}
+      {/* Confirm removing a bookmark, or an unnamed bookmark replacing another
+          unnamed one on the page it is changed to */}
       <ConfirmModal
         isOpen={!!bookmarkConfirm}
         onClose={() => {
@@ -4969,15 +4971,14 @@ export default function Library() {
           if (c.kind === 'replace') moveBookmark(c.bookmark, c.page, true);
           else removeBookmark(c.bookmark._id);
         }}
+        icon={bookmarkConfirm?.kind === 'replace' ? FiBookmark : FiTrash2}
         title={bookmarkConfirm?.kind === 'replace' ? t('library.bookmarks.replaceTitle') : t('library.bookmarks.removeTitle')}
-        message={bookmarkConfirm?.kind === 'replace'
-          ? (bookmarkConfirm.conflict.label
-            // Labels are wrapped in Unicode isolates (FSI…PDI) so an English label
-            // inside an Arabic sentence (or the reverse) can't drag the quotes and
-            // brackets around it into the wrong order.
-            ? t('library.bookmarks.replaceMessage', { n: fmtNum(bookmarkConfirm.page), label: `⁨${bookmarkConfirm.conflict.label}⁩` })
-            : t('library.bookmarks.replaceMessageUnnamed', { n: fmtNum(bookmarkConfirm.page) }))
-          : bookmarkConfirm && t('library.bookmarks.removeMessage', { n: fmtNum(bookmarkConfirm.bookmark.pageNumber), label: `⁨${bookmarkConfirm.bookmark.label}⁩` })}
+        message={!bookmarkConfirm ? null
+          : bookmarkConfirm.kind === 'replace'
+            ? t('library.bookmarks.replaceMessageUnnamed', { n: fmtNum(bookmarkConfirm.page) })
+            : bookmarkConfirm.bookmark.label
+              ? t('library.bookmarks.removeMessage', { n: fmtNum(bookmarkConfirm.bookmark.pageNumber), label: isolate(bookmarkConfirm.bookmark.label) })
+              : t('library.bookmarks.removeMessageUnnamed', { n: fmtNum(bookmarkConfirm.bookmark.pageNumber) })}
         confirmText={bookmarkConfirm?.kind === 'replace' ? t('library.bookmarks.replace') : t('library.bookmarks.remove')}
         isDanger
       />
