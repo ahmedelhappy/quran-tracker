@@ -5,7 +5,7 @@ import {
   FiPlay, FiPause, FiSkipBack, FiSkipForward, FiX,
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
-  FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus, FiMoreVertical, FiMapPin,
+  FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus, FiMapPin,
   FiFlag, FiMessageSquare, FiCornerUpRight,
   FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
 } from 'react-icons/fi';
@@ -382,14 +382,13 @@ export default function Library() {
   const [bookmarks, setBookmarks] = useState([]);
   const [bookmarkLabel, setBookmarkLabel] = useState('');
   const [savingBookmark, setSavingBookmark] = useState(false);
-  // Per-row actions: which row's action strip is open, which row is being
-  // renamed inline (and its draft), and the pending replace/remove confirm.
-  const [bookmarkMenuId, setBookmarkMenuId] = useState(null);
+  // Per-row actions: which row is being renamed inline (and its draft), and the
+  // pending replace/remove confirm.
   const [renamingBookmarkId, setRenamingBookmarkId] = useState(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [bookmarkConfirm, setBookmarkConfirm] = useState(null); // { kind: 'replace' | 'remove', bookmark, conflict?, page? }
   const renameSettledRef = useRef(false);  // Enter/Escape and the blur that follows must settle a rename once
-  const bookmarkMenuBtnRefs = useRef(new Map()); // bookmark id → its options button, to put focus back
+  const bookmarkRowRefs = useRef(new Map()); // bookmark id → its <li>, to put focus back on one of its buttons
 
   // ── Annotations (highlights / notes / hard flags, verse-anchored) ──
   // annotationsByPage: pageNumber -> Annotation[] for the visible page(s),
@@ -2716,17 +2715,20 @@ export default function Library() {
   // A named bookmark is worth one confirming click before it goes; an unnamed
   // one ("Page N") is trivially re-added from the page itself, so it goes at once.
   const requestRemoveBookmark = (b) => {
-    setBookmarkMenuId(null);
     if (b.label) setBookmarkConfirm({ kind: 'remove', bookmark: b });
     else removeBookmark(b._id);
   };
 
-  // Put focus back on a row's options button once the list has re-rendered —
-  // after a rename, or a move that re-sorted the row elsewhere.
-  const focusBookmarkMenuBtn = (id) => requestAnimationFrame(() => bookmarkMenuBtnRefs.current.get(id)?.focus());
+  // Put focus back on one of a row's action buttons once the list has
+  // re-rendered — after a rename, a move that re-sorted the row, or a confirm.
+  // Falls back to Rename when that button is gone (Move hides once the bookmark
+  // sits on the active page); a no-op once the row itself is gone.
+  const focusBookmarkAction = (id, action) => requestAnimationFrame(() => {
+    const row = bookmarkRowRefs.current.get(id);
+    (row?.querySelector(`[data-bm-action="${action}"]`) ?? row?.querySelector('[data-bm-action="rename"]'))?.focus();
+  });
 
   const startRenameBookmark = (b) => {
-    setBookmarkMenuId(null);
     renameSettledRef.current = false;
     setRenameDraft(b.label);
     setRenamingBookmarkId(b._id);
@@ -2737,7 +2739,7 @@ export default function Library() {
     if (renameSettledRef.current) return;
     renameSettledRef.current = true;
     setRenamingBookmarkId(null);
-    if (refocus) focusBookmarkMenuBtn(b._id);
+    if (refocus) focusBookmarkAction(b._id, 'rename');
     const label = renameDraft.trim();
     if (!save || label === b.label) return;
     setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label } : x)));
@@ -2755,7 +2757,6 @@ export default function Library() {
   // them in one request. The list we hold catches the usual case before any
   // request; a server 409 (another device added one) lands in the same confirm.
   const moveBookmark = async (b, page, replace = false) => {
-    setBookmarkMenuId(null);
     if (b.pageNumber === page) return;
     const occupant = bookmarks.find(x => x.pageNumber === page && x._id !== b._id);
     if (occupant && !replace) {
@@ -2768,7 +2769,7 @@ export default function Library() {
       .filter(x => x._id !== occupant?._id)
       .map(x => (x._id === b._id ? { ...x, pageNumber: page } : x))
       .sort(byPage));
-    focusBookmarkMenuBtn(b._id);
+    focusBookmarkAction(b._id, 'move');
     try {
       const res = await bookmarksAPI.update(b._id, { pageNumber: page, ...(replace ? { replace: true } : {}) });
       const replacedId = res.data.replaced?._id;
@@ -3679,99 +3680,83 @@ export default function Library() {
                 <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
                   {bookmarks.map(b => {
                     const name = b.label || t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) });
-                    const menuOpen = bookmarkMenuId === b._id;
-                    const actionBtn = 'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors';
+                    const onTarget = b.pageNumber === bookmarkTargetPage;
+                    const iconBtn = 'shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors';
                     return (
-                    // Tapping the row jumps (as always); the ⋮ button opens this
-                    // row's actions as a strip right below it — always visible,
-                    // never hover-only, and inside the scrolling list rather than
-                    // a dropdown it would clip. Escape closes it.
+                    // Tapping the row jumps (as always); its three actions sit on
+                    // the same line as always-visible icons — rename, move here,
+                    // remove — so each is one tap and none is hover-only.
                     <li
                       key={b._id}
-                      className="flex flex-col"
-                      onKeyDown={e => {
-                        if (e.key === 'Escape' && menuOpen) {
-                          e.stopPropagation();
-                          setBookmarkMenuId(null);
-                          bookmarkMenuBtnRefs.current.get(b._id)?.focus();
-                        }
-                      }}
+                      ref={el => { if (el) bookmarkRowRefs.current.set(b._id, el); else bookmarkRowRefs.current.delete(b._id); }}
+                      className="flex items-center gap-0.5"
                     >
-                      <div className="flex items-center gap-1">
-                        {renamingBookmarkId === b._id ? (
-                          <input
-                            autoFocus
-                            onFocus={e => e.target.select()}
-                            value={renameDraft}
-                            onChange={e => setRenameDraft(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') { e.preventDefault(); finishRenameBookmark(b, true, { refocus: true }); }
-                              else if (e.key === 'Escape') { e.stopPropagation(); finishRenameBookmark(b, false, { refocus: true }); }
-                            }}
-                            onBlur={() => finishRenameBookmark(b, true)}
-                            maxLength={50}
-                            placeholder={t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) })}
-                            aria-label={t('library.bookmarks.renameLabel', { name })}
-                            className="flex-1 min-w-0 rounded-lg border border-[#004f35] dark:border-emerald-500 bg-white dark:bg-gray-700 px-2 py-1 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none"
-                          />
-                        ) : (
+                      {renamingBookmarkId === b._id ? (
+                        <input
+                          autoFocus
+                          onFocus={e => e.target.select()}
+                          value={renameDraft}
+                          onChange={e => setRenameDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); finishRenameBookmark(b, true, { refocus: true }); }
+                            else if (e.key === 'Escape') { e.stopPropagation(); finishRenameBookmark(b, false, { refocus: true }); }
+                          }}
+                          onBlur={() => finishRenameBookmark(b, true)}
+                          maxLength={50}
+                          placeholder={t('library.bookmarks.pageLabel', { n: fmtNum(b.pageNumber) })}
+                          aria-label={t('library.bookmarks.renameLabel', { name })}
+                          className="flex-1 min-w-0 rounded-lg border border-[#004f35] dark:border-emerald-500 bg-white dark:bg-gray-700 px-2 py-1 text-xs text-[#1A1A1A] dark:text-gray-100 focus:outline-none"
+                        />
+                      ) : (
+                        <>
                           <button
                             onClick={() => goToPage(b.pageNumber)}
                             className={`flex-1 min-w-0 inline-flex items-center gap-1.5 text-start text-xs rounded-lg px-2 py-1.5 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors ${
-                              b.pageNumber === bookmarkTargetPage ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
+                              onTarget ? 'text-[#003527] dark:text-emerald-300 font-semibold' : 'text-[#404944] dark:text-gray-300'
                             }`}
                           >
                             <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />
                             <span className="truncate">{name}</span>
                             {b.label && <span className="shrink-0 text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(b.pageNumber)}</span>}
                           </button>
-                        )}
-                        <Tooltip label={t('library.bookmarks.actions')}>
-                          <button
-                            ref={el => { if (el) bookmarkMenuBtnRefs.current.set(b._id, el); else bookmarkMenuBtnRefs.current.delete(b._id); }}
-                            onClick={() => setBookmarkMenuId(menuOpen ? null : b._id)}
-                            aria-label={t('library.bookmarks.actionsFor', { name })}
-                            aria-expanded={menuOpen}
-                            aria-controls={menuOpen ? `bookmark-actions-${b._id}` : undefined}
-                            className={`shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${
-                              menuOpen
-                                ? 'bg-[#f0f4ff] dark:bg-gray-700 text-[#004f35] dark:text-emerald-300'
-                                : 'text-[#9aa3a0] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                            }`}
-                          >
-                            <FiMoreVertical className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      </div>
-                      {menuOpen && (
-                        <div
-                          id={`bookmark-actions-${b._id}`}
-                          role="group"
-                          aria-label={t('library.bookmarks.actionsFor', { name })}
-                          className="flex flex-wrap gap-1 ps-7 pt-0.5 pb-1"
-                        >
-                          <button
-                            onClick={() => startRenameBookmark(b)}
-                            className={`${actionBtn} text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700`}
-                          >
-                            <FiEdit2 className="w-3 h-3" /> {t('library.bookmarks.rename')}
-                          </button>
-                          {/* Hidden when the bookmark already marks the active page. */}
-                          {b.pageNumber !== bookmarkTargetPage && (
+                          <Tooltip label={t('library.bookmarks.rename')}>
                             <button
-                              onClick={() => moveBookmark(b, bookmarkTargetPage)}
-                              className={`${actionBtn} text-[#004f35] dark:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700`}
+                              data-bm-action="rename"
+                              onClick={() => startRenameBookmark(b)}
+                              aria-label={t('library.bookmarks.renameFor', { name })}
+                              className={`${iconBtn} text-[#9aa3a0] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700`}
                             >
-                              <FiMapPin className="w-3 h-3" /> {t('library.bookmarks.moveTo', { n: fmtNum(bookmarkTargetPage) })}
+                              <FiEdit2 className="w-3.5 h-3.5" />
                             </button>
+                          </Tooltip>
+                          {/* Move here — kept as an empty slot when the bookmark
+                              already marks the active page, so the icon columns
+                              stay aligned down the list. */}
+                          {onTarget ? (
+                            <span className="shrink-0 w-7 h-7" aria-hidden="true" />
+                          ) : (
+                            <Tooltip label={t('library.bookmarks.moveTo', { n: fmtNum(bookmarkTargetPage) })}>
+                              <button
+                                data-bm-action="move"
+                                onClick={() => moveBookmark(b, bookmarkTargetPage)}
+                                aria-label={t('library.bookmarks.moveFor', { name, n: fmtNum(bookmarkTargetPage) })}
+                                className={`${iconBtn} text-[#9aa3a0] dark:text-gray-500 hover:text-[#004f35] dark:hover:text-emerald-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700`}
+                              >
+                                <FiMapPin className="w-3.5 h-3.5" />
+                              </button>
+                            </Tooltip>
                           )}
-                          <button
-                            onClick={() => requestRemoveBookmark(b)}
-                            className={`${actionBtn} text-[#ba1a1a] dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}
-                          >
-                            <FiTrash2 className="w-3 h-3" /> {t('library.bookmarks.remove')}
-                          </button>
-                        </div>
+                          <Tooltip label={t('library.bookmarks.remove')}>
+                            <button
+                              data-bm-action="remove"
+                              onClick={() => requestRemoveBookmark(b)}
+                              aria-label={t('library.bookmarks.removeFor', { name })}
+                              className={`${iconBtn} text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20`}
+                            >
+                              <FiTrash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        </>
                       )}
                     </li>
                     );
@@ -4974,9 +4959,9 @@ export default function Library() {
       <ConfirmModal
         isOpen={!!bookmarkConfirm}
         onClose={() => {
-          // The action that opened this has unmounted with its strip — land on
-          // the row's ⋮ instead (a no-op once the row itself is gone).
-          if (bookmarkConfirm) focusBookmarkMenuBtn(bookmarkConfirm.bookmark._id);
+          // Back to the button that asked (Remove, or Move) — its row may have
+          // re-sorted or re-rendered meanwhile, so find it afresh.
+          if (bookmarkConfirm) focusBookmarkAction(bookmarkConfirm.bookmark._id, bookmarkConfirm.kind === 'remove' ? 'remove' : 'move');
           setBookmarkConfirm(null);
         }}
         onConfirm={() => {
