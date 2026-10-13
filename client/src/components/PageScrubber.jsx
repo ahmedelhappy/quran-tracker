@@ -23,8 +23,10 @@ const pctForPage = (page) => ((TOTAL_PAGES - page) / (TOTAL_PAGES - 1)) * 100;
 // typing. Dragging only updates a local preview + floating bubble — the
 // mushaf itself doesn't navigate (and so doesn't reload) until release, at
 // which point `onNavigate` (Library's goToPage) is called once, which already
-// snaps a two-page spread onto its odd anchor page.
-export default function PageScrubber({ currentPage, onNavigate, fmtNum }) {
+// snaps a two-page spread onto its odd anchor page. `onScrubbingChange(true|false)`
+// brackets the drag, so the reader can hold its neighbour prefetch until the
+// destination is known.
+export default function PageScrubber({ currentPage, onNavigate, onScrubbingChange, fmtNum }) {
   const { t } = useTranslation();
   // Non-null only while a pointer drag is in progress; its value is the page
   // the thumb is currently over. Deriving the preview from this (rather than
@@ -43,9 +45,14 @@ export default function PageScrubber({ currentPage, onNavigate, fmtNum }) {
     if (scrubbing) setDragPage(page);
     else onNavigate(page); // keyboard nudge or a plain click: commit immediately
   };
-  const startScrub = () => setDragPage(currentPage);
+  const startScrub = () => {
+    setDragPage(currentPage);
+    onScrubbingChange?.(true);
+  };
   const commitScrub = () => {
-    if (dragPage !== null) onNavigate(dragPage);
+    if (dragPage === null) return;
+    onScrubbingChange?.(false);
+    onNavigate(dragPage);
     setDragPage(null);
   };
 

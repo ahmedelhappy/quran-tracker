@@ -607,12 +607,25 @@ page's verses as real Arabic text in a visually clipped `.mushaf-sr-text` block.
 is absolutely positioned, so it never takes one of the 15 grid rows. One stop per verse, not
 per word, is the right grain: the verse is what the reader selects, plays and memorizes.
 
-**Turning ahead of the reader.** Once a page has settled, `Library` fetches the pages on
-either side in idle time (forward first — that's how a mushaf is read), with their fonts.
-The font is warmed with `warmPageFont`, which only pulls the file into the HTTP cache, not
-`ensurePageFont`, which also registers it with `document.fonts` — registering a face makes
-the browser re-check every text style on the page, and doing that for neighbours measurably
-slowed the page being read. The real registration happens on arrival, straight from cache.
+**Turning ahead of the reader.** A page's font goes through three steps: fetch the bytes,
+*decode* them into a `FontFace` (`decodePageFont`), and *register* it with `document.fonts`
+(`registerPageFont`). Registering makes the browser re-check every text style on screen —
+doing it for all the neighbours at once pushed /library's blocking time 230 → 510ms — and
+the *first layout* with a new face is dear too (188ms for one page at 4x CPU, against 35ms
+for a page seen before). So [pagePrefetch.js](../client/src/services/pagePrefetch.js) keeps
+the pages two turns either way (a turn is a page, or a spread) *decoded* and their data
+shaped, and *primes* only the next turn forward (then back): `primePageFont` registers its
+face and lays its lines out once, off-screen, three lines per idle callback, so no step is a
+long task. It is one persistent queue, re-ranked on every turn (nearest turn first, forward
+before back), that keeps what's done and skips what's now far away. It starts in idle time as soon
+as the visible page has painted, holds while a page is still loading or the scrubber is
+being dragged, yields to the audio warm-up while reciting, and drops to one turn (2g) or
+none (Save-Data) on a poor connection. On arrival `Library` asks `takeReadyPages` — a
+synchronous check — and when everything is in memory it draws the page in the same render
+that turned to it, registering the decoded face right there (that frame has to lay out the
+new page anyway). Only a page that isn't ready goes through the async load, and its dim is
+delayed 150ms so a quick one never flashes. Both caches are bounded: 40 shaped pages, 16
+decoded and 12 registered faces, the farthest from the reader evicted first.
 
 [../client/src/pages/Library.jsx](../client/src/pages/Library.jsx) is the mushaf reader
 (§9 covers where the Arabic text comes from). Its sidebar is a single flat sequence, in

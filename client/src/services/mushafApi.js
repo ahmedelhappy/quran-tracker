@@ -32,39 +32,167 @@ const headerItemsUp = (surahNumber) =>
   surahNumber !== 1 && surahNumber !== 9 ? ['basmala', 'surah'] : ['surah'];
 
 // ── Per-page fonts (FontFace API, loaded on demand) ──────────────────────────
-const loadedFonts = new Set();
+// A page's font goes through three steps: its bytes are fetched, they are DECODED
+// into a FontFace (parsed and checked, off the critical path), and the face is
+// REGISTERED with document.fonts so text can use it. Registering is the step with
+// a cost to the whole document — it makes the browser re-check the text styles of
+// everything on screen — so it is not done for every neighbour: a face waits
+// decoded until its page is drawn, and is registered then, synchronously, in the
+// frame that has to lay out the new page anyway. (Registering the neighbours' faces
+// all at once in an earlier prefetch took /library's blocking time 230 → 510ms.)
+// The one exception is the page most likely to be turned to next, which is PRIMED
+// ahead in small idle steps — see primePageFont below.
+const decodedFaces = new Map();    // page → loaded FontFace, not yet registered
+const registeredFaces = new Map(); // page → FontFace in document.fonts
+const decoding = new Map();        // page → in-flight decode, so callers share one
+const primedFaces = new Set();     // pages whose face has been laid out once (see primePageFont)
+
+// Decoded-but-unregistered faces cost only memory (~80 KB of font each), so keep
+// enough for two turns either way of a spread plus some slack. Registered faces
+// are capped too: a long reading session must not grow document.fonts to 604.
+const MAX_DECODED_FACES = 16;
+const MAX_REGISTERED_FACES = 12;
 
 export const mushafFontFamily = (page) => `QCF_P${page}`;
+const fontUrl = (page) => `/fonts/qcf/${FONT_VERSION}/p${page}.woff2`;
+const hasFontFace = () => typeof FontFace !== 'undefined' && typeof document !== 'undefined' && !!document.fonts;
 
-// Load p{page}.woff2 and register it as family QCF_P{page}. Resolves to the
-// family name; resolves even on failure so the page still renders (in the
-// fallback font) rather than hanging.
-export const ensurePageFont = async (page) => {
-  const family = mushafFontFamily(page);
-  if (loadedFonts.has(page) || typeof FontFace === 'undefined') return family;
-  try {
-    const url = `/fonts/qcf/${FONT_VERSION}/p${page}.woff2`;
-    const face = new FontFace(family, `url("${url}") format("woff2")`);
-    await face.load();
-    document.fonts.add(face);
-    loadedFonts.add(page);
-  } catch {
-    /* leave unloaded — caller falls back to a generic Arabic face */
-  }
-  return family;
+// Fetch and decode p{page}.woff2 into a FontFace WITHOUT registering it. The
+// fetch reads the bytes ourselves (rather than a url() source) so a face can be
+// made and parsed ahead of time and handed to document.fonts later in one
+// synchronous step. Resolves either way — to whether the face is ready — so a
+// failure never hangs a turn; nothing about a failure is remembered here, so the
+// next ask (the page's arrival, at the latest) simply tries again.
+export const decodePageFont = (page) => {
+  if (!hasFontFace() || registeredFaces.has(page) || decodedFaces.has(page)) return Promise.resolve(true);
+  if (decoding.has(page)) return decoding.get(page);
+  const job = fetch(fontUrl(page))
+    .then((r) => { if (!r.ok) throw new Error('font'); return r.arrayBuffer(); })
+    .then((buf) => {
+      const face = new FontFace(mushafFontFamily(page), buf);
+      return face.load();
+    })
+    .then((face) => {
+      if (!registeredFaces.has(page)) {
+        decodedFaces.delete(page);
+        decodedFaces.set(page, face);
+        while (decodedFaces.size > MAX_DECODED_FACES) decodedFaces.delete(decodedFaces.keys().next().value);
+      }
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => { decoding.delete(page); });
+  decoding.set(page, job);
+  return job;
 };
 
-// Bring a page's font file into the HTTP cache WITHOUT registering it. Registering
-// a face (document.fonts.add) makes the browser re-check the text styles of the
-// whole page, which is real main-thread work on a page of several hundred word
-// spans — too much to spend on a page the reader may never turn to. A warm cache
-// alone already takes the network out of the ensurePageFont that runs on arrival.
-export const warmPageFont = (page) => {
-  if (loadedFonts.has(page)) return Promise.resolve();
-  return fetch(`/fonts/qcf/${FONT_VERSION}/p${page}.woff2`)
-    .then((r) => r.arrayBuffer())      // read to the end, so the cache entry completes
-    .then(() => undefined)
-    .catch(() => undefined);
+// Can this page's font be applied right now, with no waiting? True once it is
+// registered or decoded — registerPageFont finishes the job synchronously.
+export const isPageFontReady = (page) =>
+  !hasFontFace() || registeredFaces.has(page) || decodedFaces.has(page);
+
+// Unregister the faces furthest from `page`, down to the cap — never `page` or
+// the pages either side of it (in a spread the other half is one of those), nor
+// the last few registered: after a jump, those include the page still sliding out
+// in the turn animation. Removing a face re-checks styles just as adding one
+// does, so it is done here, in the same step that registers the arriving page:
+// one style pass, not two.
+const trimRegisteredFaces = (page) => {
+  if (registeredFaces.size <= MAX_REGISTERED_FACES) return;
+  const order = [...registeredFaces.keys()];
+  const recent = new Set(order.slice(-4));
+  const far = order
+    .filter((p) => Math.abs(p - page) > 1 && !recent.has(p))
+    .sort((a, b) => Math.abs(b - page) - Math.abs(a - page));
+  for (const p of far) {
+    if (registeredFaces.size <= MAX_REGISTERED_FACES) break;
+    document.fonts.delete(registeredFaces.get(p));
+    registeredFaces.delete(p);
+    primedFaces.delete(p);
+  }
+};
+
+// Hand a decoded face to document.fonts — synchronous, so a page whose font is
+// ready can be drawn in the very frame it is turned to.
+export const registerPageFont = (page) => {
+  if (registeredFaces.has(page)) {
+    // Already in: just mark it recently shown (the trim's order is recency).
+    const f = registeredFaces.get(page);
+    registeredFaces.delete(page);
+    registeredFaces.set(page, f);
+    return;
+  }
+  const face = decodedFaces.get(page);
+  if (!face) return;
+  decodedFaces.delete(page);
+  document.fonts.add(face);
+  registeredFaces.set(page, face);
+  trimRegisteredFaces(page);
+};
+
+// ── Priming: the first layout with a new font ────────────────────────────────
+// A registered, decoded face still costs a lot the first time text is laid out
+// with it — the browser builds its glyph and shaping data then. Measured on a
+// turn at 4x CPU: that one layout took 188ms for a page seen for the first time
+// and 35ms for one seen before. So the page the reader is most likely to turn
+// to next is PRIMED: its face registered and its lines laid out once, off-screen
+// and invisible, a few lines per idle callback so no step is a long task. The
+// real page then lays out like one already seen.
+const PRIME_LINES_PER_STEP = 3;
+let primeBox = null;
+
+export const isPageFontPrimed = (page) => !hasFontFace() || primedFaces.has(page);
+
+// `idle` is a () => Promise that resolves in idle time (the caller's scheduler).
+// Resolves to whether the page ended up primed.
+export const primePageFont = async (page, idle) => {
+  if (isPageFontPrimed(page)) return true;
+  const data = pageCache.get(page);
+  if (!data || !isPageFontReady(page)) return false;
+  registerPageFont(page);
+  const lines = data.lines.filter((l) => l.type === 'ayah');
+  if (!primeBox) {
+    // The reader's own classes, so the glyphs are set exactly as on the page.
+    primeBox = document.createElement('div');
+    primeBox.className = 'mushaf-page';
+    primeBox.setAttribute('aria-hidden', 'true');
+    primeBox.style.cssText = 'position:fixed;top:0;left:-10000px;width:524px;height:auto;display:block;'
+      + 'visibility:hidden;pointer-events:none;contain:layout style paint';
+  }
+  if (!primeBox.isConnected) document.body.appendChild(primeBox);
+  try {
+    for (let i = 0; i < lines.length; i += PRIME_LINES_PER_STEP) {
+      await idle();
+      if (!registeredFaces.has(page)) return false; // trimmed away meanwhile
+      primeBox.textContent = '';
+      for (const line of lines.slice(i, i + PRIME_LINES_PER_STEP)) {
+        const row = document.createElement('div');
+        row.className = 'mushaf-line';
+        for (const w of line.words) {
+          const span = document.createElement('span');
+          span.className = w.charType === 'end' ? 'mushaf-word mushaf-word--mark' : 'mushaf-word';
+          span.style.fontFamily = mushafFontFamily(page);
+          span.textContent = w.glyph;
+          row.appendChild(span);
+        }
+        primeBox.appendChild(row);
+      }
+      void primeBox.offsetWidth; // lay it out now, inside this idle step
+    }
+  } finally {
+    primeBox.textContent = '';
+  }
+  primedFaces.add(page);
+  return true;
+};
+
+// Load (if needed) and register a page's font. Resolves to the family name;
+// resolves even on failure so the page still renders (in the fallback font)
+// rather than hanging.
+export const ensurePageFont = async (page) => {
+  await decodePageFont(page);
+  if (hasFontFace()) registerPageFont(page);
+  return mushafFontFamily(page);
 };
 
 // ── Printed-line corrections ─────────────────────────────────────────────────
@@ -238,14 +366,34 @@ const shapeVerses = (page, rawVerses) =>
     };
   });
 
-// Raw verse data cached by page so the next-page peek (below) and later
-// navigation don't re-fetch the same page.
-const rawCache = new Map();
-const fetchVersesCached = async (page) => {
-  if (rawCache.has(page)) return rawCache.get(page);
-  const v = await fetchVersesByPage(page);
-  rawCache.set(page, v);
+// The page-data caches are LRU-capped (a Map keeps insertion order; touching an
+// entry moves it to the back), so a long session reads through the mushaf without
+// holding all 604 pages. A shaped page is a few hundred word objects; this many
+// covers two turns either way of a spread several times over.
+const MAX_CACHED_PAGES = 40;
+const lruGet = (map, key) => {
+  const v = map.get(key);
+  if (v !== undefined) { map.delete(key); map.set(key, v); }
   return v;
+};
+const lruSet = (map, key, value) => {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > MAX_CACHED_PAGES) map.delete(map.keys().next().value);
+};
+
+// Raw verse data cached by page so the next-page peek (below) and later
+// navigation don't re-fetch the same page. It holds the PROMISE, so a prefetch
+// and an arrival asking for the same page at once share one request; a failed
+// request is dropped again so the next ask retries.
+const rawCache = new Map();
+const fetchVersesCached = (page) => {
+  const hit = lruGet(rawCache, page);
+  if (hit) return hit;
+  const job = fetchVersesByPage(page);
+  lruSet(rawCache, page, job);
+  job.catch(() => { if (rawCache.get(page) === job) rawCache.delete(page); });
+  return job;
 };
 
 // Does a surah open at the top of page+1 with its header (partly) spilling onto
@@ -280,20 +428,38 @@ const computeNextSpill = async (page, verses) => {
   return { surahNumber: nextSurah, leadingBlanks };
 };
 
-const pageCache = new Map();
+const pageCache = new Map();    // page → shaped page
+const shaping = new Map();      // page → in-flight fetchMushafPage, shared by every caller
 
-export const fetchMushafPage = async (page) => {
-  if (pageCache.has(page)) return pageCache.get(page);
-  const verses = shapeVerses(page, await fetchVersesCached(page));
-  const nextSpill = await computeNextSpill(page, verses);
-  const shaped = { page, verses, lines: buildLines(page, verses, nextSpill), ornamental: page <= 2 };
-  pageCache.set(page, shaped);
-  return shaped;
+export const fetchMushafPage = (page) => {
+  const hit = lruGet(pageCache, page);
+  if (hit) return Promise.resolve(hit);
+  if (shaping.has(page)) return shaping.get(page);
+  const job = (async () => {
+    const verses = shapeVerses(page, await fetchVersesCached(page));
+    const nextSpill = await computeNextSpill(page, verses);
+    const shaped = { page, verses, lines: buildLines(page, verses, nextSpill), ornamental: page <= 2 };
+    lruSet(pageCache, page, shaped);
+    return shaped;
+  })().finally(() => shaping.delete(page));
+  shaping.set(page, job);
+  return job;
 };
 
 // Read an already-fetched page from the in-session cache without a network
 // round-trip (null if it hasn't been loaded). Used to look at the previous
 // page's last verse when deciding whether a juz/hizb/quarter boundary lands on
 // a page's very first verse — where there's no preceding verse on the page
-// itself to compare against.
+// itself to compare against — and by the reader to draw a page it already has
+// without waiting a tick.
 export const peekMushafPage = (page) => pageCache.get(page) ?? null;
+
+// Everything the visible pages need to be drawn THIS frame — their data and a
+// font that can be applied synchronously — or null if any of it is still to come.
+// Registers the fonts as it goes (cheap, synchronous; see registerPageFont).
+export const takeReadyPages = (pages) => {
+  const datas = pages.map((p) => lruGet(pageCache, p));
+  if (datas.some((d) => !d) || !pages.every(isPageFontReady)) return null;
+  if (hasFontFace()) pages.forEach(registerPageFont);
+  return datas;
+};

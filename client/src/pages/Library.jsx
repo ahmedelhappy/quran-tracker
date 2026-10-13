@@ -38,7 +38,8 @@ import {
   resolveReciterId,
   TAFSIR_EDITIONS,
 } from '../services/quranApi';
-import { fetchMushafPage, ensurePageFont, warmPageFont, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
+import { fetchMushafPage, ensurePageFont, decodePageFont, takeReadyPages, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
+import { setPrefetchFocus, holdPrefetch, resumePrefetch, stopPrefetch } from '../services/pagePrefetch';
 import { SURAH_PAGES } from '../data/surahPages';
 import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
@@ -91,8 +92,6 @@ const RANGE_TOUCH_HOLD = 400;   // ms a finger must rest before it starts pickin
 const RANGE_EDGE_W = 64;        // px of the viewport's sides that count as "at the edge"
 const RANGE_EDGE_DWELL = 550;   // ms the pointer must stay there before the page turns
 const RANGE_EDGE_REPEAT = 900;  // ms between further turns while it stays there
-const PREFETCH_DELAY = 1200;         // ms after a page settles before warming its neighbours
-const PREFETCH_DELAY_PLAYING = 2500; // …and longer while the recitation is warming its own files
 const RANGE_SCROLL_EDGE = 40;   // px of a ZOOMED page's visible edge that scrolls it during a drag
 const RANGE_SCROLL_SPEED = 18;  // px per frame at the very edge
 
@@ -292,6 +291,13 @@ export default function Library() {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentPage = clampPage(searchParams.get('page') ?? 1);
   const [pageInput, setPageInput] = useState(String(currentPage));
+  // The go-to field follows the page. Adjusted during render rather than in an
+  // effect, so a page turn doesn't spend a second commit on it.
+  const [pageInputFor, setPageInputFor] = useState(currentPage);
+  if (pageInputFor !== currentPage) {
+    setPageInputFor(currentPage);
+    setPageInput(String(currentPage));
+  }
 
   // Whether the URL already named a page when Library first mounted — captured
   // once so an explicit ?page (dashboard links, bookmarks, deep links) always
@@ -816,13 +822,31 @@ export default function Library() {
     };
   }, [handleDragging]);
 
-  // Page / view change: load each visible page's word data + its glyph font.
-  // Held until the default-page resolution above (if any) completes, so we
-  // never briefly fetch page 1 before jumping to the resolved target.
+  // Page / view change: put each visible page's word data + its glyph font on
+  // screen. Held until the default-page resolution above (if any) completes, so
+  // we never briefly fetch page 1 before jumping to the resolved target.
+  //
+  // When everything the pages need is already in memory — the usual case, since
+  // the neighbours are kept ready (services/pagePrefetch.js) — they are drawn in
+  // the SAME render that turned to them: adjusted during render, with no loading
+  // state, no await and no extra commit. Only otherwise does the effect below
+  // fetch them, keeping the old page on screen meanwhile.
+  const arrivalKey = `${visiblePages.join(',')}|${reloadKey}`;
+  const [arrivedKey, setArrivedKey] = useState(null);
+  if (pageResolved && arrivedKey !== arrivalKey) {
+    const ready = takeReadyPages(visiblePages);
+    if (ready) {
+      setArrivedKey(arrivalKey);
+      setPagesData(ready);
+      setPageLoading(false);
+      setPageError(false);
+    }
+  }
+  const pageArrived = arrivedKey === arrivalKey;
+
   useEffect(() => {
-    if (!pageResolved) return;
+    if (!pageResolved || pageArrived) return;
     let cancelled = false;
-    setPageInput(String(currentPage));
     setPageLoading(true);
     setPageError(false);
     Promise.all(
@@ -831,11 +855,19 @@ export default function Library() {
         return data;
       })
     )
-      .then((datas) => { if (!cancelled) setPagesData(datas); })
-      .catch(() => { if (!cancelled) setPageError(true); })
-      .finally(() => { if (!cancelled) setPageLoading(false); });
+      .then((datas) => {
+        if (cancelled) return;
+        setPagesData(datas);
+        setArrivedKey(arrivalKey);
+        setPageLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPageError(true);
+        setPageLoading(false);
+      });
     return () => { cancelled = true; };
-  }, [visiblePages, currentPage, reloadKey, pageResolved]);
+  }, [visiblePages, arrivalKey, pageArrived, pageResolved]);
 
   // Warm the cache for the page just before the first visible one so a
   // juz/hizb/quarter boundary that lands on that page's very first verse can be
@@ -1504,66 +1536,27 @@ export default function Library() {
     if (!goToPage(page)) followTurnRef.current = false;
   }, [playingOrd, visiblePages, goToPage]);
 
-  // Warm the next verse's page (data + font) while the current one is still
-  // playing, so the follow-along turn lands on a page that's ready to draw.
+  // Ready the next verse's page (data + decoded font) while the current one is
+  // still playing, so the follow-along turn lands on a page that draws at once.
   useEffect(() => {
     if (playingOrd == null || !isPlaying) return;
     const next = nextOrdAfter(playingOrd);
     const page = next == null ? null : pageOfOrd(next);
     if (!page || visiblePages.includes(page)) return;
     fetchMushafPage(page).catch(() => {});
-    ensurePageFont(page).catch(() => {});
+    decodePageFont(page);
   }, [playingOrd, isPlaying, nextOrdAfter, visiblePages]);
 
-  // Warm the pages on either side of the one being read — data AND its glyph font,
-  // which is the slow half — so turning by hand is as instant as the turns playback
-  // already makes. Forward first, because that is the way a mushaf is read.
-  //
-  // It waits until the current page has settled, and waits longer while the
-  // recitation is running: the audio warm-up is already pulling files three verses
-  // ahead, and a font is ~80 KB, so the two should not be reaching for the line at
-  // the same moment. Each step then runs in IDLE time, one page at a time, and the
-  // font is only brought into the cache (warmPageFont), not registered: registering
-  // a face re-checks every text style on this page, and a first measurement of this
-  // prefetch doing that had Lighthouse's blocking time on /library go 230 → 510ms.
-  // Failures are ignored — this is a head start, never something anyone waits on.
+  // Keep the pages around the one being read ready to draw — two turns each way,
+  // re-ranked on every turn by one persistent queue (services/pagePrefetch.js),
+  // so turning by hand is as instant as the turns playback makes. It starts once
+  // the visible page has painted, holds while a page is still loading (so the
+  // arrival has the connection), and yields to the audio warm-up while reciting.
   useEffect(() => {
-    if (!pageResolved || pageLoading || pageError || pagesData.length === 0) return;
-    const forward = [];
-    const back = [];
-    for (let i = 0; i < pageStep; i += 1) {
-      const next = currentPage + pageStep + i;
-      const prev = currentPage - pageStep + i;
-      if (next <= 604) forward.push(next);
-      if (prev >= 1) back.push(prev);
-    }
-    const targets = [...forward, ...back];
-    if (!targets.length) return;
-    let cancelled = false;
-    let idleId = null;
-    const whenIdle = (fn) => (typeof window.requestIdleCallback === 'function'
-      ? window.requestIdleCallback(fn, { timeout: 3000 })
-      : setTimeout(fn, 0));
-    const step = (i) => {
-      if (cancelled || i >= targets.length) return;
-      idleId = whenIdle(async () => {
-        try {
-          await fetchMushafPage(targets[i]);
-          await warmPageFont(targets[i]);
-        } catch { /* a page that refuses to warm is simply fetched on arrival */ }
-        step(i + 1);
-      });
-    };
-    const id = setTimeout(() => step(0), isPlaying ? PREFETCH_DELAY_PLAYING : PREFETCH_DELAY);
-    return () => {
-      cancelled = true;
-      clearTimeout(id);
-      if (idleId != null) {
-        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
-        else clearTimeout(idleId);
-      }
-    };
-  }, [currentPage, pageStep, pageResolved, pageLoading, pageError, pagesData.length, isPlaying]);
+    if (!pageArrived || pageError) { holdPrefetch(); return; }
+    setPrefetchFocus({ visible: visiblePages, step: pageStep, playing: isPlaying });
+  }, [pageArrived, pageError, visiblePages, pageStep, isPlaying]);
+  useEffect(() => stopPrefetch, []);
 
   // ── Keyboard page-turning + shortcuts ────────────────────
   // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both
@@ -4219,12 +4212,14 @@ export default function Library() {
                 </div>
               ) : pagesData.length === 0 ? (
                 // First load only — on later turns we keep the current content
-                // (dimmed) so the page-turn animation has something to leave from.
+                // so the page-turn animation has something to leave from (dimmed,
+                // but only once a load has taken long enough to be noticed —
+                // delay-150 — so a quick load never flashes).
                 <div className={twoPage ? 'w-full flex gap-3 items-stretch' : 'w-full'} style={twoPage ? { direction: 'rtl' } : undefined}>
                   {(twoPage ? visiblePages : [currentPage]).map((p) => skeletonCard(p))}
                 </div>
               ) : (
-                <div className={`transition-opacity duration-200${pageLoading ? ' opacity-60' : ''}`} aria-busy={pageLoading || undefined}>
+                <div className={`transition-opacity duration-200${pageLoading ? ' opacity-60 delay-150' : ''}`} aria-busy={pageLoading || undefined}>
                   {twoPage ? (
                     <div className="w-full flex gap-3 items-stretch" style={{ direction: 'rtl' }}>
                       {pagesData.map(renderPageCard)}
@@ -4242,7 +4237,12 @@ export default function Library() {
             {/* ── Page scrubber — fast navigation without typing, tight
                 against the page card(s) so it's visible without scrolling ── */}
             <div className="w-full max-w-[650px] mx-auto -mt-2">
-              <PageScrubber currentPage={currentPage} onNavigate={goToPage} fmtNum={fmtNum} />
+              <PageScrubber
+                currentPage={currentPage}
+                onNavigate={goToPage}
+                onScrubbingChange={(on) => (on ? holdPrefetch() : resumePrefetch())}
+                fmtNum={fmtNum}
+              />
             </div>
 
             {/* Page info bar */}
