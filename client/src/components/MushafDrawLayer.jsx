@@ -16,10 +16,12 @@ import { isSecondaryPress } from '../utils/selfTestCycle';
 // moves/deletes free-floating text notes (the 'text' tool). When not `active`
 // (and not `visible`) it renders nothing — the reader's clean-view toggle.
 //
-// The right button never draws. While the hide-all self-test is ALSO on, the
-// reader passes `onSecondaryPress`, and a right-click (or Ctrl+click — macOS's
-// right-click) anywhere on the layer hands its screen point over so the verse
-// underneath can be revealed without leaving annotate mode. Left input is untouched.
+// The right button never draws. When the reader passes `onSecondaryPress`, a
+// right-click (or Ctrl+click — macOS's right-click) anywhere on the layer hands
+// its screen point over, so the verse underneath can be acted on without leaving
+// annotate mode: its actions open, or with the hide-all self-test on it is
+// revealed / selected / hidden. Without it (the cover self-test) the press is
+// inert. Left input is untouched.
 
 const CANVAS_W = 524;
 const CANVAS_H = 800;

@@ -6,7 +6,7 @@ import {
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus, FiMapPin,
-  FiFlag, FiMessageSquare, FiCornerUpRight,
+  FiFlag, FiMessageSquare, FiCornerUpRight, FiSlash,
   FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
 } from 'react-icons/fi';
 // Feather has no eraser; this one actually looks like the thing it does.
@@ -50,7 +50,7 @@ import {
 import { useDraggable } from '../hooks/useDraggable';
 import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
-import { hideModeStep } from '../utils/selfTestCycle';
+import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -83,6 +83,11 @@ const READER_EDGE_TAB = (edge) =>
     ? 'rounded-e-lg border-s-0'
     : 'rounded-s-lg border-e-0');
 const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
+// The mushaf word under a screen point, looking THROUGH whatever covers it (the
+// ink layer while annotating).
+const wordAtPoint = (x, y) => document.elementsFromPoint(x, y)
+  .map((el) => el.closest?.('.mushaf-word[data-verse-key]'))
+  .find(Boolean) ?? null;
 const REP_COUNTS = [2, 3, 5, Infinity]; // repeat-count choices (verse & range)
 // The PER-VERSE count inside a range needs one more choice than those: ×1, "say
 // each verse once and move on", which is what range repeat did before it could
@@ -128,6 +133,13 @@ const ANNOTATION_COLORS = [
   { key: 'blue',   cls: 'bg-blue-300', labelKey: 'library.annotations.colorBlue' },
   { key: 'pink',   cls: 'bg-pink-300', labelKey: 'library.annotations.colorPink' },
 ];
+
+// The undo history keeps this many steps (ink strokes and verse annotations).
+const HISTORY_CAP = 50;
+// The most verses one change can touch — the server's batch limit (MAX_BATCH_OPS).
+const MAX_SPAN_OPS = 300;
+// How long an annotation's "saved — Undo" toast stays (the timer pauses on hover).
+const UNDO_TOAST_MS = 6000;
 
 // Ink colours offered in the drawing toolbar — the highlight enum plus a dark-ink
 // pen (must match the server's stroke-colour set).
@@ -703,7 +715,15 @@ export default function Library() {
   // whenever the reader picks a range, which is the only time they should agree.
   // Only ever one of this and `selectedVerseKey` is set — picking either clears
   // the other — so nothing has to decide which of the two a gesture meant.
-  const [rangeSelection, setRangeSelection] = useState(null);   // { startOrd, endOrd }
+  // `actions: true` while the span's actions popover is up (a right-click inside
+  // it). Every new span is a new object without it, so a fresh span never opens
+  // its actions by itself.
+  const [rangeSelection, setRangeSelection] = useState(null);   // { startOrd, endOrd, actions? }
+  const rangeSelectionRef = useRef(null);
+  useEffect(() => { rangeSelectionRef.current = rangeSelection; }, [rangeSelection]);
+  // Bumped on every request for actions, so the popover re-places under the new
+  // press even when it was already open (a second right-click inside the span).
+  const [popoverPlaceTick, setPopoverPlaceTick] = useState(0);
 
   // ── Contextual onboarding (driver.js) ────────────────────
   const tourRef = useRef(null);
@@ -1939,17 +1959,29 @@ export default function Library() {
       // up without leaving the mode between each one. (Touch swipes still don't:
       // the drawing layer owns touch over the page, so a swipe there is a stroke.)
       const isPageTurnKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
+      // Undo / redo work in AND out of annotate mode: one timeline holds the ink
+      // strokes and the verse annotations (highlights, hard flags, notes) in the
+      // order they were made, so Ctrl+Z always undoes whichever came last.
+      const z = isShortcutKey(e, 'z');
+      const y = isShortcutKey(e, 'y');
+      const wantsUndo = mod && z && !e.altKey && !e.shiftKey;
+      const wantsRedo = mod && ((z && (e.altKey || e.shiftKey)) || y);
+      if ((wantsUndo || wantsRedo) && (drawPage != null || signedInRef.current)) {
+        e.preventDefault();
+        (wantsUndo ? undoRef : redoRef).current?.();
+        return;
+      }
       if (drawPage != null && !isPageTurnKey) {
         if (e.key === 'Escape') {
           e.preventDefault();
           if (drawMenuOpen) setDrawMenuOpen(false);
+          // Actions opened by a right-click while annotating fold away before the
+          // mode itself is left — the same top-layer-first peel-back.
+          else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
+          else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
           else exitDrawRef.current?.();
           return;
         }
-        const z = isShortcutKey(e, 'z');
-        const y = isShortcutKey(e, 'y');
-        if (mod && z && !e.altKey && !e.shiftKey) { e.preventDefault(); undoRef.current?.(); return; }
-        if (mod && ((z && (e.altKey || e.shiftKey)) || y)) { e.preventDefault(); redoRef.current?.(); return; }
         // A tool's own key picks it; pressing it again puts the tools away, and
         // once away stops annotating — the same ladder as its button.
         if (!mod && !e.altKey) {
@@ -1982,6 +2014,8 @@ export default function Library() {
           else if (notePanel) setNotePanel(null);
           else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
+          // A span's actions fold first and the span stays, like a verse's.
+          else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
           else if (rangeSelection) setRangeSelection(null);
           break;
         default: break;
@@ -2450,38 +2484,54 @@ export default function Library() {
   // equivalent and the same press that starts a range drag if you do move. Either
   // way it selects the verse and opens its actions, anchored where the press
   // landed. Unconditional, not a toggle: asking for the actions twice keeps them.
+  //
+  // With a span picked it follows the usual selection rule: the press lands INSIDE
+  // the span → the actions are for the whole span, which stays as it is; OUTSIDE it
+  // → that one verse replaces the span.
   const showVerseActions = useCallback((verseKey) => {
     if (markVersesMode) return;   // the two-tap picking mode owns taps
-    setRangeSelection(null);      // asking for one verse's actions replaces a span
+    const ord = ordOfKey(verseKey);
     placeNextRef.current = true;
-    setPopoverHidden(false);
-    setSelectedVerseKey(verseKey);
+    setPopoverPlaceTick((n) => n + 1);   // re-place even if the actions are already up
     setSeenVerseTap(true);
     localStorage.setItem('seenVerseTapCue', '1');
+    const span = rangeSelectionRef.current;
+    if (span && ord != null && ord >= span.startOrd && ord <= span.endOrd) {
+      setSelectedVerseKey(null);
+      setRangeSelection({ startOrd: span.startOrd, endOrd: span.endOrd, actions: true });
+      return;
+    }
+    setRangeSelection(null);
+    setPopoverHidden(false);
+    setSelectedVerseKey(verseKey);
   }, [markVersesMode]);
   useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
 
-  // ── Self-test while annotating ──
-  // With annotate mode AND the hide-all self-test both on, the ink layer covers
-  // the words, so a plain click draws and can never reach them. The right button
-  // (never used for ink) takes over the verse cycle instead: the layer hands over
-  // the press's screen point, we look THROUGH the layer for the word underneath
-  // and run the same reveal → select → hide ladder a plain click runs when not
-  // annotating. Nothing here touches the ink, so Ctrl+Z still only undoes ink.
-  //
-  // "Select" stays quiet exactly as a plain click's does — the verse is banded,
-  // the tafsir follows it, no popover opens over the page being drawn on. The
-  // actions that popover holds are a right-click away outside annotate mode.
+  // ── Right-click while annotating ──
+  // In annotate mode the ink layer covers the words, so a plain click draws and
+  // can never reach them. The right button (never used for ink) reaches THROUGH
+  // the layer instead: it hands over the press's screen point, we look for the
+  // word underneath, and the press means what a right-click means when not
+  // annotating:
+  //   - hide-all self-test on → the same reveal → select → hide ladder a plain
+  //     click runs (a quiet select: the verse is banded, the tafsir follows it);
+  //   - self-test off         → select the verse and open its actions (or a
+  //     span's, by the span rule), so highlighting works mid-annotation;
+  //   - cover self-test on    → nothing: the press is inert.
   //
   // Hit-testing the point (not the layer's page) means a spread and a zoomed page
   // need nothing special: whichever word is under the pointer is the one meant,
   // and its concealed state is read from ITS page's watermark, as the click path
   // reads it. Blank margin finds no word and does nothing.
   const selfTestWhileDrawing = drawPage != null && concealMode === 'hide';
+  const actionsAtPoint = useCallback((x, y) => {
+    const word = wordAtPoint(x, y);
+    if (!word) return;
+    lastPointerRef.current = { x, y };   // the popover keeps its distance from this spot
+    showVerseActions(word.getAttribute('data-verse-key'));
+  }, [showVerseActions]);
   const cycleVerseAtPoint = useCallback((x, y) => {
-    const word = document.elementsFromPoint(x, y)
-      .map((el) => el.closest?.('.mushaf-word[data-verse-key]'))
-      .find(Boolean);
+    const word = wordAtPoint(x, y);
     if (!word) return;
     const verseKey = word.getAttribute('data-verse-key');
     const key = `${verseKey}:${word.getAttribute('data-word-position')}`;
@@ -2497,6 +2547,10 @@ export default function Library() {
     else if (step === 'hide') hideVerse(verseKey);
     else handleWordSelect(verseKey);
   }, [pageOrders, watermarks, selectedVerseKey, revealVerse, hideVerse, handleWordSelect]);
+  const secondaryPressWhileDrawing = drawPage == null ? undefined
+    : concealMode === 'hide' ? cycleVerseAtPoint
+      : concealMode == null ? actionsAtPoint
+        : undefined;
 
   // Entering "mark verses" clears any selected verse so its popover (with the
   // annotation actions) can't fire while the two-word picking mode owns taps.
@@ -2550,54 +2604,126 @@ export default function Library() {
     [annotationsByPage]
   );
 
+  // ── One path for every verse-annotation change ─────────────────────
+  // A popover action, its undo and its redo all go through the batch endpoint:
+  // the server is told the STATE each verse should end in (a colour or none, hard
+  // or not, a note's text or none) and reports what each was before — which is
+  // exactly what the undo history keeps. Keyed by page + verse + kind, never by
+  // _id: an undo that re-creates a highlight gives it a new id, and a redo after
+  // that must still find it. One request however many verses a span holds.
+  const visiblePagesRef = useRef(visiblePages);
+  useEffect(() => { visiblePagesRef.current = visiblePages; }, [visiblePages]);
+  const spanAnnsReloadRef = useRef(null);   // the open span's state loader, once it exists
+  const annoBusyRef = useRef(false);        // one annotation write (or undo) at a time
+
+  const commitAnnoOps = useCallback(async (ops) => {
+    const res = await annotationsAPI.batch(ops);
+    const results = res.data?.data?.results ?? [];
+    const pages = [...new Set(results.map((r) => r.pageNumber))];
+    const onScreen = pages.filter((p) => visiblePagesRef.current.includes(p));
+    const offScreen = pages.filter((p) => !visiblePagesRef.current.includes(p));
+    loadAnnotationsForPages(onScreen);
+    // A page off screen is refetched when it is next shown; drop the copy held
+    // for it so that visit can't flash the state from before this change.
+    if (offScreen.length) {
+      setAnnotationsByPage((prev) => {
+        if (!offScreen.some((p) => prev.has(p))) return prev;
+        const next = new Map(prev);
+        offScreen.forEach((p) => next.delete(p));
+        return next;
+      });
+    }
+    if (results.some((r) => r.kind === 'hard')) loadHardList();
+    loadSummary();
+    spanAnnsReloadRef.current?.();
+    return results;
+  }, [loadAnnotationsForPages, loadHardList, loadSummary]);
+
+  // ── Undo history (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, and the toasts' Undo) ──
+  // ONE timeline for the session: the verse-annotation changes above and, while
+  // annotating, the ink strokes, in the order they were made — so Ctrl+Z undoes
+  // whichever came last. An annotation step holds each verse's before and after
+  // state; an ink step only names its page, whose snapshot stacks (undoStacksRef /
+  // redoStacksRef) hold the ink itself. Session-local, capped. Self-test reveals,
+  // page turns, selection changes and bookmarks (which have their own Restore)
+  // are never recorded.
+  const historyRef = useRef({ undo: [], redo: [] });
+  const historyRunRef = useRef(null);   // (dir) => void, set once the runner exists
+  const pushHistory = useCallback((step) => {
+    const h = historyRef.current;
+    h.undo.push(step);
+    if (h.undo.length > HISTORY_CAP) h.undo.shift();
+    h.redo = [];
+    redoStacksRef.current = {};   // a new change ends every redo, the ink's included
+    bumpHistory();
+  }, []);
+  // Ink steps stop meaning anything once their page's snapshots are reset (the
+  // page left the screen, or annotate mode ended). `page` null drops them all.
+  const dropInkSteps = useCallback((page = null) => {
+    const h = historyRef.current;
+    const keep = (s) => s.type !== 'ink' || (page != null && s.page !== page);
+    h.undo = h.undo.filter(keep);
+    h.redo = h.redo.filter(keep);
+    bumpHistory();
+  }, []);
+  const recordAnnoStep = useCallback((results, what) => {
+    const ops = results.filter((r) => r.before !== r.after);
+    if (!ops.length) return null;
+    const step = { type: 'anno', what, ops };
+    pushHistory(step);
+    return step;
+  }, [pushHistory]);
+  // A toast's Undo / Redo button acts on ITS step, and only while that step is
+  // still the latest one — reversing an older change out of order would leave the
+  // steps above it pointing at states that no longer hold.
+  const historyToastAction = useCallback((step, dir) => ({
+    label: t(dir === 'undo' ? 'library.history.undo' : 'library.history.redo'),
+    onClick: () => {
+      const list = dir === 'undo' ? historyRef.current.undo : historyRef.current.redo;
+      if (list[list.length - 1] === step) historyRunRef.current?.(dir);
+      else showToast(t('library.history.notLatest'), 'info');
+    },
+  }), [t, showToast]);
+
+  // A popover action: commit it, record it as ONE undo step, confirm with an Undo
+  // button (the touch screen's Ctrl+Z). Resolves true once saved.
+  const applyVerseAction = useCallback(async (ops, what, message) => {
+    if (annoBusyRef.current) return false;
+    if (ops.length > MAX_SPAN_OPS) {
+      showToast(t('library.span.tooMany', { max: fmtNum(MAX_SPAN_OPS) }), 'error');
+      return false;
+    }
+    annoBusyRef.current = true;
+    setSavingAnnotation(true);
+    try {
+      const results = await commitAnnoOps(ops);
+      const step = recordAnnoStep(results, what);
+      showToast(message, 'success', step ? { action: historyToastAction(step, 'undo'), duration: UNDO_TOAST_MS } : undefined);
+      return true;
+    } catch (e) {
+      showToast(e.response?.data?.message || t('common.error'), 'error');
+      return false;
+    } finally {
+      annoBusyRef.current = false;
+      setSavingAnnotation(false);
+    }
+  }, [commitAnnoOps, recordAnnoStep, historyToastAction, showToast, t, fmtNum]);
+
   // Highlight a verse in `color`; clicking the active colour again removes it,
   // a different colour updates it (whole-verse; word spans stay a server option).
-  const setVerseHighlight = useCallback(async (page, verseKey, color) => {
-    if (savingAnnotation) return;
+  const setVerseHighlight = useCallback((page, verseKey, color) => {
     const existing = findAnn(page, (a) => a.kind === 'highlight' && a.verseKey === verseKey);
-    setSavingAnnotation(true);
-    try {
-      if (existing && existing.color === color) {
-        await annotationsAPI.remove(existing._id);
-        showToast(t('library.annotations.highlightRemoved'), 'success');
-      } else if (existing) {
-        await annotationsAPI.update(existing._id, { color });
-        showToast(t('library.annotations.highlightAdded'), 'success');
-      } else {
-        await annotationsAPI.create({ pageNumber: page, verseKey, kind: 'highlight', color });
-        showToast(t('library.annotations.highlightAdded'), 'success');
-      }
-      loadAnnotationsForPages([page]);
-      loadSummary();
-    } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
-    } finally {
-      setSavingAnnotation(false);
-    }
-  }, [savingAnnotation, findAnn, showToast, t, loadAnnotationsForPages, loadSummary]);
+    const value = existing?.color === color ? null : color;
+    applyVerseAction([{ kind: 'highlight', pageNumber: page, verseKey, value }], 'highlight',
+      t(value ? 'library.annotations.highlightAdded' : 'library.annotations.highlightRemoved'));
+  }, [findAnn, applyVerseAction, t]);
 
   // Toggle a verse-level or (verseKey null) whole-page hard flag.
-  const toggleHard = useCallback(async (page, verseKey) => {
-    if (savingAnnotation) return;
+  const toggleHard = useCallback((page, verseKey) => {
     const existing = findAnn(page, (a) => a.kind === 'hard' && (a.verseKey ?? null) === (verseKey ?? null));
-    setSavingAnnotation(true);
-    try {
-      if (existing) {
-        await annotationsAPI.remove(existing._id);
-        showToast(t('library.annotations.hardRemoved'), 'success');
-      } else {
-        await annotationsAPI.create({ pageNumber: page, verseKey: verseKey ?? null, kind: 'hard' });
-        showToast(t('library.annotations.hardAdded'), 'success');
-      }
-      loadAnnotationsForPages([page]);
-      loadHardList();
-      loadSummary();
-    } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
-    } finally {
-      setSavingAnnotation(false);
-    }
-  }, [savingAnnotation, findAnn, showToast, t, loadAnnotationsForPages, loadHardList, loadSummary]);
+    applyVerseAction([{ kind: 'hard', pageNumber: page, verseKey: verseKey ?? null, value: !existing }], 'hard',
+      t(existing ? 'library.annotations.hardRemoved' : 'library.annotations.hardAdded'));
+  }, [findAnn, applyVerseAction, t]);
 
   // Open the note editor for a verse (prefilled if a note already exists). Closes
   // the tafsir sheet so the two side panels never stack.
@@ -2608,61 +2734,122 @@ export default function Library() {
     setNoteDraft(existing?.text ?? '');
   }, [findAnn]);
 
-  const saveNote = useCallback(async () => {
+  // Saving and removing a note are undoable like the rest: the reply carries the
+  // note's previous text, so an undo can put exactly that text back.
+  const writeNote = useCallback(async (text) => {
+    const { pageNumber, verseKey } = notePanel;
+    setSavingNote(true);
+    const ok = await applyVerseAction([{ kind: 'note', pageNumber, verseKey, value: text || null }], 'note',
+      t(text ? 'library.annotations.noteSaved' : 'library.annotations.noteDeleted'));
+    setSavingNote(false);
+    if (ok) { setNotePanel(null); setNoteDraft(''); }
+  }, [notePanel, applyVerseAction, t]);
+
+  const saveNote = useCallback(() => {
     if (!notePanel || savingNote) return;
     const text = noteDraft.trim();
-    const { pageNumber, verseKey, id } = notePanel;
-    setSavingNote(true);
-    try {
-      if (!text) {
-        if (id) { await annotationsAPI.remove(id); showToast(t('library.annotations.noteDeleted'), 'success'); }
-      } else if (id) {
-        await annotationsAPI.update(id, { text });
-        showToast(t('library.annotations.noteSaved'), 'success');
-      } else {
-        await annotationsAPI.create({ pageNumber, verseKey, kind: 'note', text });
-        showToast(t('library.annotations.noteSaved'), 'success');
-      }
-      loadAnnotationsForPages([pageNumber]);
-      loadSummary();
-      setNotePanel(null);
-      setNoteDraft('');
-    } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
-    } finally {
-      setSavingNote(false);
-    }
-  }, [notePanel, noteDraft, savingNote, showToast, t, loadAnnotationsForPages, loadSummary]);
+    if (!text && !notePanel.id) { setNotePanel(null); setNoteDraft(''); return; }   // nothing to save or remove
+    writeNote(text);
+  }, [notePanel, noteDraft, savingNote, writeNote]);
 
-  const deleteNote = useCallback(async () => {
+  const deleteNote = useCallback(() => {
     if (!notePanel || savingNote) return;
     if (!notePanel.id) { setNotePanel(null); setNoteDraft(''); return; }
-    setSavingNote(true);
-    try {
-      await annotationsAPI.remove(notePanel.id);
-      showToast(t('library.annotations.noteDeleted'), 'success');
-      loadAnnotationsForPages([notePanel.pageNumber]);
-      loadSummary();
-      setNotePanel(null);
-      setNoteDraft('');
-    } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
-    } finally {
-      setSavingNote(false);
-    }
-  }, [notePanel, savingNote, showToast, t, loadAnnotationsForPages, loadSummary]);
+    writeNote('');
+  }, [notePanel, savingNote, writeNote]);
 
-  // Remove a hard item from the sidebar list (and refresh the page if it's on screen).
-  const removeHardItem = useCallback(async (id, page) => {
-    try {
-      await annotationsAPI.remove(id);
-      loadHardList();
-      loadSummary();
-      if (visiblePages.includes(page)) loadAnnotationsForPages([page]);
-    } catch {
-      showToast(t('common.error'), 'error');
+  // Remove a hard item from the sidebar list (the page refreshes if it's on screen).
+  const removeHardItem = useCallback((item) => {
+    applyVerseAction([{ kind: 'hard', pageNumber: item.pageNumber, verseKey: item.verseKey ?? null, value: false }], 'hard',
+      t('library.annotations.hardRemoved'));
+  }, [applyVerseAction, t]);
+
+  // ── The picked span's actions ──────────────────────────────────────
+  // Up while a right-click landed inside a picked span. Every verse of the span,
+  // each on the page it is annotated on: the on-screen page that shows it (what a
+  // single verse's popover uses), else the page it starts on — so a span that
+  // crosses a page turn writes each verse to its own page.
+  const spanActionsOpen = !!rangeSelection?.actions && !dragRange && selectedVerseKey == null;
+  const spanVerses = useMemo(() => {
+    if (!spanActionsOpen) return [];
+    const pageOnScreen = new Map(verses.map((v) => [v.verseKey, v.page]));
+    const out = [];
+    for (let ord = rangeSelection.startOrd; ord <= rangeSelection.endOrd; ord++) {
+      const verseKey = keyOfOrd(ord);
+      out.push({ ord, verseKey, page: pageOnScreen.get(verseKey) ?? pageOfOrd(ord) });
     }
-  }, [loadHardList, loadSummary, visiblePages, loadAnnotationsForPages, showToast, t]);
+    return out;
+  }, [spanActionsOpen, rangeSelection, verses]);
+  const spanFrom = spanVerses.length ? Math.min(...spanVerses.map((v) => v.page)) : null;
+  const spanTo = spanVerses.length ? Math.max(...spanVerses.map((v) => v.page)) : null;
+
+  // The span's current annotations, read in ONE request however many pages it
+  // reaches (most of them are usually off screen). Reloaded after every change
+  // while the actions are up; only the latest reply is kept.
+  const [spanAnns, setSpanAnns] = useState(null);   // { from, to, list }
+  const spanAnnsReqRef = useRef(0);
+  const loadSpanAnns = useCallback(() => {
+    if (spanFrom == null || !signedInRef.current) return;
+    const req = ++spanAnnsReqRef.current;
+    annotationsAPI.listVerseRange(spanFrom, spanTo)
+      .then((r) => { if (req === spanAnnsReqRef.current) setSpanAnns({ from: spanFrom, to: spanTo, list: r.data?.data ?? [] }); })
+      .catch(() => {});
+  }, [spanFrom, spanTo]);
+  useEffect(() => {
+    spanAnnsReloadRef.current = spanFrom == null ? null : loadSpanAnns;
+    loadSpanAnns();
+  }, [loadSpanAnns, spanFrom]);
+
+  // How much of the span each colour and the hard flag cover — 'all', 'some' or
+  // 'none' drive the swatches' pressed / mixed / plain looks and what a press does.
+  const spanState = useMemo(() => {
+    if (!spanVerses.length || !spanAnns || spanAnns.from !== spanFrom || spanAnns.to !== spanTo) return null;
+    const first = new Map();   // the oldest doc per key, as the server reads a verse's state
+    for (const a of spanAnns.list) {
+      const k = `${a.pageNumber}|${a.verseKey ?? ''}|${a.kind}`;
+      if (!first.has(k)) first.set(k, a);
+    }
+    const colors = Object.fromEntries(ANNOTATION_COLORS.map(({ key }) => [key, 0]));
+    let highlighted = 0;
+    let hard = 0;
+    for (const v of spanVerses) {
+      const h = first.get(`${v.page}|${v.verseKey}|highlight`);
+      if (h) { highlighted++; colors[h.color] = (colors[h.color] ?? 0) + 1; }
+      if (first.has(`${v.page}|${v.verseKey}|hard`)) hard++;
+    }
+    const cover = (n) => (n === 0 ? 'none' : n === spanVerses.length ? 'all' : 'some');
+    return {
+      total: spanVerses.length,
+      color: Object.fromEntries(Object.entries(colors).map(([k, n]) => [k, cover(n)])),
+      highlighted,
+      hard: cover(hard),
+    };
+  }, [spanVerses, spanAnns, spanFrom, spanTo]);
+
+  const spanVersesLabel = useCallback((n) => t('library.span.verses', { count: n, n: fmtNum(n) }), [t, fmtNum]);
+
+  // A colour on a span toggles the way a tile range does: if EVERY verse already
+  // has it, it comes off all of them; otherwise all of them get it. `null` (the
+  // remove button) clears every highlight in the span.
+  const setSpanHighlight = useCallback((color) => {
+    if (!spanState) return;
+    const value = color == null || spanState.color[color] === 'all' ? null : color;
+    applyVerseAction(
+      spanVerses.map((v) => ({ kind: 'highlight', pageNumber: v.page, verseKey: v.verseKey, value })),
+      'highlight',
+      t(value ? 'library.span.highlightAdded' : 'library.span.highlightRemoved', { verses: spanVersesLabel(spanState.total) }),
+    );
+  }, [spanState, spanVerses, applyVerseAction, t, spanVersesLabel]);
+
+  const toggleSpanHard = useCallback(() => {
+    if (!spanState) return;
+    const value = spanState.hard !== 'all';
+    applyVerseAction(
+      spanVerses.map((v) => ({ kind: 'hard', pageNumber: v.page, verseKey: v.verseKey, value })),
+      'hard',
+      t(value ? 'library.span.hardAdded' : 'library.span.hardRemoved', { verses: spanVersesLabel(spanState.total) }),
+    );
+  }, [spanState, spanVerses, applyVerseAction, t, spanVersesLabel]);
 
   // Close the note sheet when the reader turns the page.
   useEffect(() => { setNotePanel(null); }, [currentPage]);
@@ -2697,20 +2884,21 @@ export default function Library() {
 
   // Apply a new strokes snapshot, recording history for undo/redo. Every ink
   // change (draw, erase, clear) funnels through here; `record` pushes the prior
-  // snapshot onto the undo stack (capped at 50) and clears the redo stack.
+  // snapshot onto the page's undo stack and puts a step for it on the reader's one
+  // timeline (which also ends every redo).
   const applyStrokes = useCallback((page, next, record = true) => {
     if (record) {
       const undo = undoStacksRef.current[page] ?? (undoStacksRef.current[page] = []);
       undo.push(drawStrokesRef.current[page] ?? []);
-      if (undo.length > 50) undo.shift();
-      redoStacksRef.current[page] = [];
+      if (undo.length > HISTORY_CAP) undo.shift();
+      pushHistory({ type: 'ink', page });
     }
     drawStrokesRef.current = { ...drawStrokesRef.current, [page]: next };
     setDrawStrokesByPage(drawStrokesRef.current);
     lastDrawnPageRef.current = page;
     scheduleDrawSave(page);
     bumpHistory();
-  }, [scheduleDrawSave]);
+  }, [scheduleDrawSave, pushHistory]);
 
   const handleDrawChange = useCallback((page, next) => applyStrokes(page, next, true), [applyStrokes]);
 
@@ -2733,18 +2921,19 @@ export default function Library() {
         next[page] = saved;
         undoStacksRef.current[page] = [];    // history is session-local, per page
         redoStacksRef.current[page] = [];
+        dropInkSteps(page);
         changed = true;
       }
     }
     for (const key of Object.keys(next)) {
       const page = Number(key);
-      if (!visiblePages.includes(page) && !drawDirtyRef.current.has(page)) { delete next[key]; changed = true; }
+      if (!visiblePages.includes(page) && !drawDirtyRef.current.has(page)) { delete next[key]; dropInkSteps(page); changed = true; }
     }
     if (!changed) return;
     drawStrokesRef.current = next;
     setDrawStrokesByPage(next);
     bumpHistory();
-  }, [drawPage, visiblePages, annotationsByPage]);
+  }, [drawPage, visiblePages, annotationsByPage, dropInkSteps]);
 
   const enterDraw = useCallback((page) => {
     if (!signedInRef.current) return;   // ink is saved to the account
@@ -2765,8 +2954,11 @@ export default function Library() {
     setDrawMenuOpen(false);
     setClearConfirm(false);
     lastDrawnPageRef.current = null;
+    // The ink's history ends with the mode (its snapshots are reset on the next
+    // entry); the verse annotations' steps stay undoable outside it.
+    dropInkSteps();
     loadAnnotationsForPages(visiblePages);
-  }, [flushDrawing, visiblePages, loadAnnotationsForPages]);
+  }, [flushDrawing, visiblePages, loadAnnotationsForPages, dropInkSteps]);
 
   // The pencil cycles through the three states, so one button covers all of them:
   //   1. off            -> annotating, toolbar shown
@@ -2859,26 +3051,86 @@ export default function Library() {
     return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
   }, [drawPage, drawMenuOpen, positionDrawMenu]);
 
-  // The page undo/redo/clear act on: whichever was drawn on last, or the anchor
-  // before any ink has been laid down.
+  // The page clear acts on: whichever was drawn on last, or the anchor before any
+  // ink has been laid down.
   const targetDrawPage = () => lastDrawnPageRef.current ?? drawPage;
-  const undoStroke = useCallback(() => {
-    const page = lastDrawnPageRef.current ?? drawPage;
-    const undo = undoStacksRef.current[page];
-    if (page == null || !undo?.length) return;
-    (redoStacksRef.current[page] ??= []).push(drawStrokesRef.current[page] ?? []);
-    applyStrokes(page, undo.pop(), false);
-  }, [applyStrokes, drawPage]);
-  const redoStroke = useCallback(() => {
-    const page = lastDrawnPageRef.current ?? drawPage;
-    const redo = redoStacksRef.current[page];
-    if (page == null || !redo?.length) return;
-    (undoStacksRef.current[page] ??= []).push(drawStrokesRef.current[page] ?? []);
-    applyStrokes(page, redo.pop(), false);
-  }, [applyStrokes, drawPage]);
-  useEffect(() => { undoRef.current = undoStroke; }, [undoStroke]);
-  useEffect(() => { redoRef.current = redoStroke; }, [redoStroke]);
 
+  // Moves one page's ink a step back (undo) or forward (redo) along its snapshot
+  // stacks. False when there is nothing to move there: annotate mode is off, the
+  // page is off screen, or its history was reset when it was last loaded.
+  const moveInk = (page, dir) => {
+    if (drawPage == null || !visiblePages.includes(page)) return false;
+    const [from, to] = dir === 'undo' ? [undoStacksRef, redoStacksRef] : [redoStacksRef, undoStacksRef];
+    const stack = from.current[page];
+    if (!stack?.length) return false;
+    (to.current[page] ??= []).push(drawStrokesRef.current[page] ?? []);
+    applyStrokes(page, stack.pop(), false);
+    return true;
+  };
+
+  // One press of undo or redo, through the whole timeline. An ink step moves its
+  // page's ink; an annotation step re-sends the states it recorded — `before` to
+  // undo, `after` to redo — as ONE batch (a span's undo is one request) and
+  // refreshes exactly as the original action did. A failed request leaves the
+  // step where it was, so the next press, or the error toast's Retry, tries again.
+  const stepHistory = async (dir) => {
+    const h = historyRef.current;
+    const list = () => (dir === 'undo' ? h.undo : h.redo);   // re-read: a push replaces h.redo
+    const other = () => (dir === 'undo' ? h.redo : h.undo);
+    while (list().length) {
+      const step = list()[list().length - 1];
+      if (step.type === 'ink') {
+        list().pop();
+        if (moveInk(step.page, dir)) { other().push(step); bumpHistory(); return; }
+        continue;   // that page's ink history is gone; go on to the step under it
+      }
+      if (annoBusyRef.current) return;   // a popover action is still saving
+      annoBusyRef.current = true;
+      setSavingAnnotation(true);
+      try {
+        await commitAnnoOps(step.ops.map(({ kind, pageNumber, verseKey, before, after }) => (
+          { kind, pageNumber, verseKey, value: dir === 'undo' ? before : after })));
+      } catch {
+        historyGenRef.current++;   // drop the presses queued behind this one
+        showToast(t(dir === 'undo' ? 'library.history.undoFailed' : 'library.history.redoFailed'), 'error',
+          { action: { label: t('common.retry'), onClick: () => historyRunRef.current?.(dir) } });
+        return;
+      } finally {
+        annoBusyRef.current = false;
+        setSavingAnnotation(false);
+      }
+      const at = list().lastIndexOf(step);
+      if (at >= 0) list().splice(at, 1);
+      other().push(step);
+      bumpHistory();
+      showToast(
+        t(dir === 'undo' ? 'library.history.undone' : 'library.history.redone', { what: t(`library.history.what.${step.what}`) }),
+        'info',
+        { action: historyToastAction(step, dir === 'undo' ? 'redo' : 'undo'), duration: UNDO_TOAST_MS },
+      );
+      return;
+    }
+  };
+
+  // Presses run strictly one after another — an annotation step waits on the
+  // network, and the ink step pressed after it must not jump the queue. The
+  // runner always calls the LATEST render's stepHistory, so it sees the pages
+  // and the annotate state as they are when its turn comes.
+  const stepHistoryRef = useRef(null);
+  useEffect(() => { stepHistoryRef.current = stepHistory; });
+  const historyGenRef = useRef(0);
+  const historyQueueRef = useRef(Promise.resolve());
+  const runHistory = useCallback((dir) => {
+    const gen = historyGenRef.current;
+    historyQueueRef.current = historyQueueRef.current
+      .then(() => (gen === historyGenRef.current ? stepHistoryRef.current?.(dir) : undefined))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    historyRunRef.current = runHistory;
+    undoRef.current = () => runHistory('undo');
+    redoRef.current = () => runHistory('redo');
+  }, [runHistory]);
   const clearDrawing = useCallback(() => {
     const page = lastDrawnPageRef.current ?? drawPage;
     if (page != null) applyStrokes(page, [], true);
@@ -3433,6 +3685,54 @@ export default function Library() {
     setTafsirOpen(true);
   };
 
+  // ── The span's actions popover ──
+  // Shown while a verse of the span is on screen (it floats over the page, so it
+  // has nothing to point at once the span has been turned away from).
+  const spanPopoverShown = spanActionsOpen && verses.some((v) => inRange(v.verseKey));
+  // "Ya-Sin 41–46" (or "Ya-Sin 83 – As-Saffat 3" across a surah boundary).
+  const spanRangeLabel = (() => {
+    if (!spanActionsOpen) return '';
+    const a = verseOfOrd(rangeSelection.startOrd);
+    const b = verseOfOrd(rangeSelection.endOrd);
+    if (!a || !b) return '';
+    return a.surahNumber === b.surahNumber
+      ? `${surahLabelFor(a.surahNumber)} ${fmtNum(a.ayahNumber)}–${fmtNum(b.ayahNumber)}`
+      : `${surahLabelFor(a.surahNumber)} ${fmtNum(a.ayahNumber)} – ${surahLabelFor(b.surahNumber)} ${fmtNum(b.ayahNumber)}`;
+  })();
+
+  // Tafsir for a span opens on its first verse WITHOUT selecting it, so the span
+  // stays picked. That verse may sit on a page turned away from (the span was
+  // dragged across the turn); the panel then reads it from its global address.
+  const openSpanTafsir = () => {
+    const ord = rangeSelection.startOrd;
+    const verseKey = keyOfOrd(ord);
+    const v = verseOfOrd(ord);
+    if (!verses.some((x) => x.verseKey === verseKey) && v) {
+      lastTafsirVerseRef.current = { verseKey, id: ord, surahNumber: v.surahNumber, ayahNumber: v.ayahNumber, page: pageOfOrd(ord) };
+    }
+    setNotePanel(null);
+    setTafsirVerseKey(verseKey);
+    setTafsirOpen(true);
+  };
+
+  // Play the span = the range repeat aimed at it, with the counts the repeat menu
+  // holds; pressed while that is what is playing, it pauses (and resumes).
+  const spanIsLoaded = spanActionsOpen && repeatMode === 'range' && playingOrd != null
+    && playingOrd >= rangeSelection.startOrd && playingOrd <= rangeSelection.endOrd
+    && rangeStartOrd === rangeSelection.startOrd && rangeEndOrd === rangeSelection.endOrd;
+  const spanIsPlaying = spanIsLoaded && isPlaying;
+  const toggleSpanAudio = () => {
+    if (spanIsPlaying) { cancelPreStart(); activeEl()?.pause(); setIsPlaying(false); return; }
+    if (spanIsLoaded) { resumeActive(); return; }
+    const { startOrd, endOrd } = rangeSelection;
+    setRangeStartOrd(startOrd);
+    setRangeEndOrd(endOrd);
+    setRepeatMode('range');
+    setRangePasses(0);
+    setRepeatsDone(0);
+    playOrd(startOrd);
+  };
+
   // The persistent panel toggle. Opened with nothing selected it falls back to the
   // first verse of the page in front of the reader, so the panel normally has a
   // verse from the moment it appears. When there is no page to fall back to — the
@@ -3462,7 +3762,7 @@ export default function Library() {
   // word just tapped — and larger still when it opens UPWARD, where it would
   // otherwise sit over the line the reader is looking at.
   useLayoutEffect(() => {
-    if (!selectedVerse || !popoverRef.current || !placeNextRef.current) return;
+    if (!(selectedVerse || spanPopoverShown) || !popoverRef.current || !placeNextRef.current) return;
     placeNextRef.current = false;
     const el = popoverRef.current;
     const { width: w, height: h } = el.getBoundingClientRect();
@@ -3475,7 +3775,7 @@ export default function Library() {
     top = Math.min(Math.max(top, 8), window.innerHeight - h - 8);
     setPopoverPos({ x: left, y: top });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVerseKey, popoverHidden]);
+  }, [selectedVerseKey, popoverHidden, spanPopoverShown, popoverPlaceTick]);
 
   // A click anywhere outside the popover folds it away — the mushaf margins, the
   // sidebar, the tafsir panel, anywhere — while the verse stays selected. Capture
@@ -3496,10 +3796,17 @@ export default function Library() {
       // a stroke must not drop it, or the next right-click would select it again
       // instead of hiding it.
       if (selfTestWhileDrawing && e.target.closest?.('.mushaf-draw-svg, .mushaf-text-layer')) return;
-      // A picked span carries no actions to fold away first, so it is one step:
-      // the span goes. (It and a single verse are never both selected — picking
-      // either clears the other.)
-      if (rangeSelection) { setRangeSelection(null); return; }
+      // Any other annotate mode: a right-click on the ink layer is the press that
+      // opens the actions (see actionsAtPoint), not a click off the verse.
+      if (drawPage != null && isSecondaryPress(e) && e.target.closest?.('.mushaf-draw-svg, .mushaf-text-layer')) return;
+      // A picked span: with its actions up they fold first and the span stays,
+      // the same two steps a single verse takes; otherwise the span goes. (It and
+      // a single verse are never both selected — picking either clears the other.)
+      if (rangeSelection) {
+        if (rangeSelection.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
+        else setRangeSelection(null);
+        return;
+      }
       // Empty space. Same ladder as tapping the verse: the first click puts the
       // actions away, the next one drops the selection.
       if (!popoverHidden) setPopoverHidden(true);
@@ -3508,7 +3815,7 @@ export default function Library() {
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVerseKey, rangeSelection, popoverHidden, selfTestWhileDrawing]);
+  }, [selectedVerseKey, rangeSelection, popoverHidden, selfTestWhileDrawing, drawPage]);
 
   // The repeat menu goes away on a click anywhere, exactly as the verse actions do
   // — and by the same means: a capture-phase listener that never preventDefaults,
@@ -3786,7 +4093,7 @@ export default function Library() {
                   onDeleteText={(id) => deleteText(pd.page, id)}
                   onReadText={(n) => setReadTextNote({ text: n.text, color: n.color || 'ink' })}
                   placeholder={t('library.draw.textPlaceholder')}
-                  onSecondaryPress={selfTestWhileDrawing ? cycleVerseAtPoint : undefined}
+                  onSecondaryPress={secondaryPressWhileDrawing}
                 />
                 <MushafMarks pageData={pd} outerEdge={outerEdge} prevLastRub={prevLastRub} />
               </div>
@@ -4456,7 +4763,7 @@ export default function Library() {
                         </button>
                         <Tooltip label={t('library.annotations.removeHard')}>
                           <button
-                            onClick={() => removeHardItem(h._id, h.pageNumber)}
+                            onClick={() => removeHardItem(h)}
                             aria-label={t('library.annotations.removeHard')}
                             className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-lg text-[#9aa3a0] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                           >
@@ -4615,7 +4922,7 @@ export default function Library() {
                 without losing the selection — the verse stays highlighted and the
                 tafsir panel keeps following it; the bottom audio bar is always
                 there, so nothing is lost by folding this away. */}
-            {selectedVerse && !popoverHidden && (
+            {((selectedVerse && !popoverHidden) || spanPopoverShown) && (
               <div
                 ref={popoverRef}
                 style={popoverDragStyle}
@@ -4631,11 +4938,17 @@ export default function Library() {
                     <FiMove className="w-3.5 h-3.5" />
                   </span>
                 </Tooltip>
+                {/* What the actions act on: one verse, or the whole span — named
+                    and counted, so a span can't be mistaken for its first verse. */}
                 <span data-testid="popover-verse-ref" className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
-                  {verseRef(selectedVerse)}
+                  {selectedVerse
+                    ? verseRef(selectedVerse)
+                    : t('library.span.label', { range: spanRangeLabel, verses: spanVersesLabel(rangeSelection.endOrd - rangeSelection.startOrd + 1) })}
                 </span>
                 {/* Transport (play/pause + prev/next) + Tafsir — the popover is the
-                    sole controller while it's open (the bottom bar is hidden). */}
+                    sole controller while it's open (the bottom bar is hidden). A
+                    span has no prev/next: stepping is a single verse's move. */}
+                {selectedVerse ? (
                 <div className="flex items-center gap-1.5" data-tour="verse-actions">
                   <Tooltip label={t('tooltips.prevVerse')}>
                     <button
@@ -4681,10 +4994,32 @@ export default function Library() {
                     </button>
                   </Tooltip>
                 </div>
+                ) : (
+                <div className="flex items-center gap-1.5">
+                  <Tooltip label={spanIsPlaying ? t('tooltips.pause') : t('library.span.play')}>
+                    <button
+                      onClick={toggleSpanAudio}
+                      className="w-8 h-8 rounded-full bg-[#004f35] text-white flex items-center justify-center hover:bg-[#003527] transition-colors"
+                    >
+                      {spanIsPlaying
+                        ? <FiPause className="w-3.5 h-3.5" />
+                        : <FiPlay className="w-3.5 h-3.5 ms-0.5 rtl:rotate-180" />}
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={t('library.span.tafsir')}>
+                    <button
+                      onClick={openSpanTafsir}
+                      className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#004f35] dark:text-emerald-400 flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                    >
+                      <FiBookOpen className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
+                </div>
+                )}
                 {/* Annotation actions — highlight swatches, note, mark hard. Kept
                     off while the "mark verses" picking mode owns taps (it clears
                     the selection anyway, so this is a double guard). */}
-                {signedIn && !markVersesMode && (
+                {signedIn && !markVersesMode && selectedVerse && (
                   <div className="flex items-center gap-1.5" data-tour="verse-annotate">
                     <span className="w-px h-6 bg-[#dce2f3] dark:bg-gray-600" aria-hidden="true" />
                     {ANNOTATION_COLORS.map(({ key, cls, labelKey }) => {
@@ -4735,13 +5070,96 @@ export default function Library() {
                     </Tooltip>
                   </div>
                 )}
-                {/* Put the actions away but KEEP the verse selected — distinct from
-                    the X beside it, which drops the selection altogether. The verse
-                    stays highlighted and the tafsir panel keeps following it; a hint
-                    above the mushaf says how to bring these back. */}
+                {/* The same actions for a whole span. Each swatch shows whether its
+                    colour covers ALL the span (pressed), SOME of it (a dashed ring
+                    — mixed) or none; pressing it sets all, or clears all when all
+                    already have it. A note anchors to one verse, so it is offered
+                    but explains itself instead of acting. */}
+                {signedIn && !markVersesMode && !selectedVerse && (
+                  <div className="flex items-center gap-1.5" data-tour="verse-annotate">
+                    <span className="w-px h-6 bg-[#dce2f3] dark:bg-gray-600" aria-hidden="true" />
+                    {ANNOTATION_COLORS.map(({ key, cls, labelKey }) => {
+                      const cover = spanState?.color[key] ?? 'none';
+                      const label = cover === 'some' ? t('library.span.partly', { label: t(labelKey) }) : t(labelKey);
+                      return (
+                        <Tooltip key={key} label={label}>
+                          <button
+                            onClick={() => setSpanHighlight(key)}
+                            disabled={savingAnnotation || !spanState}
+                            aria-label={label}
+                            aria-pressed={cover === 'all' ? true : cover === 'some' ? 'mixed' : false}
+                            data-cover={cover}
+                            className={`w-6 h-6 rounded-full transition-transform disabled:opacity-50 ${cls} ${
+                              cover === 'all'
+                                ? 'ring-2 ring-offset-1 ring-[#004f35] dark:ring-emerald-400 dark:ring-offset-gray-800 scale-110'
+                                : cover === 'some'
+                                  ? 'outline-2 outline-dashed outline-offset-2 outline-[#004f35] dark:outline-emerald-400 hover:scale-110'
+                                  : 'ring-1 ring-black/10 dark:ring-white/25 hover:scale-110'
+                            }`}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                    {spanState?.highlighted > 0 && (
+                      <Tooltip label={t('library.span.removeHighlight')}>
+                        <button
+                          onClick={() => setSpanHighlight(null)}
+                          disabled={savingAnnotation}
+                          aria-label={t('library.span.removeHighlight')}
+                          className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                        >
+                          <FiSlash className="w-3.5 h-3.5" />
+                        </button>
+                      </Tooltip>
+                    )}
+                    {/* aria-disabled, not disabled: a disabled button gets no hover,
+                        and the tooltip is the whole point here. */}
+                    <Tooltip label={t('library.span.noteDisabled')}>
+                      <button
+                        type="button"
+                        aria-disabled="true"
+                        aria-label={t('library.span.noteDisabled')}
+                        onClick={(e) => e.preventDefault()}
+                        className="w-8 h-8 rounded-full border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center opacity-40 cursor-not-allowed"
+                      >
+                        <FiMessageSquare className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
+                    {(() => {
+                      const cover = spanState?.hard ?? 'none';
+                      const label = cover === 'all' ? t('library.span.unmarkHard') : t('library.span.markHard');
+                      return (
+                        <Tooltip label={label}>
+                          <button
+                            onClick={toggleSpanHard}
+                            disabled={savingAnnotation || !spanState}
+                            aria-label={label}
+                            aria-pressed={cover === 'all' ? true : cover === 'some' ? 'mixed' : false}
+                            data-cover={cover}
+                            className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors disabled:opacity-50 ${
+                              cover === 'all'
+                                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-600 dark:text-red-400'
+                                : cover === 'some'
+                                  ? 'border-dashed border-red-400 dark:border-red-500 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                  : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20'
+                            }`}
+                          >
+                            <FiFlag className={`w-3.5 h-3.5 ${cover === 'all' ? 'fill-current' : ''}`} />
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
+                  </div>
+                )}
+                {/* Put the actions away but KEEP the selection — distinct from the
+                    X beside it, which drops the selection altogether. The verse (or
+                    span) stays highlighted and the tafsir panel keeps following it;
+                    a hint above the mushaf says how to bring these back. */}
                 <Tooltip label={t('tooltips.collapseVerseActions')}>
                   <button
-                    onClick={() => setPopoverHidden(true)}
+                    onClick={() => (selectedVerse
+                      ? setPopoverHidden(true)
+                      : setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd })))}
                     aria-label={t('tooltips.collapseVerseActions')}
                     className="w-8 h-8 rounded-full text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
@@ -4750,7 +5168,7 @@ export default function Library() {
                 </Tooltip>
                 <Tooltip label={t('tooltips.close')}>
                   <button
-                    onClick={() => setSelectedVerseKey(null)}
+                    onClick={() => (selectedVerse ? setSelectedVerseKey(null) : setRangeSelection(null))}
                     className="w-8 h-8 rounded-full text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
                     <FiX className="w-4 h-4" />
@@ -5368,13 +5786,13 @@ export default function Library() {
           {/* Actions row */}
           <div className="flex items-center gap-1 border-t border-[#dce2f3] dark:border-gray-700 pt-1.5">
             <Tooltip label={t('library.draw.undo')}>
-              <button type="button" onClick={undoStroke} disabled={(undoStacksRef.current[targetDrawPage()] ?? []).length === 0} aria-label={t('library.draw.undo')}
+              <button type="button" onClick={() => runHistory('undo')} disabled={historyRef.current.undo.length === 0} aria-label={t('library.draw.undo')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
                 <FiRotateCcw className="w-4 h-4" />
               </button>
             </Tooltip>
             <Tooltip label={t('library.draw.redo')}>
-              <button type="button" onClick={redoStroke} disabled={(redoStacksRef.current[targetDrawPage()] ?? []).length === 0} aria-label={t('library.draw.redo')}
+              <button type="button" onClick={() => runHistory('redo')} disabled={historyRef.current.redo.length === 0} aria-label={t('library.draw.redo')}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
                 <FiRotateCw className="w-4 h-4" />
               </button>

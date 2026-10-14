@@ -11,7 +11,7 @@
 export const hideModeStep = ({ concealed, selected }) =>
   concealed ? 'reveal' : selected ? 'hide' : 'select';
 
-// A press counts as SECONDARY — the gesture that runs the cycle while annotating —
+// A press counts as SECONDARY — the one that reaches through the ink while annotating —
 // when it is the right button, or a primary-button mouse press with Ctrl held:
 // macOS turns Ctrl+click into a right-click but reports it as button 0, and
 // treating it the same everywhere keeps it from ever leaving a dot of ink.

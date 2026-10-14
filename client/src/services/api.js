@@ -84,6 +84,12 @@ export const annotationsAPI = {
   remove: (id) => API.delete(`/annotations/${id}`),
   // Upsert a page's free-form drawing (empty strokes deletes it).
   saveDrawing: (data) => API.put('/annotations/drawing', data),
+  // Set the state of many verse annotations at once, all-or-nothing. Each op is
+  // { kind, pageNumber, verseKey, value }; the reply reports every key's state
+  // before and after (span actions, and the reader's undo / redo).
+  batch: (ops) => API.post('/annotations/batch', { ops }),
+  // The highlights / notes / hard flags on pages from..to, in one request.
+  listVerseRange: (from, to) => API.get('/annotations/verses', { params: { from, to } }),
 };
 
 // Opt-in leaderboard (weekly / all-time). period is 'week' | 'all'.

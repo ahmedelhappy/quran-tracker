@@ -708,6 +708,37 @@
       "removeHard": "Remove from hard list",
       "wholePage": "Whole page"
     },
+    "span": {
+      "label": "{{range}} · {{verses}}",
+      "verses_one": "{{n}} verse",
+      "verses_other": "{{n}} verses",
+      "highlightAdded": "Highlight saved on {{verses}}",
+      "highlightRemoved": "Highlight removed from {{verses}}",
+      "hardAdded": "{{verses}} marked as hard",
+      "hardRemoved": "{{verses}} removed from hard",
+      "removeHighlight": "Remove the highlight from all of them",
+      "markHard": "Mark all of them as hard",
+      "unmarkHard": "Unmark all of them as hard",
+      "partly": "{{label}} — on some of these verses",
+      "noteDisabled": "A note belongs to one verse — open a single verse's actions to add one",
+      "play": "Play these verses",
+      "tafsir": "Tafsir, from the first of these verses",
+      "tooMany": "That's too many verses for one change (at most {{max}}). Pick a shorter span."
+    },
+    "history": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "undone": "Undone: {{what}}",
+      "redone": "Redone: {{what}}",
+      "undoFailed": "Couldn't undo that — check your connection and try again.",
+      "redoFailed": "Couldn't redo that — check your connection and try again.",
+      "notLatest": "Something newer has changed since — undo that first (Ctrl+Z).",
+      "what": {
+        "highlight": "highlight",
+        "hard": "hard flag",
+        "note": "note"
+      }
+    },
     "bookmarks": {
       "title": "Bookmarks",
       "add": "Bookmark page {{n}}",
