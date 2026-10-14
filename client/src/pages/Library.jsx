@@ -930,6 +930,19 @@ export default function Library() {
   }, [visiblePages, pageResolved]);
 
   // ── Audio buffer plumbing ──────────────────────────────────────────
+  // The chosen speed, on an element in a way that lasts. load() resets playbackRate
+  // to defaultPlaybackRate (the media element spec), so setting playbackRate alone
+  // before a load was undone by it: every preloaded verse came up at 1x, and with the
+  // early handover adopting those as they were, all but the first verse played at
+  // normal speed whatever the speed control said. The default is set as well, so a
+  // load keeps it.
+  const applyRate = (el) => {
+    if (!el) return;
+    const rate = playbackRateRef.current;
+    if (el.defaultPlaybackRate !== rate) el.defaultPlaybackRate = rate;
+    if (el.playbackRate !== rate) el.playbackRate = rate;
+  };
+
   // Everything that points an <audio> element at a verse goes through loadBuf, so
   // the recorded status can never drift from what the element is really doing.
   const loadBuf = (i, ord) => {
@@ -939,8 +952,9 @@ export default function Library() {
     const r = audioRetryRef.current[i];
     el.src = (r.ord === ord && r.fallback && getFallbackAyahAudioUrl(reciterRef.current, keyOfOrd(ord)))
       || getAyahAudioUrl(reciterRef.current, ord);
-    el.playbackRate = playbackRateRef.current;
+    applyRate(el);
     el.load();
+    applyRate(el);   // and once more after, for an engine that resets it anyway
   };
 
   // Hand a buffer back empty: cancels its pending retry and aborts any download
@@ -1044,6 +1058,7 @@ export default function Library() {
   // it takes the same road.
   const playEl = (i, ord) => {
     const el = bufEl(i);
+    applyRate(el);   // every start — early handover, swap, repeat, retry — at the chosen speed
     // Time how long a READY element takes from play() to sound — exactly what an early
     // start is, and what the handover has to start ahead by. Starts that must load or
     // seek first (a cold verse, a repeat rewinding) would be timing those instead.
@@ -1359,7 +1374,7 @@ export default function Library() {
     } else if (el.currentTime > 0) {
       try { el.currentTime = 0; } catch { /* not seekable yet — it starts at 0 anyway */ }
     }
-    el.playbackRate = playbackRate;
+    applyRate(el);
     if (isPlaying) playEl(idx, playingOrd);
     // Speed and pause/resume are applied by their own handlers; re-running here on
     // either would restart the verse.
@@ -1369,7 +1384,7 @@ export default function Library() {
   // Apply a speed change to BOTH elements immediately (the idle one is already
   // primed with the next verse and must start at the same speed) and persist it.
   useEffect(() => {
-    [0, 1].forEach((i) => { const el = bufEl(i); if (el) el.playbackRate = playbackRate; });
+    [0, 1].forEach((i) => applyRate(bufEl(i)));
     localStorage.setItem('playbackRate', String(playbackRate));
   }, [playbackRate]);
 
