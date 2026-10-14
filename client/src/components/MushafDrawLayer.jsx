@@ -57,6 +57,26 @@ const strokeHit = (stroke, x, y, threshold) => {
   }
   return false;
 };
+
+// The highlighter's pointer is a circle the size of the tip it paints, filled
+// with the chosen colour at the stroke's own opacity — so it previews exactly the
+// mark a drag will leave, where the pen keeps its crosshair. Colours mirror the
+// `.mushaf-stroke--*` rules in index.css. A thin contrast ring keeps yellow
+// visible on cream paper. Built as an inline SVG data URL, hotspot at the centre,
+// `crosshair` as the fallback if a custom cursor is refused.
+const HL_HEX = { ink: '#1f2937', yellow: '#f4b400', green: '#17a673', blue: '#3b82f6', pink: '#ec4899' };
+const highlighterCursor = (diameter, color, dark) => {
+  const d = Math.round(clamp(diameter, 10, 96));
+  const size = d + 4;
+  const c = size / 2;
+  const hex = color === 'ink' && dark ? '#e8e2d2' : (HL_HEX[color] ?? HL_HEX.yellow);
+  const halo = dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)';
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>`
+    + `<circle cx='${c}' cy='${c}' r='${d / 2 + 0.5}' fill='none' stroke='${halo}' stroke-width='1'/>`
+    + `<circle cx='${c}' cy='${c}' r='${d / 2 - 0.75}' fill='${hex}' fill-opacity='${dark ? 0.42 : 0.35}' stroke='${hex}' stroke-width='1.5'/>`
+    + '</svg>';
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${Math.round(c)} ${Math.round(c)}, crosshair`;
+};
 const toPath = (pts) => {
   if (!pts.length) return '';
   if (pts.length === 1) { const [x, y] = pts[0]; return `M ${x} ${y} L ${x} ${y}`; }
@@ -106,6 +126,17 @@ export default function MushafDrawLayer({
   const [editing, setEditing] = useState(null);       // { id?, x, y } | null
   const [draft, setDraft] = useState('');
   const [dragPreview, setDragPreview] = useState(null); // { id, x, y } while dragging a note
+  // Screen pixels per viewBox unit (the frame's CSS scale, so it follows zoom)
+  // plus the theme, read as the pointer moves over the layer with the
+  // highlighter in hand — they size and tint its cursor.
+  const [tipView, setTipView] = useState(null); // { unitPx, dark }
+  const measureTip = () => {
+    const w = svgRef.current?.getBoundingClientRect().width;
+    if (!w) return;
+    const unitPx = Math.round((w / VBW) * 100) / 100;
+    const dark = document.documentElement.classList.contains('dark');
+    setTipView((v) => (v && v.unitPx === unitPx && v.dark === dark ? v : { unitPx, dark }));
+  };
 
   const clientToXY = (clientX, clientY) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -163,6 +194,7 @@ export default function MushafDrawLayer({
       endStroke(e);
       return;
     }
+    if (tool === 'highlighter' && !drawingRef.current) measureTip();
     if (tool === 'eraser') { if (erasingRef.current) { const [x, y] = clientToXY(e.clientX, e.clientY); eraseAt(x, y); } return; }
     if (!drawingRef.current) return;
     const [x, y] = clientToXY(e.clientX, e.clientY);
@@ -251,8 +283,12 @@ export default function MushafDrawLayer({
         className={`mushaf-draw-svg${active ? ' is-active' : ''}${active && tool === 'eraser' ? ' is-eraser' : ''}`}
         viewBox={`${X_MIN} ${Y_MIN} ${VBW} ${VBH}`}
         preserveAspectRatio="none"
-        style={active ? { touchAction: 'none' } : undefined}
+        style={active ? {
+          touchAction: 'none',
+          ...(tool === 'highlighter' && tipView ? { cursor: highlighterCursor(width * tipView.unitPx, color, tipView.dark) } : null),
+        } : undefined}
         onPointerDown={onDown}
+        onPointerEnter={active && tool === 'highlighter' ? measureTip : undefined}
         onPointerMove={onMove}
         onPointerUp={endStroke}
         onPointerCancel={endStroke}

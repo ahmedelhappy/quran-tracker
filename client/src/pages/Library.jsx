@@ -5753,38 +5753,44 @@ export default function Library() {
               already active stops annotating. The number stays a Western digit in
               Arabic too (deliberately not fmtNum): it labels a KEYCAP, like the
               Latin letter beside it, and Western digits are printed on the number
-              row of every Arabic keyboard — Arabic-Indic ones only on some. */}
+              row of every Arabic keyboard — Arabic-Indic ones only on some.
+              The tools themselves sit left to right, 1 2 3 4, in BOTH languages
+              (dir="ltr" on their group only): they mirror the keyboard's number
+              row, which runs left to right on every layout. The tooltips are
+              portalled, so their Arabic text keeps the page's RTL. */}
           <div className="flex items-center gap-1">
-            {DRAW_TOOLS.map((tl) => {
-              const ToolIcon = tl.icon;
-              const isActive = drawTool === tl.k;
-              const label = t('library.draw.toolKeys', { tool: t(tl.labelKey), num: tl.num, key: tl.key.toUpperCase() });
-              return (
-                <Tooltip key={tl.k} label={isActive ? `${label} — ${t('library.draw.hideTools')}` : label}>
-                  <button
-                    type="button"
-                    onClick={() => selectTool(tl.k)}
-                    aria-label={label}
-                    aria-keyshortcuts={`${tl.num} ${tl.key.toUpperCase()}`}
-                    aria-pressed={isActive}
-                    className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
-                      isActive ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <ToolIcon className="w-4 h-4" />
-                    <span
-                      aria-hidden="true"
-                      data-testid="draw-tool-num"
-                      className={`absolute bottom-0.5 end-1 text-[9px] font-semibold leading-none tabular-nums ${
-                        isActive ? 'text-white/80' : 'text-[#707974] dark:text-gray-400'
+            <div dir="ltr" className="flex items-center gap-1">
+              {DRAW_TOOLS.map((tl) => {
+                const ToolIcon = tl.icon;
+                const isActive = drawTool === tl.k;
+                const label = t('library.draw.toolKeys', { tool: t(tl.labelKey), num: tl.num, key: tl.key.toUpperCase() });
+                return (
+                  <Tooltip key={tl.k} label={isActive ? `${label} — ${t('library.draw.hideTools')}` : label}>
+                    <button
+                      type="button"
+                      onClick={() => selectTool(tl.k)}
+                      aria-label={label}
+                      aria-keyshortcuts={`${tl.num} ${tl.key.toUpperCase()}`}
+                      aria-pressed={isActive}
+                      className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                        isActive ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                       }`}
                     >
-                      {tl.num}
-                    </span>
-                  </button>
-                </Tooltip>
-              );
-            })}
+                      <ToolIcon className="w-4 h-4" />
+                      <span
+                        aria-hidden="true"
+                        data-testid="draw-tool-num"
+                        className={`absolute bottom-0.5 end-1 text-[9px] font-semibold leading-none tabular-nums ${
+                          isActive ? 'text-white/80' : 'text-[#707974] dark:text-gray-400'
+                        }`}
+                      >
+                        {tl.num}
+                      </span>
+                    </button>
+                  </Tooltip>
+                );
+              })}
+            </div>
             <InfoHint text={t('hints.drawTools')} label={t('library.draw.enter')} />
           </div>
           {/* Colours row (hidden for the eraser) */}
