@@ -371,6 +371,215 @@ const upsertDrawing = async (req, res) => {
   }
 };
 
+// ── Batch: set the state of many verse annotations in one request ────────────
+// A span action (highlight 6 verses, flag them hard) and its undo are ONE request
+// here instead of N, so a few span highlights can't trip the general API limiter.
+//
+// Ops are keyed by (pageNumber, verseKey, kind), never by annotation _id: an undo
+// that re-creates a highlight gives it a new id, and a later redo must still find
+// it. Each op names the STATE that key should end up in:
+//   { kind: 'highlight', pageNumber, verseKey, value: 'yellow' | … | null }
+//   { kind: 'hard',      pageNumber, verseKey | null, value: true | false }
+//   { kind: 'note',      pageNumber, verseKey | null, value: 'text' | null }
+// and the response reports each key's state before and after, which is what the
+// client's undo history stores. Setting a state twice is a no-op, so an undo or a
+// redo replayed after a network error can't double-apply.
+//
+// All-or-nothing: every op is validated and the cap checked BEFORE anything is
+// written. The writes then go out as one ordered bulkWrite; if it fails part-way,
+// the touched keys are put back from a snapshot of their documents taken before
+// the write (same _ids, same timestamps), and the request fails with a 500.
+const MAX_BATCH_OPS = 300;
+const BATCH_KINDS = ['highlight', 'hard', 'note'];
+const batchKeyOf = (op) => `${op.pageNumber}|${op.verseKey ?? ''}|${op.kind}`;
+
+// Validates one raw op and returns a normalized { op } or { error }. Strict on
+// types: the generic middleware can only see that `ops` is an array of objects,
+// so a nested operator object ({ $gt: '' }) is rejected here, field by field.
+const parseBatchOp = (raw, i) => {
+  const at = `ops[${i}]`;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: `${at} must be an object` };
+  const { kind, pageNumber, verseKey, value } = raw;
+  if (typeof kind !== 'string' || !BATCH_KINDS.includes(kind)) {
+    return { error: `${at}.kind must be one of ${BATCH_KINDS.join(', ')}` };
+  }
+  if (!isInt(pageNumber) || pageNumber < 1 || pageNumber > 604) {
+    return { error: `${at}.pageNumber must be an integer between 1 and 604` };
+  }
+  if (verseKey !== null && verseKey !== undefined) {
+    if (typeof verseKey !== 'string' || !VERSE_KEY_RE.test(verseKey)) {
+      return { error: `${at}.verseKey must be a "surah:ayah" string or null` };
+    }
+    if (!verseOnPage(pageNumber, verseKey)) {
+      return { error: `${at}: verseKey ${verseKey} is not on page ${pageNumber}` };
+    }
+  }
+  const key = verseKey ?? null;
+
+  if (kind === 'highlight') {
+    if (!key) return { error: `${at}: a highlight must target a verse (verseKey)` };
+    if (value !== null && !(typeof value === 'string' && COLORS.includes(value))) {
+      return { error: `${at}.value must be one of ${COLORS.join(', ')} or null` };
+    }
+  } else if (kind === 'hard') {
+    if (typeof value !== 'boolean') return { error: `${at}.value must be true or false` };
+  } else if (value !== null) {
+    // note
+    if (typeof value !== 'string') return { error: `${at}.value must be the note text or null` };
+    const text = value.trim();
+    if (!text) return { error: `${at}: a note must have text (send null to remove it)` };
+    if (text.length > 2000) return { error: `${at}: note cannot exceed 2000 characters` };
+    return { op: { kind, pageNumber, verseKey: key, value: text } };
+  }
+  return { op: { kind, pageNumber, verseKey: key, value } };
+};
+
+// A key's current state, read off its documents (oldest first). The UI keeps one
+// highlight / note per verse; if the API was used to stack several, the oldest
+// one is what the reader sees as "the" state.
+const stateOf = (kind, docs) => {
+  if (kind === 'hard') return docs.length > 0;
+  if (!docs.length) return null;
+  return kind === 'highlight' ? docs[0].color : docs[0].text;
+};
+
+// Puts every touched key back exactly as the snapshot had it. Raw driver calls,
+// so the restored documents keep their original _id, createdAt and updatedAt.
+const restoreSnapshot = async (userId, keys, snapshot) => {
+  await Annotation.collection.deleteMany({
+    userId,
+    $or: keys.map(({ pageNumber, verseKey, kind }) => ({ pageNumber, verseKey, kind })),
+  });
+  if (snapshot.length) await Annotation.collection.insertMany(snapshot);
+};
+
+// POST /api/annotations/batch { ops: [...] }
+const batchAnnotations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const rawOps = req.body.ops;
+    if (!Array.isArray(rawOps) || rawOps.length === 0) {
+      return res.status(400).json({ success: false, message: 'ops must be a non-empty array' });
+    }
+    if (rawOps.length > MAX_BATCH_OPS) {
+      return res.status(400).json({ success: false, message: `A batch can hold at most ${MAX_BATCH_OPS} changes` });
+    }
+
+    const ops = [];
+    const seen = new Set();
+    for (let i = 0; i < rawOps.length; i++) {
+      const { op, error } = parseBatchOp(rawOps[i], i);
+      if (error) return res.status(400).json({ success: false, message: error });
+      const k = batchKeyOf(op);
+      if (seen.has(k)) {
+        return res.status(400).json({ success: false, message: `ops[${i}] repeats a verse already in this batch` });
+      }
+      seen.add(k);
+      ops.push(op);
+    }
+
+    // Every document the batch could touch, in one indexed read (userId+pageNumber).
+    const pages = [...new Set(ops.map((o) => o.pageNumber))];
+    const kinds = [...new Set(ops.map((o) => o.kind))];
+    const existing = await Annotation.find(
+      { userId, pageNumber: { $in: pages }, kind: { $in: kinds } }
+    ).sort({ createdAt: 1, _id: 1 }).lean();
+    const docsByKey = new Map();
+    for (const d of existing) {
+      const k = batchKeyOf(d);
+      if (!seen.has(k)) continue;
+      if (!docsByKey.has(k)) docsByKey.set(k, []);
+      docsByKey.get(k).push(d);
+    }
+
+    const writes = [];
+    const touched = [];
+    let created = 0;
+    let removed = 0;
+    const results = ops.map((op) => {
+      const docs = docsByKey.get(batchKeyOf(op)) ?? [];
+      const before = stateOf(op.kind, docs);
+      const after = op.value;
+      const ids = docs.map((d) => d._id);
+      const base = { userId, pageNumber: op.pageNumber, verseKey: op.verseKey, kind: op.kind };
+      const start = writes.length;
+
+      if (op.kind === 'hard') {
+        if (after && !docs.length) { writes.push({ insertOne: { document: base } }); created++; }
+        if (!after && docs.length) { writes.push({ deleteMany: { filter: { _id: { $in: ids }, userId } } }); removed += docs.length; }
+      } else if (after === null) {
+        if (docs.length) { writes.push({ deleteMany: { filter: { _id: { $in: ids }, userId } } }); removed += docs.length; }
+      } else if (!docs.length) {
+        const field = op.kind === 'highlight' ? 'color' : 'text';
+        writes.push({ insertOne: { document: { ...base, [field]: after } } });
+        created++;
+      } else if (op.kind === 'highlight') {
+        // Recolour every highlight on the verse (word spans keep their span).
+        if (docs.some((d) => d.color !== after)) {
+          writes.push({ updateMany: { filter: { _id: { $in: ids }, userId }, update: { $set: { color: after } } } });
+        }
+      } else if (docs[0].text !== after) {
+        writes.push({ updateOne: { filter: { _id: docs[0]._id, userId }, update: { $set: { text: after } } } });
+      }
+
+      if (writes.length > start) touched.push(op);
+      return { kind: op.kind, pageNumber: op.pageNumber, verseKey: op.verseKey, before, after };
+    });
+
+    if (created > 0) {
+      const count = await Annotation.countDocuments({ userId });
+      if (count - removed + created > MAX_ANNOTATIONS) {
+        return res.status(400).json({
+          success: false,
+          message: `You've reached the ${MAX_ANNOTATIONS}-annotation limit. Remove some to add more.`,
+        });
+      }
+    }
+
+    if (writes.length) {
+      const snapshot = touched.flatMap((op) => docsByKey.get(batchKeyOf(op)) ?? []);
+      try {
+        await Annotation.bulkWrite(writes, { ordered: true });
+      } catch (writeError) {
+        try {
+          await restoreSnapshot(userId, touched, snapshot);
+        } catch (restoreError) {
+          console.error('BatchAnnotations rollback failed:', restoreError);
+        }
+        throw writeError;
+      }
+    }
+
+    res.status(200).json({ success: true, data: { results } });
+  } catch (error) {
+    console.error('BatchAnnotations error:', error);
+    serverError(res, 'Error saving annotations', error);
+  }
+};
+
+// GET /api/annotations/verses?from=P&to=Q — the verse-anchored annotations
+// (highlights, notes, hard flags) on pages P..Q in one request. A span of verses
+// can reach across many pages; the popover needs their state to show which
+// swatches are fully / partly applied, and one read beats one per page. Drawings
+// are left out (they can be large and a span never needs them).
+const getVerseAnnotations = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const from = Number(req.query.from);
+    const to = Number(req.query.to);
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to > 604 || from > to) {
+      return res.status(400).json({ success: false, message: 'from/to must be page numbers with 1 <= from <= to <= 604' });
+    }
+    const annotations = await Annotation.find(
+      { userId, pageNumber: { $gte: from, $lte: to }, kind: { $in: BATCH_KINDS } }
+    ).sort({ pageNumber: 1, createdAt: 1 });
+    res.status(200).json({ success: true, data: annotations });
+  } catch (error) {
+    console.error('GetVerseAnnotations error:', error);
+    serverError(res, 'Error fetching annotations', error);
+  }
+};
+
 // GET /api/annotations/summary — per-page kind counts (+ a note excerpt), ordered
 // by page. Powers the "Annotations" navigator (prev/next jump + list).
 const getSummary = async (req, res) => {
@@ -415,4 +624,7 @@ module.exports = {
   deleteAnnotation,
   upsertDrawing,
   getSummary,
+  batchAnnotations,
+  getVerseAnnotations,
+  MAX_BATCH_OPS,
 };

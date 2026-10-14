@@ -8,6 +8,7 @@ const {
 } = require('./helpers');
 const app = require('../app');
 const Annotation = require('../models/Annotation');
+const { MAX_BATCH_OPS } = require('../controllers/annotationController');
 
 // Verse-on-page validation reads the committed mushaf structure (segments.js), not
 // the seeded test metadata — so real verse keys work regardless of seedMetadata.
@@ -475,6 +476,248 @@ describe('Annotations API', () => {
 
     test('protected', async () => {
       assert.equal((await request(app).get('/api/annotations/summary')).status, 401);
+    });
+  });
+  // ── Batch: span actions + undo in one request ─────────────────────
+  describe('POST /batch', () => {
+    const batch = (auth, ops) => request(app).post('/api/annotations/batch').set('Authorization', auth).send({ ops });
+    // A span that crosses pages 1 → 2 → 3: 1:6, 1:7 | 2:1..2:5 | 2:6.
+    const SPAN = [
+      [1, '1:6'], [1, '1:7'], [2, '2:1'], [2, '2:2'], [2, '2:3'], [2, '2:4'], [2, '2:5'], [3, '2:6'],
+    ];
+    const highlightOps = (value) => SPAN.map(([pageNumber, verseKey]) => ({ kind: 'highlight', pageNumber, verseKey, value }));
+    const highlights = (userId) => Annotation.find({ userId, kind: 'highlight' }).sort({ pageNumber: 1, verseKey: 1 }).lean();
+
+    test('protected', async () => {
+      const res = await request(app).post('/api/annotations/batch').send({ ops: [{ kind: 'hard', pageNumber: 1, verseKey: '1:1', value: true }] });
+      assert.equal(res.status, 401);
+    });
+
+    test('highlights a span across pages, each verse on its own page, and reports before/after', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      // One verse of the span is already pink: its before state is reported.
+      await post(auth, { pageNumber: 2, verseKey: '2:3', kind: 'highlight', color: 'pink' });
+
+      const res = await batch(auth, highlightOps('yellow'));
+      assert.equal(res.status, 200);
+      const { results } = res.body.data;
+      assert.equal(results.length, SPAN.length);
+      assert.deepEqual(results.find((r) => r.verseKey === '2:3'), { kind: 'highlight', pageNumber: 2, verseKey: '2:3', before: 'pink', after: 'yellow' });
+      assert.deepEqual(results.find((r) => r.verseKey === '1:6'), { kind: 'highlight', pageNumber: 1, verseKey: '1:6', before: null, after: 'yellow' });
+
+      const docs = await highlights(user._id);
+      assert.equal(docs.length, SPAN.length);   // the pink one was recoloured, not duplicated
+      assert.ok(docs.every((d) => d.color === 'yellow'));
+      assert.deepEqual(docs.map((d) => [d.pageNumber, d.verseKey]).sort(), SPAN.map(([p, k]) => [p, k]).sort());
+    });
+
+    test('undo: replaying the before states restores exactly the old state', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      await post(auth, { pageNumber: 2, verseKey: '2:3', kind: 'highlight', color: 'pink' });
+      const res = await batch(auth, highlightOps('green'));
+      const undo = res.body.data.results.map(({ kind, pageNumber, verseKey, before }) => ({ kind, pageNumber, verseKey, value: before }));
+
+      const back = await batch(auth, undo);
+      assert.equal(back.status, 200);
+      const docs = await highlights(user._id);
+      assert.equal(docs.length, 1);
+      assert.equal(docs[0].verseKey, '2:3');
+      assert.equal(docs[0].color, 'pink');
+    });
+
+    test('hard flags and notes: set, no-op, and clear', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      let res = await batch(auth, [
+        { kind: 'hard', pageNumber: 2, verseKey: '2:1', value: true },
+        { kind: 'hard', pageNumber: 5, verseKey: null, value: true },     // whole page
+        { kind: 'note', pageNumber: 1, verseKey: '1:1', value: '  makhraj  ' },
+      ]);
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.data.results.map((r) => [r.before, r.after]), [[false, true], [false, true], [null, 'makhraj']]);
+
+      // Setting the same state again writes nothing and reports before === after.
+      res = await batch(auth, [{ kind: 'hard', pageNumber: 2, verseKey: '2:1', value: true }]);
+      assert.deepEqual(res.body.data.results[0], { kind: 'hard', pageNumber: 2, verseKey: '2:1', before: true, after: true });
+      assert.equal(await Annotation.countDocuments({ userId: user._id, kind: 'hard' }), 2);
+
+      res = await batch(auth, [
+        { kind: 'hard', pageNumber: 2, verseKey: '2:1', value: false },
+        { kind: 'note', pageNumber: 1, verseKey: '1:1', value: 'edited' },
+      ]);
+      assert.deepEqual(res.body.data.results.map((r) => [r.before, r.after]), [[true, false], ['makhraj', 'edited']]);
+      assert.equal(await Annotation.countDocuments({ userId: user._id, kind: 'hard' }), 1);
+      assert.equal((await Annotation.findOne({ userId: user._id, kind: 'note' })).text, 'edited');
+
+      res = await batch(auth, [{ kind: 'note', pageNumber: 1, verseKey: '1:1', value: null }]);
+      assert.equal(res.body.data.results[0].before, 'edited');
+      assert.equal(await Annotation.countDocuments({ userId: user._id, kind: 'note' }), 0);
+    });
+
+    test('ownership: one user’s batch never reads or touches another’s annotations', async () => {
+      const alice = await createUser({ email: `ba${Date.now()}@x.com` });
+      const bob = await createUser({ email: `bb${Date.now()}@x.com` });
+      await post(authFor(alice), { pageNumber: 1, verseKey: '1:6', kind: 'highlight', color: 'blue' });
+      await post(authFor(alice), { pageNumber: 2, verseKey: '2:1', kind: 'hard' });
+
+      // Bob clears the same keys: his before states are his own (nothing), and
+      // Alice's documents are untouched.
+      const res = await batch(authFor(bob), [
+        { kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: null },
+        { kind: 'hard', pageNumber: 2, verseKey: '2:1', value: false },
+      ]);
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.data.results.map((r) => r.before), [null, false]);
+      assert.equal(await Annotation.countDocuments({ userId: alice._id }), 2);
+
+      // And his writes land on his account only.
+      await batch(authFor(bob), [{ kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: 'pink' }]);
+      assert.equal((await Annotation.findOne({ userId: alice._id, kind: 'highlight' })).color, 'blue');
+      assert.equal((await Annotation.findOne({ userId: bob._id, kind: 'highlight' })).color, 'pink');
+    });
+
+    test('rejects a verseKey that is not on the page (or malformed), writing nothing', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      for (const bad of ['2:255', '1:8', 'abc', '1:1:1']) {
+        const res = await batch(auth, [
+          { kind: 'highlight', pageNumber: 1, verseKey: '1:1', value: 'yellow' },   // valid, must not be written
+          { kind: 'highlight', pageNumber: 1, verseKey: bad, value: 'yellow' },
+        ]);
+        assert.equal(res.status, 400, bad);
+        assert.match(res.body.message, /ops\[1\]/);
+      }
+      assert.equal(await Annotation.countDocuments({ userId: user._id }), 0);
+    });
+
+    test('rejects bad kinds, values and duplicate keys', async () => {
+      const auth = authFor(await createUser());
+      const cases = [
+        [{ kind: 'drawing', pageNumber: 1, verseKey: null, value: true }],
+        [{ kind: 'highlight', pageNumber: 1, verseKey: '1:1', value: 'ink' }],
+        [{ kind: 'highlight', pageNumber: 1, verseKey: null, value: 'yellow' }],
+        [{ kind: 'hard', pageNumber: 1, verseKey: '1:1', value: 'yes' }],
+        [{ kind: 'note', pageNumber: 1, verseKey: '1:1', value: '   ' }],
+        [{ kind: 'note', pageNumber: 1, verseKey: '1:1', value: 'x'.repeat(2001) }],
+        [{ kind: 'hard', pageNumber: 605, verseKey: null, value: true }],
+        [{ kind: 'hard', pageNumber: 1.5, verseKey: null, value: true }],
+        [{ kind: 'hard', pageNumber: 1, verseKey: '1:1', value: true }, { kind: 'hard', pageNumber: 1, verseKey: '1:1', value: false }],
+      ];
+      for (const ops of cases) assert.equal((await batch(auth, ops)).status, 400, JSON.stringify(ops).slice(0, 80));
+    });
+
+    test('rejects non-scalar payloads (NoSQL-operator objects, arrays, a non-array ops)', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      const cases = [
+        { ops: { kind: 'hard' } },                       // ops not an array
+        { ops: 'hard' },
+        { ops: [['hard', 1, '1:1', true]] },             // element not an object
+        { ops: [null] },
+        { ops: [{ kind: { $ne: 'x' }, pageNumber: 1, verseKey: '1:1', value: true }] },
+        { ops: [{ kind: 'hard', pageNumber: { $gt: 0 }, verseKey: '1:1', value: true }] },
+        { ops: [{ kind: 'hard', pageNumber: 1, verseKey: { $regex: '.*' }, value: false }] },
+        { ops: [{ kind: 'highlight', pageNumber: 1, verseKey: '1:1', value: { $set: 'yellow' } }] },
+        { ops: [{ kind: 'note', pageNumber: 1, verseKey: '1:1', value: ['a'] }] },
+        { ops: [{ kind: 'hard', pageNumber: '1', verseKey: '1:1', value: true }] },   // numeric string: strict here
+      ];
+      for (const body of cases) {
+        const res = await request(app).post('/api/annotations/batch').set('Authorization', auth).send(body);
+        assert.equal(res.status, 400, JSON.stringify(body));
+      }
+      assert.equal(await Annotation.countDocuments({ userId: user._id }), 0);
+    });
+
+    test('rejects an empty or oversized batch', async () => {
+      const auth = authFor(await createUser());
+      assert.equal((await batch(auth, [])).status, 400);
+      assert.equal((await request(app).post('/api/annotations/batch').set('Authorization', auth).send({})).status, 400);
+
+      // One over the limit: well-formed, distinct keys, still rejected.
+      const ops = Array.from({ length: MAX_BATCH_OPS + 1 }, (_, i) => ({ kind: 'hard', pageNumber: 1 + (i % 604), verseKey: null, value: true }));
+      const res = await batch(auth, ops);
+      assert.equal(res.status, 400);
+      assert.match(res.body.message, new RegExp(`at most ${MAX_BATCH_OPS}`));
+    });
+
+    test('respects the per-user cap, counting what the batch removes, all-or-nothing', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      // 1995 existing + 8 new = 2003 > 2000: rejected, nothing written.
+      const filler = Array.from({ length: 1995 }, () => ({ userId: user._id, pageNumber: 10, verseKey: null, kind: 'text', text: 'x', color: 'ink', x: 0, y: 0 }));
+      await Annotation.insertMany(filler);
+      let res = await batch(auth, highlightOps('yellow'));
+      assert.equal(res.status, 400);
+      assert.match(res.body.message, /2000-annotation limit/);
+      assert.equal(await Annotation.countDocuments({ userId: user._id, kind: 'highlight' }), 0);
+
+      // 5 new fit exactly (1995 + 5 = 2000).
+      res = await batch(auth, highlightOps('yellow').slice(0, 5));
+      assert.equal(res.status, 200);
+      assert.equal(await Annotation.countDocuments({ userId: user._id }), 2000);
+
+      // At the cap, a batch that removes as many as it adds is allowed.
+      res = await batch(auth, [
+        { kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: null },
+        { kind: 'hard', pageNumber: 3, verseKey: '2:6', value: true },
+      ]);
+      assert.equal(res.status, 200);
+      assert.equal(await Annotation.countDocuments({ userId: user._id }), 2000);
+    });
+
+    test('a write failing part-way rolls every touched key back to its exact prior state', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      await post(auth, { pageNumber: 2, verseKey: '2:3', kind: 'highlight', color: 'pink' });
+      await post(auth, { pageNumber: 2, verseKey: '2:1', kind: 'hard' });
+      const before = await Annotation.find({ userId: user._id }).sort({ _id: 1 }).lean();
+
+      // Let the first two writes really happen, then fail — as a dropped
+      // connection mid-batch would.
+      const realBulkWrite = Annotation.bulkWrite;
+      Annotation.bulkWrite = async function (writes, options) {
+        await realBulkWrite.call(this, writes.slice(0, 2), options);
+        throw new Error('simulated failure mid-batch');
+      };
+      let res;
+      try {
+        res = await batch(auth, [
+          { kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: 'yellow' },   // insert (applied, then rolled back)
+          { kind: 'highlight', pageNumber: 2, verseKey: '2:3', value: 'blue' },     // recolour (applied, then rolled back)
+          { kind: 'hard', pageNumber: 2, verseKey: '2:1', value: false },            // delete (never ran)
+        ]);
+      } finally {
+        Annotation.bulkWrite = realBulkWrite;
+      }
+      assert.equal(res.status, 500);
+
+      const after = await Annotation.find({ userId: user._id }).sort({ _id: 1 }).lean();
+      assert.deepEqual(after, before);   // same ids, colours, timestamps — nothing else
+    });
+  });
+
+  describe('GET /verses', () => {
+    test('returns the verse annotations on a page range, without drawings, own only', async () => {
+      const alice = await createUser({ email: `va${Date.now()}@x.com` });
+      const bob = await createUser({ email: `vb${Date.now()}@x.com` });
+      const auth = authFor(alice);
+      await post(auth, { pageNumber: 1, verseKey: '1:6', kind: 'highlight', color: 'yellow' });
+      await post(auth, { pageNumber: 3, verseKey: '2:6', kind: 'hard' });
+      await post(auth, { pageNumber: 4, verseKey: '2:17', kind: 'hard' });   // outside the range
+      await request(app).put('/api/annotations/drawing').set('Authorization', auth)
+        .send({ pageNumber: 2, strokes: [{ tool: 'pen', color: 'ink', width: 3, points: [[1, 1]] }] });
+      await post(authFor(bob), { pageNumber: 2, verseKey: '2:1', kind: 'hard' });
+
+      const res = await request(app).get('/api/annotations/verses?from=1&to=3').set('Authorization', auth);
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.data.map((a) => [a.pageNumber, a.verseKey, a.kind]), [[1, '1:6', 'highlight'], [3, '2:6', 'hard']]);
+
+      for (const q of ['from=3&to=1', 'from=0&to=2', 'from=1&to=605', 'from=a&to=2', 'to=2']) {
+        assert.equal((await request(app).get(`/api/annotations/verses?${q}`).set('Authorization', auth)).status, 400, q);
+      }
+      assert.equal((await request(app).get('/api/annotations/verses?from=1&to=2')).status, 401);
     });
   });
 });
