@@ -636,7 +636,7 @@
     "dailyReviewNone": "Nothing is due for review today.",
     "streak": "Your streak is how many days in a row you've kept up your practice.",
     "tafsir": "Tafsir is a scholar's explanation of what a verse means.",
-    "drawTools": "Keyboard: P pen, H highlighter, T text note, E eraser — they work whether or not you are already annotating. Press a tool's key, or click its button, when it is already the one in use and these tools get out of the way so you can draw; press its key again once they are away to stop drawing. The pencil cycles the same way: draw, hide these tools (still drawing), stop. Escape closes this toolbar first, then leaves annotate mode.",
+    "drawTools": "Keyboard: 1 or P pen, 2 or H highlighter, 3 or E eraser, 4 or T text note — they work whether or not you are already annotating. Press a tool's key, or click its button, when it is already the one in use and these tools get out of the way so you can draw; press its key again once they are away to stop drawing. The pencil cycles the same way: draw, hide these tools (still drawing), stop. Escape closes this toolbar first, then leaves annotate mode.",
     "continuation": "A continuation page means picking up your memorization right where you left off.",
     "libraryVerseTap": "Click a verse to select it — right-click it, or press and hold, for play, tafsir and more."
   },
@@ -666,6 +666,7 @@
       "eraser": "Eraser",
       "showTools": "Show drawing tools",
       "hideTools": "Hide drawing tools (keeps drawing)",
+      "toolKeys": "{{tool}} — {{num}} or {{key}}",
       "undo": "Undo",
       "redo": "Redo",
       "clear": "Clear page",

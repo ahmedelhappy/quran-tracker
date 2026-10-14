@@ -1184,11 +1184,32 @@ if (isShortcutKey(e, 'p')) selectTool('pen');
 
 `shortcutValue(e, { p: 'pen', h: 'highlighter' })` does the same for a whole map.
 
+**Digits go through the same helper** — `isShortcutKey(e, '1')` — which has a
+separate rule for them, because the number row drifts too: AZERTY types
+`& é " '` unshifted (the digit needs Shift), the macOS Arabic layout types the
+Arabic-Indic `١ ٢ ٣ ٤`, and Persian / Urdu layouts type `۱ ۲ ۳ ۴`. A digit
+matches on any of:
+
+- `e.code` `'Digit1'` — the physical number-row key, whatever it types;
+- `e.key` `'1'`, `'١'` or `'۱'` — the digit in any of the three scripts (this is
+  also what catches the numpad with NumLock on, and on-screen keyboards);
+- `e.code` `'Numpad1'` **only while it types a character** — with NumLock off
+  the numpad keys are End / ArrowDown / PageDown / ArrowLeft and must stay
+  navigation keys (two of them turn the page).
+
+Never fire a digit shortcut with Ctrl / Alt / Meta held — Ctrl+1…9 switches
+browser tabs and must reach the browser un-prevented. Shift is fine (AZERTY needs
+it). Skip `e.repeat`, or holding the key runs a toggle over and over. The reader's
+annotation tools (1 pen, 2 highlighter, 3 eraser, 4 text note, beside P / H / E / T)
+are the worked example: `DRAW_TOOLS` in `Library.jsx` carries each tool's `key`
+and `num`, and `toolForKey` tries both through this helper.
+
 **Not affected:** `Escape`, `ArrowLeft` / `ArrowRight`, `PageUp` / `PageDown`.
 Their `e.key` is already identical on every layout, so match those on `e.key` as
 before — adding `e.code` there would only add noise.
 
 Verify a shortcut the honest way: switching the UI language changes i18n, not the
 keyboard layout, and proves nothing. Dispatch an event that carries a non-Latin
-character on the right physical key — `key: 'ح'` with `code: 'KeyP'` — and assert
+character on the right physical key — `key: 'ح'` with `code: 'KeyP'`, or for a digit
+`key: '&'` (AZERTY) or `key: '١'` (Mac Arabic) with `code: 'Digit1'` — and assert
 the action actually happened.

@@ -151,18 +151,24 @@ const DRAW_COLORS = [
   { key: 'pink',   cls: 'bg-pink-400', labelKey: 'library.annotations.colorPink' },
 ];
 
-// The annotate toolbar's tools, in print order, each with the key that selects
-// it. The letter is part of the tool's own tooltip, and pressing (or clicking)
-// the tool that is already active stops annotating — see selectTool.
+// The annotate toolbar's tools, in print order, each with the two keys that
+// select it: a letter and a number. Both are part of the tool's own tooltip, the
+// number is also badged on its button, and pressing (or clicking) the tool that
+// is already active stops annotating — see selectTool. The order IS the
+// numbering: a tool's position in the toolbar matches its number (the text note
+// used to sit before the eraser — swap those two lines back to restore that).
 const DRAW_TOOLS = [
-  { k: 'pen',         key: 'p', icon: FiPenTool, labelKey: 'library.draw.pen' },
-  { k: 'highlighter', key: 'h', icon: FiEdit3,   labelKey: 'library.draw.highlighter' },
-  { k: 'text',        key: 't', icon: FiType,    labelKey: 'library.draw.text' },
-  { k: 'eraser',      key: 'e', icon: BsEraser,  labelKey: 'library.draw.eraser' },
+  { k: 'pen',         key: 'p', num: '1', icon: FiPenTool, labelKey: 'library.draw.pen' },
+  { k: 'highlighter', key: 'h', num: '2', icon: FiEdit3,   labelKey: 'library.draw.highlighter' },
+  { k: 'eraser',      key: 'e', num: '3', icon: BsEraser,  labelKey: 'library.draw.eraser' },
+  { k: 'text',        key: 't', num: '4', icon: FiType,    labelKey: 'library.draw.text' },
 ];
-// The tool a key event selects, or null. Physical-key matching, so this works on
-// a non-Latin layout too — see utils/shortcutKeys.js.
-const toolForKey = (e) => DRAW_TOOLS.find((tl) => isShortcutKey(e, tl.key))?.k ?? null;
+// The tool a key event selects, or null — by its letter or its number, through
+// the same layout-proof matching (physical key OR produced character, Arabic-Indic
+// digits included), so this works on a non-Latin layout too — see
+// utils/shortcutKeys.js.
+const toolForKey = (e) =>
+  DRAW_TOOLS.find((tl) => isShortcutKey(e, tl.key) || isShortcutKey(e, tl.num))?.k ?? null;
 
 // The ayah's plain Uthmani text (basmala excluded), used for the legible
 // tafsir-panel preview. Taken verse-level from the API — word-level text is no
@@ -1939,9 +1945,9 @@ export default function Library() {
   // ── Keyboard page-turning + shortcuts ────────────────────
   // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both
   // UI languages. Escape peels back the top-most overlay; S (or F) shows/hides the
-  // sidebar; P/H/T/E pick an annotation tool, turning annotate mode on if it is off.
-  // Letter shortcuts match the PHYSICAL key as well as the produced character, so
-  // they work on a non-Latin layout — see utils/shortcutKeys.js.
+  // sidebar; P/H/E/T or 1/2/3/4 pick an annotation tool, turning annotate mode on if
+  // it is off. Letter and digit shortcuts match the PHYSICAL key as well as the
+  // produced character, so they work on a non-Latin layout — see utils/shortcutKeys.js.
   // Ignored while typing in a field or while a driver.js tour owns the screen.
   useEffect(() => {
     const onKey = (e) => {
@@ -1952,7 +1958,7 @@ export default function Library() {
       // While annotating, page turns are suspended; Escape peels back one layer
       // (the toolbar first, then annotate mode itself — the same peel-back rule
       // Escape follows everywhere else in this reader), Ctrl+Z / Ctrl+Alt+Z (or
-      // Ctrl+Shift+Z / Ctrl+Y) undo/redo, and P/H/T/E pick a tool. Keys are gated
+      // Ctrl+Shift+Z / Ctrl+Y) undo/redo, and P/H/E/T or 1-4 pick a tool. Keys are gated
       // by the input-focus check above, so typing a text note isn't intercepted.
       const mod = e.ctrlKey || e.metaKey;
       // Page turns keep working while annotating, so a run of pages can be marked
@@ -1983,10 +1989,12 @@ export default function Library() {
           return;
         }
         // A tool's own key picks it; pressing it again puts the tools away, and
-        // once away stops annotating — the same ladder as its button.
+        // once away stops annotating — the same ladder as its button. Never with
+        // Ctrl / Alt / Meta held (Ctrl+1..4 switches browser tabs), and a held
+        // key's auto-repeat is swallowed so holding it can't run the ladder.
         if (!mod && !e.altKey) {
           const tool = toolForKey(e);
-          if (tool) { e.preventDefault(); selectToolRef.current?.(tool); }
+          if (tool) { e.preventDefault(); if (!e.repeat) selectToolRef.current?.(tool); }
         }
         return;
       }
@@ -1994,7 +2002,7 @@ export default function Library() {
       // reaching for the pen is one keystroke rather than two.
       if (drawPage == null && !mod && !e.altKey) {
         const tool = toolForKey(e);
-        if (tool) { e.preventDefault(); startDrawRef.current?.(tool); return; }
+        if (tool) { e.preventDefault(); if (!e.repeat) startDrawRef.current?.(tool); return; }
         // 'S' shows/hides the sidebar. 'F' does the same — it used to toggle focus
         // mode, which this replaced, so the old key keeps working.
         if (isShortcutKey(e, 's') || isShortcutKey(e, 'f')) {
@@ -5738,25 +5746,39 @@ export default function Library() {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Tools row — each tooltip names the key that picks it, and pressing or
-              clicking the tool that is already active stops annotating. */}
+          {/* Tools row — each tooltip names both keys that pick it, the number is
+              badged on the button, and pressing or clicking the tool that is
+              already active stops annotating. The number stays a Western digit in
+              Arabic too (deliberately not fmtNum): it labels a KEYCAP, like the
+              Latin letter beside it, and Western digits are printed on the number
+              row of every Arabic keyboard — Arabic-Indic ones only on some. */}
           <div className="flex items-center gap-1">
             {DRAW_TOOLS.map((tl) => {
               const ToolIcon = tl.icon;
               const isActive = drawTool === tl.k;
-              const label = `${t(tl.labelKey)} (${tl.key.toUpperCase()})`;
+              const label = t('library.draw.toolKeys', { tool: t(tl.labelKey), num: tl.num, key: tl.key.toUpperCase() });
               return (
                 <Tooltip key={tl.k} label={isActive ? `${label} — ${t('library.draw.hideTools')}` : label}>
                   <button
                     type="button"
                     onClick={() => selectTool(tl.k)}
                     aria-label={label}
+                    aria-keyshortcuts={`${tl.num} ${tl.key.toUpperCase()}`}
                     aria-pressed={isActive}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                    className={`relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
                       isActive ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                     }`}
                   >
                     <ToolIcon className="w-4 h-4" />
+                    <span
+                      aria-hidden="true"
+                      data-testid="draw-tool-num"
+                      className={`absolute bottom-0.5 end-1 text-[9px] font-semibold leading-none tabular-nums ${
+                        isActive ? 'text-white/80' : 'text-[#707974] dark:text-gray-400'
+                      }`}
+                    >
+                      {tl.num}
+                    </span>
                   </button>
                 </Tooltip>
               );
