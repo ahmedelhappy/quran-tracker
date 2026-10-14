@@ -11,6 +11,8 @@ import {
 } from 'react-icons/fi';
 // Feather has no eraser; this one actually looks like the thing it does.
 import { BsEraser } from 'react-icons/bs';
+// Nor a highlighter; Lucide is a Feather fork, so its one matches the stroke style.
+import { LuHighlighter } from 'react-icons/lu';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
@@ -158,10 +160,10 @@ const DRAW_COLORS = [
 // numbering: a tool's position in the toolbar matches its number (the text note
 // used to sit before the eraser — swap those two lines back to restore that).
 const DRAW_TOOLS = [
-  { k: 'pen',         key: 'p', num: '1', icon: FiPenTool, labelKey: 'library.draw.pen' },
-  { k: 'highlighter', key: 'h', num: '2', icon: FiEdit3,   labelKey: 'library.draw.highlighter' },
-  { k: 'eraser',      key: 'e', num: '3', icon: BsEraser,  labelKey: 'library.draw.eraser' },
-  { k: 'text',        key: 't', num: '4', icon: FiType,    labelKey: 'library.draw.text' },
+  { k: 'pen',         key: 'p', num: '1', icon: FiPenTool,     labelKey: 'library.draw.pen' },
+  { k: 'highlighter', key: 'h', num: '2', icon: LuHighlighter, labelKey: 'library.draw.highlighter' },
+  { k: 'eraser',      key: 'e', num: '3', icon: BsEraser,      labelKey: 'library.draw.eraser' },
+  { k: 'text',        key: 't', num: '4', icon: FiType,        labelKey: 'library.draw.text' },
 ];
 // The tool a key event selects, or null — by its letter or its number, through
 // the same layout-proof matching (physical key OR produced character, Arabic-Indic
