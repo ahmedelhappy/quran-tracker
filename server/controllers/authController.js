@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
+const Todo = require('../models/Todo');
 const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
@@ -439,6 +440,7 @@ exports.deleteAccount = async (req, res) => {
     const userId = req.user.id;
 
     await UserProgress.deleteMany({ userId });
+    await Todo.deleteMany({ userId });
     await User.findByIdAndDelete(userId);
 
     res.status(200).json({ success: true, message: 'Account deleted successfully' });

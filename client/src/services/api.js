@@ -92,6 +92,23 @@ export const annotationsAPI = {
   listVerseRange: (from, to) => API.get('/annotations/verses', { params: { from, to } }),
 };
 
+// The personal to-do list ("My to-do" — not the daily plan's tasks). Signed-in
+// only: a visitor's list lives in localStorage (services/todoBackends.js), so a
+// logged-out page never calls these.
+export const todosAPI = {
+  list: () => API.get('/todos'),
+  add: (text) => API.post('/todos', { text }),
+  // { text?, done? }
+  update: (id, data) => API.put(`/todos/${id}`, data),
+  remove: (id) => API.delete(`/todos/${id}`),
+  // The whole list's ids in the new order.
+  reorder: (ids) => API.put('/todos/reorder', { ids }),
+  // Removes every ticked item; replies { data: kept, removed: [{ text, done, index }] }.
+  clearCompleted: () => API.delete('/todos/completed'),
+  // Puts removed items back at their index; replies { data: list, created }.
+  restore: (items) => API.post('/todos/restore', { items }),
+};
+
 // Opt-in leaderboard (weekly / all-time). period is 'week' | 'all'.
 export const leaderboardAPI = {
   get: (period) => API.get('/leaderboard', { params: { period } }),

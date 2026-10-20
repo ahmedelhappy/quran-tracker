@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiChevronDown } from 'react-icons/fi';
 
@@ -6,20 +6,19 @@ import { FiChevronDown } from 'react-icons/fi';
 // Collapsed, it is a single line — the active tool's name and a live summary
 // (the running time, for the timer). Open, it shows that tool.
 //
-// It takes a LIST of tools so the next one (a to-do list) becomes a tab here —
-// "Timer | To-do" — instead of another row in an already long column. With a
-// single tool there is nothing to switch, and the tab strip is not drawn.
+// It takes a LIST of tools, each a tab here — "Timer | My to-do" — instead of
+// another row in an already long column. With a single tool there is nothing
+// to switch, and the tab strip is not drawn.
 //
-// `tools`: [{ id, label, icon: Component, summary: node, content: node }].
-// `open` is the caller's (persisted there), so other controls can open the row.
-export default function ReaderTools({ tools, open, onOpenChange, id }) {
+// `tools`: [{ id, label, icon: Component, summary: node, content: node,
+// backgroundSummary?: node }] — `backgroundSummary` stays on the line while
+// ANOTHER tab is chosen (the timer's, only while a time is running or has just
+// ended, so switching to the list never hides a countdown).
+// `open` and `activeId` are the caller's (persisted there), so other controls
+// can open the row on a given tool.
+export default function ReaderTools({ tools, open, onOpenChange, activeId, onActiveChange, id }) {
   const { t } = useTranslation();
   const bodyId = useId();
-  const [activeId, setActiveId] = useState(() => {
-    const saved = localStorage.getItem('readerToolsTab');
-    return tools.some((tool) => tool.id === saved) ? saved : tools[0].id;
-  });
-  useEffect(() => { localStorage.setItem('readerToolsTab', activeId); }, [activeId]);
   const active = tools.find((tool) => tool.id === activeId) ?? tools[0];
   const Icon = active.icon;
 
@@ -36,7 +35,10 @@ export default function ReaderTools({ tools, open, onOpenChange, id }) {
           <Icon className="w-3 h-3 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
           {tools.length > 1 ? t('library.tools.title') : active.label}
         </span>
-        <span className="inline-flex items-center gap-1.5 min-w-0">
+        <span className="inline-flex items-center gap-2.5 min-w-0">
+          {tools.filter((tool) => tool !== active && tool.backgroundSummary).map((tool) => (
+            <span key={tool.id} className="contents">{tool.backgroundSummary}</span>
+          ))}
           {active.summary}
           <FiChevronDown className={`w-4 h-4 shrink-0 text-[#707974] dark:text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
         </span>
@@ -51,7 +53,7 @@ export default function ReaderTools({ tools, open, onOpenChange, id }) {
                   type="button"
                   role="tab"
                   aria-selected={tool.id === active.id}
-                  onClick={() => setActiveId(tool.id)}
+                  onClick={() => onActiveChange(tool.id)}
                   className={`text-xs font-semibold rounded-md px-2 py-1 transition-colors ${
                     tool.id === active.id
                       ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-gray-100 shadow-sm'

@@ -12,8 +12,9 @@ import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
-import { LuHourglass } from 'react-icons/lu';
+import { LuHourglass, LuListTodo } from 'react-icons/lu';
 import TimeTool from '../components/TimeTool';
+import TodoList from '../components/TodoList';
 import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSurahPage } from '../utils/surahDisplay';
 import { getDailyVerse } from '../services/dailyVerse';
 import { round1 } from '../utils/formatNumber';
@@ -785,16 +786,36 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* The session timer — the SAME one as the Library sidebar's (one shared
-              timer, services/timerStore.js), so a run started there is running
-              here. It reads its state from localStorage on the first render and
-              waits on no request, so it lands at its final size: nothing jumps. */}
-          <div className="col-span-1 md:col-span-4 bg-white dark:bg-gray-800 rounded-xl p-4 sm:px-5 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col gap-3" data-testid="dashboard-timer">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">
-              <LuHourglass className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
-              {t('timer.cardTitle')}
-            </span>
-            <TimeTool layout="row" />
+          <div className="col-span-1 md:col-span-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* The session timer — the SAME one as the Library sidebar's (one shared
+                timer, services/timerStore.js), so a run started there is running
+                here. It reads its state from localStorage on the first render and
+                waits on no request, so it lands at its final size: nothing jumps. */}
+            <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-xl p-4 sm:px-5 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col gap-3" data-testid="dashboard-timer">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">
+                <LuHourglass className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
+                {t('timer.cardTitle')}
+              </span>
+              <TimeTool layout="row" />
+            </div>
+
+            {/* "My to-do" — the same list as the Library sidebar's to-do tab. Its
+                contents sit in an absolutely placed box, so the card's size never
+                depends on them: loading, empty or long, it lands at one size and
+                the list scrolls inside. Beside the timer it matches the timer's
+                height (at least h-52); stacked, it is h-60. Not the daily plan's
+                tasks below — a personal list, kept apart and named apart. */}
+            <div className="lg:col-span-2 relative h-60 lg:h-auto lg:min-h-52 bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700" data-testid="dashboard-todo">
+              <div className="absolute inset-0 p-4 sm:px-5 flex flex-col gap-3">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">
+                  <LuListTodo className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
+                  {t('todo.cardTitle')}
+                </span>
+                <div className="flex-1 min-h-0">
+                  <TodoList variant="card" />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 

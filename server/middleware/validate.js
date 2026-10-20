@@ -20,6 +20,9 @@ const isScalarBoolean = (v) =>
 // An array whose every element is a finite number — e.g. offDays / memorizedPages.
 // Crucially still an array, so a Mongo-operator object can never masquerade as one.
 const isNumberArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
+// An array of plain strings — e.g. the to-do ids of a reorder. Like numberArray,
+// an operator object can never pass as one.
+const isStringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 // An array of plain objects — e.g. a batch of annotation ops. Only the SHAPE is
 // gated here; the controller must still type-check every field of every element.
 const isObjectArray = (v) => Array.isArray(v) && v.every((x) => x !== null && typeof x === 'object' && !Array.isArray(x));
@@ -29,12 +32,13 @@ const CHECKS = {
   number: isScalarNumber,
   boolean: isScalarBoolean,
   numberArray: isNumberArray,
+  stringArray: isStringArray,
   objectArray: isObjectArray,
 };
 
 // Builds a middleware that type-checks one request container (body or query)
 // against a field→spec map. A spec is either a type name ('string' | 'number' |
-// 'boolean' | 'numberArray' | 'objectArray') or { type, nullable }. Fields absent from the
+// 'boolean' | 'numberArray' | 'stringArray' | 'objectArray') or { type, nullable }. Fields absent from the
 // request are skipped — routes do partial updates — but any field that IS present
 // must match its declared type (or be null when nullable). Returns 400 otherwise.
 const validateContainer = (source, schema) => (req, res, next) => {

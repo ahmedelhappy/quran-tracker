@@ -445,8 +445,9 @@ export default function TimeTool({ layout = 'stack', showRecitationOption = fals
 
 // ── The one-line summary: the collapsed sidebar row ─────────────────────────
 // The time that matters most (utils/timerCore liveReadout), or, with nothing
-// running, the selected mode's resting value.
-export function TimerSummary() {
+// running, the selected mode's resting value. `onlyLive`: nothing at all unless
+// a time is running or a countdown has just ended (beside another tool's tab).
+export function TimerSummary({ onlyLive = false }) {
   const { t } = useTranslation();
   const { isArabic, digits } = useDigits();
   const state = useTimerState();
@@ -460,6 +461,7 @@ export function TimerSummary() {
     return `timer|idle|${digits(formatDuration(s.timer.duration))}`;
   }, { live: isLive(state) });
   const [which, status, text] = key.split('|');
+  if (onlyLive && ((status !== 'running' && status !== 'done') || which === 'clock')) return null;
   const Icon = MODE_ICONS[which];
   const tone = status === 'done'
     ? 'text-amber-700 dark:text-amber-300'

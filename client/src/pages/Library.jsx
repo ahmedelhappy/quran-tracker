@@ -12,7 +12,7 @@ import {
 // Feather has no eraser; this one actually looks like the thing it does.
 import { BsEraser } from 'react-icons/bs';
 // Nor a highlighter; Lucide is a Feather fork, so its one matches the stroke style.
-import { LuHighlighter, LuHourglass } from 'react-icons/lu';
+import { LuHighlighter, LuHourglass, LuListTodo } from 'react-icons/lu';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
@@ -27,6 +27,7 @@ import MushafZoomControl from '../components/MushafZoomControl';
 import ReciterPicker from '../components/ReciterPicker';
 import ReaderTools from '../components/ReaderTools';
 import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
+import TodoList, { TodoSummary } from '../components/TodoList';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -410,6 +411,9 @@ export default function Library() {
   // it along with the sidebar.
   const [toolsOpen, setToolsOpen] = useState(() => localStorage.getItem('readerTools') === '1');
   useEffect(() => { localStorage.setItem('readerTools', toolsOpen ? '1' : '0'); }, [toolsOpen]);
+  // Which of the row's tools is showing: 'timer' or 'todo'.
+  const [toolsTab, setToolsTab] = useState(() => (localStorage.getItem('readerToolsTab') === 'todo' ? 'todo' : 'timer'));
+  useEffect(() => { localStorage.setItem('readerToolsTab', toolsTab); }, [toolsTab]);
 
   // Page-turn animation: the last travel direction ('fwd' | 'back') drives which
   // way the content slides; disabled entirely when the OS asks for reduced motion.
@@ -1534,6 +1538,9 @@ export default function Library() {
   // Every open tab hears the end, so whichever tab is reciting stops. Off by
   // default: the chime alone never touches the recitation.
   useTimerEvent((e) => {
+    // A countdown that ends while the list is showing brings the timer back, so
+    // its end is what the reader sees — unless they are typing in the list.
+    if (e.type === 'phaseEnd' && e.done && !document.activeElement?.closest('[data-testid="todo"]')) setToolsTab('timer');
     if (e.type !== 'phaseEnd' || e.kind !== 'focus' || !e.settings.pauseRecitation) return;
     if (!isPlayingRef.current) return;
     cancelPreStart();
@@ -4269,6 +4276,7 @@ export default function Library() {
             onOpen={() => {
               setSidebarByUser(true);
               setToolsOpen(true);
+              setToolsTab('timer');
               requestAnimationFrame(() => document.getElementById('reader-tools')?.scrollIntoView({ block: 'nearest' }));
             }}
           />
@@ -4560,17 +4568,26 @@ export default function Library() {
                 this short. */}
             <hr className="border-0 border-t border-[#dce2f3] dark:border-gray-700 -mx-4" />
 
-            {/* ── Session tools (the timer), one collapsible line ── */}
+            {/* ── Session tools (the timer and the to-do list), one collapsible line ── */}
             <ReaderTools
               id="reader-tools"
               open={toolsOpen}
               onOpenChange={setToolsOpen}
+              activeId={toolsTab}
+              onActiveChange={setToolsTab}
               tools={[{
                 id: 'timer',
                 label: t('timer.title'),
                 icon: LuHourglass,
                 summary: <TimerSummary />,
+                backgroundSummary: <TimerSummary onlyLive />,
                 content: <TimeTool layout="stack" showRecitationOption />,
+              }, {
+                id: 'todo',
+                label: t('todo.title'),
+                icon: LuListTodo,
+                summary: <TodoSummary />,
+                content: <TodoList />,
               }]}
             />
 

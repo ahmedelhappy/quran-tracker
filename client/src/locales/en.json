@@ -890,6 +890,32 @@
       "sajda": "Place of prostration (Sajdah)"
     }
   },
+  "todo": {
+    "title": "My to-do",
+    "cardTitle": "My to-do",
+    "listLabel": "My to-do list",
+    "addPlaceholder": "Add to my to-do…",
+    "addLabel": "New to-do item",
+    "add": "Add to my to-do",
+    "empty": "Nothing here yet — add anything you want to remember.",
+    "left": "{{n}} left",
+    "allDone": "All done",
+    "clearCompleted": "Clear completed",
+    "editLabel": "Edit “{{text}}”",
+    "editField": "Edit the item",
+    "deleteLabel": "Delete “{{text}}”",
+    "moveLabel": "Move “{{text}}”",
+    "moveHint": "Drag to reorder, or use the up and down arrow keys. Alt with an arrow key works anywhere in the row.",
+    "moved": "Moved to position {{pos}} of {{total}}",
+    "removed": "Item deleted",
+    "cleared_one": "Cleared 1 completed item",
+    "cleared_other": "Cleared {{n}} completed items",
+    "undo": "Undo",
+    "saveFailed": "Couldn't save that change, so it was undone.",
+    "loadFailed": "Couldn't load your list.",
+    "full": "Your list is full (200 items). Delete or clear some to add more.",
+    "localNote": "Saved in this browser only. Sign in to keep it on all your devices."
+  },
   "timer": {
     "title": "Timer",
     "cardTitle": "Session timer",
