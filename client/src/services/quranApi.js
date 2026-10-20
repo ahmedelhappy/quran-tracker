@@ -391,7 +391,6 @@ export const splitBasmala = (ayah) => {
   return { basmala: null, text: ayah.text };
 };
 
-const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-
-export const toArabicDigits = (n) =>
-  String(n).replace(/\d/g, (d) => ARABIC_DIGITS[Number(d)]);
+// Lives in utils/formatNumber.js (so the app shell can use it without pulling
+// this module into the main bundle); re-exported here for existing imports.
+export { toArabicDigits } from '../utils/formatNumber';

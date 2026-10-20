@@ -459,6 +459,23 @@ html[lang='ar'] body {
   .reader-edge-tab { transition: none; }
 }
 
+/* ── Time tool (components/TimeTool.jsx) ──────────────────────────────────────
+   The edge indicator's time runs sideways, like an IDE's edge-stripe label, so
+   it fits the 24px the sidebar handle already takes. Read from the bottom up on
+   the left edge (English) and from the top down on the right edge (Arabic) —
+   either way the text's top faces the page. */
+.timer-edge-text { writing-mode: vertical-rl; transform: rotate(180deg); }
+[dir="rtl"] .timer-edge-text { transform: none; }
+/* An ended countdown pulses until it is dismissed; a running one shows a
+   breathing dot. Both are still under reduced motion — the colour carries it. */
+.timer-done { animation: timer-done-pulse 1.2s ease-in-out infinite; }
+.timer-live-dot { animation: timer-live-dot 2s ease-in-out infinite; }
+@keyframes timer-done-pulse { 50% { opacity: 0.45; } }
+@keyframes timer-live-dot { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  .timer-done, .timer-live-dot { animation: none; }
+}
+
 /* The reader's auto-hiding navbar. TRANSFORM only — the page keeps its top
    padding, so hiding the bar frees the space visually without reflowing anything
    under it. A mushaf that jumped every few seconds would be far worse than the

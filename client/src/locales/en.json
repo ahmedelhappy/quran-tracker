@@ -844,6 +844,9 @@
       "show": "Show the sidebar",
       "hide": "Hide the sidebar (S)"
     },
+    "tools": {
+      "title": "Tools"
+    },
     "verseAria": "Surah {{surah}}, ayah {{ayah}}",
     "signedOut": {
       "title": "Sign in to track your progress",
@@ -885,6 +888,65 @@
       "quarter2": "Half of Hizb {{n}}",
       "quarter3": "Three quarters of Hizb {{n}}",
       "sajda": "Place of prostration (Sajdah)"
+    }
+  },
+  "timer": {
+    "title": "Timer",
+    "cardTitle": "Session timer",
+    "modeLabel": "Time tool",
+    "mode": { "stopwatch": "Stopwatch", "timer": "Timer", "clock": "Clock" },
+    "start": "Start",
+    "pause": "Pause",
+    "resume": "Resume",
+    "reset": "Reset",
+    "dismiss": "Dismiss",
+    "restart": "Restart",
+    "pausedSr": "(paused)",
+    "presets": "Quick durations, in minutes",
+    "presetLabel_one": "{{n}} minute",
+    "presetLabel_other": "{{n}} minutes",
+    "minShort": "min",
+    "custom": "Custom",
+    "customMinutes": "Minutes",
+    "customSeconds": "Seconds",
+    "advanced": "Advanced",
+    "phase": {
+      "focus": "Focus {{n}} of {{total}}",
+      "break": "Break {{n}} of {{total}}"
+    },
+    "ended": {
+      "done": "Time's up",
+      "short": "Time's up",
+      "focus": "Focus period over — time for a break",
+      "break": "Break over — back to focus"
+    },
+    "notifyTitle": "Quran Tracker",
+    "recitationPaused": "The timer ended, so the recitation was paused",
+    "indicator": {
+      "timer": "Timer: {{time}} left — show the sidebar",
+      "stopwatch": "Stopwatch: {{time}} — show the sidebar",
+      "done": "Time's up — show the sidebar"
+    },
+    "adv": {
+      "sound": "Sound",
+      "chime": "Chime when it ends",
+      "volume": "Chime volume",
+      "test": "Test",
+      "intervals": "Intervals",
+      "intervalsOn": "Repeat with breaks (focus → break)",
+      "nextRun": "Reset the timer to change this",
+      "breakMin": "Break (min)",
+      "rounds": "Rounds",
+      "intervalsSummary": "{{n}} × {{focus}} of focus, with {{brk}}-minute breaks between",
+      "whenItEnds": "When it ends",
+      "notify": "Notify me if this tab is in the background",
+      "notifyBlocked": "Notifications are blocked for this site — allow them in your browser's site settings.",
+      "notifyUnsupported": "This browser can't show notifications.",
+      "pauseRecitation": "Pause the recitation when the timer ends",
+      "display": "Display",
+      "clock24": "24-hour clock",
+      "clockSeconds": "Show seconds on the clock",
+      "titleTime": "Show the running time in the tab title"
     }
   },
   "footer": {

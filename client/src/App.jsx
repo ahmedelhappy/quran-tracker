@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { TimerProvider } from './context/TimerContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
@@ -82,6 +83,8 @@ function App() {
     <ThemeProvider>
     <AuthProvider>
       <ToastProvider>
+      {/* Above the router: the one timer outlives every route change. */}
+      <TimerProvider>
         <Router>
           <ScrollToTop />
           <Suspense fallback={<PageLoader />}>
@@ -109,6 +112,7 @@ function App() {
           </Suspense>
           <PersistentChatbot />
         </Router>
+      </TimerProvider>
       </ToastProvider>
     </AuthProvider>
     </ThemeProvider>

@@ -12,7 +12,7 @@ import {
 // Feather has no eraser; this one actually looks like the thing it does.
 import { BsEraser } from 'react-icons/bs';
 // Nor a highlighter; Lucide is a Feather fork, so its one matches the stroke style.
-import { LuHighlighter } from 'react-icons/lu';
+import { LuHighlighter, LuHourglass } from 'react-icons/lu';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
@@ -25,10 +25,13 @@ import MushafDrawLayer from '../components/MushafDrawLayer';
 import PageScrubber from '../components/PageScrubber';
 import MushafZoomControl from '../components/MushafZoomControl';
 import ReciterPicker from '../components/ReciterPicker';
+import ReaderTools from '../components/ReaderTools';
+import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { useTimerEvent } from '../hooks/useTimer';
 import { loginPathFor } from '../utils/returnTo';
 import {
   fetchPageTafsir,
@@ -401,6 +404,12 @@ export default function Library() {
     localStorage.setItem('mushafSidebar', next ? '1' : '0');
   }, []);
   const toggleSidebarRef = useRef(null);
+
+  // The sidebar's tools row (the timer) — collapsed to one line by default, and
+  // remembered. Kept here rather than in the row so the edge indicator can open
+  // it along with the sidebar.
+  const [toolsOpen, setToolsOpen] = useState(() => localStorage.getItem('readerTools') === '1');
+  useEffect(() => { localStorage.setItem('readerTools', toolsOpen ? '1' : '0'); }, [toolsOpen]);
 
   // Page-turn animation: the last travel direction ('fwd' | 'back') drives which
   // way the content slides; disabled entirely when the OS asks for reduced motion.
@@ -1519,6 +1528,19 @@ export default function Library() {
     if (pickedOrd != null && pickedOrd !== playingOrd) { playOrd(pickedOrd); return; }
     resumeActive();
   };
+
+  // The timer's advanced option: when a focus period ends (the end of the whole
+  // countdown included), pause the recitation — exactly as the pause button does.
+  // Every open tab hears the end, so whichever tab is reciting stops. Off by
+  // default: the chime alone never touches the recitation.
+  useTimerEvent((e) => {
+    if (e.type !== 'phaseEnd' || e.kind !== 'focus' || !e.settings.pauseRecitation) return;
+    if (!isPlayingRef.current) return;
+    cancelPreStart();
+    activeEl()?.pause();
+    setIsPlaying(false);
+    showToast(t('timer.recitationPaused'), 'info');
+  });
 
   // Popover / tafsir play button: play from that verse, or pause if it's already the one playing.
   const toggleVerseAudio = (ord) => {
@@ -4234,6 +4256,24 @@ export default function Library() {
           </Tooltip>
         </div>
 
+        {/* With the sidebar hidden, a RUNNING timer or stopwatch (or a countdown
+            that has just ended) still shows: a narrow tab hung under the
+            sidebar's handle, 8px below it. That is the one strip the reader
+            already gives to chrome beside the page, so it never covers a glyph;
+            it is at the top, clear of the audio bar and the zoom control at the
+            bottom and of the edge arrows at mid-height; and it sits with the
+            handle of the panel the timer lives in. Pressing it brings both back. */}
+        {!showSidebar && (
+          <TimerEdgeIndicator
+            top="calc(6rem + 3.5rem + 0.5rem)"
+            onOpen={() => {
+              setSidebarByUser(true);
+              setToolsOpen(true);
+              requestAnimationFrame(() => document.getElementById('reader-tools')?.scrollIntoView({ block: 'nearest' }));
+            }}
+          />
+        )}
+
         {/* Level with the panel's header rather than the middle of the window:
             with no verse picked the panel is short, and a chevron floating beside
             empty space read as unattached to anything. */}
@@ -4519,6 +4559,20 @@ export default function Library() {
                 thing separating them — headings would be noise in a column
                 this short. */}
             <hr className="border-0 border-t border-[#dce2f3] dark:border-gray-700 -mx-4" />
+
+            {/* ── Session tools (the timer), one collapsible line ── */}
+            <ReaderTools
+              id="reader-tools"
+              open={toolsOpen}
+              onOpenChange={setToolsOpen}
+              tools={[{
+                id: 'timer',
+                label: t('timer.title'),
+                icon: LuHourglass,
+                summary: <TimerSummary />,
+                content: <TimeTool layout="stack" showRecitationOption />,
+              }]}
+            />
 
             {/* ── Method checklist (ephemeral ticks), collapsed by default ── */}
             <div className="flex flex-col gap-2">

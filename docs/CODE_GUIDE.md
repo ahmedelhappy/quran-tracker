@@ -1213,3 +1213,41 @@ keyboard layout, and proves nothing. Dispatch an event that carries a non-Latin
 character on the right physical key — `key: 'ح'` with `code: 'KeyP'`, or for a digit
 `key: '&'` (AZERTY) or `key: '١'` (Mac Arabic) with `code: 'Digit1'` — and assert
 the action actually happened.
+
+## The shared timer — one clock for every page
+
+The stopwatch / countdown / clock in the Library sidebar and on the Dashboard is
+**one** timer, not two widgets that happen to look alike. Five decisions make that
+true, and each is a pattern worth knowing:
+
+- **Wall-clock maths, never tick counting.** A run is `{ startedAt, accumulated }`
+  ([utils/timerCore.js](../client/src/utils/timerCore.js)): elapsed time is
+  `accumulated + (Date.now() - startedAt)`. A background tab's timers fire once a
+  second at best (Chrome can stretch them to once a minute), so adding 1 every
+  tick would drift by exactly that much. Here the tick only decides how often the
+  screen *looks* at the clock; whenever it looks, the answer is right.
+- **A store outside React.** [services/timerStore.js](../client/src/services/timerStore.js)
+  holds the state; the provider ([context/TimerContext.jsx](../client/src/context/TimerContext.jsx))
+  only hands out the store object, which never changes. Components read it through
+  `useSyncExternalStore` hooks ([hooks/useTimer.js](../client/src/hooks/useTimer.js))
+  that return the exact text they show, so a readout re-renders once a second and
+  the 5,000-line Library never re-renders for the clock at all. Same idea as the
+  zoom store in `useMushafZoom`.
+- **localStorage + the `storage` event.** The state survives reloads and route
+  changes and works without an account. Every other tab gets a `storage` event when
+  one tab writes, so two tabs can never show two different timers.
+- **One tab chimes.** When a countdown ends, *every* open tab reacts (its screen
+  reader hears it, a reciting Library tab can pause), but only one plays the chime.
+  The claim is a Web Lock (`navigator.locks`), which the browser grants atomically
+  across tabs — reading localStorage alone isn't enough, since each tab sees the
+  others' writes slightly late. A hidden tab waits 1.2 s before claiming, so a
+  visible one wins.
+- **Audio is unlocked by a click.** Browsers refuse to start sound a page wasn't
+  asked for. The chime is a Web Audio bell ([services/chime.js](../client/src/services/chime.js))
+  whose `AudioContext` is created by the Start click; after a reload, the reader's
+  next click or key press anywhere re-unlocks it. It's a separate audio path from
+  the recitation's `<audio>` elements, so it never interrupts them.
+
+The sidebar row ([components/ReaderTools.jsx](../client/src/components/ReaderTools.jsx))
+takes a *list* of tools, so a second tool becomes a tab in the same row rather than
+another row in the sidebar.

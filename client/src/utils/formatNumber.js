@@ -6,3 +6,9 @@
 // Values that are only compared or plotted (badge thresholds, chart points) keep
 // their full precision on purpose.
 export const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
+
+const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+
+// Western digits to Arabic-Indic ones: 12 -> '١٢'. Everything else is kept.
+export const toArabicDigits = (n) =>
+  String(n).replace(/\d/g, (d) => ARABIC_DIGITS[Number(d)]);

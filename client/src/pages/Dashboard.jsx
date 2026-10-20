@@ -12,6 +12,8 @@ import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
+import { LuHourglass } from 'react-icons/lu';
+import TimeTool from '../components/TimeTool';
 import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSurahPage } from '../utils/surahDisplay';
 import { getDailyVerse } from '../services/dailyVerse';
 import { round1 } from '../utils/formatNumber';
@@ -781,6 +783,18 @@ export default function Dashboard() {
                 </>
               )}
             </div>
+          </div>
+
+          {/* The session timer — the SAME one as the Library sidebar's (one shared
+              timer, services/timerStore.js), so a run started there is running
+              here. It reads its state from localStorage on the first render and
+              waits on no request, so it lands at its final size: nothing jumps. */}
+          <div className="col-span-1 md:col-span-4 bg-white dark:bg-gray-800 rounded-xl p-4 sm:px-5 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col gap-3" data-testid="dashboard-timer">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">
+              <LuHourglass className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
+              {t('timer.cardTitle')}
+            </span>
+            <TimeTool layout="row" />
           </div>
         </section>
 
