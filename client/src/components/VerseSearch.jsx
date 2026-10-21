@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiSearch, FiX, FiCornerDownLeft, FiBookOpen, FiFile, FiLayers, FiAlertCircle } from 'react-icons/fi';
+import { FiSearch, FiX, FiCornerDownLeft, FiBookOpen, FiFile, FiLayers, FiAlertCircle, FiClock } from 'react-icons/fi';
 import { loadSearchEngine } from '../services/quranSearch';
 import { parseJumps, arabicTokens } from '../utils/quranSearchQuery';
 import { verseOfOrd, pageOfOrd, ordOf } from '../utils/verseIndex';
 import { SURAH_BY_NUMBER } from '../data/surahPages';
+import { useRecentRows } from '../hooks/useRecentPages';
 
 const DEBOUNCE_MS = 120;
 const PAGE_SIZE = 30;          // verse rows shown before "show more"
@@ -25,10 +26,16 @@ const SNIPPET_WHOLE = 18;      // verses up to this many words are shown whole
 // also a surah's name ("الرحمن") still opens on its first occurrence; the jump is
 // one ↑ (or a click) away. With no verses, the first jump is the default.
 //
-// The index is loaded on the first open (services/quranSearch.js). With nothing
-// typed the box shows `emptyState` — the slot the recent-pages list will fill.
-export default function VerseSearch({ open, query, onQueryChange, onClose, onPickOccurrence, onJump, fmtNum, isArabic, emptyState }) {
+// The index is loaded on the first open (services/quranSearch.js).
+//
+// With nothing typed the box lists the pages read recently (newest first, minus
+// the page(s) on screen, `recentExclude`) as options of the same combobox.
+// Nothing is picked until ↓ (or ↑) — so "/", ↓, Enter goes back to the last page
+// read; Enter opens the picked one, Delete (or its ×) removes it, and "Clear
+// history" empties the list.
+export default function VerseSearch({ open, query, onQueryChange, onClose, onPickOccurrence, onJump, fmtNum, isArabic, recentExclude = [], onPickRecent, onRemoveRecent, onClearRecent }) {
   const { t } = useTranslation();
+  const recent = useRecentRows(recentExclude, open);
   const listId = useId();
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -37,6 +44,7 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
   const [debounced, setDebounced] = useState(query);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [active, setActive] = useState(0);
+  const [recentActive, setRecentActive] = useState(-1);
 
   // Load the index the first time the box opens (and again after a failure, on Retry).
   useEffect(() => {
@@ -96,6 +104,16 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
     setActive(result?.verses.length ? jumps.length : 0);
   }
 
+  // Back to an empty box (or opened again): no recent page is picked yet.
+  const typed = query.trim().length > 0;
+  const showingRecent = open && !typed;
+  const [recentFor, setRecentFor] = useState(showingRecent);
+  if (recentFor !== showingRecent) {
+    setRecentFor(showingRecent);
+    setRecentActive(-1);
+  }
+  const recentIndex = Math.min(recentActive, recent.length - 1);
+
   const verseRows = result ? result.verses.slice(0, shown) : [];
   const moreCount = result ? result.verses.length - verseRows.length : 0;
   // Everything ↑/↓ walks through, in screen order.
@@ -106,12 +124,18 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
   ];
   const activeIndex = Math.min(active, items.length - 1);
   const optionId = (i) => `${listId}-opt-${i}`;
+  const recentId = (i) => `${listId}-recent-${i}`;
 
   useEffect(() => {
     if (activeIndex < 0) return;
     document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, shown]);
+  useEffect(() => {
+    if (recentIndex < 0) return;
+    document.getElementById(recentId(recentIndex))?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentIndex]);
 
   if (!open) return null;
 
@@ -128,6 +152,7 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
     // Nothing typed here may reach the reader's own shortcuts (arrows turn pages).
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+    if (!typed) { onRecentKey(e); return; }
     if (!items.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((activeIndex + 1) % items.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((activeIndex - 1 + items.length) % items.length); }
@@ -136,6 +161,21 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
       if (debounced !== query) return;
       e.preventDefault();
       choose(items[activeIndex]);
+    }
+  };
+
+  // The recent pages: ↓ from nothing picks the newest, ↑ the oldest; both wrap.
+  const onRecentKey = (e) => {
+    const n = recent.length;
+    if (!n) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setRecentActive(recentIndex < 0 ? 0 : (recentIndex + 1) % n); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setRecentActive(recentIndex < 0 ? n - 1 : (recentIndex - 1 + n) % n); }
+    else if (e.key === 'Enter' && recentIndex >= 0) { e.preventDefault(); onPickRecent(recent[recentIndex].entry); }
+    else if (e.key === 'Delete' && recentIndex >= 0) {
+      e.preventDefault();
+      onRemoveRecent(recent[recentIndex].key);
+      // The next row moves up into its place and is the one picked now.
+      if (recentIndex === n - 1) setRecentActive(n - 2);
     }
   };
 
@@ -184,7 +224,6 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
     );
   };
 
-  const typed = query.trim().length > 0;
   const loading = engineState.status === 'loading' || engineState.status === 'idle';
   // One Arabic letter is too little to search on; no Arabic at all (a Latin word
   // that names no surah, say) is simply nothing found.
@@ -215,10 +254,12 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
             ref={inputRef}
             type="search"
             role="combobox"
-            aria-expanded={items.length > 0}
+            aria-expanded={typed ? items.length > 0 : recent.length > 0}
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-activedescendant={items.length ? optionId(activeIndex) : undefined}
+            aria-activedescendant={typed
+              ? (items.length ? optionId(activeIndex) : undefined)
+              : (recentIndex >= 0 ? recentId(recentIndex) : undefined)}
             aria-label={t('library.search.dialogLabel')}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
@@ -250,22 +291,69 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
 
         <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {!typed ? (
-            <div data-search-empty className="px-4 py-5">
-              {emptyState}
-              <p className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t('library.search.emptyTitle')}</p>
-              <p className="mt-1 text-sm text-[#707974] dark:text-gray-400">{t('library.search.emptyBody')}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {['الرحمن', 'يا أيها الذين آمنوا', '2:255', t('library.search.exampleSurah'), t('library.search.examplePage')].map((ex) => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => { onQueryChange(ex); inputRef.current?.focus(); }}
-                    dir="auto"
-                    className="px-2.5 py-1 rounded-full border border-[#dce2f3] dark:border-gray-600 text-xs text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700"
-                  >
-                    {ex}
-                  </button>
-                ))}
+            <div data-search-empty>
+              {recent.length > 0 && (
+                <div className="pb-2 border-b border-[#dce2f3] dark:border-gray-700" data-testid="recent-list">
+                  <div className={`${groupHead} flex items-center justify-between gap-2`}>
+                    <span id={`${listId}-recent-title`}>{t('library.recent.title')}</span>
+                    <button
+                      type="button"
+                      onMouseDown={keepFocus}
+                      onClick={() => { onClearRecent(); inputRef.current?.focus(); }}
+                      data-testid="recent-clear"
+                      className="normal-case tracking-normal text-[11px] font-semibold text-[#004f35] dark:text-emerald-400 hover:underline"
+                    >
+                      {t('library.recent.clear')}
+                    </button>
+                  </div>
+                  <div id={listId} role="listbox" aria-labelledby={`${listId}-recent-title`}>
+                    {recent.map((r, i) => (
+                      <div key={r.key} id={recentId(i)} role="option" aria-selected={i === recentIndex} data-recent={r.key}
+                        className={`w-full text-start flex items-center gap-3 px-4 py-2 cursor-pointer transition-colors ${
+                          i === recentIndex ? 'bg-[#f0f4ff] dark:bg-gray-700/70' : 'hover:bg-[#f7f9ff] dark:hover:bg-gray-700/40'
+                        }`}
+                        onMouseDown={keepFocus}
+                        onMouseMove={() => { if (recentIndex !== i) setRecentActive(i); }}
+                        onClick={() => onPickRecent(r.entry)}>
+                        <FiClock className="w-4 h-4 shrink-0 text-[#707974] dark:text-gray-500" aria-hidden="true" />
+                        <span className="flex-1 min-w-0 flex items-baseline gap-2 text-sm">
+                          <span className="font-semibold text-[#1A1A1A] dark:text-gray-100 whitespace-nowrap">{r.label}</span>
+                          {r.surah && <span className="truncate text-[#707974] dark:text-gray-400">{r.surah}</span>}
+                        </span>
+                        <span className="shrink-0 text-xs text-[#707974] dark:text-gray-400">{r.ago}</span>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onMouseDown={keepFocus}
+                          onClick={(e) => { e.stopPropagation(); onRemoveRecent(r.key); inputRef.current?.focus(); }}
+                          aria-label={t('library.recent.remove', { label: r.label })}
+                          data-testid="recent-remove"
+                          className="w-6 h-6 -me-1 shrink-0 rounded-full flex items-center justify-center text-[#707974] hover:bg-white hover:text-[#1A1A1A] dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-gray-100"
+                        >
+                          <FiX className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="px-4 pt-1 text-[11px] text-[#9aa3a0] dark:text-gray-500">{t('library.recent.deviceNote')}</p>
+                </div>
+              )}
+              <div className="px-4 py-5">
+                <p className="text-sm font-semibold text-[#003527] dark:text-gray-100">{t('library.search.emptyTitle')}</p>
+                <p className="mt-1 text-sm text-[#707974] dark:text-gray-400">{t('library.search.emptyBody')}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {['الرحمن', 'يا أيها الذين آمنوا', '2:255', t('library.search.exampleSurah'), t('library.search.examplePage')].map((ex) => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => { onQueryChange(ex); inputRef.current?.focus(); }}
+                      dir="auto"
+                      className="px-2.5 py-1 rounded-full border border-[#dce2f3] dark:border-gray-600 text-xs text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700"
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
@@ -367,6 +455,7 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
         <div className="hidden sm:flex items-center gap-3 px-4 py-2 border-t border-[#dce2f3] dark:border-gray-700 text-[11px] text-[#707974] dark:text-gray-400">
           <span><kbd className="search-kbd">↑</kbd> <kbd className="search-kbd">↓</kbd> {t('library.search.keys.move')}</span>
           <span><kbd className="search-kbd"><FiCornerDownLeft className="inline w-3 h-3" /></kbd> {t('library.search.keys.open')}</span>
+          {!typed && recent.length > 0 && <span><kbd className="search-kbd">Del</kbd> {t('library.recent.keys.remove')}</span>}
           <span><kbd className="search-kbd">Esc</kbd> {t('library.search.keys.close')}</span>
         </div>
       </div>

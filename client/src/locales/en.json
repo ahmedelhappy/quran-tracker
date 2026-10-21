@@ -695,6 +695,32 @@
         "announce": "Occurrence {{i}} of {{n}}: {{surah}}, ayah {{ayah}}"
       }
     },
+    "recent": {
+      "title": "Recent pages",
+      "chipsLabel": "Recently read",
+      "clear": "Clear history",
+      "cleared": "Reading history cleared",
+      "undo": "Undo",
+      "remove": "Remove {{label}} from recent pages",
+      "more": "More",
+      "moreHint": "All recent pages, in the search box ( / )",
+      "page": "Page {{n}}",
+      "pages": "Pages {{a}}–{{b}}",
+      "chip": "{{label}} · {{surah}} · {{ago}}",
+      "deviceNote": "Kept in this browser.",
+      "keys": { "remove": "remove" },
+      "ago": {
+        "now": "just now",
+        "minute_one": "1 min ago",
+        "minute_other": "{{n}} min ago",
+        "hour_one": "1 hour ago",
+        "hour_other": "{{n}} hours ago",
+        "day_one": "1 day ago",
+        "day_other": "{{n}} days ago",
+        "week_one": "1 week ago",
+        "week_other": "{{n}} weeks ago"
+      }
+    },
     "view": { "single": "1 page", "double": "2 pages" },
     "markVerses": {
       "title": "Mark verses",

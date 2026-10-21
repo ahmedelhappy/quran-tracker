@@ -29,11 +29,14 @@ import ReaderTools from '../components/ReaderTools';
 import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
 import TodoList, { TodoSummary } from '../components/TodoList';
 import SearchFindBar from '../components/SearchFindBar';
+import RecentPagesRow from '../components/RecentPagesRow';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useTimerEvent } from '../hooks/useTimer';
+import { useRecentPageTracker } from '../hooks/useRecentPageTracker';
+import { removeRecentPage, clearRecentPages, restoreRecentPages } from '../services/recentPages';
 import { loginPathFor } from '../utils/returnTo';
 import {
   fetchPageTafsir,
@@ -673,6 +676,9 @@ export default function Library() {
   // something, and being dragged back mid-ayah is not what "keep playing" means.
   // Cleared whenever playback is deliberately (re)aimed — see playOrd / stepVerse.
   const readerLedRef = useRef(false);
+  // Whether the most recent page turn was one the recitation made — read by the
+  // recent-pages tracker, which doesn't count pages the recitation carried past.
+  const turnByAudioRef = useRef(false);
   // The same idea for the SELECTION: set before a page turn that stepping the
   // selection asked for, so the turn keeps the selection and the tafsir panel.
   // pendingSelectRef holds the verseKey to land on once that page's verses are in.
@@ -1265,6 +1271,7 @@ export default function Library() {
   // note over it.
   useEffect(() => {
     const audioTurn = followTurnRef.current;
+    turnByAudioRef.current = audioTurn;
     if (audioTurn) followTurnRef.current = false;
     else readerLedRef.current = true;
     if (selectTurnRef.current) selectTurnRef.current = false;
@@ -1275,6 +1282,21 @@ export default function Library() {
       setSelectedVerseKey(null);
     }
   }, [currentPage, view]);
+
+  // ── Recently read pages ──────────────────────────────────
+  // A page (or the spread, as one entry) counts as read after ~8 s on screen or
+  // as soon as the reader does something on it; pages the recitation turns to
+  // don't count until listening stops on one. See hooks/useRecentPageTracker.js.
+  // `noteRead` is called from the reader's own actions below — never from a
+  // selection the app makes itself.
+  const noteRead = useRecentPageTracker({
+    pages: visiblePages,
+    page: currentPage,
+    active: pageResolved,
+    isPlaying,
+    isFollowingAudio: () => isPlayingRef.current && !readerLedRef.current,
+    turnByAudioRef,
+  });
 
   // Keep the selection on the verse being recited. While the two are in step,
   // every new verse carries the selection along — so the popover, the mushaf
@@ -2008,12 +2030,16 @@ export default function Library() {
     if (!goToPage(pageOfOrd(ordOfKey(verseKey)))) selectTurnRef.current = false;
   }, [verses, goToPage]);
 
-  const openSearch = useCallback(() => {
+  // With an occurrence bar up the box reopens on its query (to change it);
+  // otherwise it opens empty, on the recent pages — so "/", ↓, Enter goes back to
+  // the last page read. `fresh` (the sidebar's "More") always opens it empty.
+  const openSearch = useCallback((fresh = false) => {
     if (searchOpen) return;
     searchOpenerRef.current = document.activeElement;
+    if (fresh === true || !find) setSearchQuery('');
     setSearchMounted(true);
     setSearchOpen(true);
-  }, [searchOpen]);
+  }, [searchOpen, find]);
 
   // Focus goes back where it came from — or to the occurrence bar, when one is up.
   const restoreSearchFocus = useCallback((toBar) => {
@@ -2045,6 +2071,21 @@ export default function Library() {
     else if (jump.type === 'surah') landOnVerse(`${jump.surahNumber}:1`);
     else goToPage(jump.page);
   }, [landOnVerse, goToPage, restoreSearchFocus]);
+
+  // A recent page: straight there, like a page jump.
+  const pickRecent = useCallback((entry) => {
+    setSearchOpen(false);
+    setFind(null);
+    restoreSearchFocus(false);
+    goToPage(entry.page);
+  }, [goToPage, restoreSearchFocus]);
+  const clearRecent = useCallback(() => {
+    const cleared = clearRecentPages();
+    if (!cleared.length) return;
+    showToast(t('library.recent.cleared'), 'info', {
+      action: { label: t('library.recent.undo'), onClick: () => restoreRecentPages(cleared) },
+    });
+  }, [showToast, t]);
 
   // Next / previous occurrence, in mushaf order, across pages; it wraps at the ends
   // the way a browser's find does.
@@ -2244,6 +2285,7 @@ export default function Library() {
   // advances to its last word on EVERY visible page it has words on, so a verse
   // straddling the spread reveals its portion on each half.
   const revealVerse = useCallback((verseKey) => {
+    noteRead();
     setWatermarks((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -2254,7 +2296,7 @@ export default function Library() {
       });
       return changed ? next : prev;
     });
-  }, [pageOrders]);
+  }, [pageOrders, noteRead]);
 
   // 3rd click of the cycle: hide this verse and everything after it by winding
   // the watermark back to just before its first word (on each page it's on).
@@ -2353,12 +2395,13 @@ export default function Library() {
   // — keeping the pickers on the current page is bookkeeping, not a selection, and
   // must not light up the mushaf.
   const setRange = useCallback((a, b) => {
+    noteRead();
     const startOrd = Math.min(a, b);
     const endOrd = Math.max(a, b);
     setRangeStartOrd(startOrd);
     setRangeEndOrd(endOrd);
     setRangeSelection({ startOrd, endOrd });
-  }, []);
+  }, [noteRead]);
 
   // Page turns are fired from a TIMER, not from the next pointermove: a reader who
   // parks the pointer at the edge and holds it perfectly still produces no further
@@ -2639,6 +2682,7 @@ export default function Library() {
   //   3. selected, no acts -> deselect entirely
   // Clicking off the verse does the same thing at each stage: away, then out.
   const handleWordSelect = useCallback((verseKey) => {
+    noteRead();
     if (markVersesMode) { handleMarkVersesTap(verseKey); return; }
     // Picking one verse replaces a picked span, the same way it replaces another
     // single verse: there is one selection, and this click is now it.
@@ -2651,7 +2695,7 @@ export default function Library() {
     placeNextRef.current = true; // anchor the popover here if it is asked for next
     setPopoverHidden(true);
     selectVerse(verseKey);
-  }, [markVersesMode, handleMarkVersesTap, selectVerse, popoverHidden, selectedVerseKey]);
+  }, [markVersesMode, handleMarkVersesTap, selectVerse, popoverHidden, selectedVerseKey, noteRead]);
 
   // The secondary gesture: RIGHT-CLICK a verse, or — where there is no right
   // button — press and hold it and let go without dragging, which is the touch
@@ -2664,6 +2708,7 @@ export default function Library() {
   // → that one verse replaces the span.
   const showVerseActions = useCallback((verseKey) => {
     if (markVersesMode) return;   // the two-tap picking mode owns taps
+    noteRead();
     const ord = ordOfKey(verseKey);
     placeNextRef.current = true;
     setPopoverPlaceTick((n) => n + 1);   // re-place even if the actions are already up
@@ -2678,7 +2723,7 @@ export default function Library() {
     setRangeSelection(null);
     setPopoverHidden(false);
     setSelectedVerseKey(verseKey);
-  }, [markVersesMode]);
+  }, [markVersesMode, noteRead]);
   useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
 
   // ── Right-click while annotating ──
@@ -2863,6 +2908,7 @@ export default function Library() {
   // button (the touch screen's Ctrl+Z). Resolves true once saved.
   const applyVerseAction = useCallback(async (ops, what, message) => {
     if (annoBusyRef.current) return false;
+    noteRead();
     if (ops.length > MAX_SPAN_OPS) {
       showToast(t('library.span.tooMany', { max: fmtNum(MAX_SPAN_OPS) }), 'error');
       return false;
@@ -2881,7 +2927,7 @@ export default function Library() {
       annoBusyRef.current = false;
       setSavingAnnotation(false);
     }
-  }, [commitAnnoOps, recordAnnoStep, historyToastAction, showToast, t, fmtNum]);
+  }, [commitAnnoOps, recordAnnoStep, historyToastAction, showToast, t, fmtNum, noteRead]);
 
   // Highlight a verse in `color`; clicking the active colour again removes it,
   // a different colour updates it (whole-verse; word spans stay a server option).
@@ -3074,7 +3120,7 @@ export default function Library() {
     bumpHistory();
   }, [scheduleDrawSave, pushHistory]);
 
-  const handleDrawChange = useCallback((page, next) => applyStrokes(page, next, true), [applyStrokes]);
+  const handleDrawChange = useCallback((page, next) => { noteRead(); applyStrokes(page, next, true); }, [applyStrokes, noteRead]);
 
   // Keep a working copy of the ink for every page on screen.
   //
@@ -3313,19 +3359,21 @@ export default function Library() {
 
   // ── Text notes (free-floating labels placed with the 'T' tool) ─────
   const createText = useCallback(async (page, x, y, text, color) => {
+    noteRead();
     try {
       await annotationsAPI.create({ pageNumber: page, kind: 'text', x, y, text, color });
       loadAnnotationsForPages([page]);
       loadSummary();
     } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
-  }, [loadAnnotationsForPages, loadSummary, showToast, t]);
+  }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const updateText = useCallback(async (page, id, patch) => {
+    noteRead();
     try {
       await annotationsAPI.update(id, patch);
       loadAnnotationsForPages([page]);
       loadSummary();
     } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
-  }, [loadAnnotationsForPages, loadSummary, showToast, t]);
+  }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const deleteText = useCallback(async (page, id) => {
     try {
       await annotationsAPI.remove(id);
@@ -3410,6 +3458,7 @@ export default function Library() {
   // memorization event + streak); removing replaces the whole set in one call.
   const markPageMemorized = async (page) => {
     if (savingMemorized || memorizedPages.has(page)) return;
+    noteRead();
     const prevPages = memorizedPages;
     const prevPartial = partialPages;
     const nextPages = new Set(prevPages);
@@ -3437,6 +3486,7 @@ export default function Library() {
 
   const unmarkPageMemorized = async (page) => {
     if (savingMemorized || !memorizedPages.has(page)) return;
+    noteRead();
     const prevPages = memorizedPages;
     const prevPartial = partialPages;
     const nextPages = new Set(prevPages);
@@ -3471,6 +3521,7 @@ export default function Library() {
 
   const addBookmark = async () => {
     if (savingBookmark) return;
+    noteRead();
     setSavingBookmark(true);
     const label = bookmarkLabel.trim();
     try {
@@ -3747,6 +3798,7 @@ export default function Library() {
   // dead-ending at the page edge. Audio comes along if it was already going.
   // Programmatic, so it does NOT re-anchor the popover (only a word click does).
   const stepSelection = (dir) => {
+    noteRead();
     const from = panelStepOrd ?? ordOfKey(verses[0]?.verseKey);
     if (from == null) return;
     const next = from + dir;
@@ -4569,6 +4621,10 @@ export default function Library() {
                 className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
                 placeholder={t('library.gotoPagePlaceholder')}
               />
+
+              {/* The last few pages read, one tap each; "More" = the full list in
+                  the search box. Nothing at all while there is nothing recent. */}
+              <RecentPagesRow exclude={visiblePages} onPick={(entry) => goToPage(entry.page)} onMore={() => openSearch(true)} />
 
               {/* Single / two-page spread toggle + focus toggle (large screens only). */}
               <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
@@ -6175,6 +6231,10 @@ export default function Library() {
             onJump={jumpFromSearch}
             fmtNum={fmtNum}
             isArabic={isArabic}
+            recentExclude={visiblePages}
+            onPickRecent={pickRecent}
+            onRemoveRecent={removeRecentPage}
+            onClearRecent={clearRecent}
           />
         </Suspense>
       )}

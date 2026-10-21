@@ -1281,3 +1281,30 @@ every occurrence with a bar of ‹ 3 / 47 › and Done. Four decisions are worth
   may not take room from it or float over text. It replaces the navbar while it is up —
   the strip the height budget already reserves — so the page's size and position never
   change. Its arrows follow the book: the LEFT one is "next" in both languages.
+
+## Recent pages — what counts as "read"
+
+The search box, with nothing typed, lists the pages the reader recently read ("Page 291 ·
+Al-Isra · 2 hours ago"), and the sidebar shows the last few as chips under the pager.
+The hard part is not the list but deciding what goes in it:
+
+- **Time on the page, not visits.** [hooks/useRecentPageTracker.js](../client/src/hooks/useRecentPageTracker.js)
+  counts a page as read after ~8 seconds of *visible* time (a background tab isn't
+  being read), or at once when the reader does something on it — selects a verse,
+  annotates, bookmarks, ticks it, reveals a verse in the self-test. Flipping, the
+  scrubber and a quick look never reach the list. A two-page spread is one entry.
+- **The recitation is the exception.** While it plays and the page follows it, the
+  pages it turns to are passed through, not read — none counts by time. The page where
+  listening *stops* is recorded. Turning by hand while it plays hands the pages back to
+  the reader, and they count normally again.
+- **One small store, shared by every tab.** [services/recentPages.js](../client/src/services/recentPages.js)
+  keeps the list in localStorage (`recentPages`: `{ pages, page, at }`, newest first,
+  at most 12; reading a page again replaces any older entry sharing a page with it).
+  It works signed out, and the `storage` event keeps every tab's list in step. It does
+  not follow the reader to another device. `lastMushafPage` (where the Library opens)
+  still follows every turn; whenever the page on screen has counted as read, the two
+  agree.
+- **The clock lives in the lists.** The "2 hours ago" labels re-render every 30 s, but
+  only the list components subscribe to that clock
+  ([hooks/useRecentPages.js](../client/src/hooks/useRecentPages.js)), so the Library
+  itself never re-renders for it.
