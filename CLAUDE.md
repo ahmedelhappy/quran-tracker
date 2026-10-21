@@ -141,6 +141,14 @@ cd server
 node seed/fetchQuranStructure.js   # needs network; rewrites seed/data/quranStructure.json
 ```
 
+The Library's verse search reads a second committed file, `client/public/data/search-index.json`
+(every verse's words in word-position order, so hits map to the rendered glyphs). It is
+not seeded into the database — the client lazy-loads it. To regenerate it (rarely needed):
+```bash
+cd server
+node seed/fetchSearchIndex.js      # needs network; checks positions against the reader's data
+```
+
 ## Project Context (formerly a Graduation Project)
 
 This started as a graduation project and **has been defended.** All proposal requirements — functional (FR-01–FR-13) and non-functional (NFR-01–NFR-07) — are implemented, and the app now goes beyond the original scope: a 604-page Quran reader/Library, per-ayah audio, tafsir, bilingual EN/AR i18n, dark mode, an AI chatbot, and richer scheduling. The full requirement→code mapping lives in [`docs/FEATURES.md`](docs/FEATURES.md).
