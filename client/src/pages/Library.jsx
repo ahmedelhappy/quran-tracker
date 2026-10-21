@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useReducer } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect, useReducer, lazy, Suspense } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -7,7 +7,7 @@ import {
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus, FiMapPin,
   FiFlag, FiMessageSquare, FiCornerUpRight, FiSlash,
-  FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat,
+  FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat, FiSearch,
 } from 'react-icons/fi';
 // Feather has no eraser; this one actually looks like the thing it does.
 import { BsEraser } from 'react-icons/bs';
@@ -28,6 +28,7 @@ import ReciterPicker from '../components/ReciterPicker';
 import ReaderTools from '../components/ReaderTools';
 import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
 import TodoList, { TodoSummary } from '../components/TodoList';
+import SearchFindBar from '../components/SearchFindBar';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
 import { useToast } from '../hooks/useToast';
@@ -57,6 +58,10 @@ import { useDraggable } from '../hooks/useDraggable';
 import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
+
+// The search box (and the matching it pulls in) loads the first time it is opened;
+// the word index it searches loads after that (services/quranSearch.js).
+const VerseSearch = lazy(() => import('../components/VerseSearch'));
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -745,6 +750,21 @@ export default function Library() {
   // Bumped on every request for actions, so the popover re-places under the new
   // press even when it was already open (a second right-click inside the span).
   const [popoverPlaceTick, setPopoverPlaceTick] = useState(0);
+
+  // ── Verse search ──────────────────────────────────────────
+  // The box (VerseSearch) and, once a result is picked, the occurrence bar
+  // (SearchFindBar) stepping through every place the words occur. `find` is
+  // { query, occurrences: [{ ord, from, to }] in mushaf order, index } — word
+  // positions, so the hits tint exact glyphs. It lives here, not in the box, so it
+  // survives page turns; it is never saved anywhere.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchMounted, setSearchMounted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [find, setFind] = useState(null);
+  const findBarRef = useRef(null);
+  const searchOpenerRef = useRef(null);   // what had focus before the box opened
+  const focusFindBarRef = useRef(false);  // hand focus to the bar once it has rendered
+  const audioBarRef = useRef(null);       // the bottom bar a hit must be scrolled clear of
 
   // ── Contextual onboarding (driver.js) ────────────────────
   const tourRef = useRef(null);
@@ -1973,6 +1993,106 @@ export default function Library() {
   }, [pageArrived, pageError, visiblePages, pageStep, isPlaying]);
   useEffect(() => stopPrefetch, []);
 
+  // ── Verse search: opening, landing, stepping ──────────────
+  // Select a verse quietly — banded, the popover folded, as after a plain click —
+  // turning to its page first when it is not on screen. The same hand-over the
+  // popover's verse stepping uses (pendingSelectRef / selectTurnRef), so the turn
+  // keeps the selection and the tafsir panel follows it. In the spread, goToPage
+  // snaps to the pair the page belongs to.
+  const landOnVerse = useCallback((verseKey) => {
+    setRangeSelection(null);
+    setPopoverHidden(true);
+    if (verses.some((v) => v.verseKey === verseKey)) { setSelectedVerseKey(verseKey); return; }
+    pendingSelectRef.current = verseKey;     // landed by the effect once its verses are in
+    selectTurnRef.current = true;
+    if (!goToPage(pageOfOrd(ordOfKey(verseKey)))) selectTurnRef.current = false;
+  }, [verses, goToPage]);
+
+  const openSearch = useCallback(() => {
+    if (searchOpen) return;
+    searchOpenerRef.current = document.activeElement;
+    setSearchMounted(true);
+    setSearchOpen(true);
+  }, [searchOpen]);
+
+  // Focus goes back where it came from — or to the occurrence bar, when one is up.
+  const restoreSearchFocus = useCallback((toBar) => {
+    requestAnimationFrame(() => {
+      const el = toBar ? findBarRef.current : searchOpenerRef.current;
+      if (el?.isConnected && el !== document.body) el.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    restoreSearchFocus(!!find);
+  }, [find, restoreSearchFocus]);
+
+  // A verse picked from the suggestions: the bar comes up on that occurrence.
+  const pickOccurrence = useCallback(({ query, occurrences, index }) => {
+    setSearchOpen(false);
+    setFind({ query, occurrences, index });
+    focusFindBarRef.current = true;
+    landOnVerse(keyOfOrd(occurrences[index].ord));
+  }, [landOnVerse]);
+
+  // A reference or a name: straight there, and any earlier search is put away.
+  const jumpFromSearch = useCallback((jump) => {
+    setSearchOpen(false);
+    setFind(null);
+    restoreSearchFocus(false);
+    if (jump.type === 'verse') landOnVerse(`${jump.surahNumber}:${jump.ayahNumber}`);
+    else if (jump.type === 'surah') landOnVerse(`${jump.surahNumber}:1`);
+    else goToPage(jump.page);
+  }, [landOnVerse, goToPage, restoreSearchFocus]);
+
+  // Next / previous occurrence, in mushaf order, across pages; it wraps at the ends
+  // the way a browser's find does.
+  const stepFind = useCallback((dir) => {
+    if (!find) return;
+    const n = find.occurrences.length;
+    const index = (find.index + dir + n) % n;
+    setFind({ ...find, index });
+    landOnVerse(keyOfOrd(find.occurrences[index].ord));
+  }, [find, landOnVerse]);
+
+  // Done: the bar goes, and every hit's tint with it. The verse stays selected.
+  const endFind = useCallback(() => {
+    setFind(null);
+    restoreSearchFocus(false);
+  }, [restoreSearchFocus]);
+
+  useEffect(() => {
+    if (!find || !focusFindBarRef.current) return;
+    focusFindBarRef.current = false;
+    findBarRef.current?.focus({ preventScroll: true });
+  }, [find]);
+
+  // Every hit, by verse, for the per-word lookup MushafPage makes while drawing.
+  const findOccurrences = find?.occurrences ?? null;
+  const findHits = useMemo(() => {
+    if (!findOccurrences) return null;
+    const byVerse = new Map();
+    findOccurrences.forEach((o, i) => {
+      const key = keyOfOrd(o.ord);
+      const list = byVerse.get(key);
+      if (list) list.push({ from: o.from, to: o.to, i });
+      else byVerse.set(key, [{ from: o.from, to: o.to, i }]);
+    });
+    return byVerse;
+  }, [findOccurrences]);
+  const findIndex = find?.index ?? -1;
+  const searchHitFor = useMemo(() => (findHits
+    ? (verseKey, position) => {
+      const list = findHits.get(verseKey);
+      if (!list) return null;
+      for (const h of list) {
+        if (position >= h.from && position <= h.to) return h.i === findIndex ? 'current' : 'hit';
+      }
+      return null;
+    }
+    : null), [findHits, findIndex]);
+
   // ── Keyboard page-turning + shortcuts ────────────────────
   // RTL book: ArrowLeft/PageDown go forward, ArrowRight/PageUp go back — in both
   // UI languages. Escape peels back the top-most overlay; S (or F) shows/hides the
@@ -1996,6 +2116,19 @@ export default function Library() {
       // up without leaving the mode between each one. (Touch swipes still don't:
       // the drawing layer owns touch over the page, so a swipe there is a stroke.)
       const isPageTurnKey = ['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown'].includes(e.key);
+      // Search, in and out of annotate mode: "/" or Ctrl+K opens the box (never
+      // while typing — that returned above), and F3 / Shift+F3 step through the
+      // hits while the occurrence bar is up (the browser's own find is kept off them).
+      if ((!mod && !e.altKey && isShortcutKey(e, '/')) || (mod && !e.altKey && !e.shiftKey && isShortcutKey(e, 'k'))) {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (e.key === 'F3' && find) {
+        e.preventDefault();
+        stepFind(e.shiftKey ? -1 : 1);
+        return;
+      }
       // Undo / redo work in AND out of annotate mode: one timeline holds the ink
       // strokes and the verse annotations (highlights, hard flags, notes) in the
       // order they were made, so Ctrl+Z always undoes whichever came last.
@@ -2048,7 +2181,9 @@ export default function Library() {
         case 'PageUp':
           e.preventDefault(); goPrev(); break;
         case 'Escape':
-          if (tafsirOpen) setTafsirOpen(false);
+          // The occurrence bar is the most passing layer there is: it goes first.
+          if (find) endFind();
+          else if (tafsirOpen) setTafsirOpen(false);
           else if (readTextNote) setReadTextNote(null);
           else if (notePanel) setNotePanel(null);
           else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
@@ -2062,7 +2197,7 @@ export default function Library() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -3568,6 +3703,42 @@ export default function Library() {
     zoomRevealWords(viewportRef.current?.querySelectorAll(`.mushaf-word[data-verse-key="${followKey}"]`));
   }, [followKey, pagesData, isZoomed, zoomRevealWords]);
 
+  // The search occurrence being looked at must be in sight — and in sight means
+  // between the occurrence bar at the top and the audio bar at the bottom, which
+  // both float over whatever scrolls under them. Zoomed, the page's own scroller
+  // pans (this runs after the verse-follow above, so in a long verse the hit
+  // itself wins); fitted, the page can still sit partly off-screen — on a phone it
+  // is below the sidebar — so the window scrolls. Already in sight: nothing moves.
+  const currentHit = find ? find.occurrences[find.index] : null;
+  const currentHitKey = currentHit ? `${currentHit.ord}:${currentHit.from}:${find.index}` : null;
+  useEffect(() => {
+    if (!currentHitKey) return;
+    const els = viewportRef.current?.querySelectorAll('.mushaf-word.is-search-current');
+    if (!els?.length) return;   // its page is still on the way; pagesData runs this again
+    const rects = [...els].map((el) => el.getBoundingClientRect());
+    const hit = {
+      top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)),
+      left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)),
+    };
+    const pad = 12;
+    let lo = (findBarRef.current?.getBoundingClientRect().bottom ?? 0) + pad;
+    let hi = (audioBarRef.current?.getBoundingClientRect().top ?? window.innerHeight) - pad;
+    const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+    const scroller = scrollerRef.current;
+    if (isZoomed() && scroller) {
+      const box = scroller.getBoundingClientRect();
+      lo = Math.max(lo, box.top + pad);
+      hi = Math.min(hi, box.bottom - pad);
+      const dy = hit.top >= lo && hit.bottom <= hi ? 0 : (hit.top + hit.bottom) / 2 - (lo + hi) / 2;
+      const dx = hit.left >= box.left + pad && hit.right <= box.right - pad
+        ? 0 : (hit.left + hit.right) / 2 - (box.left + box.right) / 2;
+      if (dx || dy) scroller.scrollBy({ left: dx, top: dy, behavior });
+      return;
+    }
+    if (hit.top >= lo && hit.bottom <= hi) return;
+    window.scrollBy({ top: (hit.top + hit.bottom) / 2 - (lo + hi) / 2, behavior });
+  }, [currentHitKey, pagesData, isZoomed]);
+
   // Move the selection one verse in `dir`, through the WHOLE Quran. The popover
   // and the tafsir panel both step through here, which is what keeps them and the
   // mushaf's highlight in step: there is one selection, and everything reads it.
@@ -4113,6 +4284,7 @@ export default function Library() {
                     inRange={inRange}
                     verseLabel={verseAriaLabel}
                     onVerseContextMenu={markVersesMode ? null : showVerseActions}
+                    searchHitFor={searchHitFor}
                   />
                 </Flip>
                 {/* Free-form ink + text overlays are siblings of the Flip/page-grid,
@@ -4218,6 +4390,29 @@ export default function Library() {
           keeps its top padding, so the mushaf never jumps. */}
       <Navbar autoHide holdOpen={tourActive || notePanel != null || readTextNote != null} />
 
+      {/* While a search is being stepped through, the occurrence bar takes over the
+          navbar's band — see SearchFindBar for why there and nowhere else. */}
+      {find && (
+        <SearchFindBar
+          ref={findBarRef}
+          query={find.query}
+          index={find.index}
+          total={find.occurrences.length}
+          announce={(() => {
+            const v = verseOfOrd(find.occurrences[find.index].ord);
+            return t('library.search.bar.announce', {
+              i: fmtNum(find.index + 1), n: fmtNum(find.occurrences.length),
+              surah: surahLabelFor(v.surahNumber), ayah: fmtNum(v.ayahNumber),
+            });
+          })()}
+          onNext={() => stepFind(1)}
+          onPrev={() => stepFind(-1)}
+          onDone={endFind}
+          onEdit={openSearch}
+          fmtNum={fmtNum}
+        />
+      )}
+
       {/* The page header is gone: its title and subtitle told a returning reader
           nothing the navbar doesn't, and the mushaf wants the height. `pt-20`
           clears the navbar with a little less air than before, for the same
@@ -4314,7 +4509,26 @@ export default function Library() {
 
             {/* Page navigation */}
             <div className="flex flex-col gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
+              {/* The heading row carries the search button. Its negative margin keeps
+                  the row exactly the label's height, so the sidebar (and, on a
+                  phone, the page stacked under it) doesn't move. */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">{t('library.pageLabel')}</span>
+                <Tooltip label={t('library.search.buttonHint')}>
+                  <button
+                    type="button"
+                    onClick={openSearch}
+                    data-testid="search-open"
+                    aria-keyshortcuts="/ Control+K"
+                    aria-haspopup="dialog"
+                    className="-my-1.5 h-7 inline-flex items-center gap-1.5 ps-2 pe-1.5 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:bg-[#f0f4ff] dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <FiSearch className="w-3.5 h-3.5" aria-hidden="true" />
+                    {t('library.search.button')}
+                    <kbd className="search-kbd search-kbd--hint" aria-hidden="true">/</kbd>
+                  </button>
+                </Tooltip>
+              </div>
               {/* dir=ltr pins the physical layout: the LEFT button always turns
                   forward (next page) and the RIGHT goes back, in both UI
                   languages — the mushaf is a right-to-left book, so forward is
@@ -5259,7 +5473,7 @@ export default function Library() {
             )}
 
             {/* ── Sticky audio bar — stays visible with the popover (reciter, speed, repeat live here) ── */}
-            <div data-tour="lib-audio" data-keeps-selection className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
+            <div ref={audioBarRef} data-tour="lib-audio" data-keeps-selection className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
                   <button
@@ -5947,6 +6161,23 @@ export default function Library() {
 
       {/* Full 7-step method, reused from the dashboard guide */}
       <HowToMemorizeModal isOpen={howToOpen} onClose={() => setHowToOpen(false)} />
+
+      {/* Mounted on the first open and kept, so its loaded index and the last query
+          are still there the next time. Client-side only: works signed out. */}
+      {searchMounted && (
+        <Suspense fallback={null}>
+          <VerseSearch
+            open={searchOpen}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            onClose={closeSearch}
+            onPickOccurrence={pickOccurrence}
+            onJump={jumpFromSearch}
+            fmtNum={fmtNum}
+            isArabic={isArabic}
+          />
+        </Suspense>
+      )}
 
       <Footer />
     </div>

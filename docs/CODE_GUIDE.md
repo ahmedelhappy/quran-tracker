@@ -1251,3 +1251,33 @@ true, and each is a pattern worth knowing:
 The sidebar row ([components/ReaderTools.jsx](../client/src/components/ReaderTools.jsx))
 takes a *list* of tools, so a second tool becomes a tab in the same row rather than
 another row in the sidebar.
+
+## Verse search — a local index that lands on exact glyphs
+
+The Library's search (the Search button by the page navigation, `/` or Ctrl+K) finds
+words, phrases, references ("2:255", "البقرة 255") and surah names, then steps through
+every occurrence with a bar of ‹ 3 / 47 › and Done. Four decisions are worth knowing:
+
+- **A committed index, not a search API.** The mushaf has no Quran *text* — it draws
+  glyphs from per-page fonts. [seed/fetchSearchIndex.js](../server/seed/fetchSearchIndex.js)
+  is a one-time generator (like `fetchQuranStructure.js`) that writes
+  `client/public/data/search-index.json`: every verse's words in their modern (imla'i)
+  spelling, with tashkeel, in **word-position order**. Because word *i* of a verse is
+  exactly the glyph the reader tags `data-word-position = i + 1`, a hit is reported as
+  `{ ord, from, to }` and tints the right glyphs. The generator doesn't assume that — it
+  fetches the reader's own word data for all 604 pages and fails on any mismatch.
+- **Normalise both sides the same way.** [utils/quranSearchQuery.js](../client/src/utils/quranSearchQuery.js)
+  strips tashkeel and Quranic marks and unifies spelling variants (alef forms, hamza
+  seats, ى/ي, ة/ه) in the index *and* in the query, so typing with or without vowels
+  meets the text on the same letters. Matching is consecutive words inside one verse,
+  with the last word allowed to be half-typed.
+- **Lazy and cheap.** The index (~1.3 MB, ~260 KB gzipped) is fetched the first time
+  search opens; [services/quranSearch.js](../client/src/services/quranSearch.js) turns
+  it into flat typed arrays (one token id per word), yielding to the browser every 250
+  verses so building it is never a long task. After that a keystroke's search is a scan
+  of ~78k integers: a few milliseconds, so no Web Worker is needed.
+- **The bar takes the navbar's band.** The page fits the window by design (§6, Zoom), so
+  the occurrence bar ([components/SearchFindBar.jsx](../client/src/components/SearchFindBar.jsx))
+  may not take room from it or float over text. It replaces the navbar while it is up —
+  the strip the height budget already reserves — so the page's size and position never
+  change. Its arrows follow the book: the LEFT one is "next" in both languages.

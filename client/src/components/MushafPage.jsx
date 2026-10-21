@@ -57,6 +57,10 @@ export default function MushafPage({
   // it has nothing useful to offer on glyphs that can't be selected or copied, and
   // on a touch screen it would otherwise fire in the middle of a long press.
   onVerseContextMenu,
+  // searchHitFor(verseKey, position) → 'current' | 'hit' | null: the words a verse
+  // search matched (the occurrence being looked at is 'current'). Transient — never
+  // an annotation — with a tint of its own drawn over every other; see index.css.
+  searchHitFor,
   // How a verse is named to a screen reader — "Surah Al-Isra, ayah 87". Passed in
   // so it can be said in the interface's language; the fallback is the bare key.
   verseLabel = (v) => `${v.surahNumber}:${v.ayahNumber}`,
@@ -204,6 +208,7 @@ export default function MushafPage({
         : word.verseKey === selectedVerseKey ? 'selected'
           : inRange?.(word.verseKey) ? 'range'
             : null;
+  const hitOf = (word) => (word && searchHitFor ? searchHitFor(word.verseKey, word.position) : null);
 
   return (
     <div
@@ -269,6 +274,11 @@ export default function MushafPage({
               const hlColor = highlightFor ? highlightFor(w.verseKey, w.position) : null;
               const isHardWord = hardVerses?.has(w.verseKey);
               const annCls = `${hlColor ? ` is-hl-${hlColor}` : ''}${isHardWord ? ' is-hard' : ''}`;
+              // A phrase hit reads as one run, rounded only at its two ends, like the bands.
+              const hit = hitOf(w);
+              const hitCls = hit
+                ? ` is-search-${hit}${hitOf(line.words[i - 1]) !== hit ? ' is-hit-start' : ''}${hitOf(line.words[i + 1]) !== hit ? ' is-hit-end' : ''}`
+                : '';
               const isNoteMedallion = w.charType === 'end' && noteVerses?.has(w.verseKey);
               const isVerseAnchor = verseAnchors.get(w.verseKey) === w.position;
               const a11y = isVerseAnchor
@@ -289,7 +299,7 @@ export default function MushafPage({
                   data-verse-key={w.verseKey}
                   data-word-position={w.position}
                   {...a11y}
-                  className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}`}
+                  className={`mushaf-word${w.charType === 'end' ? ' mushaf-word--mark' : ''}${cls}${annCls}${hitCls}`}
                   style={fontFamily ? { fontFamily } : undefined}
                   onPointerDown={(e) => {
                     suppressClickRef.current = false; // fresh interaction

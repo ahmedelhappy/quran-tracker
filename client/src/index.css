@@ -417,6 +417,78 @@ html[lang='ar'] body {
 .mushaf-word.is-run-start { border-start-start-radius: 6px; border-end-start-radius: 6px; }
 .mushaf-word.is-run-end { border-start-end-radius: 6px; border-end-end-radius: 6px; }
 
+/* ── Search hits (verse search; transient, never saved) ──────────────────
+   The words a search matched, tinted ORANGE — the one hue nothing else on the page
+   uses: selection and recitation are greens, a playback range indigo, the saved
+   highlights yellow / green / blue / pink, a hard verse a red underline. Every hit
+   on the page gets a light wash, so the reader sees how often the phrase recurs;
+   the occurrence being looked at ("3 / 47") is deeper and carries a darker inset
+   rule at its foot, which reads even when it sits inside the selected verse's band
+   or on a highlight. Declared after the verse states so it is drawn over them; a
+   phrase is one run, rounded at its ends only. Backgrounds and shadows — the glyph
+   layout never moves. */
+.mushaf-word.is-search-hit { background: rgba(249, 115, 22, 0.20); border-radius: 0; }
+.mushaf-word.is-search-current {
+  background: rgba(249, 115, 22, 0.42);
+  border-radius: 0;
+  box-shadow: inset 0 -0.12em 0 rgba(194, 65, 12, 0.95);
+}
+.mushaf-word.is-hard.is-search-current {
+  box-shadow: inset 0 -0.12em 0 rgba(194, 65, 12, 0.95), inset 0 -0.26em 0 rgba(220, 38, 38, 0.55);
+}
+.dark .mushaf-word.is-search-hit { background: rgba(251, 146, 60, 0.20); }
+.dark .mushaf-word.is-search-current {
+  background: rgba(251, 146, 60, 0.40);
+  box-shadow: inset 0 -0.12em 0 rgba(253, 186, 116, 0.95);
+}
+.mushaf-word.is-hit-start { border-start-start-radius: 5px; border-end-start-radius: 5px; }
+.mushaf-word.is-hit-end { border-start-end-radius: 5px; border-end-end-radius: 5px; }
+
+/* The search box's verse snippets: real Arabic text with its tashkeel, in a
+   Quranic text face (NOT the per-page QCF glyph fonts, which only the mushaf
+   page has loaded). */
+.search-snippet {
+  font-family: 'Scheherazade New', 'Amiri', serif;
+  font-size: 1.2rem;
+  line-height: 1.9;
+  color: #1A1A1A;
+  text-align: start;
+  width: 100%;
+}
+.dark .search-snippet { color: #e5e7eb; }
+/* Rows below the fold skip layout and paint until scrolled to: the first set of
+   Arabic snippets otherwise cost one long task on a cold start. */
+.search-row { content-visibility: auto; contain-intrinsic-size: auto 84px; }
+.search-snippet mark {
+  background: rgba(249, 115, 22, 0.26);
+  color: inherit;
+  border-radius: 3px;
+  box-shadow: inset 0 -2px 0 rgba(194, 65, 12, 0.8);
+}
+.dark .search-snippet mark { background: rgba(251, 146, 60, 0.26); box-shadow: inset 0 -2px 0 rgba(253, 186, 116, 0.8); }
+.search-kbd {
+  display: inline-block;
+  min-width: 1.35em;
+  padding: 0 0.3em;
+  border: 1px solid #dce2f3;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: 600 10px/1.5 'Inter', sans-serif;
+  text-align: center;
+  color: #404944;
+  background: #fff;
+}
+.dark .search-kbd { border-color: #4b5563; color: #d1d5db; background: #1f2937; }
+/* The occurrence bar takes focus when a result is picked (so Enter steps on). Its
+   ring would only show as a stray line under the band, so focus is drawn as an
+   underline of the band itself; the search box's field sits in a panel that is
+   already the focus, so it shows none. */
+.search-find-bar:focus-visible { outline: none; box-shadow: inset 0 -2px 0 #004f35, 0 4px 20px rgba(6, 78, 59, 0.06); }
+.dark .search-find-bar:focus-visible { box-shadow: inset 0 -2px 0 #34d399, 0 4px 20px rgba(0, 0, 0, 0.35); }
+.search-input:focus-visible { outline: none; }
+/* A key hint means nothing without a keyboard. */
+@media (pointer: coarse) { .search-kbd--hint { display: none; } }
+
 /* Note indicator: a small dot pinned inside the ayah medallion's word box
    (never outside it, so the line's overflow:hidden can't clip it). */
 .mushaf-note-dot {

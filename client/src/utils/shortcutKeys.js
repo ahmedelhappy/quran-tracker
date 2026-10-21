@@ -42,10 +42,18 @@ const isDigitKey = (e, digit) =>
   digitOf(e.key) === digit ||
   (e.code === `Numpad${digit}` && e.key?.length === 1);
 
+// Punctuation shortcuts drift the same way: the physical '/' key types 'ظ' on the
+// Arabic layout and '.' on Hebrew. So they match the physical key UNSHIFTED (with
+// Shift it is a different key: '?' on US), or the character itself however it was
+// typed (AZERTY and QWERTZ need Shift for '/').
+const PUNCT_CODES = { '/': 'Slash' };
+
 export const isShortcutKey = (e, key) =>
   /^[0-9]$/.test(key)
     ? isDigitKey(e, key)
-    : e.code === `Key${key.toUpperCase()}` || e.key?.toLowerCase() === key.toLowerCase();
+    : PUNCT_CODES[key]
+      ? e.key === key || (e.code === PUNCT_CODES[key] && !e.shiftKey)
+      : e.code === `Key${key.toUpperCase()}` || e.key?.toLowerCase() === key.toLowerCase();
 
 // The first entry of `map` ({ letter or digit -> value }) whose key this event matches.
 export const shortcutValue = (e, map) => {
