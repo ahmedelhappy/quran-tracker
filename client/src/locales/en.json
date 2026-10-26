@@ -57,6 +57,8 @@
     "passwordTooLong": "Password is too long: at most 72 Latin letters (fewer in Arabic or with emoji)",
     "registrationFailed": "Registration failed",
     "invalidCredentials": "Invalid email or password",
+    "loginLocked": "Too many failed sign-in attempts for this account. Please wait a few minutes and try again.",
+    "tooManyAttempts": "Too many attempts from this device. Please wait 15 minutes and try again.",
     "namePlaceholder": "Enter your full name",
     "emailPlaceholder": "you@example.com",
     "passwordPlaceholder": "Create a strong password",

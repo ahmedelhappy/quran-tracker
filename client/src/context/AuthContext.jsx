@@ -6,6 +6,14 @@ import i18n from '../i18n';
 // The context object and its useAuth() hook live in hooks/useAuth.js, so that
 // this file exports only a component.
 
+// The server's auth messages are English. Its two 429s are the ones a person
+// can act on, so they are shown in the reader's language instead: the account's
+// failed-login lock (code LOGIN_LOCKED) and the per-device attempt limit.
+const tooManyMessage = (err) => {
+  if (err.response?.status !== 429) return null;
+  return i18n.t(err.response.data?.code === 'LOGIN_LOCKED' ? 'auth.loginLocked' : 'auth.tooManyAttempts');
+};
+
 // Provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -73,7 +81,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (err) {
-      const message = err.response?.data?.message || 'Registration failed';
+      const message = tooManyMessage(err) || err.response?.data?.message || 'Registration failed';
       setError(message);
       return { success: false, message };
     }
@@ -93,7 +101,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (err) {
-      const message = err.response?.data?.message || 'Login failed';
+      const message = tooManyMessage(err) || err.response?.data?.message || 'Login failed';
       setError(message);
       return { success: false, message };
     }

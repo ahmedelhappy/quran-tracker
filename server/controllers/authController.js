@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
 const { newPasswordProblem } = require('../utils/passwordPolicy');
+const { loginThrottle } = require('../utils/loginThrottle');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -100,25 +101,35 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Too many recent failures for this address: refuse before looking the
+    // account up or checking the password, with the same answer whether or not
+    // the account exists (see utils/loginThrottle.js).
+    const waitMs = loginThrottle.lockedFor(email);
+    if (waitMs > 0) {
+      res.set('Retry-After', String(Math.ceil(waitMs / 1000)));
+      return res.status(429).json({
+        success: false,
+        code: 'LOGIN_LOCKED',
+        message: 'Too many failed sign-in attempts. Please wait a few minutes and try again.',
+      });
+    }
+
     // Find user and include password for comparison
     const user = await User.findOne({ email }).select('+password');
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
-
-    // Check if password matches
-    const isMatch = await user.matchPassword(password);
+    // Check if password matches. An unknown email counts as a failure too, so
+    // the lock-out behaves the same for addresses that have no account.
+    const isMatch = user ? await user.matchPassword(password) : false;
 
     if (!isMatch) {
+      loginThrottle.recordFailure(email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
+
+    loginThrottle.reset(email);
 
     // Generate token
     const token = generateToken(user._id);
