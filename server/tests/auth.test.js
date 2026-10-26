@@ -11,7 +11,7 @@ describe('Auth API', () => {
   after(disconnect);
   beforeEach(clearDatabase);
 
-  test('registration rejects a too-short password', async () => {
+  test('registration rejects a too-short password with exactly 400', async () => {
     // This path intentionally trips the model's minlength validator, which the
     // controller logs via console.error — silence it so test output stays clean.
     const originalError = console.error;
@@ -21,10 +21,58 @@ describe('Auth API', () => {
         .post('/api/auth/register')
         .send({ name: 'Ali', email: 'ali@example.com', password: '123' });
 
-      // The model enforces minlength: 6, so registration must not succeed.
-      assert.notEqual(res.status, 201);
+      // A model ValidationError is the client's mistake — never a 500.
+      assert.equal(res.status, 400);
       assert.equal(res.body.success, false);
       assert.ok(!res.body.data, 'no user/token should be returned for an invalid password');
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  // M-02: the old pattern refused "+tags" and any TLD longer than three letters.
+  test('registration accepts real-world addresses the old pattern refused', async () => {
+    for (const email of ['first+tag@gmail.com', 'me@example.info', 'x@sub.example.co.uk', '  Mixed.Case@Example.COM ']) {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email, password: 'secret123' });
+      assert.equal(res.status, 201, email);
+      assert.equal(res.body.data.email, email.trim().toLowerCase(), 'stored trimmed and lower-cased');
+    }
+    // …and the normalised form is what login matches.
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'MIXED.case@example.com', password: 'secret123' });
+    assert.equal(login.status, 200);
+  });
+
+  test('a missing field is 400 and a taken email is 409 — never 500', async () => {
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      const noName = await request(app)
+        .post('/api/auth/register')
+        .send({ email: 'noname@example.com', password: 'secret123' });
+      assert.equal(noName.status, 400);
+      assert.equal(noName.body.message, 'Please provide your name');
+      assert.ok(!noName.body.error, 'no raw error text on a client error');
+
+      const noPassword = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email: 'nopw@example.com' });
+      assert.equal(noPassword.status, 400);
+
+      const noEmail = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', password: 'secret123' });
+      assert.equal(noEmail.status, 400);
+
+      await createUser({ email: 'taken@example.com' });
+      const taken = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email: 'Taken@Example.com', password: 'secret123' });
+      assert.equal(taken.status, 409);
+      assert.equal(taken.body.success, false);
     } finally {
       console.error = originalError;
     }

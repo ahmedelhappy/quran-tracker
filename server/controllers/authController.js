@@ -34,10 +34,11 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide a valid email' });
     }
 
-    // Check if user already exists
+    // Check if user already exists. A conflict, not a malformed request — and the
+    // same 409 the duplicate-key error gives if two sign-ups race past this check.
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         message: 'User already exists with this email'
       });
