@@ -26,6 +26,7 @@ const DEFAULTS = {
 const createLoginThrottle = (options = {}) => {
   const { maxFailures, windowMs, baseLockMs, maxLockMs, maxEntries } = { ...DEFAULTS, ...options };
   const now = options.now || (() => Date.now());
+  const warn = options.warn || console.warn;
   // email → { failures, firstAt, lockedUntil }
   const records = new Map();
 
@@ -37,11 +38,32 @@ const createLoginThrottle = (options = {}) => {
     ? t < rec.lockedUntil + windowMs
     : t - rec.firstAt < windowMs);
 
-  const prune = (t) => {
+  // Makes room for one new record, called just BEFORE it is added (so the
+  // newcomer is never its own eviction candidate). Still full after dropping
+  // expired records means a flood of live ones, and something live has to go:
+  // never-locked records first (oldest first — Map keeps insertion order), then
+  // the locks ending soonest. Evicting by age alone would let a flood of made-up
+  // emails push out a victim's active lock and its escalation, handing the
+  // guesser a fresh 5 tries. The overflow is logged at most once per window.
+  let lastWarnAt = -Infinity;
+  const makeRoom = (t) => {
+    const cap = maxEntries - 1;
     for (const [key, rec] of records) if (!isLive(rec, t)) records.delete(key);
-    // Still over the cap (a flood of live records): drop the oldest first — Map
-    // keeps insertion order.
-    while (records.size > maxEntries) records.delete(records.keys().next().value);
+    if (records.size <= cap) return;
+
+    if (t - lastWarnAt >= windowMs) {
+      lastWarnAt = t;
+      warn(`loginThrottle: over ${maxEntries} live records — evicting live ones (a flood of failed sign-ins?)`);
+    }
+    for (const [key, rec] of records) {
+      if (records.size <= cap) return;
+      if (rec.lockedUntil === 0) records.delete(key);
+    }
+    const byLockEnd = [...records].sort((a, b) => a[1].lockedUntil - b[1].lockedUntil);
+    for (const [key] of byLockEnd) {
+      if (records.size <= cap) return;
+      records.delete(key);
+    }
   };
 
   // Milliseconds until this email may try again; 0 when it may try now.
@@ -60,8 +82,8 @@ const createLoginThrottle = (options = {}) => {
     }
     if (!rec) {
       rec = { failures: 0, firstAt: t, lockedUntil: 0 };
+      if (records.size >= maxEntries) makeRoom(t);
       records.set(email, rec);
-      if (records.size > maxEntries) prune(t);
     }
     rec.failures += 1;
     if (rec.failures >= maxFailures) {

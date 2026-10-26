@@ -65,9 +65,43 @@ describe('loginThrottle (fake clock)', () => {
   });
 
   test('memory stays bounded under a flood of made-up emails', () => {
-    const { throttle } = make({ maxEntries: 100 });
+    const { throttle } = make({ maxEntries: 100, warn: () => {} });
     for (let i = 0; i < 1000; i++) throttle.recordFailure(`flood${i}@x.com`);
     assert.ok(throttle.size() <= 100, `size ${throttle.size()}`);
+  });
+
+  test('a flood cannot evict an active lock, and the overflow is logged once', () => {
+    const warnings = [];
+    const { throttle, clock } = make({ maxEntries: 100, warn: (m) => warnings.push(m) });
+    // The victim is locked (and escalated) first, so it is the OLDEST record.
+    for (let i = 0; i < 6; i++) {
+      clock.advance(throttle.lockedFor('victim@x.com'));
+      throttle.recordFailure('victim@x.com');
+    }
+    const lock = throttle.lockedFor('victim@x.com');
+    assert.equal(lock, 2 * MIN);
+
+    for (let i = 0; i < 1000; i++) throttle.recordFailure(`flood${i}@x.com`);
+    assert.ok(throttle.size() <= 100, `size ${throttle.size()}`);
+    assert.equal(throttle.lockedFor('victim@x.com'), lock, 'still locked, escalation intact');
+    clock.advance(lock);
+    throttle.recordFailure('victim@x.com');
+    assert.equal(throttle.lockedFor('victim@x.com'), 4 * MIN, 'the next failure keeps doubling');
+    assert.equal(warnings.length, 1, warnings.join('\n'));
+  });
+
+  test('when every record is locked, the lock ending soonest goes first', () => {
+    const { throttle, clock } = make({ maxEntries: 2, warn: () => {} });
+    const lockOut = (email) => { for (let i = 0; i < 5; i++) throttle.recordFailure(email); };
+    lockOut('long@x.com');
+    clock.advance(throttle.lockedFor('long@x.com'));
+    throttle.recordFailure('long@x.com'); // escalated to 2 minutes
+    lockOut('short1@x.com');
+    clock.advance(1000);
+    lockOut('short2@x.com');
+    assert.ok(throttle.lockedFor('long@x.com') > 0, 'the longest lock survives');
+    assert.equal(throttle.lockedFor('short1@x.com'), 0, 'the lock ending soonest was evicted');
+    assert.ok(throttle.lockedFor('short2@x.com') > 0);
   });
 });
 
