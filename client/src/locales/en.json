@@ -472,6 +472,7 @@
       "mismatch": "Passwords do not match",
       "mustDiffer": "New password must be different from the current one",
       "success": "Password changed. You stay signed in here; other devices were signed out.",
+      "successSignIn": "Password changed. Please sign in again with your new password.",
       "failed": "Failed to change password"
     }
   },

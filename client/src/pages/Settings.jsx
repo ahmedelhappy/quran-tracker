@@ -586,9 +586,10 @@ function ChangePasswordCard() {
     setPwLoading(true);
     try {
       // Keeps this session signed in (it stores the fresh token); other devices
-      // are signed out, which the success message says.
-      await changePassword(current, newPw);
-      showToast(t('settings.password.success'), 'success');
+      // are signed out, which the success message says. Without a fresh token
+      // this session is signed out too, and the message says that instead.
+      const { signedOut } = await changePassword(current, newPw);
+      showToast(t(signedOut ? 'settings.password.successSignIn' : 'settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {
       showToast(error.response?.data?.message ?? t('settings.password.failed'), 'error');

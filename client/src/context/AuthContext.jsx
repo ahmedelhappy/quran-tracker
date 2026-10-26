@@ -110,12 +110,21 @@ export const AuthProvider = ({ children }) => {
   // Change the password. The server revokes every token issued before the change
   // — this tab's included — and answers with a fresh one, which must replace the
   // stored token at once or the very next request would sign this tab out.
-  // Errors propagate: the caller shows the server's reason.
+  // Errors propagate: the caller shows the server's reason. Resolves to
+  // { signedOut }: true when the change went through but no fresh token came
+  // back (an older server build, a body rewritten on the way), so the stored
+  // token is already dead — sign out cleanly now rather than claim this session
+  // stays signed in and bounce to the login page on the next request.
   const changePassword = async (currentPassword, newPassword) => {
     const response = await authAPI.changePassword({ currentPassword, newPassword });
     const token = response.data?.data?.token;
-    if (token) localStorage.setItem('token', token);
-    return response;
+    if (token) {
+      localStorage.setItem('token', token);
+      return { signedOut: false };
+    }
+    console.error('Password changed but the response carried no token; signing out');
+    logout();
+    return { signedOut: true };
   };
 
   // Logout user
