@@ -12,7 +12,13 @@ export function safeReturnTo(raw) {
   try { url = new URL(raw, BASE); } catch { return null; }
   if (url.origin !== BASE) return null;
   if (/^\/(login|register)(\/|$)/.test(url.pathname)) return null;
-  return url.pathname + url.search + url.hash;
+  // Check what we RETURN, not only what came in: normalising dot segments can
+  // turn an innocent-looking input into a protocol-relative URL ("/.//evil.com",
+  // "/%2e//evil.com" and "/a/..//evil.com" all become "//evil.com"). The router
+  // collapses the double slash today, but a plain href or location.assign fed
+  // this value would leave the site.
+  const out = url.pathname + url.search + url.hash;
+  return out.startsWith('//') ? null : out;
 }
 
 // The sign-in link for a page that wants the reader back afterwards.
