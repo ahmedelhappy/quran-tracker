@@ -215,10 +215,12 @@ exports.sendMessage = async (req, res) => {
     });
   }
 
-  // One deadline for the whole call. The SDK retries some failures on its own,
-  // so its per-attempt timeout alone could stack up to several times this.
+  // One deadline for the whole model call. The SDK retries some failures on
+  // its own, so its per-attempt timeout alone could stack up to several times
+  // this. It starts only once the progress summary below is built: a slow
+  // database must not use up the model's time and be reported as a slow AI.
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), timeoutMs);
+  let timer;
 
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -234,6 +236,7 @@ exports.sendMessage = async (req, res) => {
       console.error('Chat progress-context error (continuing without it):', summaryError);
     }
 
+    timer = setTimeout(() => deadline.abort(), timeoutMs);
     const completion = await groq.chat.completions.create({
       model: CHAT_MODEL,
       messages: [...systemMessages, ...conversation],

@@ -328,6 +328,29 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.ok(groqRequestOptions[0].signal, 'the call carries an abort signal');
   });
 
+  test('the deadline covers the model call only, not a slow progress lookup before it', async () => {
+    const user = await createUser();
+    // The summary's progress query takes 150 ms; the model answers at once.
+    // Like the real SDK, a call made with an already-aborted signal fails.
+    groqImpl = async (params, options) => {
+      if (options.signal.aborted) throw Object.assign(new Error('Request was aborted.'), { name: 'APIUserAbortError' });
+      return { choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] };
+    };
+    const originalFind = UserProgress.find;
+    UserProgress.find = function slowFind(...args) {
+      const query = originalFind.apply(this, args);
+      const exec = query.exec.bind(query);
+      query.exec = async (...a) => { await new Promise((r) => setTimeout(r, 150)); return exec(...a); };
+      return query;
+    };
+    try {
+      const res = await quietly(() => withEnv({ CHAT_TIMEOUT_MS: '100' }, () => chat(user, [{ role: 'user', content: 'hi' }])));
+      assert.equal(res.status, 200, 'a slow database is not reported as a slow AI');
+    } finally {
+      UserProgress.find = originalFind;
+    }
+  });
+
   test('an upstream failure is a 502 JSON', async () => {
     const user = await createUser();
     groqImpl = async () => { throw Object.assign(new Error('503 over capacity'), { status: 503 }); };
