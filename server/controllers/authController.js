@@ -18,6 +18,10 @@ const generateToken = (id) => {
 // rejects them — but an absent field arrives as undefined.
 const normalizeEmail = (raw) => (typeof raw === 'string' ? raw.trim().toLowerCase() : '');
 
+// The validate middleware already turns 'true' / 'false' into real booleans;
+// this keeps the controller right on its own too. Boolean('false') is true.
+const toBool = (v) => v === true || v === 'true';
+
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
@@ -277,11 +281,11 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (req.body.pauseNewMemorization !== undefined) {
-      updateData.pauseNewMemorization = Boolean(req.body.pauseNewMemorization);
+      updateData.pauseNewMemorization = toBool(req.body.pauseNewMemorization);
     }
 
     if (req.body.pausedFromOnboarding !== undefined) {
-      updateData.pausedFromOnboarding = Boolean(req.body.pausedFromOnboarding);
+      updateData.pausedFromOnboarding = toBool(req.body.pausedFromOnboarding);
     }
 
     if (req.body.cycleReviewStartPage !== undefined) {
@@ -332,7 +336,7 @@ exports.updateProfile = async (req, res) => {
     }
 
     if (req.body.leaderboardOptIn !== undefined) {
-      const optIn = Boolean(req.body.leaderboardOptIn);
+      const optIn = toBool(req.body.leaderboardOptIn);
       // Opting in requires a display name — supplied in this request or already saved.
       if (optIn) {
         const effectiveName = updateData.displayName !== undefined

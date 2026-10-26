@@ -64,6 +64,16 @@ const validateContainer = (source, schema) => (req, res, next) => {
     if (!check || !check(value)) {
       return res.status(400).json({ success: false, message: `${field} must be a valid ${spec.type}` });
     }
+
+    // A boolean may arrive as the STRING 'true' / 'false', and every controller
+    // that then wrote Boolean(value) or `if (value)` read 'false' as true (an
+    // API client sending leaderboardOptIn: 'false' was opted IN). Hand the
+    // controllers a real boolean instead. Only the body can be rewritten —
+    // Express 5 re-parses req.query on every read — so query flags stay strings
+    // and their controllers compare against 'true' explicitly.
+    if (spec.type === 'boolean' && source === 'body') {
+      data[field] = value === true || value === 'true';
+    }
   }
 
   next();
