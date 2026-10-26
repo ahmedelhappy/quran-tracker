@@ -67,4 +67,8 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 // 404 catch-all
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 
+// Final error handler — must come after every route and middleware. Turns
+// parser and unexpected errors into JSON instead of Express's HTML error page.
+app.use(require('./middleware/errorHandler').jsonErrorHandler);
+
 module.exports = app;
