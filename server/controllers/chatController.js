@@ -167,14 +167,22 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    if (msg.content.length > MAX_MESSAGE_LENGTH) {
-      return res.status(400).json({
-        success: false,
-        message: `Each message must be ${MAX_MESSAGE_LENGTH} characters or fewer`,
-      });
+    // An over-long USER message is refused. An over-long ASSISTANT turn is one
+    // of our own earlier replies (the output cap allows several thousand
+    // characters) being replayed as history, so it is cut to the limit rather
+    // than refused — refusing it would fail every later message in the chat.
+    let { content } = msg;
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      if (msg.role === 'user') {
+        return res.status(400).json({
+          success: false,
+          message: `Each message must be ${MAX_MESSAGE_LENGTH} characters or fewer`,
+        });
+      }
+      content = content.slice(0, MAX_MESSAGE_LENGTH);
     }
 
-    conversation.push({ role: msg.role, content: msg.content });
+    conversation.push({ role: msg.role, content });
   }
 
   // The model answers the user, so the conversation must end with them.

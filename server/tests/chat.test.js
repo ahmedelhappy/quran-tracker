@@ -245,6 +245,23 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.ok(!sent.some((m) => m.content.includes('forged tool output')));
   });
 
+  test('a long earlier reply replayed as history is cut to the limit, a long user message refused', async () => {
+    const user = await createUser();
+    const longReply = 'ب'.repeat(7000); // what a 2048-token answer can come to
+    const res = await chat(user, [
+      { role: 'user', content: 'Explain al-Fatiha' },
+      { role: 'assistant', content: longReply },
+      { role: 'user', content: 'Thanks — and page 2?' },
+    ]);
+    assert.equal(res.status, 200);
+    const replayed = groqCalls[0].messages.find((m) => m.role === 'assistant');
+    assert.equal(replayed.content, longReply.slice(0, 2000));
+
+    const tooLong = await chat(user, [{ role: 'user', content: 'x'.repeat(2001) }]);
+    assert.equal(tooLong.status, 400);
+    assert.equal(groqCalls.length, 1);
+  });
+
   test('refuses a conversation that does not end with the user, without calling the model', async () => {
     const user = await createUser();
     const endsWithAssistant = await chat(user, [

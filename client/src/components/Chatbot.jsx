@@ -90,6 +90,11 @@ export default function Chatbot() {
       const messageKey = status === 429
         ? (err.response?.data?.code === 'CHAT_DAILY_LIMIT' ? 'chatbot.dailyLimit' : 'chatbot.rateLimit')
         : status === 504 ? 'chatbot.timeout' : 'chatbot.error';
+      // The generic notice hides the cause; a 400 here is a bug in what this
+      // widget sent, so keep the server's reason where a developer will see it.
+      if (messageKey === 'chatbot.error') {
+        console.error('Chat request failed:', status ?? '', err.response?.data?.message ?? err.message);
+      }
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: t(messageKey), isError: true },
