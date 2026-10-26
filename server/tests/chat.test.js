@@ -26,6 +26,8 @@ class FakeGroq {
   }
 }
 require.cache[groqPath] = { id: groqPath, filename: groqPath, loaded: true, exports: FakeGroq };
+// The controller refuses to run without a key; the fake SDK never uses it.
+process.env.GROQ_API_KEY = 'test-key-not-real';
 
 const fs = require('fs');
 const path = require('path');
@@ -374,6 +376,33 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.equal(res.body.data.reply, 'Half an answ');
     assert.equal(warnings.length, 1);
     assert.match(warnings[0], /truncated/);
+  });
+
+  test('no GROQ_API_KEY: a 503 that spends no budget and never calls the model', async () => {
+    const user = await createUser();
+    const errors = [];
+    const original = console.error;
+    console.error = (m) => errors.push(String(m));
+    try {
+      await withEnv({ CHAT_DAILY_LIMIT: '1' }, async () => {
+        delete process.env.GROQ_API_KEY;
+        try {
+          for (let i = 0; i < 2; i++) {
+            const res = await chat(user, [{ role: 'user', content: 'hi' }]);
+            assert.equal(res.status, 503);
+            assert.equal(res.body.success, false);
+          }
+        } finally {
+          process.env.GROQ_API_KEY = 'test-key-not-real';
+        }
+        // The refused messages cost nothing: today's one message is still there.
+        assert.equal((await chat(user, [{ role: 'user', content: 'hi' }])).status, 200);
+      });
+    } finally {
+      console.error = original;
+    }
+    assert.equal(groqCalls.length, 1);
+    assert.equal(errors.filter((m) => m.includes('GROQ_API_KEY')).length, 1, 'logged once, not per message');
   });
 
   test('a daily budget per user: over CHAT_DAILY_LIMIT is a 429 with a code the client translates', async () => {

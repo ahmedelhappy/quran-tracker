@@ -140,6 +140,9 @@ const chatLimits = () => ({
 // { role, content }, never spread from the request).
 const CONVERSATION_ROLES = new Set(['user', 'assistant']);
 
+// Logged once, not on every message, when chat is off for want of a key.
+let warnedNoKey = false;
+
 // @desc    Send a message to the AI assistant
 // @route   POST /api/chat
 // @access  Private
@@ -188,6 +191,17 @@ exports.sendMessage = async (req, res) => {
   // The model answers the user, so the conversation must end with them.
   if (conversation.length === 0 || conversation[conversation.length - 1].role !== 'user') {
     return res.status(400).json({ success: false, message: 'The last message must be from the user' });
+  }
+
+  // No key means the assistant is switched off on this deployment: say so
+  // before anything is charged, rather than spend the user's budget on a
+  // failure that never reached Groq and reads like an outage.
+  if (!process.env.GROQ_API_KEY) {
+    if (!warnedNoKey) {
+      warnedNoKey = true;
+      console.error('Chat is disabled: GROQ_API_KEY is not set');
+    }
+    return res.status(503).json({ success: false, message: 'The assistant is not configured on this server' });
   }
 
   const { maxTokens, timeoutMs, dailyLimit } = chatLimits();
