@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { EMAIL_MAX_LENGTH, EMAIL_PATTERN } = User;
 const UserProgress = require('../models/UserProgress');
 const Todo = require('../models/Todo');
 const jwt = require('jsonwebtoken');
@@ -12,12 +13,26 @@ const generateToken = (id) => {
   });
 };
 
+// Emails are stored trimmed and lower-cased (see the User model), so every lookup
+// must compare the same form. Non-strings never get here — the route's type gate
+// rejects them — but an absent field arrives as undefined.
+const normalizeEmail = (raw) => (typeof raw === 'string' ? raw.trim().toLowerCase() : '');
+
 // @desc    Register new user
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, password } = req.body;
+
+    // Normalise and vet the address here, before any query or model validation:
+    // a length cap first (so no pattern ever runs on a megabyte string), then the
+    // same linear pattern the model enforces. The model keeps both rules as the
+    // backstop for every other write path.
+    const email = normalizeEmail(req.body.email);
+    if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email' });
+    }
 
     // Check if user already exists
     const userExists = await User.findOne({ email });
@@ -62,10 +77,12 @@ exports.register = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
 
-    // Validate input
-    if (!email || !password) {
+    // Validate input. An over-long address cannot belong to any account, so it is
+    // refused here rather than carried into a query.
+    if (!email || !password || email.length > EMAIL_MAX_LENGTH) {
       return res.status(400).json({
         success: false,
         message: 'Please provide email and password'

@@ -1,6 +1,17 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// RFC 5321 caps a forward path at 254 characters; nothing longer is a real address.
+const EMAIL_MAX_LENGTH = 254;
+// Deliberately loose (something@label.label) and, above all, LINEAR. The pattern
+// this replaced nested an optional separator inside a repeated group, so a
+// non-matching string like "aaaa…a!" had exponentially many ways to split — 33
+// characters froze the single-process API for ~4.5 s and every 2 more quadrupled
+// it. Here a domain label cannot contain a dot, so every character has exactly one
+// place it can match and a failure is found in one pass. It also accepts what the
+// old one wrongly refused: "+tags" and TLDs longer than three letters (.info).
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -13,11 +24,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please provide your email"],
       unique: true,
+      // Setters run when the value is cast, i.e. before any validator sees it.
+      trim: true,
       lowercase: true,
-      match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-        "Please provide a valid email",
-      ],
+      maxlength: [EMAIL_MAX_LENGTH, "Please provide a valid email"],
+      match: [EMAIL_PATTERN, "Please provide a valid email"],
     },
     password: {
       type: String,
@@ -141,4 +152,8 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-module.exports = mongoose.model("User", userSchema);
+const User = mongoose.model("User", userSchema);
+
+module.exports = User;
+module.exports.EMAIL_MAX_LENGTH = EMAIL_MAX_LENGTH;
+module.exports.EMAIL_PATTERN = EMAIL_PATTERN;

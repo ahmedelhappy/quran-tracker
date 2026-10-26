@@ -120,6 +120,43 @@ describe('Auth API', () => {
     assert.equal(fresh.status, 200);
   });
 
+  // C-01: the old pattern backtracked exponentially — 'a'×32 + '!' held the event
+  // loop for ~4.5 s and every two more characters quadrupled it.
+  test('a malicious email is refused with 400 at once, not after a regex stall', async () => {
+    // Warm the app up so the timing below measures validation, not first-load.
+    await request(app).get('/health');
+    const payloads = [
+      'a'.repeat(50) + '!',                          // the audit's ReDoS shape
+      'a'.repeat(32) + '!',
+      'a'.repeat(300) + '@example.com',              // over the 254 cap
+      `${'a'.repeat(30)}@${'b.'.repeat(100)}c d`,    // under the cap, a space in the tail
+    ];
+    for (const email of payloads) {
+      const t0 = performance.now();
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email, password: 'secret123' });
+      const ms = performance.now() - t0;
+      assert.equal(res.status, 400, `${email.length}-char email`);
+      assert.equal(res.body.success, false);
+      assert.ok(ms < 100, `${email.length}-char email took ${ms.toFixed(0)} ms`);
+    }
+  });
+
+  test('the model\'s email pattern stays linear even past the length cap', async () => {
+    const User = require('../models/User');
+    // 100k characters through the raw pattern, and the model's own validation
+    // (the backstop for any write path that skips the controller check).
+    const t0 = performance.now();
+    assert.equal(User.EMAIL_PATTERN.test('a'.repeat(100000) + '!'), false);
+    assert.equal(User.EMAIL_PATTERN.test(`a@${'b.'.repeat(50000)} `), false);
+    const err = await new User({ name: 'X', email: 'a'.repeat(5000) + '!', password: 'secret123' })
+      .validate().then(() => null, (e) => e);
+    const ms = performance.now() - t0;
+    assert.ok(err && err.errors.email, 'the model rejects the address');
+    assert.ok(ms < 100, `took ${ms.toFixed(0)} ms`);
+  });
+
   test('login rejects a NoSQL-operator object as email with 400', async () => {
     await createUser({ email: 'inject@example.com', password: 'secret123' });
 
