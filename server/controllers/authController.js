@@ -114,6 +114,13 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Count this attempt as a failure NOW, in the same tick as the check above,
+    // and take it back below if the password turns out right. Recorded after the
+    // lookup and bcrypt instead, a burst of concurrent guesses (spread over many
+    // IPs) would all pass the check before the first failure landed, and every
+    // one of them would be tested. A request that errors part-way stays counted.
+    loginThrottle.recordFailure(email);
+
     // Find user and include password for comparison
     const user = await User.findOne({ email }).select('+password');
 
@@ -122,7 +129,6 @@ exports.login = async (req, res) => {
     const isMatch = user ? await user.matchPassword(password) : false;
 
     if (!isMatch) {
-      loginThrottle.recordFailure(email);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'

@@ -96,6 +96,27 @@ describe('POST /api/auth/login — account backoff', () => {
     assert.equal((await login('bystander@example.com', 'secret123')).status, 200);
   });
 
+  // A burst fired all at once (as a guesser spread over many IPs would) must not
+  // slip past the check while the first guesses are still in bcrypt.
+  test('concurrent wrong passwords: at most 5 are tested, the rest are refused', async () => {
+    await createUser({ email: 'burst@example.com', password: 'secret123' });
+    const statuses = (await Promise.all(
+      Array.from({ length: 12 }, (_, i) => login('burst@example.com', `guess${i}`)),
+    )).map((r) => r.status);
+    assert.equal(statuses.filter((s) => s === 401).length, 5, statuses.join(','));
+    assert.equal(statuses.filter((s) => s === 429).length, 7, statuses.join(','));
+    // …and the lock holds for the right password too.
+    assert.equal((await login('burst@example.com', 'secret123')).status, 429);
+  });
+
+  test('the right password still signs in and clears the attempt it reserved', async () => {
+    await createUser({ email: 'fifth@example.com', password: 'secret123' });
+    for (let i = 0; i < 4; i++) await login('fifth@example.com', 'oops');
+    // The fifth attempt is counted up front (reaching the limit), then taken back.
+    assert.equal((await login('fifth@example.com', 'secret123')).status, 200);
+    assert.equal((await login('fifth@example.com', 'oops')).status, 401, 'not locked');
+  });
+
   test('the lock answer does not reveal whether the account exists', async () => {
     await createUser({ email: 'real@example.com', password: 'secret123' });
     for (let i = 0; i < 5; i++) {
