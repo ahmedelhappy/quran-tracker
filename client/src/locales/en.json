@@ -1060,6 +1060,8 @@
     "welcome": "Assalamu Alaikum! Ask me about today's plan, how to use the app, or Quran memorization.",
     "error": "Sorry, I'm unavailable right now.",
     "rateLimit": "You're sending messages too fast. Please wait a moment before trying again.",
+    "dailyLimit": "You've reached today's limit for the assistant. Please come back tomorrow.",
+    "timeout": "The assistant took too long to answer. Please try again.",
     "send": "Send",
     "toggleLabel": "Toggle Islamic Assistant",
     "suggestions": {

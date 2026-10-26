@@ -66,20 +66,30 @@ export default function Chatbot() {
     setInput('');
     setLoading(true);
 
-    // Send last 6 messages (3 turns) excluding the static welcome
-    const history = next.filter((m) => !m.isWelcome).slice(-6);
+    // Send the last 6 messages (3 turns) — only what was really said: not the
+    // static welcome, and not this widget's own error notices, which the model
+    // would otherwise read as things it had said. Each goes as just its role and
+    // text; the UI flags stay here.
+    const history = next
+      .filter((m) => !m.isWelcome && !m.isError)
+      .slice(-6)
+      .map(({ role, content }) => ({ role, content }));
 
     try {
       const res = await chatAPI.sendMessage(history);
       const reply = res.data?.data?.reply ?? '';
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
-      // 429 = rate limited: nudge the user to slow down rather than show a
-      // generic failure.
-      const messageKey = err.response?.status === 429 ? 'chatbot.rateLimit' : 'chatbot.error';
+      // A 429 is either today's message budget (the server says which with a
+      // code) or the short burst limit; a 504 is a model that answered too
+      // slowly. Each gets its own message rather than a generic failure.
+      const status = err.response?.status;
+      const messageKey = status === 429
+        ? (err.response?.data?.code === 'CHAT_DAILY_LIMIT' ? 'chatbot.dailyLimit' : 'chatbot.rateLimit')
+        : status === 504 ? 'chatbot.timeout' : 'chatbot.error';
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: t(messageKey) },
+        { role: 'assistant', content: t(messageKey), isError: true },
       ]);
     } finally {
       setLoading(false);

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const Groq = require('groq-sdk');
 const { buildProgressSummary } = require('./progressController');
+const { tryConsume } = require('../utils/chatBudget');
 
 // The app's own guide (server/chat/appGuide.md), read once when the server boots.
 // It is what lets the assistant answer "how do I…?" about THIS app — the pages, the
@@ -98,6 +99,35 @@ const buildUserContextMessage = (summary) => {
 // Caps the size of any single message to bound token cost sent to the model.
 const MAX_MESSAGE_LENGTH = 2000;
 
+// Cost and latency bounds, each overridable from the environment (read per
+// request, so a changed value needs no code change; see .env.example). The
+// defaults are deliberately conservative — owner decisions, not tuned numbers:
+//   - CHAT_MAX_TOKENS: the most the model may generate per reply. gpt-oss is a
+//     reasoning model and its hidden reasoning counts against this too, so it is
+//     far above the ~200 tokens a 150-word reply needs; what it bounds is a
+//     runaway answer (cost, and the client's link parser, which is quadratic).
+//   - CHAT_TIMEOUT_MS: the whole call to Groq, retries included, must finish
+//     inside this or the user gets a 504 instead of a hung spinner.
+//   - CHAT_DAILY_LIMIT: messages per user per UTC day (utils/chatBudget.js).
+const envInt = (name, fallback) => {
+  const n = Number.parseInt(process.env[name], 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const chatLimits = () => ({
+  maxTokens: envInt('CHAT_MAX_TOKENS', 2048),
+  timeoutMs: envInt('CHAT_TIMEOUT_MS', 20000),
+  dailyLimit: envInt('CHAT_DAILY_LIMIT', 50),
+});
+
+// The conversation the client sends is only ever this user's own chat with the
+// assistant, so the worst a forged turn can do is mislead the forger's own
+// reply — the system messages, built here from the server's data, always come
+// first and stay authoritative. What must never reach Groq is anything beyond
+// that: a client-written 'system' turn (dropped, so it cannot pose as the app's
+// instructions) or extra properties on a turn (each is rebuilt as exactly
+// { role, content }, never spread from the request).
+const CONVERSATION_ROLES = new Set(['user', 'assistant']);
+
 // @desc    Send a message to the AI assistant
 // @route   POST /api/chat
 // @access  Private
@@ -111,13 +141,14 @@ exports.sendMessage = async (req, res) => {
     });
   }
 
+  const conversation = [];
   for (const msg of messages) {
-    if (
-      !msg ||
-      !['user', 'assistant'].includes(msg.role) ||
-      typeof msg.content !== 'string' ||
-      msg.content.trim() === ''
-    ) {
+    if (!msg || typeof msg !== 'object') {
+      return res.status(400).json({ success: false, message: 'Each message must be an object' });
+    }
+    if (!CONVERSATION_ROLES.has(msg.role)) continue; // 'system' or anything else: dropped
+
+    if (typeof msg.content !== 'string' || msg.content.trim() === '') {
       return res.status(400).json({
         success: false,
         message: 'Each message must have a valid role ("user" or "assistant") and a non-empty content string',
@@ -130,7 +161,30 @@ exports.sendMessage = async (req, res) => {
         message: `Each message must be ${MAX_MESSAGE_LENGTH} characters or fewer`,
       });
     }
+
+    conversation.push({ role: msg.role, content: msg.content });
   }
+
+  // The model answers the user, so the conversation must end with them.
+  if (conversation.length === 0 || conversation[conversation.length - 1].role !== 'user') {
+    return res.status(400).json({ success: false, message: 'The last message must be from the user' });
+  }
+
+  const { maxTokens, timeoutMs, dailyLimit } = chatLimits();
+
+  // Charged only once the request is known to be valid, just before the model call.
+  if (!tryConsume(req.user._id, dailyLimit)) {
+    return res.status(429).json({
+      success: false,
+      code: 'CHAT_DAILY_LIMIT',
+      message: "You've reached today's limit for the assistant. Please come back tomorrow.",
+    });
+  }
+
+  // One deadline for the whole call. The SDK retries some failures on its own,
+  // so its per-attempt timeout alone could stack up to several times this.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), timeoutMs);
 
   try {
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -148,14 +202,33 @@ exports.sendMessage = async (req, res) => {
 
     const completion = await groq.chat.completions.create({
       model: CHAT_MODEL,
-      messages: [...systemMessages, ...messages],
-    });
+      messages: [...systemMessages, ...conversation],
+      max_completion_tokens: maxTokens,
+    }, { signal: deadline.signal });
 
-    const reply = completion.choices[0]?.message?.content ?? '';
+    const choice = completion.choices[0];
+    const reply = choice?.message?.content ?? '';
+
+    // The token cap can run out during the hidden reasoning, before any answer
+    // is written. Say so rather than send the user an empty bubble.
+    if (!reply.trim() && choice?.finish_reason === 'length') {
+      console.error(`Groq reply cut off by the ${maxTokens}-token cap before any answer`);
+      return res.status(502).json({ success: false, message: 'The AI service could not finish its answer' });
+    }
 
     return res.status(200).json({ success: true, data: { reply } });
   } catch (error) {
+    // Our own deadline fired (the SDK then reports an abort), or the SDK's own
+    // per-attempt timeout did: either way the model was too slow, not down.
+    const timedOut = deadline.signal.aborted
+      || (typeof Groq.APIConnectionTimeoutError === 'function' && error instanceof Groq.APIConnectionTimeoutError);
+    if (timedOut) {
+      console.error(`Groq API timed out after ${timeoutMs} ms`);
+      return res.status(504).json({ success: false, message: 'The AI service took too long to answer' });
+    }
     console.error('Groq API error:', error);
     return res.status(502).json({ success: false, message: 'AI service unavailable' });
+  } finally {
+    clearTimeout(timer);
   }
 };
