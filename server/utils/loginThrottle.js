@@ -4,12 +4,20 @@
 //
 // The rule: 5 failures for one email within 15 minutes lock that email for a
 // minute; each further failure after a lock doubles the lock (2, 4, 8 … minutes),
-// up to an hour. A successful sign-in clears the record. While locked, the password is not even
-// checked, so a correct guess during the lock reveals nothing.
+// up to an hour. A successful sign-in clears the record. While locked, the
+// password is not even checked, so a correct guess during the lock reveals
+// nothing.
 //
 // It must not reveal whether an account exists, so it counts EVERY email that
 // fails to sign in — registered or not — and the locked response is identical
 // either way.
+//
+// The price is a targeted lock-out: anyone who knows an email can keep it
+// locked (5 bad guesses, then one per lock period) and the owner's correct
+// password is refused meanwhile, with no unlock route until password reset
+// exists (H-06). The public demo account (M-07) is the obvious target. How far
+// to soften this — key on email + IP, let a device that signed in before
+// through, a lower cap, a demo exemption — is an owner decision.
 //
 // State lives in this process's memory: right for the single Render instance,
 // reset by a restart, and per-instance if the app is ever scaled out (move it to
