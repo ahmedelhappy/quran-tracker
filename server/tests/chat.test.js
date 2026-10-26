@@ -266,6 +266,33 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.equal(groqCalls[1].max_completion_tokens, 300);
   });
 
+  test('a malformed limit falls back to the default with one warning, never a garbage prefix', async () => {
+    const user = await createUser();
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (m) => warnings.push(m);
+    // A model that takes 50 ms: fine under the default deadline, a 504 under
+    // the 20 ms one parseInt would have read "20s" as.
+    groqImpl = (params, options) => new Promise((resolve, reject) => {
+      const t = setTimeout(() => resolve({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }), 50);
+      options.signal.addEventListener('abort', () => { clearTimeout(t); reject(new Error('Request was aborted.')); });
+    });
+    try {
+      for (const value of ['20s', '20s', '0', '-5', '1.5']) {
+        const res = await withEnv({ CHAT_TIMEOUT_MS: value, CHAT_MAX_TOKENS: value }, () => chat(user, [{ role: 'user', content: 'hi' }]));
+        assert.equal(res.status, 200, value);
+      }
+      // Exponent notation is a real number and is accepted as such.
+      await withEnv({ CHAT_MAX_TOKENS: '1e3' }, () => chat(user, [{ role: 'user', content: 'hi' }]));
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.deepEqual(groqCalls.map((c) => c.max_completion_tokens), [2048, 2048, 2048, 2048, 2048, 1000]);
+    // One warning per variable and value: the repeated "20s" is not logged again.
+    assert.equal(warnings.length, 8, warnings.join('\n'));
+    assert.ok(warnings.some((w) => w.includes('CHAT_TIMEOUT_MS="20s"')));
+  });
+
   test('a model that never answers is cut off at the deadline with a 504 JSON', async () => {
     const user = await createUser();
     // Hangs until the request's abort signal fires, as the real SDK would.

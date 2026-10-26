@@ -109,9 +109,21 @@ const MAX_MESSAGE_LENGTH = 2000;
 //   - CHAT_TIMEOUT_MS: the whole call to Groq, retries included, must finish
 //     inside this or the user gets a 504 instead of a hung spinner.
 //   - CHAT_DAILY_LIMIT: messages per user per UTC day (utils/chatBudget.js).
+// Each must be a whole number above 0. Anything else falls back to the default
+// with a warning (once per variable and value), so a typo shows up in the logs
+// instead of looking like an AI outage: parseInt would have read "20s" as a
+// 20 ms deadline and "2e4" as 2 ms, failing every request with a 504.
+const warnedEnv = new Set();
 const envInt = (name, fallback) => {
-  const n = Number.parseInt(process.env[name], 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0) return n;
+  if (!warnedEnv.has(`${name}=${raw}`)) {
+    warnedEnv.add(`${name}=${raw}`);
+    console.warn(`${name}=${JSON.stringify(raw)} is not a whole number above 0; using ${fallback}`);
+  }
+  return fallback;
 };
 const chatLimits = () => ({
   maxTokens: envInt('CHAT_MAX_TOKENS', 2048),
