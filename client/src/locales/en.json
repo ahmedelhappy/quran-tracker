@@ -467,7 +467,7 @@
       "tooShort": "New password must be at least 6 characters",
       "mismatch": "Passwords do not match",
       "mustDiffer": "New password must be different from the current one",
-      "success": "Password changed successfully",
+      "success": "Password changed. You stay signed in here; other devices were signed out.",
       "failed": "Failed to change password"
     }
   },

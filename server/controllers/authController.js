@@ -443,7 +443,14 @@ exports.changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
-    res.status(200).json({ success: true, message: 'Password changed successfully' });
+    // The save stamped passwordChangedAt, which revokes every token minted before
+    // it — including the one this request came in with. Hand back a fresh one so
+    // THIS session carries on; every other device still has to sign in again.
+    res.status(200).json({
+      success: true,
+      message: 'Password changed successfully',
+      data: { token: generateToken(user._id) },
+    });
   } catch (error) {
     console.error('ChangePassword error:', error);
     serverError(res, 'Error changing password', error);

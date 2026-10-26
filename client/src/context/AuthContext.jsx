@@ -99,6 +99,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Change the password. The server revokes every token issued before the change
+  // — this tab's included — and answers with a fresh one, which must replace the
+  // stored token at once or the very next request would sign this tab out.
+  // Errors propagate: the caller shows the server's reason.
+  const changePassword = async (currentPassword, newPassword) => {
+    const response = await authAPI.changePassword({ currentPassword, newPassword });
+    const token = response.data?.data?.token;
+    if (token) localStorage.setItem('token', token);
+    return response;
+  };
+
   // Logout user
   const logout = () => {
     localStorage.removeItem('token');
@@ -134,6 +145,7 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
+    changePassword,
     updateUser,
     refreshUser,
     clearError,

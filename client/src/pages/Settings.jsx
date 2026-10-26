@@ -567,6 +567,7 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
 function ChangePasswordCard() {
   const { showToast } = useToast();
   const { t } = useTranslation();
+  const { changePassword } = useAuth();
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
@@ -581,7 +582,9 @@ function ChangePasswordCard() {
 
     setPwLoading(true);
     try {
-      await authAPI.changePassword({ currentPassword: current, newPassword: newPw });
+      // Keeps this session signed in (it stores the fresh token); other devices
+      // are signed out, which the success message says.
+      await changePassword(current, newPw);
       showToast(t('settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {

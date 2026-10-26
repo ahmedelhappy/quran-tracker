@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
-const { connect, disconnect, clearDatabase, createUser } = require('./helpers');
+const { connect, disconnect, clearDatabase, createUser, tokenFor } = require('./helpers');
 const app = require('../app');
 
 describe('Auth API', () => {
@@ -203,6 +203,44 @@ describe('Auth API', () => {
     const ms = performance.now() - t0;
     assert.ok(err && err.errors.email, 'the model rejects the address');
     assert.ok(ms < 100, `took ${ms.toFixed(0)} ms`);
+  });
+
+  // M-04: the change used to revoke the very session that made it.
+  test('a password change hands this session a fresh token; other sessions stay revoked', async () => {
+    const user = await createUser({ email: 'keep@example.com', password: 'secret123' });
+    const iat = Math.floor(Date.now() / 1000) - 60;
+    // Two sessions minted a minute ago: this tab, and another device.
+    const thisTab = jwt.sign({ id: user._id, iat }, process.env.JWT_SECRET);
+    const otherDevice = jwt.sign({ id: user._id, iat: iat + 1 }, process.env.JWT_SECRET);
+
+    const change = await request(app)
+      .put('/api/auth/password')
+      .set('Authorization', `Bearer ${thisTab}`)
+      .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
+    assert.equal(change.status, 200);
+    const fresh = change.body.data?.token;
+    assert.ok(fresh, 'the response carries a new token');
+
+    // The new token works straight away…
+    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${fresh}`);
+    assert.equal(me.status, 200);
+    assert.equal(me.body.data.email, 'keep@example.com');
+
+    // …while both tokens from before the change are refused.
+    for (const old of [thisTab, otherDevice]) {
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${old}`);
+      assert.equal(res.status, 401);
+    }
+  });
+
+  test('a refused password change issues no token', async () => {
+    const user = await createUser({ email: 'wrong@example.com', password: 'secret123' });
+    const res = await request(app)
+      .put('/api/auth/password')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`)
+      .send({ currentPassword: 'not-it-at-all', newPassword: 'newpass123' });
+    assert.equal(res.status, 400);
+    assert.ok(!res.body.data);
   });
 
   test('login rejects a NoSQL-operator object as email with 400', async () => {
