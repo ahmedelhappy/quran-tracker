@@ -5,6 +5,7 @@ const Todo = require('../models/Todo');
 const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
+const { newPasswordProblem } = require('../utils/passwordPolicy');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -36,6 +37,11 @@ exports.register = async (req, res) => {
     const email = normalizeEmail(req.body.email);
     if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
       return res.status(400).json({ success: false, message: 'Please provide a valid email' });
+    }
+
+    const passwordProblem = newPasswordProblem(password);
+    if (passwordProblem) {
+      return res.status(400).json({ success: false, message: passwordProblem });
     }
 
     // Check if user already exists. A conflict, not a malformed request — and the
@@ -431,8 +437,11 @@ exports.changePassword = async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Both current and new password are required' });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    // Only the NEW password meets the current rules; the current one is whatever
+    // the account was created with, possibly under the old 6-character minimum.
+    const passwordProblem = newPasswordProblem(newPassword);
+    if (passwordProblem) {
+      return res.status(400).json({ success: false, message: passwordProblem });
     }
     if (newPassword === currentPassword) {
       return res.status(400).json({ success: false, message: 'New password must be different from current password' });

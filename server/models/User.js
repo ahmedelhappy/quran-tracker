@@ -33,6 +33,9 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, "Please provide a password"],
+      // A floor only: the rules for a NEW password (8+ characters, at most 72
+      // bytes) live in utils/passwordPolicy.js and run in the controllers. This
+      // stays at the old minimum because accounts made under it still exist.
       minlength: [6, "Password must be at least 6 characters"],
       select: false, // Don't return password in queries by default
     },

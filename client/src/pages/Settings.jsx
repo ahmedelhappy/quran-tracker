@@ -19,6 +19,7 @@ import {
   coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
+import { newPasswordProblem } from '../utils/passwordRules';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -576,7 +577,9 @@ function ChangePasswordCard() {
     e.preventDefault();
     const { current, newPw, confirm } = pwForm;
     if (!current || !newPw || !confirm) return showToast(t('settings.password.allRequired'), 'error');
-    if (newPw.length < 6) return showToast(t('settings.password.tooShort'), 'error');
+    const pwProblem = newPasswordProblem(newPw);
+    if (pwProblem === 'tooShort') return showToast(t('settings.password.tooShort'), 'error');
+    if (pwProblem === 'tooLong') return showToast(t('settings.password.tooLong'), 'error');
     if (newPw !== confirm) return showToast(t('settings.password.mismatch'), 'error');
     if (newPw === current) return showToast(t('settings.password.mustDiffer'), 'error');
 

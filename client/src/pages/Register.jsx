@@ -8,6 +8,7 @@ import Footer from '../components/Footer';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
 import Tooltip from '../components/Tooltip';
+import { newPasswordProblem } from '../utils/passwordRules';
 
 const Register = () => {
   const { register } = useAuth();
@@ -24,7 +25,9 @@ const Register = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirm) { showToast(t('auth.passwordsMismatch'), 'error'); return; }
-    if (form.password.length < 6) { showToast(t('auth.passwordTooShort'), 'error'); return; }
+    const pwProblem = newPasswordProblem(form.password);
+    if (pwProblem === 'tooShort') { showToast(t('auth.passwordTooShort'), 'error'); return; }
+    if (pwProblem === 'tooLong') { showToast(t('auth.passwordTooLong'), 'error'); return; }
     setLoading(true);
     const result = await register(form.name.trim(), form.email, form.password);
     setLoading(false);

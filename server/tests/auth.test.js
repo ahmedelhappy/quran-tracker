@@ -12,8 +12,8 @@ describe('Auth API', () => {
   beforeEach(clearDatabase);
 
   test('registration rejects a too-short password with exactly 400', async () => {
-    // This path intentionally trips the model's minlength validator, which the
-    // controller logs via console.error — silence it so test output stays clean.
+    // Refused by the new-password policy before the model runs; console.error is
+    // silenced in case a regression lets it fall through to the model's validator.
     const originalError = console.error;
     console.error = () => {};
     try {
