@@ -52,6 +52,23 @@ describe('serverError — status mapping', () => {
     assert.equal(dupOther.statusCode, 409);
   });
 
+  test('a duplicate key from a multi-document write stays a 500 (part of it may be written)', () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      for (const err of [
+        Object.assign(new Error('E11000'), { name: 'MongoBulkWriteError', code: 11000, keyValue: { email: 'a@x.com' } }),
+        { code: 11000, writeErrors: [{ code: 11000 }], keyPattern: { userId: 1, pageNumber: 1 } },
+      ]) {
+        const res = serverError(fakeRes(), 'Error saving progress', err);
+        assert.equal(res.statusCode, 500);
+        assert.deepEqual(res.body, { success: false, message: 'Error saving progress' });
+      }
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
+
   test('anything else stays a 500, with the raw message only outside production', () => {
     const prev = process.env.NODE_ENV;
     try {

@@ -388,7 +388,9 @@ const upsertDrawing = async (req, res) => {
 // All-or-nothing: every op is validated and the cap checked BEFORE anything is
 // written. The writes then go out as one ordered bulkWrite; if it fails part-way,
 // the touched keys are put back from a snapshot of their documents taken before
-// the write (same _ids, same timestamps), and the request fails with a 500.
+// the write (same _ids, same timestamps), and the request fails with a 500
+// (utils/errorResponse.js never reads a part-done bulk write as the client's
+// mistake). A failed rollback, which may leave keys half-written, is a 500 too.
 const MAX_BATCH_OPS = 300;
 const BATCH_KINDS = ['highlight', 'hard', 'note'];
 const batchKeyOf = (op) => `${op.pageNumber}|${op.verseKey ?? ''}|${op.kind}`;
@@ -544,7 +546,11 @@ const batchAnnotations = async (req, res) => {
         try {
           await restoreSnapshot(userId, touched, snapshot);
         } catch (restoreError) {
+          // Never let serverError read this as a client mistake (a 400 or 409):
+          // the data may now be half-written, which is entirely ours.
+          console.error('BatchAnnotations write failed:', writeError);
           console.error('BatchAnnotations rollback failed:', restoreError);
+          return res.status(500).json({ success: false, message: 'Error saving annotations' });
         }
         throw writeError;
       }

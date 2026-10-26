@@ -7,7 +7,10 @@
 //     CLIENT's mistake → 400, with the model's own message, which we wrote and
 //     which carries nothing internal;
 //   - a duplicate key (MongoDB E11000, usually a race past a findOne check) is a
-//     conflict → 409;
+//     conflict → 409 — but NOT from a multi-document write (bulkWrite,
+//     insertMany): that error comes after some documents may already be
+//     written, so it is our fault to report as a 500, never a "this item
+//     already exists" that sounds like nothing happened;
 //   - anything else is ours → 500. Its raw message is exposed only OUTSIDE
 //     production, so developers can debug locally while production clients get a
 //     generic message and never see stack or driver internals.
@@ -30,7 +33,8 @@ const classifyError = (error) => {
     return { status: 400, message };
   }
   if (error.name === 'CastError') return { status: 400, message: castMessage(error) };
-  if (error.code === 11000) {
+  const multiDocWrite = error.name === 'MongoBulkWriteError' || Array.isArray(error.writeErrors);
+  if (error.code === 11000 && !multiDocWrite) {
     const field = Object.keys(error.keyValue || error.keyPattern || {})[0];
     return {
       status: 409,

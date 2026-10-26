@@ -696,6 +696,66 @@ describe('Annotations API', () => {
       const after = await Annotation.find({ userId: user._id }).sort({ _id: 1 }).lean();
       assert.deepEqual(after, before);   // same ids, colours, timestamps — nothing else
     });
+
+    // A failure part-way is ours, whatever the error looks like: never a 409
+    // "already exists" or a 400 that tells the client it sent something wrong.
+    const quietly = async (fn) => {
+      const original = console.error;
+      console.error = () => {};
+      try { return await fn(); } finally { console.error = original; }
+    };
+
+    test('a duplicate key mid-batch is a 500, not a 409', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      await post(auth, { pageNumber: 2, verseKey: '2:1', kind: 'hard' });
+      const existing = await Annotation.findOne({ userId: user._id }).lean();
+
+      // The first write lands, then a REAL duplicate-key bulk error.
+      const realBulkWrite = Annotation.bulkWrite;
+      Annotation.bulkWrite = async function (writes, options) {
+        await realBulkWrite.call(this, writes.slice(0, 1), options);
+        return realBulkWrite.call(this, [{ insertOne: { document: existing } }], options);
+      };
+      let res;
+      try {
+        res = await quietly(() => batch(auth, [
+          { kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: 'yellow' },
+          { kind: 'note', pageNumber: 1, verseKey: '1:7', value: 'x' },
+        ]));
+      } finally {
+        Annotation.bulkWrite = realBulkWrite;
+      }
+      assert.equal(res.status, 500);
+      assert.equal(await Annotation.countDocuments({ userId: user._id }), 1, 'rolled back');
+    });
+
+    test('a failed rollback is a 500 even when the write error looks like a client one', async () => {
+      const user = await createUser();
+      const auth = authFor(user);
+      const validationError = await new Annotation({}).validate().then(() => null, (e) => e);
+      assert.equal(validationError?.name, 'ValidationError');
+
+      const realBulkWrite = Annotation.bulkWrite;
+      const realDeleteMany = Annotation.collection.deleteMany;
+      Annotation.bulkWrite = async function (writes, options) {
+        await realBulkWrite.call(this, writes.slice(0, 1), options);
+        throw validationError;
+      };
+      Annotation.collection.deleteMany = async () => { throw new Error('simulated rollback failure'); };
+      let res;
+      try {
+        res = await quietly(() => batch(auth, [
+          { kind: 'highlight', pageNumber: 1, verseKey: '1:6', value: 'yellow' },
+          { kind: 'note', pageNumber: 1, verseKey: '1:7', value: 'x' },
+        ]));
+      } finally {
+        Annotation.bulkWrite = realBulkWrite;
+        Annotation.collection.deleteMany = realDeleteMany;
+      }
+      assert.equal(res.status, 500);
+      assert.deepEqual(res.body, { success: false, message: 'Error saving annotations' });
+    });
   });
 
   describe('GET /verses', () => {
