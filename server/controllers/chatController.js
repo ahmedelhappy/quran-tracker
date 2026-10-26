@@ -221,11 +221,18 @@ exports.sendMessage = async (req, res) => {
     const choice = completion.choices[0];
     const reply = choice?.message?.content ?? '';
 
-    // The token cap can run out during the hidden reasoning, before any answer
-    // is written. Say so rather than send the user an empty bubble.
-    if (!reply.trim() && choice?.finish_reason === 'length') {
-      console.error(`Groq reply cut off by the ${maxTokens}-token cap before any answer`);
+    // No answer at all — the token cap ran out during the hidden reasoning, a
+    // content filter, or anything else. Say so rather than send an empty bubble,
+    // which the client would also replay as a turn this endpoint refuses.
+    const finishReason = choice?.finish_reason ?? 'none';
+    if (!reply.trim()) {
+      console.error(`Groq returned no answer (finish_reason: ${finishReason}, cap ${maxTokens} tokens)`);
       return res.status(502).json({ success: false, message: 'The AI service could not finish its answer' });
+    }
+    // An answer the cap cut short still goes out, but leaves a trace: frequent
+    // ones mean CHAT_MAX_TOKENS is too low.
+    if (finishReason === 'length') {
+      console.warn(`Groq reply truncated by the ${maxTokens}-token cap`);
     }
 
     return res.status(200).json({ success: true, data: { reply } });

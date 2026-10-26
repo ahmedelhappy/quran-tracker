@@ -324,6 +324,41 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.equal(res.status, 502);
   });
 
+  test('an empty reply for any other reason is a 502 too, never a 200 with reply ""', async () => {
+    const user = await createUser();
+    const logged = [];
+    for (const choice of [
+      { message: { content: '' }, finish_reason: 'stop' },
+      { message: { content: '  \n' }, finish_reason: 'content_filter' },
+      { message: { content: null } },
+      undefined,
+    ]) {
+      groqImpl = async () => ({ choices: choice ? [choice] : [] });
+      const original = console.error;
+      console.error = (m) => logged.push(String(m));
+      let res;
+      try { res = await chat(user, [{ role: 'user', content: 'hi' }]); } finally { console.error = original; }
+      assert.equal(res.status, 502, JSON.stringify(choice));
+      assert.equal(res.body.success, false);
+    }
+    // The log names why, so an empty-answer spike can be told apart from a cap.
+    assert.ok(logged.some((m) => m.includes('finish_reason: content_filter')), logged.join('\n'));
+  });
+
+  test('an answer the cap cut short is still sent, with a warning in the log', async () => {
+    const user = await createUser();
+    groqImpl = async () => ({ choices: [{ message: { content: 'Half an answ' }, finish_reason: 'length' }] });
+    const warnings = [];
+    const original = console.warn;
+    console.warn = (m) => warnings.push(String(m));
+    let res;
+    try { res = await chat(user, [{ role: 'user', content: 'hi' }]); } finally { console.warn = original; }
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.reply, 'Half an answ');
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /truncated/);
+  });
+
   test('a daily budget per user: over CHAT_DAILY_LIMIT is a 429 with a code the client translates', async () => {
     const user = await createUser();
     const other = await createUser();

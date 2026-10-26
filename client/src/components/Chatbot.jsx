@@ -78,6 +78,9 @@ export default function Chatbot() {
     try {
       const res = await chatAPI.sendMessage(history);
       const reply = res.data?.data?.reply ?? '';
+      // An empty answer is a failure, not a turn: kept in the history it would be
+      // replayed with every later message and refused by the server.
+      if (!reply.trim()) throw new Error('Empty assistant reply');
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
       // A 429 is either today's message budget (the server says which with a
