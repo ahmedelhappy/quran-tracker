@@ -1,14 +1,18 @@
 const express = require('express');
 const cors = require('cors');
 const { apiLimiter } = require('./middleware/rateLimiters');
+const { parseTrustProxy } = require('./utils/trustProxy');
 
 const app = express();
 
-// Behind a hosting proxy (Render/Vercel) the real client IP arrives in
-// X-Forwarded-For; trust the first hop so rate limiters key on the actual
-// client instead of lumping everyone under the proxy's IP.
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
+// Behind a hosting proxy (Render) the real client IP arrives in X-Forwarded-For;
+// trusting the right number of hops lets the rate limiters key on the actual
+// client instead of lumping everyone under the proxy's IP — or letting a client
+// spoof its own. TRUST_PROXY sets it (see utils/trustProxy.js); unset, it is one
+// hop in production and off elsewhere, as before.
+const trustProxy = parseTrustProxy(process.env.TRUST_PROXY, process.env.NODE_ENV);
+if (trustProxy !== false) {
+  app.set('trust proxy', trustProxy);
 }
 
 // Request logging (skipped under test to keep test output clean)
