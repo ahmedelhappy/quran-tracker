@@ -360,6 +360,82 @@ describe('Annotations API', () => {
       assert.equal(aliceDraw.strokes[0].color, 'blue'); // untouched by Bob
       assert.equal(await Annotation.countDocuments({ kind: 'drawing', pageNumber: 3 }), 2); // one each
     });
+
+    // H-02 (d): a save carries the drawing it was based on, so one built on a
+    // stale or failed read cannot replace ink saved since.
+    describe('baseUpdatedAt precondition', () => {
+      const strokesOn3 = async (user) => (await Annotation.findOne({ userId: user._id, pageNumber: 3, kind: 'drawing' }))?.strokes.length ?? 0;
+
+      test('a save based on the current drawing goes through, and chains', async () => {
+        const user = await createUser();
+        const auth = authFor(user);
+        const first = await putDrawing(auth, { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: null });
+        assert.equal(first.status, 200);
+        const second = await putDrawing(auth, { pageNumber: 3, strokes: [stroke(), stroke({ color: 'pink' })], baseUpdatedAt: first.body.data.updatedAt });
+        assert.equal(second.status, 200);
+        assert.equal(second.body.data.strokes.length, 2);
+        const third = await putDrawing(auth, { pageNumber: 3, strokes: [], baseUpdatedAt: second.body.data.updatedAt });
+        assert.equal(third.status, 200);
+        assert.equal(await strokesOn3(user), 0);
+      });
+
+      test('"no drawing" as the base is refused when the page has ink (the failed-read case)', async () => {
+        const user = await createUser();
+        const auth = authFor(user);
+        await putDrawing(auth, { pageNumber: 3, strokes: [stroke(), stroke(), stroke()] });
+        const res = await putDrawing(auth, { pageNumber: 3, strokes: [stroke({ color: 'pink' })], baseUpdatedAt: null });
+        assert.equal(res.status, 409);
+        assert.equal(res.body.code, 'DRAWING_CHANGED');
+        assert.equal(res.body.data.strokes.length, 3); // the current doc, to merge with
+        assert.equal(await strokesOn3(user), 3);
+      });
+
+      test('a stale base is refused and the newer ink is kept', async () => {
+        const user = await createUser();
+        const auth = authFor(user);
+        const seen = await putDrawing(auth, { pageNumber: 3, strokes: [stroke()] });
+        await new Promise((r) => setTimeout(r, 5)); // a later save on another device
+        await putDrawing(auth, { pageNumber: 3, strokes: [stroke(), stroke({ color: 'blue' })] });
+        const res = await putDrawing(auth, { pageNumber: 3, strokes: [stroke(), stroke({ color: 'pink' })], baseUpdatedAt: seen.body.data.updatedAt });
+        assert.equal(res.status, 409);
+        assert.equal(res.body.data.strokes[1].color, 'blue');
+        const clear = await putDrawing(auth, { pageNumber: 3, strokes: [], baseUpdatedAt: seen.body.data.updatedAt });
+        assert.equal(clear.status, 409); // a stale clear is refused too
+        assert.equal(await strokesOn3(user), 2);
+      });
+
+      test('a base for a drawing that was deleted since is refused', async () => {
+        const user = await createUser();
+        const auth = authFor(user);
+        const seen = await putDrawing(auth, { pageNumber: 3, strokes: [stroke()] });
+        await putDrawing(auth, { pageNumber: 3, strokes: [] });
+        const res = await putDrawing(auth, { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: seen.body.data.updatedAt });
+        assert.equal(res.status, 409);
+        assert.equal(res.body.data, null);
+        assert.equal(await strokesOn3(user), 0);
+      });
+
+      test('another user\'s drawing never satisfies or blocks the base', async () => {
+        const alice = await createUser({ email: `pa${Date.now()}@x.com` });
+        const bob = await createUser({ email: `pb${Date.now()}@x.com` });
+        const bobs = await putDrawing(authFor(bob), { pageNumber: 3, strokes: [stroke()] });
+        const res = await putDrawing(authFor(alice), { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: bobs.body.data.updatedAt });
+        assert.equal(res.status, 409);
+        assert.equal((await putDrawing(authFor(alice), { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: null })).status, 200);
+      });
+
+      test('rejects a malformed base; without one the replace is unconditional', async () => {
+        const user = await createUser();
+        const auth = authFor(user);
+        assert.equal((await putDrawing(auth, { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: 'yesterday-ish' })).status, 400);
+        assert.equal((await putDrawing(auth, { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: { $gt: '' } })).status, 400);
+        assert.equal((await putDrawing(auth, { pageNumber: 3, strokes: [stroke()], baseUpdatedAt: 12345 })).status, 400);
+        await putDrawing(auth, { pageNumber: 3, strokes: [stroke(), stroke()] });
+        const legacy = await putDrawing(auth, { pageNumber: 3, strokes: [stroke()] });
+        assert.equal(legacy.status, 200);
+        assert.equal(await strokesOn3(user), 1);
+      });
+    });
   });
 
   // ── Free-floating text notes ──────────────────────────────────────

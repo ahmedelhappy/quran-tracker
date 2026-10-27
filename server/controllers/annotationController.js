@@ -332,9 +332,41 @@ const upsertDrawing = async (req, res) => {
     const { strokes, error } = validateStrokes(req.body.strokes);
     if (error) return res.status(400).json({ success: false, message: error });
 
+    // Optional precondition: the drawing the client's strokes were BASED on —
+    // the updatedAt of the doc it loaded, or null when it loaded "no drawing".
+    // A save replaces the page's whole ink, so one built on a stale or failed
+    // read erased strokes saved since (another device, an earlier save of this
+    // page whose reply was lost) or everything (a failed read taken as empty —
+    // H-02). With a base that no longer matches, nothing is written: the answer
+    // is a 409 carrying the current doc, for the client to merge and save again.
+    // Without the field, the old unconditional replace (older clients).
+    const preconditioned = Object.prototype.hasOwnProperty.call(req.body, 'baseUpdatedAt');
+    let base = null;
+    if (preconditioned && req.body.baseUpdatedAt !== null) {
+      base = new Date(req.body.baseUpdatedAt);
+      if (typeof req.body.baseUpdatedAt !== 'string' || Number.isNaN(base.getTime())) {
+        return res.status(400).json({ success: false, message: 'baseUpdatedAt must be an ISO date string or null' });
+      }
+    }
+    const changed = async () => {
+      const current = await Annotation.findOne({ userId, pageNumber, kind: 'drawing' });
+      return res.status(409).json({
+        success: false,
+        code: 'DRAWING_CHANGED',
+        message: "This page's drawing changed since it was loaded",
+        data: current,
+      });
+    };
+    // The doc this write may touch: exactly the one the client saw.
+    const target = { userId, pageNumber, kind: 'drawing', ...(base ? { updatedAt: base } : {}) };
+    if (preconditioned && base === null && await Annotation.exists({ userId, pageNumber, kind: 'drawing' })) {
+      return changed();
+    }
+
     // Empty ⇒ clear the page's drawing.
     if (strokes.length === 0) {
-      await Annotation.findOneAndDelete({ userId, pageNumber, kind: 'drawing' });
+      const removed = await Annotation.findOneAndDelete(target);
+      if (base && !removed) return changed();
       return res.status(200).json({ success: true, data: null });
     }
 
@@ -359,11 +391,16 @@ const upsertDrawing = async (req, res) => {
       }
     }
 
-    const doc = await Annotation.findOneAndUpdate(
-      { userId, pageNumber, kind: 'drawing' },
-      { $set: { strokes }, $setOnInsert: { userId, pageNumber, kind: 'drawing', verseKey: null } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    // With a base, update only that exact doc (no upsert): if it changed in the
+    // meantime nothing matches and the client gets the 409 instead.
+    const doc = base
+      ? await Annotation.findOneAndUpdate(target, { $set: { strokes } }, { new: true })
+      : await Annotation.findOneAndUpdate(
+        target,
+        { $set: { strokes }, $setOnInsert: { userId, pageNumber, kind: 'drawing', verseKey: null } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    if (!doc) return changed();
     res.status(200).json({ success: true, data: doc });
   } catch (error) {
     console.error('UpsertDrawing error:', error);

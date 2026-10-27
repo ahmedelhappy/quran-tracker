@@ -46,9 +46,10 @@ router.get('/', validateQuery(listSchema), getAnnotations);
 router.post('/', validateBody(createSchema), createAnnotation);
 
 // Upsert a page's free-form drawing (before '/:id' so 'drawing' isn't read as an
-// id). Only pageNumber is type-gated here; the controller strictly validates the
-// nested `strokes` the generic middleware can't.
-router.put('/drawing', validateBody({ pageNumber: 'number' }), upsertDrawing);
+// id). pageNumber and the optional baseUpdatedAt precondition are type-gated
+// here; the controller strictly validates the nested `strokes` the generic
+// middleware can't.
+router.put('/drawing', validateBody({ pageNumber: 'number', baseUpdatedAt: { type: 'string', nullable: true } }), upsertDrawing);
 
 // Set the state of many verse annotations at once, all-or-nothing (span actions
 // and their undo). `ops` is gated as an array of objects here; the controller
