@@ -123,3 +123,53 @@ describe('scripts/cleanupOrphans.js', () => {
     assert.equal(await mongoose.model('Annotation').countDocuments(), 1);
   });
 });
+
+describe('scripts/cleanupInvalidPages.js', () => {
+  before(connect);
+  after(disconnect);
+  beforeEach(clearDatabase);
+
+  const { findInvalidPages, deleteInvalidPages } = require('../scripts/cleanupInvalidPages');
+  const VALID = [1, 302, 604];
+  const INVALID = [0, -5, 1.5, 2.25, 605, 99999, '7'];
+
+  // Raw inserts — exactly the rows the unvalidated upserts used to leave behind.
+  const seedPages = async () => {
+    const user = await createUser();
+    const docs = [...VALID, ...INVALID].map((pageNumber) => ({ userId: user._id, pageNumber, status: 'memorized' }));
+    docs.push({ userId: user._id, status: 'memorized' }); // no pageNumber at all
+    await mongoose.model('UserProgress').collection.insertMany(docs);
+    return user;
+  };
+
+  test('finds every non-integer or out-of-range page and deletes only those', async () => {
+    await seedPages();
+    const found = await findInvalidPages();
+    assert.equal(found.count, INVALID.length + 1);
+    assert.equal(found.userCount, 1);
+
+    assert.equal(await deleteInvalidPages(), INVALID.length + 1);
+    const left = await mongoose.model('UserProgress').find({}, { pageNumber: 1 }).lean();
+    assert.deepEqual(left.map((d) => d.pageNumber).sort((a, b) => a - b), VALID);
+  });
+
+  test('CLI dry run counts without deleting; --apply deletes; no --uri refuses', async () => {
+    await seedPages();
+    const total = VALID.length + INVALID.length + 1;
+    const UserProgress = mongoose.model('UserProgress');
+
+    const refused = runScript('cleanupInvalidPages.js', ['--apply'], { MONGODB_URI: memoryUri() });
+    assert.equal(refused.code, 1);
+    assert.equal(await UserProgress.countDocuments(), total);
+
+    const dry = runScript('cleanupInvalidPages.js', ['--uri', memoryUri()]);
+    assert.equal(dry.code, 0, dry.out);
+    assert.match(dry.out, /^Target: mongodb:\/\//m);
+    assert.match(dry.out, new RegExp(`invalid pageNumber: ${INVALID.length + 1} `));
+    assert.equal(await UserProgress.countDocuments(), total);
+
+    const applied = runScript('cleanupInvalidPages.js', ['--uri', memoryUri(), '--apply']);
+    assert.equal(applied.code, 0, applied.out);
+    assert.equal(await UserProgress.countDocuments(), VALID.length);
+  });
+});
