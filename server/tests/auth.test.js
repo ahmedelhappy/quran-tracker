@@ -273,6 +273,46 @@ describe('Auth API', () => {
     assert.ok(!res.body.data);
   });
 
+  // M-03: the client keeps the session on anything but a 401, so a database
+  // that cannot be reached must not be reported as "token invalid" — that 401
+  // signed everyone out during an outage.
+  test('a database failure behind a valid token is a 503, never a 401', async () => {
+    const user = await createUser({ email: 'outage@example.com' });
+    const token = tokenFor(user._id);
+    const originalFindById = User.findById;
+    const originalError = console.error;
+    User.findById = () => { throw Object.assign(new Error('connection refused'), { name: 'MongoNetworkError' }); };
+    console.error = () => {};
+    try {
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      assert.equal(res.status, 503);
+      assert.equal(res.body.code, 'AUTH_UNAVAILABLE');
+    } finally {
+      User.findById = originalFindById;
+      console.error = originalError;
+    }
+  });
+
+  test('a forged, expired or not-yet-valid token is still a 401', async () => {
+    const user = await createUser({ email: 'forged@example.com' });
+    const tokens = [
+      jwt.sign({ id: user._id }, 'some-other-secret'),
+      jwt.sign({ id: user._id, exp: Math.floor(Date.now() / 1000) - 60 }, process.env.JWT_SECRET),
+      jwt.sign({ id: user._id }, process.env.JWT_SECRET, { notBefore: 3600 }),
+      'not-a-jwt-at-all',
+    ];
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      for (const token of tokens) {
+        const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+        assert.equal(res.status, 401, token);
+      }
+    } finally {
+      console.error = originalError;
+    }
+  });
+
   test('login rejects a NoSQL-operator object as email with 400', async () => {
     await createUser({ email: 'inject@example.com', password: 'secret123' });
 
