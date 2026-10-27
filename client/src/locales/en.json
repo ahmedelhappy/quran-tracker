@@ -764,10 +764,17 @@
       "textPlaceholder": "Note…",
       "noteTitle": "Note",
       "clearTitle": "Clear this page's drawing?",
+      "waitingForInk": "Loading this page's drawing…",
+      "merged": "This page's drawing had changed elsewhere — your strokes were added to it.",
+      "saveFailed": "Your drawing couldn't be saved yet. It stays here and saving keeps retrying.",
+      "unsavedTitle": "Your drawing isn't saved",
+      "unsavedMessage": "Some of your strokes couldn't be saved yet. Stay to keep retrying, or leave annotate mode and discard them.",
+      "discardAndLeave": "Discard and leave",
       "clearMessage": "This removes every ink stroke on this page and cannot be undone."
     },
     "annotations": {
       "colorInk": "Ink",
+      "pageLoadFailed": "Couldn't load your notes and drawing for this page.",
       "hideAll": "Hide annotations",
       "showAll": "Show annotations",
       "colorYellow": "Yellow highlight",

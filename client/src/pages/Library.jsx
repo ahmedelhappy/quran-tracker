@@ -185,6 +185,24 @@ const DRAW_TOOLS = [
 const toolForKey = (e) =>
   DRAW_TOOLS.find((tl) => isShortcutKey(e, tl.key) || isShortcutKey(e, tl.num))?.k ?? null;
 
+// Merge two edits of one page's ink that started from the same saved drawing:
+// `base` (what both started from), `mine` (this tab's working copy) and
+// `theirs` (what the server holds now). Strokes have no ids, so one is known by
+// its content. The result is theirs, minus what was erased here, plus what was
+// drawn here — so neither side's new strokes are lost, and an erase made here
+// still takes. Coordinates are rounded to 0.1 on both sides (MushafDrawLayer
+// and the server), so the same stroke compares equal.
+const strokeKey = (s) => JSON.stringify([s.tool, s.color, s.width, s.points]);
+const mergeInk = (base, mine, theirs) => {
+  const baseKeys = new Set(base.map(strokeKey));
+  const mineKeys = new Set(mine.map(strokeKey));
+  const erasedHere = new Set([...baseKeys].filter((k) => !mineKeys.has(k)));
+  const kept = theirs.filter((s) => !erasedHere.has(strokeKey(s)));
+  const keptKeys = new Set(kept.map(strokeKey));
+  const drawnHere = mine.filter((s) => !baseKeys.has(strokeKey(s)) && !keptKeys.has(strokeKey(s)));
+  return [...kept, ...drawnHere];
+};
+
 // The ayah's plain Uthmani text (basmala excluded), used for the legible
 // tafsir-panel preview. Taken verse-level from the API — word-level text is no
 // longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
@@ -491,13 +509,20 @@ export default function Library() {
   // stopping to re-arm. That means the working strokes, the undo history and the
   // unsaved-changes flags are all kept per page.
   const [drawPage, setDrawPage] = useState(null);
+  const drawPageRef = useRef(null);           // for callbacks that must not re-create on every anchor move
+  drawPageRef.current = drawPage;
   const [drawStrokesByPage, setDrawStrokesByPage] = useState({});
   const [drawTool, setDrawTool] = useState('pen'); // 'pen' | 'highlighter' | 'eraser' | 'text'
   const [drawColor, setDrawColor] = useState('ink');
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [inkExitConfirm, setInkExitConfirm] = useState(false); // leaving with ink that would not save
   const drawDirtyRef = useRef(new Set());     // pages with unsaved strokes
   const drawSaveTimerRef = useRef(null);
   const drawStrokesRef = useRef({});          // page -> strokes, synchronous mirror
+  // page -> { at, strokes }: the saved drawing a page's working copy is based on
+  // (its updatedAt, null for none). Set only from a successful read or save; a
+  // save sends it as its precondition (see saveInkPage).
+  const drawBaseRef = useRef({});
   const undoStacksRef = useRef({});           // page -> past snapshots (cap 50)
   const redoStacksRef = useRef({});
   // Undo, redo and clear act on the page last drawn on — in a spread, "the page
@@ -2805,19 +2830,42 @@ export default function Library() {
 
   // ── Annotations: highlights / notes / hard flags (verse-anchored) ──
   // Load all annotations for the given pages, replacing each page's cached list.
+  //
+  // A page is in annotationsByPage only once a read of it has SUCCEEDED — that
+  // is what "loaded" means for the ink below. A failed read used to be stored as
+  // "this page has no annotations", and the first stroke then saved over the
+  // page's real ink (H-02). Now it keeps whatever was cached, and the page is
+  // listed in annoFailedPages for the page card's Retry. Each page's replies are
+  // sequenced, so an older reply can never land over a newer one.
+  const annoReqRef = useRef(new Map());       // page -> id of its latest request
+  const [annoFailedPages, setAnnoFailedPages] = useState(() => new Set());
   const loadAnnotationsForPages = useCallback((pages) => {
     if (!signedInRef.current) return;
+    const ids = new Map(pages.map((p) => {
+      const id = (annoReqRef.current.get(p) ?? 0) + 1;
+      annoReqRef.current.set(p, id);
+      return [p, id];
+    }));
     Promise.all(
       pages.map((p) =>
         annotationsAPI.listForPage(p)
-          .then((r) => [p, r.data?.data ?? []])
-          .catch(() => [p, []])
+          .then((r) => ({ p, list: r.data?.data ?? [] }))
+          .catch(() => ({ p, list: null }))
       )
     ).then((entries) => {
-      setAnnotationsByPage((prev) => {
-        const next = new Map(prev);
-        entries.forEach(([p, list]) => next.set(p, list));
-        return next;
+      const fresh = entries.filter(({ p }) => annoReqRef.current.get(p) === ids.get(p));
+      const loaded = fresh.filter((e) => e.list);
+      if (loaded.length) {
+        setAnnotationsByPage((prev) => {
+          const next = new Map(prev);
+          loaded.forEach(({ p, list }) => next.set(p, list));
+          return next;
+        });
+      }
+      setAnnoFailedPages((prev) => {
+        const next = new Set(prev);
+        fresh.forEach(({ p, list }) => { if (list) next.delete(p); else next.add(p); });
+        return next.size === prev.size && [...next].every((p) => prev.has(p)) ? prev : next;
       });
     });
   }, []);
@@ -3102,29 +3150,95 @@ export default function Library() {
   // ── Drawing (annotate mode) ────────────────────────────────────────
   // Keep the latest page+strokes in a ref so a flush (debounce fire, exit, page
   // change, unmount) always saves the freshest state without stale closures.
+  //
+  // A save replaces the page's whole ink on the server, so it names the drawing
+  // its strokes were based on (drawBaseRef: the doc's updatedAt, or null for "no
+  // drawing", and that doc's strokes). If the page changed since — another
+  // device drew, or this tab's view was stale — the server refuses (409) with
+  // the current doc, and the save is MERGED onto it instead of erasing it: the
+  // other side's strokes, plus the ones added here, minus the ones erased here.
+  // Uses refs only, so the unmount flush can call it too.
+  const saveInkPage = useCallback(async (page) => {
+    for (let attempt = 0; ; attempt++) {
+      const base = drawBaseRef.current[page];
+      if (!base) throw Object.assign(new Error('ink not loaded'), { notLoaded: true });
+      const strokes = drawStrokesRef.current[page] ?? [];
+      try {
+        const res = await annotationsAPI.saveDrawing({ pageNumber: page, strokes, baseUpdatedAt: base.at });
+        const doc = res.data?.data ?? null;
+        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: doc?.strokes ?? [] };
+        return { merged: attempt > 0 };
+      } catch (e) {
+        if (attempt >= 2 || e.response?.status !== 409 || e.response.data?.code !== 'DRAWING_CHANGED') throw e;
+        const current = e.response.data.data;
+        const theirs = current?.strokes ?? [];
+        const merged = mergeInk(base.strokes, drawStrokesRef.current[page] ?? [], theirs);
+        drawBaseRef.current[page] = { at: current?.updatedAt ?? null, strokes: theirs };
+        drawStrokesRef.current = { ...drawStrokesRef.current, [page]: merged };
+        setDrawStrokesByPage(drawStrokesRef.current);
+      }
+    }
+  }, []);
+
+  // A failed save keeps its pages dirty (they used to be dropped before the
+  // request, so a lost save lost the ink) and, when the failure may pass (no
+  // answer, a 5xx), retries with a growing delay. Resolves true when nothing is
+  // left unsaved.
+  const drawRetryMsRef = useRef(0);
+  const drawFailingRef = useRef(false);
+  const flushDrawingRef = useRef(null);       // the retry timer calls the latest flush
   const flushDrawing = useCallback(async () => {
     if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
     const pages = [...drawDirtyRef.current];
-    if (!pages.length) return;
+    if (!pages.length) return true;
     drawDirtyRef.current = new Set();
-    try {
-      // Both halves of a spread can be dirty at once, so save each of them.
-      await Promise.all(pages.map((page) =>
-        annotationsAPI.saveDrawing({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [] })));
+    // Both halves of a spread can be dirty at once, so save each of them.
+    const results = await Promise.all(pages.map((page) =>
+      saveInkPage(page).then((r) => ({ page, ...r }), (error) => ({ page, error }))));
+    const saved = results.filter((r) => !r.error).map((r) => r.page);
+    const failed = results.filter((r) => r.error);
+    if (saved.length) {
       loadSummary();
       // Refresh what we hold for those pages. Without this the cache still has the
       // pre-save doc, and turning back to a page would reseed the working copy
-      // from it — showing the ink gone, and saving over it on the next stroke.
-      loadAnnotationsForPages(pages);
-    } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      // from it — showing the ink gone.
+      loadAnnotationsForPages(saved);
     }
-  }, [loadSummary, loadAnnotationsForPages, showToast, t]);
+    const merged = results.filter((r) => r.merged).map((r) => r.page);
+    if (merged.length) {
+      // The undo snapshots predate the other side's strokes; stepping back
+      // through them would quietly erase those again.
+      merged.forEach((page) => {
+        undoStacksRef.current[page] = [];
+        redoStacksRef.current[page] = [];
+        dropInkSteps(page);
+      });
+      showToast(t('library.draw.merged'), 'info');
+    }
+    if (!failed.length) { drawFailingRef.current = false; drawRetryMsRef.current = 0; return true; }
+    failed.forEach(({ page }) => drawDirtyRef.current.add(page));
+    if (!drawFailingRef.current) {
+      // Once per run of failures, not on every retry.
+      drawFailingRef.current = true;
+      const e = failed[0].error;
+      showToast(e.response?.data?.message || t('library.draw.saveFailed'), 'error');
+    }
+    // A 4xx (the drawing too large, say) fails the same way until the reader
+    // changes it, and their next stroke saves again; anything else is retried.
+    const passing = failed.some(({ error }) => !error.response || error.response.status >= 500);
+    if (passing && !drawSaveTimerRef.current) {
+      drawRetryMsRef.current = Math.min(30000, Math.max(2000, drawRetryMsRef.current * 2));
+      drawSaveTimerRef.current = setTimeout(() => { drawSaveTimerRef.current = null; flushDrawingRef.current?.(); }, drawRetryMsRef.current);
+    }
+    return false;
+  }, [saveInkPage, loadSummary, loadAnnotationsForPages, showToast, t, dropInkSteps]);
+
+  useEffect(() => { flushDrawingRef.current = flushDrawing; }, [flushDrawing]);
 
   const scheduleDrawSave = useCallback((page) => {
     drawDirtyRef.current.add(page);
     if (drawSaveTimerRef.current) clearTimeout(drawSaveTimerRef.current);
-    drawSaveTimerRef.current = setTimeout(() => { flushDrawing(); }, 1500); // ~1.5s after last stroke
+    drawSaveTimerRef.current = setTimeout(() => { drawSaveTimerRef.current = null; flushDrawing(); }, 1500); // ~1.5s after last stroke
   }, [flushDrawing]);
 
   // Apply a new strokes snapshot, recording history for undo/redo. Every ink
@@ -3160,10 +3274,15 @@ export default function Library() {
     let changed = false;
     for (const page of visiblePages) {
       if (drawDirtyRef.current.has(page)) continue;
-      const saved = (annotationsByPage.get(page) ?? []).find((a) => a.kind === 'drawing')?.strokes ?? [];
+      // Not read yet (or the read failed): no working copy, so the page takes
+      // no ink (see inkReady) until its real drawing is known.
+      if (!annotationsByPage.has(page)) continue;
+      const doc = annotationsByPage.get(page).find((a) => a.kind === 'drawing');
+      const saved = doc?.strokes ?? [];
       const have = next[page];
       if (have === undefined || (have.length === 0 && saved.length > 0)) {
         next[page] = saved;
+        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: saved };
         undoStacksRef.current[page] = [];    // history is session-local, per page
         redoStacksRef.current[page] = [];
         dropInkSteps(page);
@@ -3182,9 +3301,18 @@ export default function Library() {
 
   const enterDraw = useCallback((page) => {
     if (!signedInRef.current) return;   // ink is saved to the account
+    if (drawPageRef.current != null) {
+      // Already annotating (the other half of a spread): only the anchor moves.
+      // Starting over here threw away the working copies and their unsaved ink.
+      lastDrawnPageRef.current = page;
+      setDrawPage(page);
+      setDrawMenuOpen(true);
+      return;
+    }
     setSelectedVerseKey(null);
     setAnnoVisible(true);                 // drawing always shows what you're editing
     drawStrokesRef.current = {};          // the effect above seeds every visible page
+    drawBaseRef.current = {};             // ...and records what each copy is based on
     setDrawStrokesByPage({});
     drawDirtyRef.current = new Set();
     lastDrawnPageRef.current = page;
@@ -3193,8 +3321,20 @@ export default function Library() {
     bumpHistory();
   }, []);
 
-  const exitDraw = useCallback(async () => {
-    await flushDrawing();
+  // Leaving saves first. If that fails the ink is still only on screen, so the
+  // mode stays (the save keeps retrying) and the reader is asked whether to
+  // discard it — leaving used to drop it silently.
+  const exitDraw = useCallback(async ({ discard = false } = {}) => {
+    if (discard) {
+      if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
+      drawDirtyRef.current = new Set();
+      drawFailingRef.current = false;
+      drawRetryMsRef.current = 0;
+    } else if (!(await flushDrawing())) {
+      setInkExitConfirm(true);
+      return;
+    }
+    setInkExitConfirm(false);
     setDrawPage(null);
     setDrawMenuOpen(false);
     setClearConfirm(false);
@@ -3421,11 +3561,35 @@ export default function Library() {
     });
   }, [visiblePages, drawPage, flushDrawing]);
 
-  // Save any pending drawing if the reader leaves the Library mid-stroke.
+  // Save any pending drawing if the reader leaves the Library mid-stroke (the
+  // app stays loaded, so the requests finish; a conflict still merges). The
+  // debounce / retry timer goes with it, or it would save the same ink again.
   useEffect(() => () => {
+    if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
     for (const page of drawDirtyRef.current) {
-      annotationsAPI.saveDrawing({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [] }).catch(() => {});
+      saveInkPage(page).catch((e) => console.error(`Unsaved ink on page ${page}:`, e.response?.status ?? e.message));
     }
+  }, [saveInkPage]);
+
+  // The tab being hidden or closed: save now rather than after the debounce.
+  // Hidden (a switch away, the phone locking) is an ordinary flush — the page
+  // may never come back. Closing gets a keepalive request, the only kind the
+  // browser lets finish after the page is gone.
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushDrawingRef.current?.(); };
+    const onPageHide = () => {
+      for (const page of drawDirtyRef.current) {
+        const base = drawBaseRef.current[page];
+        if (!base) continue;
+        annotationsAPI.saveDrawingOnUnload({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [], baseUpdatedAt: base.at });
+      }
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
+    };
   }, []);
 
   // ── Annotation navigation: prev / next annotated page (wraps) + pulse ──
@@ -4280,6 +4444,11 @@ export default function Library() {
     const annotating = drawPage != null;
     const isAnchor = drawPage === pd.page;
     const isDrawingHere = annotating;
+    // The page takes ink only once its saved drawing is known (a successful read
+    // seeded the working copy): a stroke on an unknown page used to be saved over
+    // the ink the reader could not see yet.
+    const inkReady = drawStrokesByPage[pd.page] !== undefined;
+    const annoFailed = annoFailedPages.has(pd.page);
     const layerStrokes = annotating ? (drawStrokesByPage[pd.page] ?? drawDoc?.strokes ?? []) : (drawDoc?.strokes ?? []);
     const textNotes = anns.filter((a) => a.kind === 'text');
     // Clean-reading toggle: while hidden (and not drawing this page), suppress all
@@ -4295,7 +4464,37 @@ export default function Library() {
             : 'ring-amber-200/60 dark:ring-amber-900/30'
         }`}
       >
-        <div className="px-3 py-3 sm:px-4 sm:py-4 flex flex-col">
+        <div className="relative px-3 py-3 sm:px-4 sm:py-4 flex flex-col">
+          {/* This page's notes / drawing could not be read (or, while annotating,
+              are still on their way): say so over the top margin — never as an
+              empty page the reader could draw over. Overlaid so the fixed page
+              frame does not move. */}
+          {signedIn && (annoFailed || (isDrawingHere && !inkReady)) && (
+            <div className="absolute inset-x-0 top-9 sm:top-10 z-30 flex justify-center px-3 pointer-events-none">
+              <div
+                role={annoFailed ? 'alert' : 'status'}
+                className={`pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium shadow-md border ${
+                  annoFailed
+                    ? 'bg-red-50 dark:bg-red-950/80 border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300'
+                    : 'bg-white/95 dark:bg-gray-800/95 border-[#dce2f3] dark:border-gray-700 text-[#404944] dark:text-gray-300'
+                }`}
+              >
+                {annoFailed
+                  ? <FiAlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  : <span className="block w-3.5 h-3.5 shrink-0 rounded-full border-2 border-current/25 border-t-current animate-spin" aria-hidden="true" />}
+                <span>{annoFailed ? t('library.annotations.pageLoadFailed') : t('library.draw.waitingForInk')}</span>
+                {annoFailed && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); loadAnnotationsForPages([pd.page]); }}
+                    className="font-semibold underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200"
+                  >
+                    {t('common.retry')}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {/* Running head — surah (outer) · juz (toward the spine), with a
               bookmark ribbon when this page is bookmarked. */}
           <div className="flex items-center justify-between gap-2 mb-2 px-1.5 text-[11px] font-semibold tracking-wide text-amber-900/55 dark:text-amber-200/35 select-none" dir="rtl">
@@ -4380,7 +4579,7 @@ export default function Library() {
                     reaches into the margins (see MushafDrawLayer / index.css). */}
                 <MushafDrawLayer
                   strokes={layerStrokes}
-                  active={isDrawingHere}
+                  active={isDrawingHere && inkReady}
                   visible={annoVisible}
                   tool={drawTool}
                   color={drawColor}
@@ -6290,6 +6489,15 @@ export default function Library() {
       />
 
       {/* Confirm before wiping a page's ink */}
+      <ConfirmModal
+        isOpen={inkExitConfirm}
+        onClose={() => setInkExitConfirm(false)}
+        onConfirm={() => exitDraw({ discard: true })}
+        title={t('library.draw.unsavedTitle')}
+        message={t('library.draw.unsavedMessage')}
+        confirmText={t('library.draw.discardAndLeave')}
+        isDanger
+      />
       <ConfirmModal
         isOpen={clearConfirm}
         onClose={() => setClearConfirm(false)}

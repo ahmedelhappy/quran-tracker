@@ -163,6 +163,21 @@ export const annotationsAPI = {
   remove: (id) => API.delete(`/annotations/${id}`),
   // Upsert a page's free-form drawing (empty strokes deletes it).
   saveDrawing: (data) => API.put('/annotations/drawing', data),
+  // The same save while the page is being closed: a keepalive fetch, which the
+  // browser completes after unload (an XHR would be cancelled). Fire and forget —
+  // nothing is left to show the result to. Bodies are capped at 64 KB, the same
+  // as a page's drawing.
+  saveDrawingOnUnload: (data) => {
+    if (!sessionToken) return;
+    try {
+      fetch(`${API.defaults.baseURL}/annotations/drawing`, {
+        method: 'PUT',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify(data),
+      }).catch(() => {});
+    } catch { /* body over the keepalive limit: nothing more can be done */ }
+  },
   // Set the state of many verse annotations at once, all-or-nothing. Each op is
   // { kind, pageNumber, verseKey, value }; the reply reports every key's state
   // before and after (span actions, and the reader's undo / redo).
