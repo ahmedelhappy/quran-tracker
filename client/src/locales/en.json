@@ -592,6 +592,14 @@
     "message": "An unexpected error occurred. Reloading the page usually fixes it.",
     "reload": "Reload page"
   },
+  "session": {
+    "offlineTitle": "You're offline",
+    "offlineBody": "You're still signed in. We'll reconnect as soon as your connection is back — or try again now.",
+    "serverTitle": "Quran Tracker isn't answering right now",
+    "serverBody": "You're still signed in — the server just didn't respond. It may be starting up; try again in a moment.",
+    "retrying": "Trying again…",
+    "signOut": "Sign out instead"
+  },
   "common": {
     "loading": "Loading...",
     "error": "Something went wrong.",

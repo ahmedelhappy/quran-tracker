@@ -44,7 +44,9 @@ API.interceptors.response.use(
 export const authAPI = {
   register: (data) => API.post('/auth/register', data),
   login: (data) => API.post('/auth/login', data),
-  getMe: () => API.get('/auth/me'),
+  // Bounded, so a server that never answers ends in AuthContext's retry screen
+  // rather than an endless spinner.
+  getMe: () => API.get('/auth/me', { timeout: 20000 }),
   updateProfile: (data) => API.put('/auth/profile', data),
   changePassword: (data) => API.put('/auth/password', data),
   deleteAccount: () => API.delete('/auth/account'),

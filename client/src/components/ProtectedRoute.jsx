@@ -1,9 +1,10 @@
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
+import SessionUnavailable from './SessionUnavailable';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, sessionError } = useAuth();
   const { t } = useTranslation();
 
   // Show loading while checking auth
@@ -17,6 +18,10 @@ const ProtectedRoute = ({ children }) => {
       </div>
     );
   }
+
+  // Signed in, but the session could not be checked (offline, server down):
+  // the login page would be a lie — offer a retry instead.
+  if (!isAuthenticated && sessionError) return <SessionUnavailable />;
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {

@@ -20,6 +20,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Why a stored token could not be checked: null, 'offline' or 'server'.
+  const [sessionError, setSessionError] = useState(null);
 
   // Reconcile the account's saved language with this device's UI language.
   // A deliberate local choice (LanguageToggle sets 'langExplicit') always wins
@@ -40,11 +42,19 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Verify token and get user data
+  // Verify the stored token and load the user.
+  //
+  // Only a 401 means the session is over. Anything else — no network, a 5xx
+  // from a redeploy, a cold start that times out — says nothing about the
+  // token, and dropping it there signed people out just for opening the app
+  // offline (M-03). Then the token is KEPT and sessionError says why the user
+  // could not be loaded ('offline' | 'server'): the routes show a retry screen
+  // instead of the login page, and coming back online retries by itself.
   const checkAuth = useCallback(async () => {
     const token = storage.get('token');
 
     if (!token) {
+      setSessionError(null);
       setLoading(false);
       return;
     }
@@ -53,11 +63,20 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.getMe();
       const userData = response.data.data;
       setUser(userData);
+      setSessionError(null);
       syncLanguage(userData);
     } catch (err) {
-      console.log(err);
-      storage.remove('token');
-      setUser(null);
+      if (err.response?.status === 401) {
+        storage.remove('token');
+        setUser(null);
+        setSessionError(null);
+      } else {
+        console.error('Session check failed:', err.response?.status ?? err.code ?? err.message);
+        // Only the browser knows it is offline; no answer while it reports a
+        // connection (a timeout, a server that is down) is the server's side.
+        const offline = !err.response && typeof navigator !== 'undefined' && navigator.onLine === false;
+        setSessionError(offline ? 'offline' : 'server');
+      }
     } finally {
       setLoading(false);
     }
@@ -67,6 +86,16 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // The retry screen's button, and the automatic retry when the browser says
+  // the connection is back.
+  const retrySession = useCallback(() => checkAuth(), [checkAuth]);
+  useEffect(() => {
+    if (!sessionError) return;
+    const onOnline = () => { retrySession(); };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [sessionError, retrySession]);
 
   // Register new user
   const register = async (name, email, password) => {
@@ -132,6 +161,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     storage.remove('token');
     setUser(null);
+    setSessionError(null);
   };
 
   // Update user data in context (used after profile updates)
@@ -167,6 +197,8 @@ export const AuthProvider = ({ children }) => {
     updateUser,
     refreshUser,
     clearError,
+    sessionError,
+    retrySession,
     isAuthenticated: !!user,
   };
 

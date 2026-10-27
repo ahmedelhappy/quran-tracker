@@ -7,6 +7,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TimerProvider } from './context/TimerContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import SessionUnavailable from './components/SessionUnavailable';
 import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
 
@@ -64,9 +65,12 @@ const ScrollToTop = () => {
 // Redirect authenticated users away from public pages — to wherever they were
 // headed when they were asked to sign in, if that is a page of this app.
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, sessionError } = useAuth();
   const [params] = useSearchParams();
   if (loading) return <PageLoader />;
+  // A stored session that could not be checked is still a session: don't show
+  // the landing or login page as if the reader were signed out.
+  if (!isAuthenticated && sessionError) return <SessionUnavailable />;
   if (isAuthenticated) return <Navigate to={safeReturnTo(params.get('returnTo')) ?? '/dashboard'} replace />;
   return children;
 };

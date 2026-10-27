@@ -1,0 +1,58 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { FiWifiOff, FiCloudOff, FiRefreshCw } from 'react-icons/fi';
+import { useAuth } from '../hooks/useAuth';
+
+// Shown in place of a page while a stored session could not be CHECKED (no
+// network, a 5xx, a timeout — see checkAuth in AuthContext). The reader is
+// still signed in, so this must not look like the login page: it says what
+// happened, retries on demand (and by itself when the connection comes back),
+// and offers signing out only as the deliberate second choice.
+const SessionUnavailable = () => {
+  const { t } = useTranslation();
+  const { sessionError, retrySession, logout } = useAuth();
+  const [retrying, setRetrying] = useState(false);
+  const offline = sessionError === 'offline';
+  const Icon = offline ? FiWifiOff : FiCloudOff;
+
+  const retry = async () => {
+    setRetrying(true);
+    try { await retrySession(); } finally { setRetrying(false); }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex items-center justify-center px-4">
+      <div role="alert" className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-8 text-center">
+        <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+          <Icon className="w-6 h-6 text-amber-700 dark:text-amber-400" aria-hidden="true" />
+        </div>
+        <h1 className="text-lg font-semibold text-[#151c27] dark:text-gray-100 mb-2">
+          {t(offline ? 'session.offlineTitle' : 'session.serverTitle')}
+        </h1>
+        <p className="text-sm text-[#404944] dark:text-gray-400 mb-6 leading-relaxed">
+          {t(offline ? 'session.offlineBody' : 'session.serverBody')}
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={retry}
+            disabled={retrying}
+            className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] dark:bg-emerald-700 dark:hover:bg-emerald-600 px-5 py-2.5 rounded-lg transition-colors disabled:opacity-60"
+          >
+            <FiRefreshCw className={`w-4 h-4 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
+            {retrying ? t('session.retrying') : t('common.retry')}
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="text-sm text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors"
+          >
+            {t('session.signOut')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SessionUnavailable;
