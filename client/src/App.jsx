@@ -69,13 +69,22 @@ const ScrollToTop = () => {
 // account (a password change in another tab) keeps the same key, and so does
 // signing out: the pages already react to the user going away, and a remount
 // there would let a page that is still on screen (the Library) store its state
-// again right after sign-out cleared it. The key is the last account seen.
+// again right after sign-out cleared it.
+//
+// Nor does the FIRST account to appear: the session check resolving (or its
+// retry succeeding) turns "no one yet" into the reader, and the public Library
+// is already mounted by then — remounting it there threw away the audio, the
+// open tafsir and the scroll the reader may already have. Only one account
+// replacing a different one moves the key.
 const AccountScope = ({ children }) => {
   const { user } = useAuth();
   const id = user?._id ?? null;
-  const [lastId, setLastId] = useState(id);
-  if (id && id !== lastId) setLastId(id); // adjust during render: no extra pass on screen
-  return <Fragment key={id ?? lastId ?? 'guest'}>{children}</Fragment>;
+  const [scope, setScope] = useState({ id, generation: 0 });
+  // Adjusted during render: no extra pass on screen.
+  if (id && id !== scope.id) {
+    setScope({ id, generation: scope.id ? scope.generation + 1 : scope.generation });
+  }
+  return <Fragment key={scope.generation}>{children}</Fragment>;
 };
 
 // Redirect authenticated users away from public pages — to wherever they were
