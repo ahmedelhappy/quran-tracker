@@ -3023,7 +3023,9 @@ export default function Library() {
   const openNote = useCallback((page, verseKey) => {
     const existing = findAnn(page, (a) => a.kind === 'note' && a.verseKey === verseKey);
     setTafsirOpen(false);
-    setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null });
+    // `saved`: the text as stored, so a page turn can tell an untouched sheet
+    // (safe to close) from one holding typing that exists nowhere else.
+    setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null, saved: existing?.text ?? '' });
     setNoteDraft(existing?.text ?? '');
   }, [findAnn]);
 
@@ -3144,8 +3146,14 @@ export default function Library() {
     );
   }, [spanState, spanVerses, applyVerseAction, t, spanVersesLabel]);
 
-  // Close the note sheet when the reader turns the page.
-  useEffect(() => { setNotePanel(null); }, [currentPage]);
+  // Close the note sheet when the reader turns the page — unless it holds an
+  // unsaved draft. Turns also happen with no input at all (the recitation
+  // crossing a page break), and closing then threw the typing away. The sheet
+  // is anchored to its verse, not to the view, so saving it still lands on the
+  // right verse after the turn.
+  const noteDirtyRef = useRef(false);
+  noteDirtyRef.current = notePanel != null && noteDraft.trim() !== (notePanel.saved ?? '').trim();
+  useEffect(() => { if (!noteDirtyRef.current) setNotePanel(null); }, [currentPage]);
 
   // ── Drawing (annotate mode) ────────────────────────────────────────
   // Keep the latest page+strokes in a ref so a flush (debounce fire, exit, page
