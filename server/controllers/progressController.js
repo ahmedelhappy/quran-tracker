@@ -729,6 +729,14 @@ exports.markPageComplete = async (req, res) => {
 
       const existing = await UserProgress.findOne({ userId, pageNumber });
 
+      // A page that is already fully memorized cannot be memorized again: doing
+      // so restamped it as new today (eating today's quota with an old page), a
+      // segment would shrink it back to a part, and undoing it deleted the page's
+      // whole history (L-11). The client's view was stale; nothing is written.
+      if (existing && existing.status === 'memorized' && (!existing.segments || existing.segments.length === 0)) {
+        return res.status(409).json({ success: false, code: 'ALREADY_MEMORIZED', message: `Page ${pageNumber} is already memorized` });
+      }
+
       // No segment on a page today's plan serves as half a page: refuse rather
       // than credit the whole page. Recording the whole page silently skipped
       // the page's second half for good and inflated every total (H-03). A caller
@@ -758,20 +766,36 @@ exports.markPageComplete = async (req, res) => {
           return res.status(400).json({ success: false, message: err.message });
         }
       }
+      // What undo restores: the earlier part of a partly memorized page, or
+      // nothing at all when this completion creates the document.
+      const undo = existing
+        ? {
+          kind: 'new', at: now, existed: true,
+          status: existing.status, memorizedDate: existing.memorizedDate,
+          lastReviewedDate: existing.lastReviewedDate, reviewCount: existing.reviewCount,
+          segments: (existing.segments || []).map(s => ({ from: s.from, to: s.to })),
+        }
+        : { kind: 'new', at: now, existed: false };
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
-        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments }, $inc: { reviewCount: 1 } },
+        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments, undo }, $inc: { reviewCount: 1 } },
         { upsert: true, runValidators: true }
       );
     } else if (type === 'review') {
-      const result = await UserProgress.findOneAndUpdate(
-        { userId, pageNumber, status: 'memorized' },
-        { $set: { lastReviewedDate: now }, $inc: { reviewCount: 1 } },
-        { new: true }
-      );
-      if (!result) {
+      const existing = await UserProgress.findOne({ userId, pageNumber, status: 'memorized' });
+      if (!existing) {
         return res.status(400).json({ success: false, message: 'Page not found or not memorized yet' });
       }
+      // Keep the review it replaces, so undo restores the real previous date
+      // (possibly "never reviewed") rather than inventing yesterday.
+      const undo = {
+        kind: 'review', at: now, existed: true,
+        lastReviewedDate: existing.lastReviewedDate, reviewCount: existing.reviewCount,
+      };
+      await UserProgress.updateOne(
+        { _id: existing._id },
+        { $set: { lastReviewedDate: now, undo }, $inc: { reviewCount: 1 } }
+      );
     } else {
       return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
     }
@@ -830,44 +854,59 @@ exports.unmarkPageComplete = async (req, res) => {
       return res.status(400).json({ success: false, message: `pageNumber ${PAGE_RULE}` });
     }
 
-    if (type === 'new') {
-      // Deletes the whole doc if it was touched today — including any segments.
-      // For a half-page plan this means undoing day 2's completion also discards
-      // day 1's segment if both happen on the same "today" (same-day undo, the
-      // realistic use of this button, is unaffected: there's nothing from a prior
-      // day to lose yet).
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
-      const tomorrowStart = new Date(todayStart);
-      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+    if (type !== 'new' && type !== 'review') {
+      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
+    }
 
-      const deleted = await UserProgress.findOneAndDelete({
-        userId,
-        pageNumber,
-        memorizedDate: { $gte: todayStart, $lt: tomorrowStart },
-      });
-      if (!deleted) {
+    const todayString = getDateString(new Date());
+    const progress = await UserProgress.findOne({ userId, pageNumber }).select('+undo');
+    // The snapshot markPageComplete left, if it belongs to a completion of this
+    // kind made today (see the model). Without one — a completion recorded
+    // before snapshots existed — fall back to the old behaviour below.
+    const snap = progress?.undo;
+    const snapToday = !!snap && snap.kind === type && getDateString(snap.at) === todayString;
+
+    if (type === 'new') {
+      if (!progress || !progress.memorizedDate || getDateString(progress.memorizedDate) !== todayString) {
         return res.status(400).json({ success: false, message: 'Page was not memorized today' });
       }
-    } else if (type === 'review') {
-      const progress = await UserProgress.findOne({ userId, pageNumber, status: 'memorized' });
-      if (!progress) {
+      if (snapToday && snap.existed) {
+        // The page had progress before today's completion (e.g. its first half,
+        // memorized on an earlier day): put that back instead of deleting it.
+        await UserProgress.updateOne(
+          { _id: progress._id },
+          {
+            $set: {
+              status: snap.status || 'memorized',
+              memorizedDate: snap.memorizedDate ?? null,
+              lastReviewedDate: snap.lastReviewedDate ?? null,
+              reviewCount: snap.reviewCount ?? 0,
+              segments: (snap.segments || []).map(s => ({ from: s.from, to: s.to })),
+            },
+            $unset: { undo: 1 },
+          }
+        );
+      } else {
+        // Today's completion created the page's progress: undoing removes it.
+        await UserProgress.deleteOne({ _id: progress._id });
+      }
+    } else {
+      if (!progress || progress.status !== 'memorized') {
         return res.status(400).json({ success: false, message: 'Page not found or not memorized' });
       }
-      const yesterday = new Date();
-      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-      yesterday.setUTCHours(0, 0, 0, 0);
-      await UserProgress.updateOne(
-        { userId, pageNumber },
-        {
-          $set: {
-            lastReviewedDate: yesterday,
-            reviewCount: Math.max(0, (progress.reviewCount || 0) - 1),
-          },
-        }
-      );
-    } else {
-      return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
+      if (!progress.lastReviewedDate || getDateString(progress.lastReviewedDate) !== todayString) {
+        return res.status(400).json({ success: false, message: 'Page was not reviewed today' });
+      }
+      let restored;
+      if (snapToday) {
+        restored = { lastReviewedDate: snap.lastReviewedDate ?? null, reviewCount: snap.reviewCount ?? 0 };
+      } else {
+        const yesterday = new Date();
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+        yesterday.setUTCHours(0, 0, 0, 0);
+        restored = { lastReviewedDate: yesterday, reviewCount: Math.max(0, (progress.reviewCount || 0) - 1) };
+      }
+      await UserProgress.updateOne({ _id: progress._id }, { $set: restored, $unset: { undo: 1 } });
     }
 
     const currentStreak = await reconcileStreakAfterUndo(userId);

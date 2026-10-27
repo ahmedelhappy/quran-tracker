@@ -1,5 +1,23 @@
 const mongoose = require('mongoose');
 
+// The page's state just before its latest dashboard completion, so undoing that
+// completion puts back exactly what was there (L-11) instead of guessing: an
+// undone review used to set lastReviewedDate to "yesterday" whatever it had
+// been, and an undone 'new' deleted the whole document — taking with it the
+// half of a page memorized on an earlier day. One slot: undo reverses the most
+// recent completion, of the matching kind, made today.
+const undoSnapshotSchema = new mongoose.Schema({
+  kind: { type: String, enum: ['new', 'review'], required: true },
+  at: { type: Date, required: true },
+  // False when the completion created the document (undo then deletes it).
+  existed: { type: Boolean, default: false },
+  status: String,
+  memorizedDate: Date,
+  lastReviewedDate: Date,
+  reviewCount: Number,
+  segments: { type: [{ from: String, to: String, _id: false }], default: undefined },
+}, { _id: false });
+
 const userProgressSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -45,6 +63,9 @@ const userProgressSchema = new mongoose.Schema({
     }],
     default: undefined,
   },
+  // Internal: only the undo endpoint reads it (select: false keeps it out of
+  // every other query and response).
+  undo: { type: undoSnapshotSchema, default: undefined, select: false },
 }, {
   timestamps: true
 });
