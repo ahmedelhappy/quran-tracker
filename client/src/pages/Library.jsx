@@ -193,6 +193,12 @@ const toolForKey = (e) =>
 // still takes. Coordinates are rounded to 0.1 on both sides (MushafDrawLayer
 // and the server), so the same stroke compares equal.
 const strokeKey = (s) => JSON.stringify([s.tool, s.color, s.width, s.points]);
+// Whether two drawings hold the same strokes (in any order).
+const sameInk = (a, b) => {
+  if (!a || !b || a.length !== b.length) return false;
+  const keys = a.map(strokeKey).sort();
+  return b.map(strokeKey).sort().every((k, i) => k === keys[i]);
+};
 const mergeInk = (base, mine, theirs) => {
   const baseKeys = new Set(base.map(strokeKey));
   const mineKeys = new Set(mine.map(strokeKey));
@@ -3173,27 +3179,55 @@ export default function Library() {
   // and its last flush went out on the NEW token, into the other account,
   // where the 409 merge then laid this ink over theirs (M-08). Each save is
   // sent for the token its page was seeded under (see tokenForWriteBy).
-  const saveInkPage = useCallback(async (page) => {
+  //
+  // A page has ONE save at a time: a save asked for while another is in flight
+  // waits for it and then goes with the base that one returned. Two saves on a
+  // slow connection used to go out with the same base, and the second's 409
+  // came back with the first's ink — this tab's own — which was then "merged":
+  // a stroke erased in between came back, the reader was told the page had
+  // changed elsewhere, and their undo history was wiped. drawSentRef keeps what
+  // the last request sent, so a 409 holding exactly that (a save whose reply was
+  // lost, an unload save of a page that came back) is built on, not merged.
+  const drawSavesRef = useRef(new Map());     // page -> its save in flight (and any queued behind it)
+  const drawSentRef = useRef({});             // page -> the strokes its last request sent
+  const saveInkPageNow = useCallback(async (page) => {
+    let merged = false;
     for (let attempt = 0; ; attempt++) {
       const base = drawBaseRef.current[page];
       if (!base) throw Object.assign(new Error('ink not loaded'), { notLoaded: true });
       const strokes = drawStrokesRef.current[page] ?? [];
+      const sentBefore = drawSentRef.current[page];
+      drawSentRef.current[page] = strokes;
       try {
         const res = await annotationsAPI.saveDrawing({ pageNumber: page, strokes, baseUpdatedAt: base.at }, base.token);
         const doc = res.data?.data ?? null;
         drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: doc?.strokes ?? [], token: base.token };
-        return { merged: attempt > 0 };
+        // A read of the page sent before this save landed holds the ink from
+        // before it; arriving now, it would reseed the working copy (and the
+        // base) with that — an erased stroke back on screen. Retire it.
+        annoReqRef.current.set(page, (annoReqRef.current.get(page) ?? 0) + 1);
+        return { merged };
       } catch (e) {
         if (attempt >= 2 || e.response?.status !== 409 || e.response.data?.code !== 'DRAWING_CHANGED') throw e;
         const current = e.response.data.data;
         const theirs = current?.strokes ?? [];
-        const merged = mergeInk(base.strokes, drawStrokesRef.current[page] ?? [], theirs);
         drawBaseRef.current[page] = { at: current?.updatedAt ?? null, strokes: theirs, token: base.token };
-        drawStrokesRef.current = { ...drawStrokesRef.current, [page]: merged };
+        const mine = drawStrokesRef.current[page] ?? [];
+        if (sameInk(theirs, sentBefore) || sameInk(theirs, mine)) continue; // our own ink: just rebase
+        merged = true;
+        drawStrokesRef.current = { ...drawStrokesRef.current, [page]: mergeInk(base.strokes, mine, theirs) };
         setDrawStrokesByPage(drawStrokesRef.current);
       }
     }
   }, []);
+  const saveInkPage = useCallback((page) => {
+    const before = drawSavesRef.current.get(page);
+    const run = (before ? before.then(() => {}, () => {}) : Promise.resolve()).then(() => saveInkPageNow(page));
+    drawSavesRef.current.set(page, run);
+    const settle = () => { if (drawSavesRef.current.get(page) === run) drawSavesRef.current.delete(page); };
+    run.then(settle, settle);
+    return run;
+  }, [saveInkPageNow]);
 
   // A failed save keeps its pages dirty (they used to be dropped before the
   // request, so a lost save lost the ink) and, when the failure may pass (no
@@ -3282,13 +3316,15 @@ export default function Library() {
   // turning the page refetches its annotations, so seeding at turn time would
   // seed from nothing and leave a page that has ink looking blank — and the next
   // stroke would then save over what was there. A page with unsaved ink of its
-  // own is never reseeded, and pages that scroll away are dropped once clean.
+  // own is never reseeded — nor is one whose save is still in flight (a read
+  // that lands meanwhile may predate it) — and pages that scroll away are
+  // dropped once clean.
   useEffect(() => {
     if (drawPage == null) return;
     const next = { ...drawStrokesRef.current };
     let changed = false;
     for (const page of visiblePages) {
-      if (drawDirtyRef.current.has(page)) continue;
+      if (drawDirtyRef.current.has(page) || drawSavesRef.current.has(page)) continue;
       // Not read yet (or the read failed): no working copy, so the page takes
       // no ink (see inkReady) until its real drawing is known.
       if (!annotationsByPage.has(page)) continue;
