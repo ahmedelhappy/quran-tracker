@@ -29,6 +29,13 @@ const maskUri = (uri) => {
   return `${m[1]}${hp[1]}${hp[2] && hp[2] !== '/' ? hp[2] : ''}`;
 };
 
+// The database a masked URI names, or null when it names none: the driver then
+// quietly connects to "test", which for a cleanup script is the wrong database.
+const databaseOf = (masked) => {
+  const m = typeof masked === 'string' ? masked.match(/^mongodb(?:\+srv)?:\/\/[^/]+\/([^/?#]+)/) : null;
+  return m ? m[1] : null;
+};
+
 // Parses the flags these scripts accept. Reads argv only — process.env is never
 // consulted, so an exported MONGODB_URI cannot stand in for --uri.
 const parseTargetArgs = (argv, { allowApply = false } = {}) => {
@@ -52,4 +59,4 @@ const parseTargetArgs = (argv, { allowApply = false } = {}) => {
   return { uri, masked, apply };
 };
 
-module.exports = { maskUri, parseTargetArgs };
+module.exports = { maskUri, databaseOf, parseTargetArgs };

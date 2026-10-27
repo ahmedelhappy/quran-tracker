@@ -8,10 +8,14 @@
 //
 // The database is never taken from .env or MONGODB_URI (see scripts/lib/target.js);
 // the masked host is printed before anything connects. Take a backup first.
+//
+// "Orphaned" means "no User with that id in THIS database", so the wrong target
+// makes everything look orphaned. --apply therefore refuses a URI that names no
+// database (the driver would use "test") and a database with no users at all.
 
 const mongoose = require('mongoose');
 const { userKeyedModels } = require('../utils/userData');
-const { parseTargetArgs } = require('./lib/target');
+const { databaseOf, parseTargetArgs } = require('./lib/target');
 
 // Per user-keyed collection: the userIds that have no User behind them and how
 // many documents they hold. Documents with no userId at all are orphans too.
@@ -25,7 +29,8 @@ const findOrphans = async () => {
     const orphanUserIds = ownerIds.filter((id) => !alive.has(String(id)));
     const filter = { $or: [{ userId: { $in: orphanUserIds } }, { userId: null }] };
     const count = await model.countDocuments(filter);
-    report.push({ model: model.modelName, orphanUserIds, count, filter });
+    const total = await model.estimatedDocumentCount();
+    report.push({ model: model.modelName, orphanUserIds, count, total, filter });
   }
   return report;
 };
@@ -50,13 +55,28 @@ const main = async (argv, log = console.log) => {
 
   log(`Target: ${args.masked}`);
   log(args.apply ? 'Mode: APPLY — orphaned documents will be deleted' : 'Mode: dry run — nothing will be changed');
+  const namesDatabase = !!databaseOf(args.masked);
+  if (!namesDatabase) {
+    log('Warning: the URI names no database, so the driver uses "test". Add /<database> to the URI.');
+    if (args.apply) { log('Refusing to delete: the URI names no database.'); return 1; }
+  }
 
   await mongoose.connect(args.uri, { serverSelectionTimeoutMS: 10000 });
   try {
+    const userCount = await mongoose.model('User').countDocuments();
+    log(`Users: ${userCount}`);
     const report = await findOrphans();
-    for (const r of report) log(`  ${r.model}: ${r.count} orphaned document(s) from ${r.orphanUserIds.length} missing user(s)`);
+    for (const r of report) log(`  ${r.model}: ${r.count} orphaned of ${r.total} document(s) from ${r.orphanUserIds.length} missing user(s)`);
     const total = report.reduce((n, r) => n + r.count, 0);
     log(`Total orphaned documents: ${total}`);
+
+    if (userCount === 0 && total > 0) {
+      // With no users every document counts as orphaned — far likelier the
+      // wrong database than a real cleanup.
+      log('This database has no users, so every document above counts as orphaned. Check the database name in --uri.');
+      if (args.apply) { log('Refusing to delete with no users in the database.'); return 1; }
+      return 0;
+    }
 
     if (args.apply && total > 0) {
       const deleted = await deleteOrphans(report);

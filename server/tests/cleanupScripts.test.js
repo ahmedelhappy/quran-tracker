@@ -134,6 +134,35 @@ describe('scripts/cleanupOrphans.js', () => {
     assert.equal(await mongoose.model('Bookmark').countDocuments(), 1);
     assert.equal(await mongoose.model('Annotation').countDocuments(), 1);
   });
+
+  // A --uri naming the wrong database (or none: the driver then uses "test")
+  // finds no users, and every document there would count as orphaned.
+  test('CLI --apply refuses when the database has no users at all, and deletes nothing', async () => {
+    const someone = new mongoose.Types.ObjectId();
+    await mongoose.model('Bookmark').collection.insertMany([{ userId: someone, pageNumber: 1 }, { userId: someone, pageNumber: 2 }]);
+    const res = runScript('cleanupOrphans.js', ['--uri', memoryUri(), '--apply']);
+    assert.equal(res.code, 1, res.out);
+    assert.match(res.out, /Users: 0/);
+    assert.match(res.out, /no users/i);
+    assert.equal(await mongoose.model('Bookmark').countDocuments(), 2);
+  });
+
+  test('CLI --apply refuses a URI that names no database', async () => {
+    await seedOrphans();
+    const c = mongoose.connection;
+    const res = runScript('cleanupOrphans.js', ['--uri', `mongodb://${c.host}:${c.port}`, '--apply']);
+    assert.equal(res.code, 1, res.out);
+    assert.match(res.out, /names no database/);
+    assert.equal(await mongoose.model('Bookmark').countDocuments(), 3);
+  });
+
+  test('CLI dry run shows the user count and each collection\'s total', async () => {
+    await seedOrphans();
+    const res = runScript('cleanupOrphans.js', ['--uri', memoryUri()]);
+    assert.equal(res.code, 0, res.out);
+    assert.match(res.out, /Users: 1/);
+    assert.match(res.out, /Bookmark: 2 orphaned of 3 document\(s\)/);
+  });
 });
 
 describe('scripts/cleanupInvalidPages.js', () => {
