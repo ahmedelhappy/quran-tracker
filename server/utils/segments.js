@@ -229,11 +229,13 @@ const remainderRanges = (verseKeys, segments) => {
 };
 
 // Fraction (0..1] of a page's verses covered by `segments`. Absent/empty
-// segments means the whole page, per the model's convention.
+// segments means the whole page, per the model's convention. A page number the
+// mushaf does not have (0, 1.5, 700 — stored before M-01's validation) counts as
+// nothing: counting it as 1 is what let such rows inflate totals and the board.
 const pageFraction = (pageNumber, segments) => {
-  if (!segments || segments.length === 0) return 1;
   const meta = PAGE_BY_NUMBER.get(pageNumber);
-  if (!meta || !meta.verseKeys.length) return 1;
+  if (!meta || !meta.verseKeys.length) return 0;
+  if (!segments || segments.length === 0) return 1;
   const ranges = segmentsToRanges(segments, meta.verseKeys);
   const covered = ranges.reduce((sum, [i, j]) => sum + (j - i + 1), 0);
   return covered / meta.verseKeys.length;

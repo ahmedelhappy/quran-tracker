@@ -2,6 +2,7 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
+const { PAGE_RULE, toPageNumber, parsePageList } = require('../utils/pageNumbers');
 // Every write below changes how many pages this user has memorized, which is
 // exactly what the leaderboard ranks — so each one drops the cached board.
 // Without this the board keeps serving a stale rank for up to its whole TTL.
@@ -410,7 +411,15 @@ exports.buildProgressSummary = buildProgressSummary;
 exports.completeOnboarding = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { memorizedPages, dailyNewPages } = req.body;
+    const { dailyNewPages } = req.body;
+
+    // Checked before anything is written, so a bad list leaves the account as it was.
+    let memorizedPages = [];
+    if (req.body.memorizedPages !== undefined) {
+      const parsed = parsePageList(req.body.memorizedPages, 'memorizedPages');
+      if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
+      memorizedPages = parsed.pages;
+    }
 
     const dailyGoal = Math.min(Math.max(parseFloat(dailyNewPages) || 1, 0.5), 10);
 
@@ -420,7 +429,7 @@ exports.completeOnboarding = async (req, res) => {
       planStartDate: new Date(),
     });
 
-    if (memorizedPages && memorizedPages.length > 0) {
+    if (memorizedPages.length > 0) {
       const yesterday = new Date();
       yesterday.setUTCHours(0, 0, 0, 0);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -452,7 +461,7 @@ exports.completeOnboarding = async (req, res) => {
       message: 'Onboarding completed successfully',
       data: {
         dailyNewPages: dailyGoal,
-        memorizedCount: memorizedPages?.length || 0,
+        memorizedCount: memorizedPages.length,
       },
     });
   } catch (error) {
@@ -671,10 +680,11 @@ exports.getTodayTasks = async (req, res) => {
 exports.markPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pageNumber, type, alreadyKnow, segment } = req.body;
+    const { type, alreadyKnow, segment } = req.body;
 
-    if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
-      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    const pageNumber = toPageNumber(req.body.pageNumber);
+    if (pageNumber === null) {
+      return res.status(400).json({ success: false, message: `pageNumber ${PAGE_RULE}` });
     }
 
     const now = new Date();
@@ -775,10 +785,11 @@ exports.markPageComplete = async (req, res) => {
 exports.unmarkPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pageNumber, type } = req.body;
+    const { type } = req.body;
 
-    if (!pageNumber || pageNumber < 1 || pageNumber > 604) {
-      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    const pageNumber = toPageNumber(req.body.pageNumber);
+    if (pageNumber === null) {
+      return res.status(400).json({ success: false, message: `pageNumber ${PAGE_RULE}` });
     }
 
     if (type === 'new') {
@@ -1115,13 +1126,11 @@ exports.getAllProgress = async (req, res) => {
 exports.updateMemorized = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { memorizedPages } = req.body;
-
-    if (!Array.isArray(memorizedPages)) {
-      return res.status(400).json({ success: false, message: 'memorizedPages must be an array' });
-    }
-
-    const newPageSet = new Set(memorizedPages.map(Number).filter(n => n >= 1 && n <= 604));
+    // An invalid entry is a 400, not silently dropped: dropping it would delete
+    // whatever page the client meant by it.
+    const parsed = parsePageList(req.body.memorizedPages, 'memorizedPages');
+    if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
+    const newPageSet = new Set(parsed.pages);
 
     await UserProgress.deleteMany({
       userId,

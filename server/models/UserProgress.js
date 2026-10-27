@@ -10,7 +10,10 @@ const userProgressSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 1,
-    max: 604
+    max: 604,
+    // min/max alone let 1.5 through. The controllers validate before every
+    // write (utils/pageNumbers.js); this is the backstop for document saves.
+    validate: { validator: Number.isInteger, message: 'pageNumber must be an integer' },
   },
   status: {
     type: String,
