@@ -924,6 +924,10 @@ export default function Library() {
   // first page not yet memorized. Both need an account, so this waits until it is
   // known whether there is one: a visitor simply opens page 1.
   const progressReqRef = useRef(0);
+  //
+  // Only the request's own failure is a load failure: the work done with the
+  // reply runs outside that handler, so a bug there surfaces as itself instead
+  // of as "Couldn't load your memorized pages".
   const loadProgress = useCallback(() => {
     const req = ++progressReqRef.current;
     setProgressLoad('loading');
@@ -938,8 +942,9 @@ export default function Library() {
       let nextNew = null;
       for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
       landOn(nextNew ?? 1);
-    }).catch(() => {
+    }, (err) => {
       if (req !== progressReqRef.current) return;
+      console.error('Library: GET /progress/all failed', err.response?.status ?? err.code ?? err);
       setProgressLoad('error');
       landOn(1);
     });
@@ -2680,8 +2685,10 @@ export default function Library() {
 
   // Re-reads memorized/partial pages after a units mutation — cheaper to just
   // refetch than to reconcile every affected page's fraction locally.
-  // A failed refresh keeps what is on screen (it was a real read); a successful
-  // one is a real read too, so it also clears an earlier load error.
+  // A successful one is a real read, so it also clears an earlier load error.
+  // A failed one leaves the screen showing the state from BEFORE the write
+  // that just succeeded, so it is the same load error (ticks off, with Retry)
+  // rather than a silently stale view.
   const refreshMemorizedPages = useCallback(() => {
     if (!signedInRef.current) return;
     const req = progressReqRef.current; // dropped if a sign-out or new load came since
@@ -2691,7 +2698,11 @@ export default function Library() {
       const partial = res.data?.data?.partialPages ?? [];
       setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
       setProgressLoad('ready');
-    }).catch(() => {});
+    }, (err) => {
+      if (req !== progressReqRef.current) return;
+      console.error('Library: refreshing memorized pages failed', err.response?.status ?? err.code ?? err);
+      setProgressLoad('error');
+    });
   }, []);
 
   const cancelMarkVerses = useCallback(() => {

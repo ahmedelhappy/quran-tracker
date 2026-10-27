@@ -273,7 +273,8 @@ export default function Progress() {
       await load();
       showToast(t('progress.changesSaved'), 'success');
       setEditMode(false);
-    } catch {
+    } catch (err) {
+      console.error('Progress: saving map edits failed', err.response?.status ?? err.code ?? err);
       showToast(t('progress.saveFailed'), 'error');
     } finally {
       setSaving(false);
