@@ -111,6 +111,23 @@ describe('Page numbers are validated everywhere (M-01)', () => {
     assert.equal(board.body.data.entries[0].pages, 1);
   });
 
+  test('profile start pages reject fractions instead of truncating them', async () => {
+    const user = await createUser();
+    const a = auth(user._id);
+    for (const field of ['cycleReviewStartPage', 'newMemorizationStartPage']) {
+      for (const bad of [1.5, '4.5', 0, 605, '12abc']) {
+        const res = await request(app).put('/api/auth/profile').set('Authorization', a).send({ [field]: bad });
+        assert.equal(res.status, 400, `${field} ${JSON.stringify(bad)}`);
+      }
+      assert.equal((await User.findById(user._id))[field] ?? null, null, `${field} was never written`);
+      for (const [good, stored] of [[12, 12], ['30', 30], [null, null]]) {
+        const res = await request(app).put('/api/auth/profile').set('Authorization', a).send({ [field]: good });
+        assert.equal(res.status, 200, `${field} ${JSON.stringify(good)}`);
+        assert.equal((await User.findById(user._id))[field] ?? null, stored);
+      }
+    }
+  });
+
   // Until cleanupInvalidPages.js runs, such rows are still stored. The editors
   // save back what GET /all returned, so returning them locked the account out
   // of PUT /memorized: sent back they were a 400, left out they were a 409.

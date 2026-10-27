@@ -8,6 +8,7 @@ const { newPasswordProblem } = require('../utils/passwordPolicy');
 const { loginThrottle } = require('../utils/loginThrottle');
 const { deleteUserData } = require('../utils/userData');
 const chatBudget = require('../utils/chatBudget');
+const { PAGE_RULE, toPageNumber } = require('../utils/pageNumbers');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -317,9 +318,10 @@ exports.updateProfile = async (req, res) => {
       if (v === null) {
         updateData.cycleReviewStartPage = null;
       } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 1 && n <= 604) updateData.cycleReviewStartPage = n;
-        else return res.status(400).json({ success: false, message: 'cycleReviewStartPage must be between 1 and 604' });
+        // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
+        const n = toPageNumber(v);
+        if (n === null) return res.status(400).json({ success: false, message: `cycleReviewStartPage ${PAGE_RULE}` });
+        updateData.cycleReviewStartPage = n;
       }
     }
 
@@ -338,9 +340,10 @@ exports.updateProfile = async (req, res) => {
       if (v === null) {
         updateData.newMemorizationStartPage = null;
       } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 1 && n <= 604) updateData.newMemorizationStartPage = n;
-        else return res.status(400).json({ success: false, message: 'newMemorizationStartPage must be between 1 and 604' });
+        // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
+        const n = toPageNumber(v);
+        if (n === null) return res.status(400).json({ success: false, message: `newMemorizationStartPage ${PAGE_RULE}` });
+        updateData.newMemorizationStartPage = n;
       }
     }
 
