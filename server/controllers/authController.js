@@ -1,12 +1,13 @@
 const User = require('../models/User');
 const { EMAIL_MAX_LENGTH, EMAIL_PATTERN } = User;
 const UserProgress = require('../models/UserProgress');
-const Todo = require('../models/Todo');
 const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
 const { newPasswordProblem } = require('../utils/passwordPolicy');
 const { loginThrottle } = require('../utils/loginThrottle');
+const { deleteUserData } = require('../utils/userData');
+const chatBudget = require('../utils/chatBudget');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -493,10 +494,19 @@ exports.changePassword = async (req, res) => {
 exports.deleteAccount = async (req, res) => {
   try {
     const userId = req.user.id;
+    const { email } = req.user;
 
-    await UserProgress.deleteMany({ userId });
-    await Todo.deleteMany({ userId });
-    await User.findByIdAndDelete(userId);
+    // Every collection keyed by userId, then the account itself — the UI promises
+    // "your account and all associated data" (H-01).
+    await deleteUserData(userId);
+
+    // The account may have been on the leaderboard; without this its name and
+    // rank keep being served from the cache for up to five minutes.
+    leaderboardCache.clear();
+    // Forget the small in-memory state still keyed to this account, so nothing
+    // about it lingers in the process once the account is gone.
+    chatBudget.forget(userId);
+    if (email) loginThrottle.reset(email);
 
     res.status(200).json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {

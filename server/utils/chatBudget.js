@@ -31,4 +31,11 @@ const tryConsume = (userId, limit, now = new Date()) => {
   return true;
 };
 
-module.exports = { tryConsume };
+// Drops a user's count — called when the account is deleted, so a gone account
+// leaves nothing behind in this process.
+const forget = (userId) => { used.delete(String(userId)); };
+
+// The count currently held for a user (tests).
+const countFor = (userId) => used.get(String(userId)) || 0;
+
+module.exports = { tryConsume, forget, countFor };
