@@ -6,15 +6,27 @@
 //   - the host is printed, credentials masked, before anything connects;
 //   - writes need a second, separate flag (--apply) on scripts that support it.
 
-const MONGO_URI = /^(mongodb(?:\+srv)?:\/\/)(?:[^@/]*@)?([^/?#]+)(\/[^?#]*)?/;
+const SCHEME = /^(mongodb(?:\+srv)?:\/\/)(.+)$/;
+const HOSTS_AND_PATH = /^([^/?#]+)(\/[^?#]*)?/;
+// One host of a seed list: a name or address, or a bracketed IPv6 address, and
+// an optional numeric port. Anything else in the host part (a "user:pass" with
+// no '@', say) is not printed.
+const HOST = /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._%-]+)(?::\d+)?$/;
 
 // "mongodb+srv://user:pass@cluster0.x.mongodb.net/app?retryWrites=true" →
 // "mongodb+srv://cluster0.x.mongodb.net/app". Credentials and query options are
-// dropped; null when the string is not a MongoDB URI at all.
+// dropped; null when the string is not a MongoDB URI whose hosts can be shown
+// safely. The credentials end at the LAST '@': a password typed with a raw '@'
+// or '/' in it ("user:p@ss@host") used to leave part of itself in the output.
+// Nothing before the last '@' is ever printed, so whatever the password holds
+// cannot reach the console.
 const maskUri = (uri) => {
-  const m = typeof uri === 'string' ? uri.match(MONGO_URI) : null;
+  const m = typeof uri === 'string' ? uri.match(SCHEME) : null;
   if (!m) return null;
-  return `${m[1]}${m[2]}${m[3] && m[3] !== '/' ? m[3] : ''}`;
+  const afterCredentials = m[2].slice(m[2].lastIndexOf('@') + 1);
+  const hp = afterCredentials.match(HOSTS_AND_PATH);
+  if (!hp || !hp[1].split(',').every((h) => HOST.test(h))) return null;
+  return `${m[1]}${hp[1]}${hp[2] && hp[2] !== '/' ? hp[2] : ''}`;
 };
 
 // Parses the flags these scripts accept. Reads argv only — process.env is never
@@ -34,7 +46,9 @@ const parseTargetArgs = (argv, { allowApply = false } = {}) => {
   if (help) return { help: true };
   if (!uri) return { error: 'Refusing to run without an explicit --uri <mongodb-uri> (MONGODB_URI and .env are never read).' };
   const masked = maskUri(uri);
-  if (!masked) return { error: '--uri must be a mongodb:// or mongodb+srv:// connection string.' };
+  // The URI itself is never echoed back: it may be exactly the string that
+  // could not be masked.
+  if (!masked) return { error: '--uri must be a mongodb:// or mongodb+srv:// connection string (percent-encode any @ / : ? # in the password).' };
   return { uri, masked, apply };
 };
 

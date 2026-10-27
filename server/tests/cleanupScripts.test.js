@@ -38,6 +38,18 @@ describe('scripts/lib/target.js — explicit target only', () => {
     assert.equal(maskUri(undefined), null);
   });
 
+  test('maskUri never prints part of a password that holds a raw @ / ? or :', () => {
+    // The first two used to print "ss@cluster0…" and the whole URI.
+    assert.equal(maskUri('mongodb+srv://user:p@ss@cluster0.x.net/app'), 'mongodb+srv://cluster0.x.net/app');
+    assert.equal(maskUri('mongodb+srv://user:pa/ss@host/db'), 'mongodb+srv://host/db');
+    assert.equal(maskUri('mongodb://user:pa?ss@host/db'), 'mongodb://host/db');
+    assert.equal(maskUri('mongodb://u:p@[::1]:27017/db'), 'mongodb://[::1]:27017/db');
+    // No '@' at all, but a "user:pass" where the host should be: not printable.
+    assert.equal(maskUri('mongodb://user:pass/db'), null);
+    const res = parseTargetArgs(['--uri', 'mongodb://user:s3cret/db']);
+    assert.ok(res.error && !res.error.includes('s3cret'), 'the error does not echo the URI');
+  });
+
   test('parseTargetArgs never falls back to MONGODB_URI', () => {
     const saved = process.env.MONGODB_URI;
     process.env.MONGODB_URI = 'mongodb://should-never-be-used:27017/prod';
