@@ -215,7 +215,7 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
         </div>
       ) : (
         <button
-          onClick={() => onComplete(pageNumber, type)}
+          onClick={() => onComplete(pageNumber, type, page.segment)}
           disabled={marking}
           className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${
             isNew
@@ -585,7 +585,9 @@ export default function Dashboard() {
   const isHafiz = (stats?.totalMemorized ?? 0) >= 604;
   const isPaused = !isHafiz && (user?.pauseNewMemorization === true);
 
-  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new'));
+  // Each new task carries its half on a half-page plan; the server refuses a
+  // bare completion of a page it serves as a half (SEGMENT_REQUIRED).
+  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new', p.segment));
   const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
 
   const handleFirstCycleResume = async () => {
