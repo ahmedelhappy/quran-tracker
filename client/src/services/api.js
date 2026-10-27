@@ -32,6 +32,28 @@ const dropToken = (token) => {
 };
 const tokenOf = (config) => config?.headers?.Authorization?.replace(/^Bearer /, '') || null;
 
+// The account a token names (its payload's `id`), read without verifying it —
+// only to tell whether two tokens are the same person's, never to trust one.
+const accountOf = (token) => {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).id ?? null;
+  } catch {
+    return null;
+  }
+};
+// The token to send a write with that was made under `boundToken`: this tab's
+// current token while it is still the same account's (it may be a fresh one,
+// after a password change), otherwise the token it was made under. A save that
+// is still pending when another tab signs in as someone else must go to the
+// account it belongs to — never ride along on the new session's token (M-08).
+export const tokenForWriteBy = (boundToken) => {
+  if (!boundToken) return sessionToken;
+  if (sessionToken && accountOf(sessionToken) === accountOf(boundToken)) return sessionToken;
+  return boundToken;
+};
+const bearer = (token) => (token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+
 // Add token to every request automatically (a caller that sets its own header —
 // the cross-tab session check — keeps it).
 API.interceptors.request.use((config) => {
@@ -161,19 +183,21 @@ export const annotationsAPI = {
   create: (data) => API.post('/annotations', data),
   update: (id, data) => API.put(`/annotations/${id}`, data),
   remove: (id) => API.delete(`/annotations/${id}`),
-  // Upsert a page's free-form drawing (empty strokes deletes it).
-  saveDrawing: (data) => API.put('/annotations/drawing', data),
+  // Upsert a page's free-form drawing (empty strokes deletes it). `token`: the
+  // one the ink was drawn under (see tokenForWriteBy).
+  saveDrawing: (data, token) => API.put('/annotations/drawing', data, bearer(tokenForWriteBy(token))),
   // The same save while the page is being closed: a keepalive fetch, which the
   // browser completes after unload (an XHR would be cancelled). Fire and forget —
   // nothing is left to show the result to. Bodies are capped at 64 KB, the same
   // as a page's drawing.
-  saveDrawingOnUnload: (data) => {
-    if (!sessionToken) return;
+  saveDrawingOnUnload: (data, token) => {
+    const auth = tokenForWriteBy(token);
+    if (!auth) return;
     try {
       fetch(`${API.defaults.baseURL}/annotations/drawing`, {
         method: 'PUT',
         keepalive: true,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
         body: JSON.stringify(data),
       }).catch(() => {});
     } catch { /* body over the keepalive limit: nothing more can be done */ }

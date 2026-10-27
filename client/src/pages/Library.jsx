@@ -31,7 +31,7 @@ import TodoList, { TodoSummary } from '../components/TodoList';
 import SearchFindBar from '../components/SearchFindBar';
 import RecentPagesRow from '../components/RecentPagesRow';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
-import { progressAPI, bookmarksAPI, annotationsAPI } from '../services/api';
+import { progressAPI, bookmarksAPI, annotationsAPI, getSessionToken } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useTimerEvent } from '../hooks/useTimer';
@@ -519,9 +519,10 @@ export default function Library() {
   const drawDirtyRef = useRef(new Set());     // pages with unsaved strokes
   const drawSaveTimerRef = useRef(null);
   const drawStrokesRef = useRef({});          // page -> strokes, synchronous mirror
-  // page -> { at, strokes }: the saved drawing a page's working copy is based on
-  // (its updatedAt, null for none). Set only from a successful read or save; a
-  // save sends it as its precondition (see saveInkPage).
+  // page -> { at, strokes, token }: the saved drawing a page's working copy is
+  // based on (its updatedAt, null for none) and the session token it was drawn
+  // under. Set only from a successful read or save; a save sends `at` as its
+  // precondition and goes to `token`'s account (see saveInkPage).
   const drawBaseRef = useRef({});
   const undoStacksRef = useRef({});           // page -> past snapshots (cap 50)
   const redoStacksRef = useRef({});
@@ -3166,22 +3167,28 @@ export default function Library() {
   // the current doc, and the save is MERGED onto it instead of erasing it: the
   // other side's strokes, plus the ones added here, minus the ones erased here.
   // Uses refs only, so the unmount flush can call it too.
+  //
+  // The ink belongs to the account it was drawn under. When another tab signs
+  // in as someone else, this tab adopts their token and the Library unmounts —
+  // and its last flush went out on the NEW token, into the other account,
+  // where the 409 merge then laid this ink over theirs (M-08). Each save is
+  // sent for the token its page was seeded under (see tokenForWriteBy).
   const saveInkPage = useCallback(async (page) => {
     for (let attempt = 0; ; attempt++) {
       const base = drawBaseRef.current[page];
       if (!base) throw Object.assign(new Error('ink not loaded'), { notLoaded: true });
       const strokes = drawStrokesRef.current[page] ?? [];
       try {
-        const res = await annotationsAPI.saveDrawing({ pageNumber: page, strokes, baseUpdatedAt: base.at });
+        const res = await annotationsAPI.saveDrawing({ pageNumber: page, strokes, baseUpdatedAt: base.at }, base.token);
         const doc = res.data?.data ?? null;
-        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: doc?.strokes ?? [] };
+        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: doc?.strokes ?? [], token: base.token };
         return { merged: attempt > 0 };
       } catch (e) {
         if (attempt >= 2 || e.response?.status !== 409 || e.response.data?.code !== 'DRAWING_CHANGED') throw e;
         const current = e.response.data.data;
         const theirs = current?.strokes ?? [];
         const merged = mergeInk(base.strokes, drawStrokesRef.current[page] ?? [], theirs);
-        drawBaseRef.current[page] = { at: current?.updatedAt ?? null, strokes: theirs };
+        drawBaseRef.current[page] = { at: current?.updatedAt ?? null, strokes: theirs, token: base.token };
         drawStrokesRef.current = { ...drawStrokesRef.current, [page]: merged };
         setDrawStrokesByPage(drawStrokesRef.current);
       }
@@ -3290,7 +3297,7 @@ export default function Library() {
       const have = next[page];
       if (have === undefined || (have.length === 0 && saved.length > 0)) {
         next[page] = saved;
-        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: saved };
+        drawBaseRef.current[page] = { at: doc?.updatedAt ?? null, strokes: saved, token: getSessionToken() };
         undoStacksRef.current[page] = [];    // history is session-local, per page
         redoStacksRef.current[page] = [];
         dropInkSteps(page);
@@ -3589,7 +3596,7 @@ export default function Library() {
       for (const page of drawDirtyRef.current) {
         const base = drawBaseRef.current[page];
         if (!base) continue;
-        annotationsAPI.saveDrawingOnUnload({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [], baseUpdatedAt: base.at });
+        annotationsAPI.saveDrawingOnUnload({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [], baseUpdatedAt: base.at }, base.token);
       }
     };
     document.addEventListener('visibilitychange', onHide);
