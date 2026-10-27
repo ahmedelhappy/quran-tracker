@@ -898,8 +898,12 @@ exports.getEstimate = async (req, res) => {
       return res.status(400).json({ success: false, message: 'dailyPages must be between 0.5 and 10' });
     }
 
-    const totalMemorized = await UserProgress.countDocuments({ userId, status: 'memorized' });
-    const remainingPages = 604 - totalMemorized;
+    // Partial pages count by their memorized fraction, as in every other stat —
+    // counting documents made half a page look like a whole one here alone (L-11).
+    // Two decimals keep float noise out of remainingPages (0 must stay exactly 0).
+    const progress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const totalMemorized = parseFloat(totalMemorizedFraction(progress).toFixed(2));
+    const remainingPages = parseFloat((604 - totalMemorized).toFixed(2));
 
     const offDays = user.offDays || [];
     const activeDaysPerWeek = 7 - offDays.length;
