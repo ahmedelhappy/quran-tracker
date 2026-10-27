@@ -18,6 +18,7 @@ import {
   hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
   coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
+import { formatPageList } from '../utils/formatNumber';
 import { useDragSelect } from '../hooks/useDragSelect';
 import { newPasswordProblem } from '../utils/passwordRules';
 
@@ -257,8 +258,19 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
-    } catch {
-      showToast(t('settings.progressUpdateFailed'), 'error');
+    } catch (err) {
+      const stale = err.response?.status === 409 && err.response.data?.code === 'CONFIRM_REMOVAL'
+        ? err.response.data.data?.unconfirmed ?? [] : [];
+      if (stale.length) {
+        // Pages memorized somewhere else after the editor opened: nothing was
+        // saved (the refusal comes before the verse ranges). Reload; the editor
+        // re-seeds itself from the fresh progress, so the next save starts from
+        // what is really stored instead of hitting the same refusal.
+        onSave();
+        showToast(t(stale.length === 1 ? 'settings.staleSave' : 'settings.staleSavePlural', { pages: formatPageList(stale, isArabic) }), 'info');
+      } else {
+        showToast(t('settings.progressUpdateFailed'), 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -1872,6 +1884,9 @@ export default function Settings() {
         ]).then(([juzRes, allRes]) => {
           setMemorizedJuz(juzRes.data.data);
           setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
+          // The editor seeds itself from both, so a refresh must carry both —
+          // stale partials would re-seed the half pages wrongly.
+          setPartialPages(allRes.data.data.partialPages ?? []);
         }).catch(() => {})}
         memorizedPageNums={memorizedPageNums}
         partialPages={partialPages}

@@ -12,7 +12,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
-import { round1 } from '../utils/formatNumber';
+import { round1, formatPageList } from '../utils/formatNumber';
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 // Sun..Sat rows; labels only on Mon/Wed/Fri like GitHub's contribution graph.
@@ -264,8 +264,20 @@ export default function Progress() {
       await load();
       showToast(t('progress.changesSaved'), 'success');
       setEditMode(false);
-    } catch {
-      showToast(t('progress.saveFailed'), 'error');
+    } catch (err) {
+      const stale = err.response?.status === 409 && err.response.data?.code === 'CONFIRM_REMOVAL'
+        ? err.response.data.data?.unconfirmed ?? [] : [];
+      if (stale.length) {
+        // Pages memorized somewhere else after this view loaded: nothing was
+        // saved. Keep them in the draft (the user never saw them, so never chose
+        // to drop them) and reload, so the next save neither removes them nor
+        // hits the same refusal.
+        setDraft(prev => new Set([...prev, ...stale]));
+        await load();
+        showToast(t(stale.length === 1 ? 'progress.staleSave' : 'progress.staleSavePlural', { pages: formatPageList(stale, isArabic) }), 'info');
+      } else {
+        showToast(t('progress.saveFailed'), 'error');
+      }
     } finally {
       setSaving(false);
     }
