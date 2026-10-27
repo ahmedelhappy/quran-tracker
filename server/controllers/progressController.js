@@ -788,17 +788,17 @@ exports.markPageComplete = async (req, res) => {
       }
       // What undo restores: the earlier part of a partly memorized page, or
       // nothing at all when this completion creates the document.
-      const undo = existing
+      const undoNew = existing
         ? {
-          kind: 'new', at: now, existed: true,
+          at: now, existed: true,
           status: existing.status, memorizedDate: existing.memorizedDate,
           lastReviewedDate: existing.lastReviewedDate, reviewCount: existing.reviewCount,
           segments: (existing.segments || []).map(s => ({ from: s.from, to: s.to })),
         }
-        : { kind: 'new', at: now, existed: false };
+        : { at: now, existed: false };
       await UserProgress.findOneAndUpdate(
         { userId, pageNumber },
-        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments, undo }, $inc: { reviewCount: 1 } },
+        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments, undoNew }, $inc: { reviewCount: 1 } },
         { upsert: true, runValidators: true }
       );
     } else if (type === 'review') {
@@ -808,13 +808,13 @@ exports.markPageComplete = async (req, res) => {
       }
       // Keep the review it replaces, so undo restores the real previous date
       // (possibly "never reviewed") rather than inventing yesterday.
-      const undo = {
-        kind: 'review', at: now, existed: true,
+      const undoReview = {
+        at: now, existed: true,
         lastReviewedDate: existing.lastReviewedDate, reviewCount: existing.reviewCount,
       };
       await UserProgress.updateOne(
         { _id: existing._id },
-        { $set: { lastReviewedDate: now, undo }, $inc: { reviewCount: 1 } }
+        { $set: { lastReviewedDate: now, undoReview }, $inc: { reviewCount: 1 } }
       );
     } else {
       return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
@@ -879,36 +879,69 @@ exports.unmarkPageComplete = async (req, res) => {
     }
 
     const todayString = getDateString(new Date());
-    const progress = await UserProgress.findOne({ userId, pageNumber }).select('+undo');
-    // The snapshot markPageComplete left, if it belongs to a completion of this
-    // kind made today (see the model). Without one — a completion recorded
-    // before snapshots existed — fall back to the old behaviour below.
-    const snap = progress?.undo;
-    const snapToday = !!snap && snap.kind === type && getDateString(snap.at) === todayString;
+    const progress = await UserProgress.findOne({ userId, pageNumber }).select('+undoNew +undoReview');
+    // The snapshots markPageComplete left, one per kind, when they belong to a
+    // completion made today (see the model). Both can be live at once: on a
+    // half-page plan the same page is today's new half and a review of the half
+    // memorized yesterday, done in either order.
+    const fromToday = (snap) => (snap && getDateString(snap.at) === todayString ? snap : null);
+    const newSnap = fromToday(progress?.undoNew);
+    const reviewSnap = fromToday(progress?.undoReview);
 
     if (type === 'new') {
       if (!progress || !progress.memorizedDate || getDateString(progress.memorizedDate) !== todayString) {
         return res.status(400).json({ success: false, message: 'Page was not memorized today' });
       }
-      if (snapToday && snap.existed) {
-        // The page had progress before today's completion (e.g. its first half,
-        // memorized on an earlier day): put that back instead of deleting it.
-        await UserProgress.updateOne(
-          { _id: progress._id },
-          {
-            $set: {
-              status: snap.status || 'memorized',
-              memorizedDate: snap.memorizedDate ?? null,
-              lastReviewedDate: snap.lastReviewedDate ?? null,
-              reviewCount: snap.reviewCount ?? 0,
-              segments: (snap.segments || []).map(s => ({ from: s.from, to: s.to })),
-            },
-            $unset: { undo: 1 },
-          }
-        );
-      } else {
+      if (newSnap && !newSnap.existed) {
         // Today's completion created the page's progress: undoing removes it.
         await UserProgress.deleteOne({ _id: progress._id });
+      } else if (newSnap) {
+        // The page had progress before today's completion (e.g. its first half,
+        // memorized on an earlier day): put that back instead of deleting it.
+        const restored = {
+          status: newSnap.status || 'memorized',
+          memorizedDate: newSnap.memorizedDate ?? null,
+          segments: (newSnap.segments || []).map(s => ({ from: s.from, to: s.to })),
+        };
+        if (reviewSnap && reviewSnap.at > newSnap.at) {
+          // A review made after it still stands: take back only the 'new' —
+          // its count — and re-base the review's snapshot onto the pre-'new'
+          // state, so undoing the review later lands exactly there.
+          await UserProgress.updateOne(
+            { _id: progress._id },
+            {
+              $set: {
+                ...restored,
+                'undoReview.lastReviewedDate': newSnap.lastReviewedDate ?? null,
+                'undoReview.reviewCount': newSnap.reviewCount ?? 0,
+              },
+              $inc: { reviewCount: -1 },
+              $unset: { undoNew: 1 },
+            }
+          );
+        } else {
+          await UserProgress.updateOne(
+            { _id: progress._id },
+            {
+              $set: { ...restored, lastReviewedDate: newSnap.lastReviewedDate ?? null, reviewCount: newSnap.reviewCount ?? 0 },
+              $unset: { undoNew: 1 },
+            }
+          );
+        }
+      } else if (getDateString(progress.createdAt) === todayString) {
+        // No snapshot (a completion recorded before snapshots existed, or the
+        // earlier of two halves done today), but the document itself is from
+        // today, so nothing older can be lost by removing it.
+        await UserProgress.deleteOne({ _id: progress._id });
+      } else {
+        // No snapshot and the page has history from before today: what it
+        // looked like before cannot be known, and deleting it would throw that
+        // history away (L-11). Refuse rather than guess.
+        return res.status(409).json({
+          success: false,
+          code: 'UNDO_UNAVAILABLE',
+          message: `Page ${pageNumber}'s earlier state is unknown, so this completion cannot be undone`,
+        });
       }
     } else {
       if (!progress || progress.status !== 'memorized') {
@@ -917,16 +950,39 @@ exports.unmarkPageComplete = async (req, res) => {
       if (!progress.lastReviewedDate || getDateString(progress.lastReviewedDate) !== todayString) {
         return res.status(400).json({ success: false, message: 'Page was not reviewed today' });
       }
-      let restored;
-      if (snapToday) {
-        restored = { lastReviewedDate: snap.lastReviewedDate ?? null, reviewCount: snap.reviewCount ?? 0 };
+      if (reviewSnap && newSnap && newSnap.at > reviewSnap.at) {
+        // A 'new' made after the review moved lastReviewedDate itself and
+        // stands: take back only the review's count, and re-base the 'new'
+        // snapshot onto the pre-review state.
+        await UserProgress.updateOne(
+          { _id: progress._id },
+          {
+            $set: {
+              'undoNew.lastReviewedDate': reviewSnap.lastReviewedDate ?? null,
+              'undoNew.reviewCount': reviewSnap.reviewCount ?? 0,
+            },
+            $inc: { reviewCount: -1 },
+            $unset: { undoReview: 1 },
+          }
+        );
+      } else if (reviewSnap) {
+        await UserProgress.updateOne(
+          { _id: progress._id },
+          { $set: { lastReviewedDate: reviewSnap.lastReviewedDate ?? null, reviewCount: reviewSnap.reviewCount ?? 0 }, $unset: { undoReview: 1 } }
+        );
+      } else if (newSnap) {
+        // Only today's 'new' dated it today — there is no review to undo.
+        return res.status(400).json({ success: false, message: 'Page was not reviewed today' });
       } else {
+        // A review recorded before snapshots existed: the old approximation.
         const yesterday = new Date();
         yesterday.setUTCDate(yesterday.getUTCDate() - 1);
         yesterday.setUTCHours(0, 0, 0, 0);
-        restored = { lastReviewedDate: yesterday, reviewCount: Math.max(0, (progress.reviewCount || 0) - 1) };
+        await UserProgress.updateOne(
+          { _id: progress._id },
+          { $set: { lastReviewedDate: yesterday, reviewCount: Math.max(0, (progress.reviewCount || 0) - 1) } }
+        );
       }
-      await UserProgress.updateOne({ _id: progress._id }, { $set: restored, $unset: { undo: 1 } });
     }
 
     const currentStreak = await reconcileStreakAfterUndo(userId);
