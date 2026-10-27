@@ -1120,9 +1120,27 @@ exports.getAllProgress = async (req, res) => {
   }
 };
 
+// Start of yesterday (UTC) — the date given to pages added through an editor, so
+// they land in today's review queue rather than counting as today's new pages.
+const startOfYesterdayUTC = () => {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d;
+};
+
 // @desc    Update memorized pages — replace existing set (add new, delete removed)
 // @route   PUT /api/progress/memorized
 // @access  Private
+//
+// A replace deletes every page the client left out, so a client whose view is
+// stale (another tab or device marked pages since it loaded) or empty (its load
+// failed) would wipe real progress — dates, review counts — with one save (H-02).
+// Deleting is therefore explicit: the request must list, in confirmRemoval,
+// every page it expects the replace to delete. If the server would delete any
+// page the client did not name, nothing is written and the answer is a 409
+// carrying the pages it would have removed, for the client to show and confirm.
+// A save that only adds pages needs no confirmation.
 exports.updateMemorized = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -1132,16 +1150,30 @@ exports.updateMemorized = async (req, res) => {
     if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
     const newPageSet = new Set(parsed.pages);
 
-    await UserProgress.deleteMany({
-      userId,
-      status: 'memorized',
-      pageNumber: { $nin: Array.from(newPageSet) },
-    });
+    const confirmed = parsePageList(req.body.confirmRemoval ?? [], 'confirmRemoval');
+    if (confirmed.error) return res.status(400).json({ success: false, message: confirmed.error });
+    const confirmedSet = new Set(confirmed.pages);
+
+    const current = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1 });
+    const wouldRemove = current.map(d => d.pageNumber).filter(p => !newPageSet.has(p)).sort((a, b) => a - b);
+    const unconfirmed = wouldRemove.filter(p => !confirmedSet.has(p));
+    if (unconfirmed.length) {
+      return res.status(409).json({
+        success: false,
+        code: 'CONFIRM_REMOVAL',
+        message: `This would remove ${wouldRemove.length} memorized page(s) the request did not confirm`,
+        data: { wouldRemove, unconfirmed },
+      });
+    }
+
+    // Delete exactly the confirmed pages computed above — never "everything not
+    // in the list", which would also catch a page marked since the read.
+    if (wouldRemove.length) {
+      await UserProgress.deleteMany({ userId, status: 'memorized', pageNumber: { $in: wouldRemove } });
+    }
 
     if (newPageSet.size > 0) {
-      const yesterday = new Date();
-      yesterday.setUTCHours(0, 0, 0, 0);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterday = startOfYesterdayUTC();
 
       const bulkOps = Array.from(newPageSet).map(pageNumber => ({
         updateOne: {
@@ -1175,10 +1207,73 @@ exports.updateMemorized = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Memorized pages updated',
-      data: { memorizedCount: newPageSet.size },
+      data: { memorizedCount: newPageSet.size, removed: wouldRemove },
     });
   } catch (error) {
     console.error('UpdateMemorized error:', error);
+    serverError(res, 'Error updating memorized pages', error);
+  }
+};
+
+// @desc    Add and/or remove whole pages without replacing the set
+// @route   PATCH /api/progress/memorized  { add?: [pages], remove?: [pages] }
+// @access  Private
+//
+// The delta counterpart to the replace above, for single-page ticks and editors
+// that know exactly which pages the user changed: only the named pages are
+// touched, so a stale or failed load can never cost the user any other page.
+// "add" makes the whole page memorized (a partly memorized page is completed, a
+// page already full is left as it is, a new page is dated yesterday like the
+// editor's); "remove" deletes the page's progress, full or partial.
+exports.changeMemorized = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const add = parsePageList(req.body.add ?? [], 'add');
+    if (add.error) return res.status(400).json({ success: false, message: add.error });
+    const remove = parsePageList(req.body.remove ?? [], 'remove');
+    if (remove.error) return res.status(400).json({ success: false, message: remove.error });
+    const removeSet = new Set(remove.pages);
+    const both = add.pages.filter(p => removeSet.has(p));
+    if (both.length) {
+      return res.status(400).json({ success: false, message: `A page cannot be both added and removed (${both.join(', ')})` });
+    }
+    if (!add.pages.length && !remove.pages.length) {
+      return res.status(400).json({ success: false, message: 'Nothing to change: send add and/or remove' });
+    }
+
+    const yesterday = startOfYesterdayUTC();
+    const bulkOps = [
+      ...add.pages.map(pageNumber => ({
+        updateOne: {
+          filter: { userId, pageNumber },
+          update: {
+            $set: { status: 'memorized', segments: [] },
+            $setOnInsert: { userId, pageNumber, memorizedDate: yesterday, lastReviewedDate: yesterday, reviewCount: 0 },
+          },
+          upsert: true,
+        },
+      })),
+      ...(remove.pages.length ? [{ deleteMany: { filter: { userId, pageNumber: { $in: remove.pages } } } }] : []),
+    ];
+    await UserProgress.bulkWrite(bulkOps, { ordered: true });
+
+    leaderboardCache.clear();
+
+    const allDocs = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const totalMemorized = totalMemorizedFraction(allDocs);
+    res.status(200).json({
+      success: true,
+      message: 'Memorized pages updated',
+      data: {
+        added: add.pages,
+        removed: remove.pages,
+        totalMemorized,
+        fullPages: allDocs.filter(d => !d.segments || d.segments.length === 0).length,
+        percentage: parseFloat(((totalMemorized / 604) * 100).toFixed(1)),
+      },
+    });
+  } catch (error) {
+    console.error('ChangeMemorized error:', error);
     serverError(res, 'Error updating memorized pages', error);
   }
 };

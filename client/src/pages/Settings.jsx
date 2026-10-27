@@ -245,7 +245,12 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
       // the units endpoint, which writes them as partial `segments`. The remainder
       // is merged first, so a whole hizb of quarters costs one request, not four.
       const { fullPages, leftovers } = splitCoverageForSave(coverage);
-      await progressAPI.updateMemorized({ memorizedPages: fullPages });
+      // Removals must be named: every loaded page that is not saved whole
+      // (including partial pages re-added just below). Anything memorized since
+      // the editor loaded makes the server refuse (409) rather than delete it.
+      const keep = new Set(fullPages);
+      const confirmRemoval = memorizedPageNums.filter(p => !keep.has(p));
+      await progressAPI.updateMemorized({ memorizedPages: fullPages, confirmRemoval });
       for (const ref of toVerseKeyRanges(leftovers)) {
         await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
       }

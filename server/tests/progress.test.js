@@ -632,9 +632,10 @@ describe('Progress API — spaced repetition', () => {
     await addMemorizedPage(user._id, 9, { memorizedDate: daysAgo(10), lastReviewedDate: daysAgo(10) });
 
     // The whole-page editor sends the full desired set: keep 1 and 5, drop 9, add 10.
+    // Dropping a page has to be confirmed (H-02).
     const res = await request(app).put('/api/progress/memorized')
       .set('Authorization', auth)
-      .send({ memorizedPages: [1, 5, 10] });
+      .send({ memorizedPages: [1, 5, 10], confirmRemoval: [9] });
     assert.equal(res.status, 200);
 
     // Page 1's partial segment survives — NOT silently promoted to a full page.

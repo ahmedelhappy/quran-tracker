@@ -257,7 +257,10 @@ export default function Progress() {
     try {
       // updateMemorized is segment-preserving: pages already memorized keep their
       // verse segments, only added/removed whole pages change. See the server note.
-      await progressAPI.updateMemorized({ memorizedPages: Array.from(draft) });
+      // Removals must be named: exactly the loaded pages the draft dropped. A page
+      // memorized elsewhere since this view loaded makes the server refuse (409).
+      const confirmRemoval = [...memorizedSet].filter(p => !draft.has(p));
+      await progressAPI.updateMemorized({ memorizedPages: Array.from(draft), confirmRemoval });
       await load();
       showToast(t('progress.changesSaved'), 'success');
       setEditMode(false);

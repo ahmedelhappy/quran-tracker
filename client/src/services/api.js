@@ -53,6 +53,8 @@ export const authAPI = {
 export const progressAPI = {
   completeOnboarding: (data) => API.post('/progress/onboarding', data),
   updateMemorized: (data) => API.put('/progress/memorized', data),
+  // { add?: [pages], remove?: [pages] } — touches only the named pages.
+  changeMemorized: (data) => API.patch('/progress/memorized', data),
   resetProgress: () => API.delete('/progress/reset'),
   getTodayTasks: (params) => API.get('/progress/today', { params }),
   markComplete: (data) => API.post('/progress/complete', data),

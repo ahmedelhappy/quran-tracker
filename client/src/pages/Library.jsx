@@ -3499,7 +3499,10 @@ export default function Library() {
       setPartialPages(nextPartial);
     }
     try {
-      await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages) });
+      // confirmRemoval names the one page this untick removes; if the server
+      // would remove any other (this view is stale or its load failed) it
+      // refuses with a 409 and nothing is deleted.
+      await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages), confirmRemoval: [page] });
       showToast(t('library.unmarkedToast', { n: fmtNum(page) }), 'success');
     } catch {
       setMemorizedPages(prevPages); // roll back the optimistic change

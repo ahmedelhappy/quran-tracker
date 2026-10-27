@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   completeOnboarding,
   updateMemorized,
+  changeMemorized,
   resetProgress,
   getTodayTasks,
   markPageComplete,
@@ -23,7 +24,8 @@ router.use(protect);
 // so a Mongo-operator payload can never reach a query. Value ranges are checked
 // in the controller.
 const onboardingSchema = { memorizedPages: 'numberArray', dailyNewPages: 'number' };
-const memorizedSchema = { memorizedPages: 'numberArray' };
+const memorizedSchema = { memorizedPages: 'numberArray', confirmRemoval: 'numberArray' };
+const memorizedDeltaSchema = { add: 'numberArray', remove: 'numberArray' };
 const completeSchema = { pageNumber: 'number', type: 'string', alreadyKnow: 'boolean' };
 const uncompleteSchema = { pageNumber: 'number', type: 'string' };
 // `ref` varies in shape by unit (a number for juz/hizb/rub/surah/page, an
@@ -34,8 +36,11 @@ const unitsSchema = { action: 'string', unit: 'string' };
 // Onboarding
 router.post('/onboarding', validateBody(onboardingSchema), completeOnboarding);
 
-// Edit memorized pages (Settings)
+// Edit memorized pages (Settings) — a replace; removals must be confirmed
 router.put('/memorized', validateBody(memorizedSchema), updateMemorized);
+
+// Add/remove named whole pages without replacing the set
+router.patch('/memorized', validateBody(memorizedDeltaSchema), changeMemorized);
 
 // Add/remove memorization by unit (Juz, Hizb, ¼-Hizb, Surah, page, verse range)
 router.put('/units', validateBody(unitsSchema), updateUnits);
