@@ -57,6 +57,11 @@ export const progressAPI = {
   changeMemorized: (data) => API.patch('/progress/memorized', data),
   resetProgress: () => API.delete('/progress/reset'),
   getTodayTasks: (params) => API.get('/progress/today', { params }),
+  // The streak check-in for a rest day or a day with nothing left to do. The GET
+  // above writes nothing, so every screen that shows today's plan sends this
+  // after it (fire and forget — it never changes what is on screen).
+  checkIn: (ignoreOffDay = false) =>
+    API.post('/progress/checkin', ignoreOffDay ? { ignoreOffDay: true } : {}).catch(() => {}),
   markComplete: (data) => API.post('/progress/complete', data),
   uncomplete: (data) => API.post('/progress/uncomplete', data),
   getAllProgress: () => API.get('/progress/all'),

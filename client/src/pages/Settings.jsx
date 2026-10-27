@@ -857,7 +857,10 @@ export default function Settings() {
       setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
       setPartialPages(allRes.data.data.partialPages ?? []);
     }).catch(() => {});
-    progressAPI.getTodayTasks().then(res => setTodayStats(res.data.data.stats)).catch(() => {});
+    progressAPI.getTodayTasks().then(res => {
+      setTodayStats(res.data.data.stats);
+      progressAPI.checkIn(); // this read used to tick the streak itself
+    }).catch(() => {});
   }, []);
 
   // Auto-open the Edit Progress modal when arriving from the Progress page CTA.

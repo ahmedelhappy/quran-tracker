@@ -6,6 +6,7 @@ const {
   changeMemorized,
   resetProgress,
   getTodayTasks,
+  checkIn,
   markPageComplete,
   unmarkPageComplete,
   getAllProgress,
@@ -54,6 +55,10 @@ router.delete('/reset', resetProgress);
 
 // Daily tasks
 router.get('/today', validateQuery({ ignoreOffDay: 'boolean' }), getTodayTasks);
+
+// Streak check-in the dashboard sends after showing today's plan (the GET above
+// writes nothing)
+router.post('/checkin', validateBody({ ignoreOffDay: 'boolean' }), checkIn);
 
 // Mark complete
 router.post('/complete', validateBody(completeSchema), markPageComplete);

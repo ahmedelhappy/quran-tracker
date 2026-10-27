@@ -370,6 +370,7 @@ export default function Dashboard() {
           progressAPI.getTodayTasks(),
           progressAPI.getJuzProgress(),
         ]);
+        progressAPI.checkIn();
         if (!alive) return;
         setData(taskRes.data.data);
         setJuzData(juzRes.data.data);
@@ -595,6 +596,7 @@ export default function Dashboard() {
         progressAPI.getTodayTasks(),
         progressAPI.getJuzProgress(),
       ]);
+      progressAPI.checkIn();
       setData(taskRes.data.data);
       setJuzData(juzRes.data.data);
       setCycleBannerDismissed(true);
@@ -913,6 +915,7 @@ export default function Dashboard() {
                           progressAPI.getTodayTasks({ ignoreOffDay: 'true' }),
                           progressAPI.getJuzProgress(),
                         ]);
+                        progressAPI.checkIn(true);
                         setData(taskRes.data.data);
                         setJuzData(juzRes.data.data);
                       } catch {

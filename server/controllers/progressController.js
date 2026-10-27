@@ -357,6 +357,18 @@ const planToday = (user, allMemorizedPages, now = new Date()) => {
   };
 };
 
+// Whether a (non-off) day's plan is done, from planToday's result. Shared by the
+// dashboard's stats and the streak check-in so the two can never disagree about
+// what "nothing left to do today" means. viewOnlyComplete adds the hafiz whose
+// review target is 0: no work at all, which counts as a finished day.
+const dayCompletion = (plan) => {
+  const newMemorizationComplete = plan.isHafiz || plan.newPagesCompletedToday >= plan.targetNewPages;
+  const reviewComplete = plan.reviewsCompletedToday >= plan.dailyReviewTarget || plan.pagesForReview.length === 0;
+  const todayComplete = plan.totalMemorized > 0 && newMemorizationComplete && reviewComplete;
+  const viewOnlyComplete = todayComplete || (plan.isHafiz && plan.dailyReviewTarget === 0);
+  return { newMemorizationComplete, reviewComplete, todayComplete, viewOnlyComplete };
+};
+
 // Builds a compact, read-only snapshot of a user's plan & progress for the AI
 // assistant's context: counts plus the exact items today holds, small enough to
 // inject into a prompt. The plan itself comes from planToday, exactly as the
@@ -478,7 +490,6 @@ exports.getTodayTasks = async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
-    const todayString = getDateString(new Date());
     const offDays = user.offDays || [];
     const ignoreOffDay = req.query.ignoreOffDay === 'true';
 
@@ -489,19 +500,8 @@ exports.getTodayTasks = async (req, res) => {
       const fullPages = offDayProgress.filter(p => !p.segments || p.segments.length === 0).length;
       const isHafiz = fullPages === 604;
 
-      // Preserve streak on off-days: bump lastActiveDate without incrementing the count.
-      // Guard: never tick for a user who has never been active (null lastActiveDate).
-      // Snapshot the pre-tick streak/date (same as markPageComplete) so a later
-      // undo that leaves the user with no completions today can restore it.
-      if (user.lastActiveDate && getDateString(user.lastActiveDate) !== todayString
-          && isStreakContinued(user.lastActiveDate, offDays)) {
-        await User.findByIdAndUpdate(userId, {
-          lastActiveDate: new Date(),
-          prevStreak: user.currentStreak || 0,
-          prevActiveDate: user.lastActiveDate,
-        });
-      }
-
+      // No streak tick here any more: reading the plan writes nothing (L-10).
+      // The dashboard's POST /progress/checkin keeps a rest day's streak alive.
       return res.status(200).json({
         success: true,
         data: {
@@ -531,6 +531,7 @@ exports.getTodayTasks = async (req, res) => {
       .sort({ lastReviewedDate: 1, pageNumber: 1 });
 
     // The day's plan — decided in one place, shared with the assistant's summary.
+    const plan = planToday(user, allMemorizedPages);
     const {
       fullPages, totalMemorized, isHafiz,
       dailyReviewTarget, targetNewPages, newPagesCompletedToday,
@@ -538,7 +539,7 @@ exports.getTodayTasks = async (req, res) => {
       recentPool, pagesForReview, reviewsCompletedToday,
       reviewPages, extraReviewPages, cappedRecentPages,
       continuationPageNum,
-    } = planToday(user, allMemorizedPages);
+    } = plan;
 
     // --- CONSTANT DAILY REVIEW TARGETS ---
     // How many pages the day STARTED with for each bucket, independent of how many
@@ -612,9 +613,7 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- STATS ---
     const percentage = ((totalMemorized / 604) * 100).toFixed(1);
-    const newMemorizationComplete = isHafiz || newPagesCompletedToday >= targetNewPages;
-    const reviewComplete = reviewsCompletedToday >= dailyReviewTarget || pagesForReview.length === 0;
-    const todayComplete = totalMemorized > 0 && newMemorizationComplete && reviewComplete;
+    const { newMemorizationComplete, reviewComplete, todayComplete } = dayCompletion(plan);
 
     const activeDaysPerWeek = 7 - offDays.length;
     const effectiveDailyPages = (user.dailyNewPages || 1) * (activeDaysPerWeek / 7);
@@ -622,23 +621,8 @@ exports.getTodayTasks = async (req, res) => {
       ? Math.ceil((604 - totalMemorized) / effectiveDailyPages)
       : 0;
 
-    // Streak tick for view-only days: preserve streak when user has nothing left to do
-    // today but hasn't yet triggered markPageComplete (which would bump lastActiveDate).
-    // Conditions: the day is effectively complete, the user has been active before (not
-    // their very first open), lastActiveDate is not already today, and the streak would
-    // still be alive if counted from yesterday.
-    const isViewOnlyComplete = todayComplete || (isHafiz && dailyReviewTarget === 0);
-    if (isViewOnlyComplete && user.lastActiveDate
-        && getDateString(user.lastActiveDate) !== todayString
-        && isStreakContinued(user.lastActiveDate, offDays)) {
-      // Snapshot the pre-tick streak/date (same as markPageComplete) so a later
-      // undo that leaves the user with no completions today can restore it.
-      await User.findByIdAndUpdate(userId, {
-        lastActiveDate: new Date(),
-        prevStreak: user.currentStreak || 0,
-        prevActiveDate: user.lastActiveDate,
-      });
-    }
+    // No streak tick here any more: reading the plan writes nothing (L-10).
+    // A day with nothing left to do keeps the streak through POST /progress/checkin.
 
     res.status(200).json({
       success: true,
@@ -671,6 +655,57 @@ exports.getTodayTasks = async (req, res) => {
   } catch (error) {
     console.error('GetTodayTasks error:', error);
     serverError(res, "Error fetching today's tasks", error);
+  }
+};
+
+// @desc    Streak check-in after the dashboard has shown today's plan
+// @route   POST /api/progress/checkin  { ignoreOffDay? }
+// @access  Private
+//
+// A rest day, and a day with nothing left to do, keep the streak alive when the
+// user opens the app: lastActiveDate moves to today without raising the count,
+// so tomorrow's completion continues the streak. This used to happen inside
+// GET /progress/today — a read with a side effect, which any prefetch, retry or
+// second caller could trigger (L-10). The decision is unchanged, made from the
+// same planToday/dayCompletion the GET uses; only the write moved here. The
+// pre-tick streak and date are kept (as markPageComplete does) so a later undo
+// that leaves no completions today can restore them.
+exports.checkIn = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+    const now = new Date();
+    const todayString = getDateString(now);
+    const offDays = user.offDays || [];
+    const ignoreOffDay = req.body.ignoreOffDay === true;
+
+    // Never tick for a user who has never been active, or twice in a day, or
+    // onto a streak that is already broken.
+    let ticked = false;
+    if (user.lastActiveDate && getDateString(user.lastActiveDate) !== todayString
+        && isStreakContinued(user.lastActiveDate, offDays)) {
+      let qualifies = !ignoreOffDay && offDays.includes(now.getUTCDay());
+      if (!qualifies) {
+        const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
+          .sort({ lastReviewedDate: 1, pageNumber: 1 });
+        qualifies = dayCompletion(planToday(user, allMemorizedPages, now)).viewOnlyComplete;
+      }
+      if (qualifies) {
+        // Conditional on the date just read: a completion that lands in between
+        // has already moved lastActiveDate to today and saved its own snapshot,
+        // which this must not overwrite.
+        const result = await User.updateOne(
+          { _id: userId, lastActiveDate: user.lastActiveDate },
+          { $set: { lastActiveDate: now, prevStreak: user.currentStreak || 0, prevActiveDate: user.lastActiveDate } }
+        );
+        ticked = result.modifiedCount === 1;
+      }
+    }
+
+    res.status(200).json({ success: true, data: { ticked, currentStreak: user.currentStreak || 0 } });
+  } catch (error) {
+    console.error('CheckIn error:', error);
+    serverError(res, 'Error checking in', error);
   }
 };
 
