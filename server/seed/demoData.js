@@ -1,19 +1,19 @@
-require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
+const { parseTargetArgs } = require('../scripts/lib/target');
 
 const DEMO_EMAIL = 'demo@qurantracker.com';
 const DEMO_PASSWORD = 'demo123456';
 const DEMO_NAME = 'Abdullah (Demo)';
 
-async function seedDemo() {
-  if (!process.env.MONGODB_URI) {
-    console.error('MONGODB_URI not set in .env');
-    process.exit(1);
-  }
-
-  await mongoose.connect(process.env.MONGODB_URI);
+// Resets the demo account (password, plan, streak) and replaces its progress.
+// The target must be named on the command line (see scripts/lib/target.js) —
+// it used to take MONGODB_URI from .env, which locally is production (L-13).
+//
+//   node seed/demoData.js --uri <mongodb-uri>      (npm run seed:demo -- --uri <mongodb-uri>)
+async function seedDemo(uri) {
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   console.log('Connected to MongoDB');
 
   const now = new Date();
@@ -120,7 +120,22 @@ async function seedDemo() {
   console.log('Done.');
 }
 
-seedDemo().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+const USAGE = 'Usage: node seed/demoData.js --uri <mongodb-uri>';
+
+async function main(argv, log = console.log) {
+  const args = parseTargetArgs(argv);
+  if (args.help) { log(USAGE); return 0; }
+  if (args.error) { log(args.error); log(USAGE); return 1; }
+  log(`Target: ${args.masked}`);
+  await seedDemo(args.uri);
+  return 0;
+}
+
+// Run only when invoked directly, never on require.
+if (require.main === module) {
+  main(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((err) => { console.error(err); process.exit(1); });
+}
+
+module.exports = { seedDemo, main };

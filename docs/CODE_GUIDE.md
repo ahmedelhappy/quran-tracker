@@ -226,7 +226,8 @@ its `juzNumber`, `surahName` / `surahNameArabic`, and a `surahs` array (a page c
 more than one surah). This never changes per user; it's reference data.
 
 It's seeded once with [../server/seed/quranData.js](../server/seed/quranData.js)
-(`node seed/quranData.js`). Controllers join against it only to *label* pages for display
+(`node seed/quranData.js --uri <mongodb-uri>` — the target is never read from `.env`).
+Controllers join against it only to *label* pages for display
 — it holds no Quran text. The actual Arabic text and audio come from an external API (§6).
 
 ### Bookmark — [../server/models/Bookmark.js](../server/models/Bookmark.js)

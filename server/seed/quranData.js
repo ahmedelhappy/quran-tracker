@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
-require('dotenv').config();
 const QuranMetadata = require('../models/QuranMetadata');
 const quranStructure = require('./data/quranStructure.json');
+const { parseTargetArgs } = require('../scripts/lib/target');
 
 // Build the 604 QuranMetadata documents straight from the committed structure
 // file (seed/data/quranStructure.json), which is generated once from the
@@ -21,27 +21,50 @@ function buildQuranPages() {
   }));
 }
 
-// Seed function — always replaces existing data
-async function seedQuranData() {
+// Seed — always replaces existing data. The target must be named on the command
+// line (see scripts/lib/target.js): this deletes the whole collection, and the
+// MONGODB_URI in a local .env points at production (L-13).
+//
+//   node seed/quranData.js --uri <mongodb-uri>
+async function seedQuranData(uri, log = console.log) {
+  // Build (and sanity-check) the pages before touching the database, so a bad
+  // structure file can never leave the collection empty.
+  const pages = buildQuranPages();
+  if (pages.length !== 604) throw new Error(`Expected 604 pages, built ${pages.length}`);
+
+  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('Connected to MongoDB');
+    log('Connected to MongoDB');
 
     await QuranMetadata.deleteMany({});
-    console.log('Cleared existing QuranMetadata');
+    log('Cleared existing QuranMetadata');
 
-    const pages = buildQuranPages();
     await QuranMetadata.insertMany(pages);
 
     const multiSurahCount = pages.filter(p => p.surahs.length > 1).length;
-    console.log(`Seeded ${pages.length} pages, ${multiSurahCount} have multiple surahs`);
-
-    process.exit(0);
-  } catch (error) {
-    console.error('Seed error:', error);
-    process.exit(1);
+    log(`Seeded ${pages.length} pages, ${multiSurahCount} have multiple surahs`);
+  } finally {
+    await mongoose.disconnect();
   }
 }
 
-// Run the seed
-seedQuranData();
+const USAGE = 'Usage: node seed/quranData.js --uri <mongodb-uri>';
+
+async function main(argv, log = console.log) {
+  const args = parseTargetArgs(argv);
+  if (args.help) { log(USAGE); return 0; }
+  if (args.error) { log(args.error); log(USAGE); return 1; }
+  log(`Target: ${args.masked}`);
+  await seedQuranData(args.uri, log);
+  return 0;
+}
+
+// Run only when invoked directly, so tests (and the test helpers) can import
+// buildQuranPages without seeding anything.
+if (require.main === module) {
+  main(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((error) => { console.error('Seed error:', error); process.exit(1); });
+}
+
+module.exports = { buildQuranPages, seedQuranData, main };
