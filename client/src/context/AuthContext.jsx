@@ -127,14 +127,25 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('storage', onStorage);
   }, [checkAuth]);
 
-  // The retry screen's button, and the automatic retry when the browser says
-  // the connection is back.
+  // The retry screen's button, and the automatic retries: when the browser says
+  // the connection is back, and when the tab is shown again. 'online' never
+  // fires for a server-side failure — and when the failed check was of a token
+  // another tab stored (a sign-in as someone else), this tab is still signed in
+  // as before, so no retry screen shows: without a retry on return it sat on
+  // the old account indefinitely while storage held the new one.
   const retrySession = useCallback(() => checkAuth(currentToken()), [checkAuth]);
   useEffect(() => {
     if (!sessionError) return;
     const onOnline = () => { retrySession(); };
+    const onShow = () => { if (document.visibilityState === 'visible') retrySession(); };
     window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+    window.addEventListener('focus', onShow);
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', onShow);
+      document.removeEventListener('visibilitychange', onShow);
+    };
   }, [sessionError, retrySession]);
 
   // Register new user
