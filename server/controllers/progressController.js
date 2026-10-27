@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
 const { PAGE_RULE, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { isStreakContinued } = require('../utils/streak');
 // Every write below changes how many pages this user has memorized, which is
 // exactly what the leaderboard ranks — so each one drops the cached board.
 // Without this the board keeps serving a stale rank for up to its whole TTL.
@@ -51,22 +52,6 @@ const computeNewPageTargetForDate = (dailyNewPages, planStartDate, targetDate) =
   const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
   const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
   return Math.max(0, assignedToday - assignedYesterday);
-};
-
-// Returns true if the streak should continue, accounting for off days in the gap.
-const isStreakContinued = (lastActiveDate, offDays) => {
-  if (!lastActiveDate) return false;
-  const lastUTC = new Date(lastActiveDate);
-  lastUTC.setUTCHours(0, 0, 0, 0);
-  const todayUTC = new Date();
-  todayUTC.setUTCHours(0, 0, 0, 0);
-  const daysDiff = Math.round((todayUTC - lastUTC) / MS_PER_DAY);
-  if (daysDiff <= 1) return true;
-  for (let d = 1; d < daysDiff; d++) {
-    const checkDay = new Date(lastUTC.getTime() + d * MS_PER_DAY).getUTCDay();
-    if (!offDays.includes(checkDay)) return false;
-  }
-  return true;
 };
 
 // After an undo, restore the streak if the user has no completions left today.

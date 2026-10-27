@@ -8,14 +8,18 @@ const {
 } = require('./helpers');
 const app = require('../app');
 const UserProgress = require('../models/UserProgress');
+const User = require('../models/User');
 const leaderboardController = require('../controllers/leaderboardController');
 
 const auth = (userId) => `Bearer ${tokenFor(userId)}`;
 
 // Opt a user in with a display name and n whole memorized pages (pages 1..n),
-// dated `when` (defaults to today). Returns the created user.
+// dated `when` (defaults to today). A streak is a live one (active today), since
+// the board shows effective streaks. Returns the created user.
 async function makeContender(displayName, n, { streak = 0, when } = {}) {
-  const user = await createUser({ leaderboardOptIn: true, displayName, currentStreak: streak });
+  const user = await createUser({
+    leaderboardOptIn: true, displayName, currentStreak: streak, lastActiveDate: streak ? new Date() : null,
+  });
   const date = when || new Date();
   for (let p = 1; p <= n; p++) {
     await addMemorizedPage(user._id, p, { memorizedDate: date, lastReviewedDate: date });
@@ -200,5 +204,42 @@ describe('Leaderboard API', () => {
       .set('Authorization', auth(user._id))
       .send({ displayName: 'ab' });
     assert.equal(res.status, 400);
+  });
+
+  test('entries expose exactly displayName, pages, streak, rank and isMe — never another user\'s id (M-22)', async () => {
+    const other = await makeContender('Other', 3, { streak: 2 });
+    const me = await makeContender('Me', 1, { streak: 1 });
+
+    const res = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(me._id));
+    const KEYS = ['displayName', 'isMe', 'pages', 'rank', 'streak'];
+    for (const entry of res.body.data.entries) assert.deepEqual(Object.keys(entry).sort(), KEYS);
+    assert.deepEqual(Object.keys(res.body.data.me).sort(), KEYS);
+    assert.deepEqual(res.body.data.entries.map((e) => [e.displayName, e.isMe]), [['Other', false], ['Me', true]]);
+    assert.equal(res.body.data.me.isMe, true);
+    assert.ok(!JSON.stringify(res.body).includes(String(other._id)), "the other user's id is nowhere in the payload");
+  });
+
+  test('streaks are effective: a streak broken by a missed working day shows 0', async () => {
+    const stale = await makeContender('Stale', 2);
+    await User.updateOne({ _id: stale._id }, { currentStreak: 30, lastActiveDate: daysAgo(5), offDays: [] });
+    const rested = await makeContender('Rested', 1);
+    // Away three days, every one of them a rest day: still alive.
+    const restDays = [1, 2, 3].map((n) => daysAgo(n).getUTCDay());
+    await User.updateOne({ _id: rested._id }, { currentStreak: 12, lastActiveDate: daysAgo(4), offDays: restDays });
+
+    const res = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(stale._id));
+    const byName = Object.fromEntries(res.body.data.entries.map((e) => [e.displayName, e.streak]));
+    assert.equal(byName.Stale, 0);
+    assert.equal(byName.Rested, 12);
+  });
+
+  test('the opted-in lookup uses the leaderboardOptIn index, not a collection scan', async () => {
+    await User.init();
+    await makeContender('Indexed', 1);
+    const plan = await User.find({ leaderboardOptIn: true }).explain('queryPlanner');
+    const text = JSON.stringify(plan);
+    assert.ok(text.includes('IXSCAN'), 'expected an index scan');
+    assert.ok(text.includes('leaderboardOptIn_1'), 'expected the leaderboardOptIn index');
+    assert.ok(!text.includes('COLLSCAN'));
   });
 });

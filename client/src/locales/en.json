@@ -27,6 +27,7 @@
     "joinTitle": "Join the leaderboard",
     "joinBody": "Add a public display name to appear on the leaderboard. Only this name is shown — never your email.",
     "displayNamePlaceholder": "Your display name",
+    "displayNameHint": "This name is public: everyone who opens the leaderboard sees it. Use a nickname if you'd rather not show your real name.",
     "joinButton": "Join",
     "joining": "Joining…",
     "joined": "You're on the leaderboard!",

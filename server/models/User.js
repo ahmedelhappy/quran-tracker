@@ -132,6 +132,10 @@ const userSchema = new mongoose.Schema(
   },
 );
 
+// The leaderboard reads every opted-in user; without an index that is a scan of
+// the whole users collection (M-22). Partial, so it only holds the opted-in few.
+userSchema.index({ leaderboardOptIn: 1 }, { partialFilterExpression: { leaderboardOptIn: true } });
+
 // Hash password before saving
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {

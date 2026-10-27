@@ -57,7 +57,9 @@ export default function Leaderboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const [name, setName] = useState(user?.displayName || user?.name || '');
+  // Starts empty (or the public name chosen before): the account's real name is
+  // never offered as the public one.
+  const [name, setName] = useState(user?.displayName || '');
   const [joining, setJoining] = useState(false);
 
   const optedIn = !!user?.leaderboardOptIn;
@@ -124,6 +126,8 @@ export default function Leaderboard() {
                 onChange={(e) => setName(e.target.value)}
                 maxLength={30}
                 placeholder={t('leaderboard.displayNamePlaceholder')}
+                aria-label={t('leaderboard.displayNamePlaceholder')}
+                aria-describedby="leaderboard-name-hint"
                 className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#1B4332] dark:focus:ring-emerald-500"
               />
               <button
@@ -134,6 +138,7 @@ export default function Leaderboard() {
                 <FiAward className="w-4 h-4" /> {joining ? t('leaderboard.joining') : t('leaderboard.joinButton')}
               </button>
             </div>
+            <p id="leaderboard-name-hint" className="text-xs text-[#707974] dark:text-gray-400 mt-2">{t('leaderboard.displayNameHint')}</p>
           </div>
         )}
 
@@ -187,8 +192,9 @@ export default function Leaderboard() {
           </div>
         ) : (
           <div className="space-y-2">
+            {/* Ranks are unique within a board; entries carry no user ids (only isMe). */}
             {entries.map(entry => (
-              <Row key={entry.userId} entry={entry} mine={entry.userId === user?._id} showStreak={showStreak} t={t} />
+              <Row key={entry.rank} entry={entry} mine={entry.isMe} showStreak={showStreak} t={t} />
             ))}
           </div>
         )}
