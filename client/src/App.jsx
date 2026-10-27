@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useEffect, lazy, Suspense, Fragment } from 'react';
+import { useEffect, useState, lazy, Suspense, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
@@ -66,10 +66,16 @@ const ScrollToTop = () => {
 // changes under a mounted page — another tab signed out and in as someone else —
 // the pages remount instead of going on showing (and saving into the new
 // session) the previous account's data (M-08). A fresh token for the same
-// account (a password change in another tab) keeps the same key.
+// account (a password change in another tab) keeps the same key, and so does
+// signing out: the pages already react to the user going away, and a remount
+// there would let a page that is still on screen (the Library) store its state
+// again right after sign-out cleared it. The key is the last account seen.
 const AccountScope = ({ children }) => {
   const { user } = useAuth();
-  return <Fragment key={user?._id ?? 'guest'}>{children}</Fragment>;
+  const id = user?._id ?? null;
+  const [lastId, setLastId] = useState(id);
+  if (id && id !== lastId) setLastId(id); // adjust during render: no extra pass on screen
+  return <Fragment key={id ?? lastId ?? 'guest'}>{children}</Fragment>;
 };
 
 // Redirect authenticated users away from public pages — to wherever they were

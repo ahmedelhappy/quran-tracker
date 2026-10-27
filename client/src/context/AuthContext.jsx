@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { authAPI, getSessionToken, setSessionToken, adoptSessionToken } from '../services/api';
 import { AuthContext } from '../hooks/useAuth';
 import i18n from '../i18n';
-import { storage, TOKEN_KEY } from '../utils/safeStorage';
+import { storage, TOKEN_KEY, clearUserScopedStorage } from '../utils/safeStorage';
+import { clearRecentPages } from '../services/recentPages';
 
 // The context object and its useAuth() hook live in hooks/useAuth.js, so that
 // this file exports only a component.
@@ -198,10 +199,14 @@ export const AuthProvider = ({ children }) => {
     return { signedOut: true };
   };
 
-  // Logout user
+  // Logout user (also what account deletion ends with). Clears what this
+  // browser kept about the person — their reading position and recent pages —
+  // and keeps the device's settings; the list is in utils/safeStorage.js (L-06).
   const logout = () => {
     checkSeqRef.current++;
     setSessionToken(null);
+    clearUserScopedStorage();
+    clearRecentPages(); // also resets the list this tab holds in memory
     setUser(null);
     setSessionError(null);
   };

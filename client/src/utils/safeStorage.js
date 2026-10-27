@@ -68,3 +68,36 @@ export const storage = makeStore('local');
 export const sessionStore = makeStore('session');
 
 export const TOKEN_KEY = 'token';
+
+// ── What signing out clears (L-06) ───────────────────────────────────────────
+// Every key the client keeps, sorted into data about the PERSON who was signed
+// in — cleared on sign-out and account deletion, so the next person at this
+// browser doesn't inherit it — and settings of this DEVICE, which are kept:
+// they say how this browser reads, not what anyone did, and wiping them on
+// every sign-out would only make the reader set them up again.
+//
+// Cleared (the person's):
+//   token              the session itself (api.js / AuthContext)
+//   lastMushafPage     where they last were in the mushaf (Library)
+//   recentPages        the pages they recently read (services/recentPages.js)
+// Kept (the device's):
+//   theme, lang, langExplicit                        appearance and language
+//   reciter, recentReciters, playbackRate, versePause,
+//   tafsirEdition, tafsirPanelWidth, mushafView, mushafSidebar,
+//   mushafAnnoVisible, mushafZoom, readerTools, readerToolsTab,
+//   chatbotPosY                                      reader and layout settings
+//   seenLibraryTour, seenVerseActionsHint, seenVerseTapCue,
+//   seenDashboardTour, seenMemorizeGuide             first-run hints shown here
+//   timerState, timerSettings                        the timer — a device tool
+//                                                    that never touches an account
+//   guestTodos                                       the SIGNED-OUT to-do list:
+//                                                    not the account's (that one is
+//                                                    on the server) and its only copy
+//   dailyVerse:<day>:<lang>                          the same verse for everyone (a cache)
+// Nothing is kept in sessionStorage, and the chat history lives only in the
+// chat component, which remounts with the account (AccountScope in App.jsx).
+export const USER_SCOPED_KEYS = [TOKEN_KEY, 'lastMushafPage', 'recentPages'];
+
+export const clearUserScopedStorage = () => {
+  for (const key of USER_SCOPED_KEYS) storage.remove(key);
+};
