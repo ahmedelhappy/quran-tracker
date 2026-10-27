@@ -174,6 +174,10 @@ export const bookmarksAPI = {
   remove: (id) => API.delete(`/bookmarks/${id}`),
 };
 
+// Chrome's quota for the bodies of all in-flight keepalive requests is 64 KB;
+// a little is left for anything else the page sends as it closes.
+const KEEPALIVE_BUDGET = 60 * 1024;
+
 // Mushaf annotations (highlights, notes, hard flags — account-saved, anchored to
 // verse keys). listForPage powers the reader; listByKind('hard') the hard list.
 export const annotationsAPI = {
@@ -186,21 +190,33 @@ export const annotationsAPI = {
   // Upsert a page's free-form drawing (empty strokes deletes it). `token`: the
   // one the ink was drawn under (see tokenForWriteBy).
   saveDrawing: (data, token) => API.put('/annotations/drawing', data, bearer(tokenForWriteBy(token))),
-  // The same save while the page is being closed: a keepalive fetch, which the
-  // browser completes after unload (an XHR would be cancelled). Fire and forget —
-  // nothing is left to show the result to. Bodies are capped at 64 KB, the same
-  // as a page's drawing.
-  saveDrawingOnUnload: (data, token) => {
-    const auth = tokenForWriteBy(token);
-    if (!auth) return;
-    try {
+  // The same saves while the page is being closed: keepalive fetches, which the
+  // browser completes after unload (an XHR is cancelled). Fire and forget —
+  // nothing is left to show the result to, so a refusal is only logged.
+  // Chrome lets all in-flight keepalive bodies together come to 64 KB, and a
+  // body past that is REJECTED (not thrown), so the bodies are budgeted here; one
+  // that does not fit still goes as an ordinary request, which may or may not
+  // finish before the page is gone. `saves`: [{ data, token }].
+  saveDrawingsOnUnload: (saves) => {
+    let budget = KEEPALIVE_BUDGET;
+    for (const { data, token } of saves) {
+      const auth = tokenForWriteBy(token);
+      if (!auth) continue;
+      const body = JSON.stringify(data);
+      const size = new TextEncoder().encode(body).length;
+      const keepalive = size <= budget;
+      if (keepalive) budget -= size;
+      else console.warn(`Unload save of page ${data.pageNumber} (${size} bytes) is over the keepalive budget`);
       fetch(`${API.defaults.baseURL}/annotations/drawing`, {
         method: 'PUT',
-        keepalive: true,
+        keepalive,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
-        body: JSON.stringify(data),
-      }).catch(() => {});
-    } catch { /* body over the keepalive limit: nothing more can be done */ }
+        body,
+      }).then(
+        (res) => { if (!res.ok) console.warn(`Unload save of page ${data.pageNumber} refused:`, res.status); },
+        (err) => console.warn(`Unload save of page ${data.pageNumber} failed:`, err?.message ?? err),
+      );
+    }
   },
   // Set the state of many verse annotations at once, all-or-nothing. Each op is
   // { kind, pageNumber, verseKey, value }; the reply reports every key's state

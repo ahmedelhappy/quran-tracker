@@ -3626,14 +3626,26 @@ export default function Library() {
   // Hidden (a switch away, the phone locking) is an ordinary flush — the page
   // may never come back. Closing gets a keepalive request, the only kind the
   // browser lets finish after the page is gone.
+  //
+  // Closing a tab fires the hidden visibilitychange FIRST, and its flush takes
+  // the pages off the dirty list before its first await — so pagehide found
+  // nothing left and sent no keepalive, while the flush's ordinary requests
+  // were cancelled with the page. Pagehide therefore also covers every page
+  // whose save is still in flight. Should that save have landed after all, the
+  // keepalive copy is refused as stale (409), which is harmless.
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') flushDrawingRef.current?.(); };
     const onPageHide = () => {
-      for (const page of drawDirtyRef.current) {
+      const pages = new Set([...drawDirtyRef.current, ...drawSavesRef.current.keys()]);
+      const saves = [];
+      for (const page of pages) {
         const base = drawBaseRef.current[page];
         if (!base) continue;
-        annotationsAPI.saveDrawingOnUnload({ pageNumber: page, strokes: drawStrokesRef.current[page] ?? [], baseUpdatedAt: base.at }, base.token);
+        const strokes = drawStrokesRef.current[page] ?? [];
+        drawSentRef.current[page] = strokes; // a page that comes back (bfcache) rebases on it
+        saves.push({ data: { pageNumber: page, strokes, baseUpdatedAt: base.at }, token: base.token });
       }
+      if (saves.length) annotationsAPI.saveDrawingsOnUnload(saves);
     };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onPageHide);
