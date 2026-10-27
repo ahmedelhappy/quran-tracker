@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
@@ -62,6 +62,16 @@ const ScrollToTop = () => {
   return null;
 };
 
+// Everything under the router belongs to ONE account. When the signed-in user
+// changes under a mounted page — another tab signed out and in as someone else —
+// the pages remount instead of going on showing (and saving into the new
+// session) the previous account's data (M-08). A fresh token for the same
+// account (a password change in another tab) keeps the same key.
+const AccountScope = ({ children }) => {
+  const { user } = useAuth();
+  return <Fragment key={user?._id ?? 'guest'}>{children}</Fragment>;
+};
+
 // Redirect authenticated users away from public pages — to wherever they were
 // headed when they were asked to sign in, if that is a page of this app.
 const PublicRoute = ({ children }) => {
@@ -91,6 +101,7 @@ function App() {
       <TimerProvider>
         <Router>
           <ScrollToTop />
+          <AccountScope>
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Public routes */}
@@ -115,6 +126,7 @@ function App() {
             </Routes>
           </Suspense>
           <PersistentChatbot />
+          </AccountScope>
         </Router>
       </TimerProvider>
       </ToastProvider>

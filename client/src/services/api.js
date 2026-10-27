@@ -1,16 +1,42 @@
 import axios from 'axios';
-import { storage } from '../utils/safeStorage';
+import { storage, TOKEN_KEY } from '../utils/safeStorage';
 
 // Create axios instance
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-// Add token to every request automatically
+// The token THIS TAB's screens belong to — kept in memory, not read from storage
+// on every request. localStorage is shared by every tab: when another tab signs
+// in as someone else, the token there changes at once, while this tab is still
+// showing (and saving) the first account's data. Reading storage per request
+// sent those saves to the other account (M-08). AuthContext adopts a changed
+// stored token only after checking whose it is, and resets the screens when
+// the account is a different one.
+let sessionToken = storage.get(TOKEN_KEY);
+export const getSessionToken = () => sessionToken;
+// This tab signed in (or got a fresh token): use it and persist it for the
+// other tabs and the next visit.
+export const setSessionToken = (token) => {
+  sessionToken = token || null;
+  if (sessionToken) storage.set(TOKEN_KEY, sessionToken);
+  else storage.remove(TOKEN_KEY);
+};
+// Take on a token another tab already stored (or its removal) — memory only.
+export const adoptSessionToken = (token) => { sessionToken = token || null; };
+// A token turned out to be dead: forget it, here and in storage — but only if
+// it is still the one there, so a fresh sign-in from another tab survives.
+const dropToken = (token) => {
+  if (sessionToken === token) sessionToken = null;
+  if (storage.get(TOKEN_KEY) === token) storage.remove(TOKEN_KEY);
+};
+const tokenOf = (config) => config?.headers?.Authorization?.replace(/^Bearer /, '') || null;
+
+// Add token to every request automatically (a caller that sets its own header —
+// the cross-tab session check — keeps it).
 API.interceptors.request.use((config) => {
-  const token = storage.get('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (sessionToken && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${sessionToken}`;
   }
   return config;
 });
@@ -24,14 +50,17 @@ API.interceptors.request.use((config) => {
 //   - the startup session check. AuthContext handles that failure itself by
 //     dropping the stale token, and protected pages redirect through
 //     ProtectedRoute — a visitor with a stale token just carries on reading.
+// And a 401 for a token this tab has already let go of (another tab signed in
+// meanwhile) says nothing about the current session, so it is left alone.
 API.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const hadToken = !!error.config?.headers?.Authorization;
+      const sent = tokenOf(error.config);
+      const current = !!sent && sent === sessionToken;
       const isSessionCheck = error.config?.url === '/auth/me';
-      if (hadToken) storage.remove('token');
-      if (hadToken && !isSessionCheck) {
+      if (sent) dropToken(sent);
+      if (current && !isSessionCheck) {
         const here = `${window.location.pathname}${window.location.search}`;
         window.location.href = `/login?returnTo=${encodeURIComponent(here)}`;
       }
@@ -46,7 +75,11 @@ export const authAPI = {
   login: (data) => API.post('/auth/login', data),
   // Bounded, so a server that never answers ends in AuthContext's retry screen
   // rather than an endless spinner.
-  getMe: () => API.get('/auth/me', { timeout: 20000 }),
+  // `token` checks a token this tab has not adopted yet (one another tab stored).
+  getMe: (token) => API.get('/auth/me', {
+    timeout: 20000,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  }),
   updateProfile: (data) => API.put('/auth/profile', data),
   changePassword: (data) => API.put('/auth/password', data),
   deleteAccount: () => API.delete('/auth/account'),

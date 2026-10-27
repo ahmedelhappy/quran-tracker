@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { authAPI } from '../services/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { authAPI, getSessionToken, setSessionToken, adoptSessionToken } from '../services/api';
 import { AuthContext } from '../hooks/useAuth';
 import i18n from '../i18n';
-import { storage } from '../utils/safeStorage';
+import { storage, TOKEN_KEY } from '../utils/safeStorage';
 
 // The context object and its useAuth() hook live in hooks/useAuth.js, so that
 // this file exports only a component.
@@ -14,6 +14,10 @@ const tooManyMessage = (err) => {
   if (err.response?.status !== 429) return null;
   return i18n.t(err.response.data?.code === 'LOGIN_LOCKED' ? 'auth.loginLocked' : 'auth.tooManyAttempts');
 };
+
+// The token to check: what storage holds (this visit's start, or another tab's
+// change), or — with storage blocked — the one this tab signed in with.
+const currentToken = () => storage.get(TOKEN_KEY) ?? getSessionToken();
 
 // Provider component
 export const AuthProvider = ({ children }) => {
@@ -50,24 +54,37 @@ export const AuthProvider = ({ children }) => {
   // offline (M-03). Then the token is KEPT and sessionError says why the user
   // could not be loaded ('offline' | 'server'): the routes show a retry screen
   // instead of the login page, and coming back online retries by itself.
-  const checkAuth = useCallback(async () => {
-    const token = storage.get('token');
+  //
+  // `token` is the one to check — at start-up the stored token; after another
+  // tab changed it, the new one. This tab keeps using the token it already has
+  // until the check succeeds, and only then adopts the new one; when it belongs
+  // to a different account the routes remount (see AccountScope in App.jsx),
+  // so no screen goes on showing or saving the previous account's data (M-08).
+  const checkSeqRef = useRef(0);
+  const checkAuth = useCallback(async (token) => {
+    const seq = ++checkSeqRef.current;
 
     if (!token) {
+      adoptSessionToken(null);
+      setUser(null);
       setSessionError(null);
       setLoading(false);
       return;
     }
 
     try {
-      const response = await authAPI.getMe();
+      const response = await authAPI.getMe(token);
+      if (seq !== checkSeqRef.current) return; // a newer check owns the outcome
       const userData = response.data.data;
+      adoptSessionToken(token);
       setUser(userData);
       setSessionError(null);
       syncLanguage(userData);
     } catch (err) {
+      if (seq !== checkSeqRef.current) return;
       if (err.response?.status === 401) {
-        storage.remove('token');
+        // The interceptor has already dropped the dead token from storage.
+        adoptSessionToken(null);
         setUser(null);
         setSessionError(null);
       } else {
@@ -84,12 +101,34 @@ export const AuthProvider = ({ children }) => {
 
   // Check if user is logged in on app load
   useEffect(() => {
-    checkAuth();
+    checkAuth(currentToken());
+  }, [checkAuth]);
+
+  // Another tab signed out, signed in, or got a fresh token. Signing out
+  // follows at once; a new token is checked before this tab adopts it.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== TOKEN_KEY && e.key !== null) return; // null: storage cleared
+      if (e.storageArea && e.storageArea !== storage.area()) return;
+      const stored = storage.get(TOKEN_KEY);
+      if (stored === getSessionToken()) return;
+      if (!stored) {
+        checkSeqRef.current++; // any check still in flight is now moot
+        adoptSessionToken(null);
+        setUser(null);
+        setSessionError(null);
+        setLoading(false);
+        return;
+      }
+      checkAuth(stored);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [checkAuth]);
 
   // The retry screen's button, and the automatic retry when the browser says
   // the connection is back.
-  const retrySession = useCallback(() => checkAuth(), [checkAuth]);
+  const retrySession = useCallback(() => checkAuth(currentToken()), [checkAuth]);
   useEffect(() => {
     if (!sessionError) return;
     const onOnline = () => { retrySession(); };
@@ -105,7 +144,8 @@ export const AuthProvider = ({ children }) => {
 
       const { token, ...userData } = response.data.data;
 
-      storage.set('token', token);
+      checkSeqRef.current++; // a session check still in flight must not undo this
+      setSessionToken(token);
       setUser(userData);
       syncLanguage(userData);
 
@@ -125,7 +165,8 @@ export const AuthProvider = ({ children }) => {
 
       const { token, ...userData } = response.data.data;
 
-      storage.set('token', token);
+      checkSeqRef.current++; // a session check still in flight must not undo this
+      setSessionToken(token);
       setUser(userData);
       syncLanguage(userData);
 
@@ -149,7 +190,7 @@ export const AuthProvider = ({ children }) => {
     const response = await authAPI.changePassword({ currentPassword, newPassword });
     const token = response.data?.data?.token;
     if (token) {
-      storage.set('token', token);
+      setSessionToken(token);
       return { signedOut: false };
     }
     console.error('Password changed but the response carried no token; signing out');
@@ -159,7 +200,8 @@ export const AuthProvider = ({ children }) => {
 
   // Logout user
   const logout = () => {
-    storage.remove('token');
+    checkSeqRef.current++;
+    setSessionToken(null);
     setUser(null);
     setSessionError(null);
   };
