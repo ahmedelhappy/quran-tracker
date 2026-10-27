@@ -4,6 +4,7 @@ import { FiPlus, FiEdit2, FiX } from 'react-icons/fi';
 import { LuGripVertical, LuListTodo } from 'react-icons/lu';
 import { useTodos } from '../hooks/useTodos';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
 import { MAX_TODO_TEXT } from '../services/todoBackends';
 import { toArabicDigits } from '../utils/formatNumber';
 import Tooltip from './Tooltip';
@@ -33,6 +34,7 @@ export default function TodoList({ variant = 'sidebar' }) {
   const { t, i18n } = useTranslation();
   const { showToast } = useToast();
   const { items, status, local, store } = useTodos();
+  const { retrySession } = useAuth();
   const isArabic = i18n.language === 'ar';
   const num = (n) => (isArabic ? toArabicDigits(n) : String(n));
   const hintId = useId();
@@ -212,7 +214,18 @@ export default function TodoList({ variant = 'sidebar' }) {
   const ready = status === 'ready' || items.length > 0;
 
   let body;
-  if (!ready && status === 'error') {
+  if (status === 'unverified') {
+    // Signed in, but the session could not be checked: the list is the
+    // account's, so it waits for that check rather than showing the guest one.
+    body = (
+      <div className="flex flex-col items-start gap-2 py-2 text-xs text-[#707974] dark:text-gray-400">
+        {t('todo.sessionUnverified')}
+        <button type="button" onClick={() => retrySession()} className="font-semibold text-[#004f35] dark:text-emerald-400 hover:underline">
+          {t('common.retry')}
+        </button>
+      </div>
+    );
+  } else if (!ready && status === 'error') {
     body = (
       <div className="flex flex-col items-start gap-2 py-2 text-xs text-[#707974] dark:text-gray-400">
         {t('todo.loadFailed')}

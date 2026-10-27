@@ -55,4 +55,40 @@ const SessionUnavailable = () => {
   );
 };
 
+// The same news on a PUBLIC page (the Library, About), which stays readable
+// without an account: a slim bar instead of a screen. Without it the page just
+// looked signed out — with nothing saying the session was only unchecked —
+// and its account features stay hidden until the check succeeds.
+export const SessionNotice = () => {
+  const { t } = useTranslation();
+  const { isAuthenticated, loading, sessionError, retrySession } = useAuth();
+  const [retrying, setRetrying] = useState(false);
+  if (loading || isAuthenticated || !sessionError) return null;
+  const offline = sessionError === 'offline';
+  const Icon = offline ? FiWifiOff : FiCloudOff;
+
+  const retry = async () => {
+    setRetrying(true);
+    try { await retrySession(); } finally { setRetrying(false); }
+  };
+
+  return (
+    <div role="status" className="bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800/50 px-4 py-2">
+      <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-amber-900 dark:text-amber-200">
+        <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+        <span>{t(offline ? 'session.noticeOffline' : 'session.noticeServer')}</span>
+        <button
+          type="button"
+          onClick={retry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1.5 font-semibold underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100 disabled:opacity-60"
+        >
+          <FiRefreshCw className={`w-3.5 h-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
+          {retrying ? t('session.retrying') : t('common.retry')}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export default SessionUnavailable;

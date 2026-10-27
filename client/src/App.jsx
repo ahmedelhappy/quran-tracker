@@ -7,7 +7,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TimerProvider } from './context/TimerContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import SessionUnavailable from './components/SessionUnavailable';
+import SessionUnavailable, { SessionNotice } from './components/SessionUnavailable';
 import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
 
@@ -121,11 +121,11 @@ function App() {
             <Routes>
               {/* Public routes */}
               <Route path="/"         element={<PublicRoute><Landing /></PublicRoute>} />
-              <Route path="/about"    element={<About />} />
+              <Route path="/about"    element={<><SessionNotice /><About /></>} />
               {/* The mushaf reads without an account: the reader, the recitation and
                   the tafsir are public, and everything that saves to an account is
                   hidden behind a sign-in nudge (see Library). */}
-              <Route path="/library"  element={<Library />} />
+              <Route path="/library"  element={<><SessionNotice /><Library /></>} />
               <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 

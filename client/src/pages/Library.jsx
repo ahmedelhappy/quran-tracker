@@ -363,7 +363,7 @@ export default function Library() {
   // verses, bookmarks, annotations, the hard list — is hidden and, more
   // importantly, never REQUESTED while signed out: one 401 would clear the token
   // and bounce the visitor to the login page (see the interceptor in api.js).
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, sessionError } = useAuth();
   const signedIn = !!user;
   // Callbacks fired from events read this rather than closing over the flag.
   const signedInRef = useRef(signedIn);
@@ -5055,8 +5055,10 @@ export default function Library() {
 
             {/* Signed out: ONE nudge in place of every account feature — the
                 memorized ticks, mark-verses, bookmarks, annotations and the hard
-                list are all hidden while there is no account to save them to. */}
-            {!signedIn && !authLoading && (
+                list are all hidden while there is no account to save them to.
+                Not shown to a reader whose session only could not be checked:
+                they ARE signed in, and the bar above the page says so. */}
+            {!signedIn && !authLoading && !sessionError && (
               <div className="flex flex-col gap-2 rounded-xl border border-[#dce2f3] dark:border-gray-700 bg-[#f0f4ff] dark:bg-gray-700/40 px-3 py-3">
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003527] dark:text-gray-100">
                   <FiBookmark className="w-3.5 h-3.5 shrink-0 text-[#004f35] dark:text-emerald-400" />

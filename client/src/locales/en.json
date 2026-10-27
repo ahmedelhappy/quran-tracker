@@ -597,7 +597,9 @@
     "serverTitle": "Quran Tracker isn't answering right now",
     "serverBody": "You're still signed in — the server just didn't respond. It may be starting up; try again in a moment.",
     "retrying": "Trying again…",
-    "signOut": "Sign out instead"
+    "signOut": "Sign out instead",
+    "noticeOffline": "You're offline, so your session hasn't been checked — your notes, progress and list will show once you reconnect.",
+    "noticeServer": "Quran Tracker isn't answering, so your session hasn't been checked — your notes, progress and list will show once it does."
   },
   "common": {
     "loading": "Loading...",
@@ -1014,6 +1016,7 @@
     "undo": "Undo",
     "saveFailed": "Couldn't save that change, so it was undone.",
     "loadFailed": "Couldn't load your list.",
+    "sessionUnverified": "Your list will show once your session has been checked.",
     "full": "Your list is full (200 items). Delete or clear some to add more.",
     "localNote": "Saved in this browser only. Sign in to keep it on all your devices."
   },
