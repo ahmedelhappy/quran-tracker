@@ -3455,7 +3455,7 @@ export default function Library() {
   // The per-page check button on each page card is the only mark/unmark
   // control, so this only ever acts on one page. One optimistic update, rolled
   // back on failure. Adding uses markComplete (it also registers the
-  // memorization event + streak); removing replaces the whole set in one call.
+  // memorization event + streak); removing deletes just that page.
   const markPageMemorized = async (page) => {
     if (savingMemorized || memorizedPages.has(page)) return;
     noteRead();
@@ -3501,10 +3501,10 @@ export default function Library() {
       setPartialPages(nextPartial);
     }
     try {
-      // confirmRemoval names the one page this untick removes; if the server
-      // would remove any other (this view is stale or its load failed) it
-      // refuses with a 409 and nothing is deleted.
-      await progressAPI.updateMemorized({ memorizedPages: Array.from(nextPages), confirmRemoval: [page] });
+      // The delta call touches only this page. A whole-set replace (even with
+      // confirmRemoval) refused the untick whenever this view was stale — a
+      // page marked elsewhere since it loaded — until a reload.
+      await progressAPI.changeMemorized({ remove: [page] });
       showToast(t('library.unmarkedToast', { n: fmtNum(page) }), 'success');
     } catch {
       setMemorizedPages(prevPages); // roll back the optimistic change
