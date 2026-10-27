@@ -2,9 +2,11 @@
 // in POST /progress/checkin, which the dashboard sends after every load.
 //
 // The "streak semantics" suite drives the app only through visit() — load
-// today's plan, then check in — and asserts the stored streak state. It passes
-// unchanged against the code from before the move (where the POST is a 404 and
-// the GET did the tick), which is what shows the semantics are identical.
+// today's plan, then check in — and asserts the stored streak state. It passed
+// unchanged against the code from before the move (where the POST was a 404 and
+// the GET did the tick), which is what showed the semantics are identical; the
+// check-in's own status is asserted now that the endpoint exists, so a failing
+// check-in can never pass as "no tick was due".
 const { test, before, after, beforeEach, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
@@ -22,7 +24,8 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 const visit = async (user, { ignoreOffDay = false } = {}) => {
   const get = await request(app).get(`/api/progress/today${ignoreOffDay ? '?ignoreOffDay=true' : ''}`).set('Authorization', auth(user));
   assert.equal(get.status, 200);
-  await request(app).post('/api/progress/checkin').set('Authorization', auth(user)).send(ignoreOffDay ? { ignoreOffDay: true } : {});
+  const post = await request(app).post('/api/progress/checkin').set('Authorization', auth(user)).send(ignoreOffDay ? { ignoreOffDay: true } : {});
+  assert.equal(post.status, 200);
 };
 const reload = (user) => User.findById(user._id);
 

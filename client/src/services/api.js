@@ -49,6 +49,42 @@ export const authAPI = {
   deleteAccount: () => API.delete('/auth/account'),
 };
 
+// The streak check-in for a rest day or a day with nothing left to do. Nothing
+// on screen waits for it, but a lost one is invisible until the streak resets on
+// the next working day — when the dashboard used to tick inside its own GET, a
+// loaded dashboard meant a counted day. So a failure that may be passing (no
+// response, or a 5xx) is retried once shortly after, then once more when the tab
+// is next shown, and only for the same UTC day the plan was loaded on. A 4xx is
+// not retried: the same request would fail the same way (and a 401 already
+// sends the reader to sign in).
+const CHECKIN_RETRY_MS = 5000;
+const utcDay = () => new Date().toISOString().slice(0, 10);
+const isTransient = (err) => !err?.response || err.response.status >= 500;
+let checkInOnShow = null; // the one pending "retry when shown" listener
+
+const checkIn = (ignoreOffDay = false) => {
+  const day = utcDay();
+  const send = () => API.post('/progress/checkin', ignoreOffDay ? { ignoreOffDay: true } : {});
+  const report = (err) => console.error('Streak check-in failed:', err?.response?.status ?? '', err?.message ?? err);
+  return send()
+    .catch((err) => {
+      if (!isTransient(err)) throw err;
+      return new Promise((resolve) => setTimeout(resolve, CHECKIN_RETRY_MS)).then(send);
+    })
+    .catch((err) => {
+      report(err);
+      if (!isTransient(err) || typeof document === 'undefined') return;
+      if (checkInOnShow) document.removeEventListener('visibilitychange', checkInOnShow);
+      checkInOnShow = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', checkInOnShow);
+        checkInOnShow = null;
+        if (utcDay() === day) send().catch(report);
+      };
+      document.addEventListener('visibilitychange', checkInOnShow);
+    });
+};
+
 // Progress API functions
 export const progressAPI = {
   completeOnboarding: (data) => API.post('/progress/onboarding', data),
@@ -57,11 +93,10 @@ export const progressAPI = {
   changeMemorized: (data) => API.patch('/progress/memorized', data),
   resetProgress: () => API.delete('/progress/reset'),
   getTodayTasks: (params) => API.get('/progress/today', { params }),
-  // The streak check-in for a rest day or a day with nothing left to do. The GET
-  // above writes nothing, so every screen that shows today's plan sends this
-  // after it (fire and forget — it never changes what is on screen).
-  checkIn: (ignoreOffDay = false) =>
-    API.post('/progress/checkin', ignoreOffDay ? { ignoreOffDay: true } : {}).catch(() => {}),
+  // The GET above writes nothing, so every screen that shows today's plan sends
+  // this after it (it never changes what is on screen, and never rejects; see
+  // checkIn above for how a failure is retried).
+  checkIn,
   markComplete: (data) => API.post('/progress/complete', data),
   uncomplete: (data) => API.post('/progress/uncomplete', data),
   getAllProgress: () => API.get('/progress/all'),
