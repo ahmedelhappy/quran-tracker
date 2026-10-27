@@ -90,5 +90,12 @@ const annotationSchema = new mongoose.Schema(
 annotationSchema.index({ userId: 1, pageNumber: 1 });
 // The "hard verses & pages" list pulls by kind.
 annotationSchema.index({ userId: 1, kind: 1 });
+// One drawing per user and page. The drawing save's "no drawing yet"
+// precondition is an insert that relies on this to refuse a second one when two
+// first saves race (see upsertDrawing).
+annotationSchema.index(
+  { userId: 1, pageNumber: 1, kind: 1 },
+  { unique: true, partialFilterExpression: { kind: 'drawing' }, name: 'one_drawing_per_page' }
+);
 
 module.exports = mongoose.model('Annotation', annotationSchema);

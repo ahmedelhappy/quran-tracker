@@ -393,6 +393,21 @@ const upsertDrawing = async (req, res) => {
 
     // With a base, update only that exact doc (no upsert): if it changed in the
     // meantime nothing matches and the client gets the 409 instead.
+    //
+    // "No drawing yet" as the base is insert-only. The exists() check above is
+    // only a fast path: two first saves of one page at once both passed it, and
+    // the second upsert replaced the first's ink (or the two made two docs).
+    // The unique per-page index (models/Annotation.js) lets exactly one insert
+    // through; the other's duplicate-key error is the same 409.
+    if (preconditioned && base === null) {
+      try {
+        const doc = await Annotation.create({ userId, pageNumber, kind: 'drawing', verseKey: null, strokes });
+        return res.status(200).json({ success: true, data: doc });
+      } catch (error) {
+        if (error.code === 11000) return changed();
+        throw error;
+      }
+    }
     const doc = base
       ? await Annotation.findOneAndUpdate(target, { $set: { strokes } }, { new: true })
       : await Annotation.findOneAndUpdate(

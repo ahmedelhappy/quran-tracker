@@ -415,6 +415,30 @@ describe('Annotations API', () => {
         assert.equal(await strokesOn3(user), 0);
       });
 
+      // Two first saves of one page at once (two devices, or overlapping saves
+      // of one tab): "no drawing yet" can be true for only one of them. Checking
+      // and then upserting let both through — the later one replaced the
+      // other's ink, or the two upserts made two drawing docs.
+      test('concurrent "no drawing" saves: exactly one lands, the rest get the 409', async () => {
+        await Annotation.init(); // the unique index this relies on is in place
+        const user = await createUser();
+        const auth = authFor(user);
+        for (let round = 0; round < 8; round++) {
+          const pageNumber = 10 + round;
+          const results = await Promise.all(['ink', 'blue', 'pink', 'green'].map((color) =>
+            putDrawing(auth, { pageNumber, strokes: [stroke({ color })], baseUpdatedAt: null })));
+          const statuses = results.map((r) => r.status).sort();
+          assert.deepEqual(statuses, [200, 409, 409, 409], `round ${round}: ${statuses}`);
+          const docs = await Annotation.find({ userId: user._id, pageNumber, kind: 'drawing' });
+          assert.equal(docs.length, 1);
+          const winner = results.find((r) => r.status === 200).body.data;
+          assert.equal(docs[0].strokes[0].color, winner.strokes[0].color); // the one that landed is kept
+          for (const loser of results.filter((r) => r.status === 409)) {
+            assert.equal(loser.body.code, 'DRAWING_CHANGED');
+          }
+        }
+      });
+
       test('another user\'s drawing never satisfies or blocks the base', async () => {
         const alice = await createUser({ email: `pa${Date.now()}@x.com` });
         const bob = await createUser({ email: `pb${Date.now()}@x.com` });
