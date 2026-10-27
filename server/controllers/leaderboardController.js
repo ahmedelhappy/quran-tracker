@@ -2,7 +2,7 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { serverError } = require('../utils/errorResponse');
 const { pageFraction } = require('../utils/segments');
-const { MIN_PAGE, MAX_PAGE } = require('../utils/pageNumbers');
+const { realPageMatch } = require('../utils/pageNumbers');
 const { effectiveStreak } = require('../utils/streak');
 const leaderboardCache = require('../utils/leaderboardCache');
 
@@ -20,8 +20,7 @@ const pagesByUser = async (ids, period) => {
   const match = {
     userId: { $in: ids },
     status: 'memorized',
-    pageNumber: { $gte: MIN_PAGE, $lte: MAX_PAGE },
-    $expr: { $cond: [{ $isNumber: '$pageNumber' }, { $eq: ['$pageNumber', { $trunc: '$pageNumber' }] }, false] },
+    ...realPageMatch(),
   };
   if (period === 'week') {
     // The last 7 UTC days (today + the 6 days before it).

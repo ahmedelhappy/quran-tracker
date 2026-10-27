@@ -2,7 +2,7 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
-const { PAGE_RULE, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { PAGE_RULE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
 const { isStreakContinued } = require('../utils/streak');
 // Every write below changes how many pages this user has memorized, which is
 // exactly what the leaderboard ranks — so each one drops the cached board.
@@ -364,7 +364,7 @@ const buildProgressSummary = async (user) => {
   const isOffDay = offDays.includes(new Date().getUTCDay());
 
   const allMemorizedPages = await UserProgress.find(
-    { userId, status: 'memorized' },
+    { userId, status: 'memorized', ...realPageMatch() },
     { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1, segments: 1 }
   ).sort({ lastReviewedDate: 1, pageNumber: 1 });
 
@@ -480,7 +480,7 @@ exports.getTodayTasks = async (req, res) => {
 
     // --- OFF DAY ---
     if (!ignoreOffDay && offDays.includes(new Date().getUTCDay())) {
-      const offDayProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+      const offDayProgress = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, segments: 1 });
       const totalMemorized = totalMemorizedFraction(offDayProgress);
       const fullPages = offDayProgress.filter(p => !p.segments || p.segments.length === 0).length;
       const isHafiz = fullPages === 604;
@@ -512,7 +512,7 @@ exports.getTodayTasks = async (req, res) => {
     }
 
     // --- LOAD ALL MEMORIZED PAGES ---
-    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() })
       .sort({ lastReviewedDate: 1, pageNumber: 1 });
 
     // The day's plan — decided in one place, shared with the assistant's summary.
@@ -671,7 +671,7 @@ exports.checkIn = async (req, res) => {
         && isStreakContinued(user.lastActiveDate, offDays)) {
       let qualifies = !ignoreOffDay && offDays.includes(now.getUTCDay());
       if (!qualifies) {
-        const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' })
+        const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() })
           .sort({ lastReviewedDate: 1, pageNumber: 1 });
         qualifies = dayCompletion(planToday(user, allMemorizedPages, now)).viewOnlyComplete;
       }
@@ -702,7 +702,7 @@ exports.checkIn = async (req, res) => {
 const scheduledPartialSegment = async (user, pageNumber, existing, meta, now) => {
   if ((user.dailyNewPages || 1) >= 1) return null;
   const allMemorizedPages = await UserProgress.find(
-    { userId: user._id, status: 'memorized' },
+    { userId: user._id, status: 'memorized', ...realPageMatch() },
     { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1, segments: 1 }
   ).sort({ lastReviewedDate: 1, pageNumber: 1 });
   const plan = planToday(user, allMemorizedPages, now);
@@ -1016,7 +1016,7 @@ exports.getEstimate = async (req, res) => {
     // Partial pages count by their memorized fraction, as in every other stat —
     // counting documents made half a page look like a whole one here alone (L-11).
     // Two decimals keep float noise out of remainingPages (0 must stay exactly 0).
-    const progress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const progress = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, segments: 1 });
     const totalMemorized = parseFloat(totalMemorizedFraction(progress).toFixed(2));
     const remainingPages = parseFloat((604 - totalMemorized).toFixed(2));
 
@@ -1051,7 +1051,7 @@ exports.getWeekPlan = async (req, res) => {
     const userId = req.user._id;
     const user = await User.findById(userId);
 
-    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized' });
+    const allMemorizedPages = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() });
     const totalPagesWithProgress = allMemorizedPages.length;
     const fullPagesCount = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
     const memorizedPageNumbers = new Set(allMemorizedPages.map(p => p.pageNumber));
@@ -1234,7 +1234,7 @@ exports.getWeekPlan = async (req, res) => {
 exports.getAllProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-    const progress = await UserProgress.find({ userId, status: 'memorized' }).sort({ pageNumber: 1 });
+    const progress = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }).sort({ pageNumber: 1 });
     const pageNumbers = progress.map(p => p.pageNumber);
     const totalMemorized = totalMemorizedFraction(progress);
     const fullPages = progress.filter(p => !p.segments || p.segments.length === 0).length;
@@ -1311,7 +1311,7 @@ exports.updateMemorized = async (req, res) => {
     if (confirmed.error) return res.status(400).json({ success: false, message: confirmed.error });
     const confirmedSet = new Set(confirmed.pages);
 
-    const current = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1 });
+    const current = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1 });
     const wouldRemove = current.map(d => d.pageNumber).filter(p => !newPageSet.has(p)).sort((a, b) => a - b);
     const unconfirmed = wouldRemove.filter(p => !confirmedSet.has(p));
     if (unconfirmed.length) {
@@ -1416,7 +1416,7 @@ exports.changeMemorized = async (req, res) => {
 
     leaderboardCache.clear();
 
-    const allDocs = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const allDocs = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, segments: 1 });
     const totalMemorized = totalMemorizedFraction(allDocs);
     res.status(200).json({
       success: true,
@@ -1466,7 +1466,7 @@ exports.resetProgress = async (req, res) => {
 exports.getJuzProgress = async (req, res) => {
   try {
     const userId = req.user._id;
-    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, lastReviewedDate: 1, segments: 1 });
+    const memorizedProgress = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, lastReviewedDate: 1, segments: 1 });
     const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
     const fractionByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, pageFraction(p.pageNumber, p.segments)]));
     const reviewDateByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, p.lastReviewedDate]));
@@ -1635,7 +1635,7 @@ exports.updateUnits = async (req, res) => {
 
     leaderboardCache.clear();
 
-    const allDocs = await UserProgress.find({ userId, status: 'memorized' }, { pageNumber: 1, segments: 1 });
+    const allDocs = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, segments: 1 });
     const totalMemorized = totalMemorizedFraction(allDocs);
     const fullPages = allDocs.filter(d => !d.segments || d.segments.length === 0).length;
 

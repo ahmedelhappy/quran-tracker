@@ -110,4 +110,30 @@ describe('Page numbers are validated everywhere (M-01)', () => {
     const board = await request(app).get('/api/leaderboard?period=all').set('Authorization', auth(user._id));
     assert.equal(board.body.data.entries[0].pages, 1);
   });
+
+  // Until cleanupInvalidPages.js runs, such rows are still stored. The editors
+  // save back what GET /all returned, so returning them locked the account out
+  // of PUT /memorized: sent back they were a 400, left out they were a 409.
+  test('legacy invalid rows do not lock an account out of the memorized-pages editors', async () => {
+    const user = await createUser();
+    const when = new Date(Date.now() - 2 * 86400000);
+    await UserProgress.collection.insertMany([3, 99999, 1.5, 0].map((pageNumber) => ({
+      userId: user._id, pageNumber, status: 'memorized', memorizedDate: when, lastReviewedDate: when, reviewCount: 0,
+    })));
+
+    const all = await request(app).get('/api/progress/all').set('Authorization', auth(user._id));
+    assert.deepEqual(all.body.data.memorizedPages, [3]);
+    assert.equal(all.body.data.fullPages, 1);
+
+    // The editor's round trip: what it loaded, plus a page the user added.
+    const put = await request(app).put('/api/progress/memorized').set('Authorization', auth(user._id))
+      .send({ memorizedPages: [...all.body.data.memorizedPages, 4] });
+    assert.equal(put.status, 200);
+    assert.deepEqual(put.body.data.removed, []);
+
+    const today = await request(app).get('/api/progress/today').set('Authorization', auth(user._id));
+    assert.equal(today.body.data.stats.fullPages, 2);
+    const reviewed = [...today.body.data.reviewPages, ...today.body.data.recentReviewPages].map((p) => p.pageNumber);
+    assert.ok(reviewed.every((n) => n === 3 || n === 4), `only real pages are scheduled (got ${reviewed})`);
+  });
 });

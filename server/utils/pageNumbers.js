@@ -31,4 +31,16 @@ const parsePageList = (list, field) => {
   return { pages: [...new Set(list)] };
 };
 
-module.exports = { MIN_PAGE, MAX_PAGE, PAGE_RULE, isPageNumber, toPageNumber, parsePageList };
+// A query condition that matches only rows on a real page, for reads of stored
+// progress. Rows written before this validation (99999, 1.5, 0) stay in the
+// database until scripts/cleanupInvalidPages.js is run; reading them back put
+// them into the editors' save, which then failed for good (a 400 when sent
+// back, a 409 when left out), and into counts and the review queue. Every
+// value the driver stores is a double, so "integer" has to be checked in $expr.
+// A function, so each query gets its own objects to cast.
+const realPageMatch = () => ({
+  pageNumber: { $gte: MIN_PAGE, $lte: MAX_PAGE },
+  $expr: { $cond: [{ $isNumber: '$pageNumber' }, { $eq: ['$pageNumber', { $trunc: '$pageNumber' }] }, false] },
+});
+
+module.exports = { MIN_PAGE, MAX_PAGE, PAGE_RULE, realPageMatch, isPageNumber, toPageNumber, parsePageList };
