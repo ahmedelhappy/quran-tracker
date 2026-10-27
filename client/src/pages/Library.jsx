@@ -3473,7 +3473,9 @@ export default function Library() {
       setPartialPages(nextPartial);
     }
     try {
-      await progressAPI.markComplete({ pageNumber: page, type: 'new' });
+      // wholePage: this button means the whole page, even when a half-page
+      // plan serves it as a half today (the server refuses a bare 'new' then).
+      await progressAPI.markComplete({ pageNumber: page, type: 'new', wholePage: true });
       showToast(t('library.markedToast', { n: fmtNum(page) }), 'success');
     } catch {
       setMemorizedPages(prevPages); // roll back the optimistic change

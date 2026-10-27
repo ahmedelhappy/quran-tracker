@@ -674,13 +674,34 @@ exports.getTodayTasks = async (req, res) => {
   }
 };
 
+// The verse range today's plan serves for this page, when recording the whole
+// page instead would credit more than the plan assigned — a half-page plan's
+// fresh half. Null when the plan is whole-page or doesn't serve the page as a
+// part. Uses the same planToday the dashboard reads, so it names exactly the
+// segment the dashboard showed.
+const scheduledPartialSegment = async (user, pageNumber, existing, meta, now) => {
+  if ((user.dailyNewPages || 1) >= 1) return null;
+  const allMemorizedPages = await UserProgress.find(
+    { userId: user._id, status: 'memorized' },
+    { pageNumber: 1, memorizedDate: 1, lastReviewedDate: 1, segments: 1 }
+  ).sort({ lastReviewedDate: 1, pageNumber: 1 });
+  const plan = planToday(user, allMemorizedPages, now);
+  for (const item of [...plan.newItems, ...plan.extraItems]) {
+    if (item.pageNumber !== pageNumber || !item.fromVerseKey) continue;
+    // A remainder that finishes the page records the same thing as the whole page.
+    if (addRangeToPage(existing?.segments, item.fromVerseKey, item.toVerseKey, meta).full) continue;
+    return { fromVerseKey: item.fromVerseKey, toVerseKey: item.toVerseKey, half: item.half };
+  }
+  return null;
+};
+
 // @desc    Mark a page as complete (memorized or reviewed)
 // @route   POST /api/progress/complete
 // @access  Private
 exports.markPageComplete = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { type, alreadyKnow, segment } = req.body;
+    const { type, alreadyKnow, segment, wholePage } = req.body;
 
     const pageNumber = toPageNumber(req.body.pageNumber);
     if (pageNumber === null) {
@@ -696,35 +717,52 @@ exports.markPageComplete = async (req, res) => {
         ? (() => { const d = new Date(now); d.setUTCDate(d.getUTCDate() - 1); d.setUTCHours(0, 0, 0, 0); return d; })()
         : now;
 
-      if (segment && typeof segment.fromVerseKey === 'string' && typeof segment.toVerseKey === 'string') {
-        // Half-page plans (and any other segment-bearing completion): merge the
-        // verse range into whatever progress the page already has instead of
-        // overwriting the whole page. Clears segments (becomes a full page) once
-        // the merged coverage reaches the page's full verse span.
-        const meta = PAGE_BY_NUMBER.get(pageNumber);
-        if (!meta) return res.status(400).json({ success: false, message: 'Unknown page' });
-        const existing = await UserProgress.findOne({ userId, pageNumber });
-        let merged;
+      const meta = PAGE_BY_NUMBER.get(pageNumber);
+      if (!meta) return res.status(400).json({ success: false, message: 'Unknown page' });
+
+      // A segment that is sent must be well formed. It used to fall through to
+      // the whole-page branch when it wasn't, crediting the whole page (H-03).
+      const hasSegment = segment !== undefined && segment !== null;
+      if (hasSegment && (typeof segment.fromVerseKey !== 'string' || typeof segment.toVerseKey !== 'string')) {
+        return res.status(400).json({ success: false, message: 'segment must have string fromVerseKey and toVerseKey' });
+      }
+
+      const existing = await UserProgress.findOne({ userId, pageNumber });
+
+      // No segment on a page today's plan serves as half a page: refuse rather
+      // than credit the whole page. Recording the whole page silently skipped
+      // the page's second half for good and inflated every total (H-03). A caller
+      // that really means the whole page says so with wholePage (the Library's
+      // "mark page memorized") or alreadyKnow ("I already know this page").
+      if (!hasSegment && !wholePage && !alreadyKnow) {
+        const scheduled = await scheduledPartialSegment(req.user, pageNumber, existing, meta, now);
+        if (scheduled) {
+          return res.status(400).json({
+            success: false,
+            code: 'SEGMENT_REQUIRED',
+            message: `Today's plan serves page ${pageNumber} as part of a page — send its segment, or wholePage: true`,
+            data: { segment: scheduled },
+          });
+        }
+      }
+
+      // With a segment (half-page plans): merge the verse range into whatever
+      // progress the page already has instead of overwriting the whole page.
+      // Clears segments (becomes a full page) once the merged coverage reaches
+      // the page's full verse span. Without one: the whole page.
+      let segments = [];
+      if (hasSegment) {
         try {
-          merged = addRangeToPage(existing?.segments, segment.fromVerseKey, segment.toVerseKey, meta);
+          segments = addRangeToPage(existing?.segments, segment.fromVerseKey, segment.toVerseKey, meta).segments;
         } catch (err) {
           return res.status(400).json({ success: false, message: err.message });
         }
-        await UserProgress.findOneAndUpdate(
-          { userId, pageNumber },
-          {
-            $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments: merged.segments },
-            $inc: { reviewCount: 1 },
-          },
-          { upsert: true, new: true }
-        );
-      } else {
-        await UserProgress.findOneAndUpdate(
-          { userId, pageNumber },
-          { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments: [] }, $inc: { reviewCount: 1 } },
-          { upsert: true, new: true }
-        );
       }
+      await UserProgress.findOneAndUpdate(
+        { userId, pageNumber },
+        { $set: { status: 'memorized', memorizedDate, lastReviewedDate: memorizedDate, segments }, $inc: { reviewCount: 1 } },
+        { upsert: true, runValidators: true }
+      );
     } else if (type === 'review') {
       const result = await UserProgress.findOneAndUpdate(
         { userId, pageNumber, status: 'memorized' },

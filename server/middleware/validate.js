@@ -25,7 +25,8 @@ const isNumberArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'nu
 const isStringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 // An array of plain objects — e.g. a batch of annotation ops. Only the SHAPE is
 // gated here; the controller must still type-check every field of every element.
-const isObjectArray = (v) => Array.isArray(v) && v.every((x) => x !== null && typeof x === 'object' && !Array.isArray(x));
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isObjectArray = (v) => Array.isArray(v) && v.every(isPlainObject);
 
 const CHECKS = {
   string: isScalarString,
@@ -34,11 +35,14 @@ const CHECKS = {
   numberArray: isNumberArray,
   stringArray: isStringArray,
   objectArray: isObjectArray,
+  // A single plain object — e.g. a completion's verse segment. Like objectArray,
+  // only the shape is gated; the controller checks every field.
+  object: isPlainObject,
 };
 
 // Builds a middleware that type-checks one request container (body or query)
 // against a field→spec map. A spec is either a type name ('string' | 'number' |
-// 'boolean' | 'numberArray' | 'stringArray' | 'objectArray') or { type, nullable }. Fields absent from the
+// 'boolean' | 'numberArray' | 'stringArray' | 'objectArray' | 'object') or { type, nullable }. Fields absent from the
 // request are skipped — routes do partial updates — but any field that IS present
 // must match its declared type (or be null when nullable). Returns 400 otherwise.
 const validateContainer = (source, schema) => (req, res, next) => {

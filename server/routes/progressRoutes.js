@@ -26,7 +26,11 @@ router.use(protect);
 const onboardingSchema = { memorizedPages: 'numberArray', dailyNewPages: 'number' };
 const memorizedSchema = { memorizedPages: 'numberArray', confirmRemoval: 'numberArray' };
 const memorizedDeltaSchema = { add: 'numberArray', remove: 'numberArray' };
-const completeSchema = { pageNumber: 'number', type: 'string', alreadyKnow: 'boolean' };
+const completeSchema = {
+  pageNumber: 'number', type: 'string', alreadyKnow: 'boolean', wholePage: 'boolean',
+  // A half-page task's verse range; null means "none", like leaving it out.
+  segment: { type: 'object', nullable: true },
+};
 const uncompleteSchema = { pageNumber: 'number', type: 'string' };
 // `ref` varies in shape by unit (a number for juz/hizb/rub/surah/page, an
 // { from, to } object for verses) so it isn't type-gated here — updateUnits
