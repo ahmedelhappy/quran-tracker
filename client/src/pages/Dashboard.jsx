@@ -18,6 +18,7 @@ import TodoList from '../components/TodoList';
 import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSurahPage } from '../utils/surahDisplay';
 import { getDailyVerse } from '../services/dailyVerse';
 import { round1 } from '../utils/formatNumber';
+import { storage } from '../utils/safeStorage';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -406,8 +407,8 @@ export default function Dashboard() {
     if (loading || !data || tourCheckedRef.current) return;
 
     const showGuideOnce = () => {
-      if (!localStorage.getItem('seenMemorizeGuide')) {
-        localStorage.setItem('seenMemorizeGuide', '1');
+      if (!storage.get('seenMemorizeGuide')) {
+        storage.set('seenMemorizeGuide', '1');
         setHowToOpen(true);
       }
     };
@@ -416,7 +417,7 @@ export default function Dashboard() {
       const tour = startDashboardTour({
         t,
         onDone: () => {
-          localStorage.setItem('seenDashboardTour', '1');
+          storage.set('seenDashboardTour', '1');
           tourRef.current = null;
           if (chainGuide) showGuideOnce();
         },
@@ -433,7 +434,7 @@ export default function Dashboard() {
         next.delete('tour');
         setSearchParams(next, { replace: true });
         launchTour(false);
-      } else if (!localStorage.getItem('seenDashboardTour')) {
+      } else if (!storage.get('seenDashboardTour')) {
         launchTour(true);
       } else {
         showGuideOnce();

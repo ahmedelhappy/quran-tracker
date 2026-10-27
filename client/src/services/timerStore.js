@@ -12,6 +12,7 @@
 // The tick only decides how often a display LOOKS at the clock.
 import { buildPlan, elapsedOf, phaseAt, nextBoundaryAt, boundaryTime, timerStatus, MAX_DURATION_MS } from '../utils/timerCore';
 import { unlockChime } from './chime';
+import { storage } from '../utils/safeStorage';
 
 const STATE_KEY = 'timerState';
 const SETTINGS_KEY = 'timerSettings';
@@ -42,15 +43,12 @@ const DEFAULT_STATE = {
   timer: { duration: 10 * 60000, run: null },
 };
 
-const readJSON = (key) => {
-  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
-};
+const readJSON = (key) => storage.getJSON(key);
 const parseJSON = (text) => {
   try { return JSON.parse(text); } catch { return null; }
 };
-const writeJSON = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode / full: in-memory only */ }
-};
+// Private mode / full: in-memory only.
+const writeJSON = (key, value) => storage.setJSON(key, value);
 
 // Stored values are untrusted (another version of the app, a hand edit): every
 // field is checked, and anything odd falls back to its default.
@@ -310,7 +308,7 @@ export function createTimerStore() {
     // closed or reloading. Returns the matching teardown.
     attach() {
       const onStorage = (e) => {
-        if (e.storageArea !== localStorage) return;
+        if (e.storageArea !== storage.area()) return;
         if (e.key === STATE_KEY || e.key === null) {
           state = sanitizeState(e.key === null ? readJSON(STATE_KEY) : parseJSON(e.newValue));
           now = Date.now();

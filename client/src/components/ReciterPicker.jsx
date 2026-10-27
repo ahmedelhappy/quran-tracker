@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { FiCheck, FiChevronDown, FiSearch, FiX } from 'react-icons/fi';
 import Tooltip from './Tooltip';
 import { RECITERS, RECITER_STYLES, getReciter } from '../services/quranApi';
+import { storage } from '../utils/safeStorage';
 
 const RECENTS_KEY = 'recentReciters';
 const RECENTS_MAX = 4;
@@ -33,10 +34,8 @@ const MULTI_STYLE = new Set(
 );
 
 const readRecents = () => {
-  try {
-    const ids = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]');
-    return Array.isArray(ids) ? ids.filter((id) => RECITERS.some((r) => r.id === id)).slice(0, RECENTS_MAX) : [];
-  } catch { return []; }
+  const ids = storage.getJSON(RECENTS_KEY, []);
+  return Array.isArray(ids) ? ids.filter((id) => RECITERS.some((r) => r.id === id)).slice(0, RECENTS_MAX) : [];
 };
 
 // The reader's reciter picker: a button in the audio bar that opens a searchable
@@ -177,7 +176,7 @@ export default function ReciterPicker({ value, onChange, isArabic }) {
   const pick = (id) => {
     const next = [id, ...recents.filter((x) => x !== id)].slice(0, RECENTS_MAX);
     setRecents(next);
-    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(next)); } catch { /* private mode: recents just don't persist */ }
+    storage.setJSON(RECENTS_KEY, next); // private mode: recents just don't persist
     if (id !== value) onChange(id);
     close(true);
   };

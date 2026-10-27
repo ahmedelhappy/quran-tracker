@@ -1,3 +1,4 @@
+import { storage } from '../utils/safeStorage';
 // The pages the reader recently READ — one list, kept in this browser.
 //
 // localStorage (`recentPages`) rather than the account: the Library is public, so
@@ -51,10 +52,7 @@ const sanitize = (raw) => {
   return out;
 };
 
-const read = () => {
-  try { return sanitize(JSON.parse(localStorage.getItem(RECENT_KEY))); }
-  catch { return []; }
-};
+const read = () => sanitize(storage.getJSON(RECENT_KEY));
 
 let snapshot = read();
 const listeners = new Set();
@@ -62,10 +60,9 @@ const emit = () => listeners.forEach((fn) => fn());
 
 const write = (list) => {
   snapshot = list;
-  try {
-    if (list.length) localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-    else localStorage.removeItem(RECENT_KEY);
-  } catch { /* storage full or blocked: the list still works for this tab */ }
+  // Storage full or blocked: the list still works for this tab.
+  if (list.length) storage.setJSON(RECENT_KEY, list);
+  else storage.remove(RECENT_KEY);
   emit();
 };
 

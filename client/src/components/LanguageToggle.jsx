@@ -3,6 +3,7 @@ import { FiGlobe } from 'react-icons/fi';
 import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../services/api';
 import Tooltip from './Tooltip';
+import { storage } from '../utils/safeStorage';
 
 // The app's single language-switching code path. Calling i18n.changeLanguage
 // persists the choice (detector cache → localStorage 'lang') and App.jsx's
@@ -22,8 +23,8 @@ const LanguageToggle = ({ variant = 'icon', className = '' }) => {
 
   const toggle = () => {
     i18n.changeLanguage(nextLang);
-    localStorage.setItem('lang', nextLang);
-    localStorage.setItem('langExplicit', '1');
+    storage.set('lang', nextLang);
+    storage.set('langExplicit', '1');
     if (user) {
       authAPI.updateProfile({ language: nextLang }).catch(() => {});
     }

@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { storage } from '../utils/safeStorage';
 
 /**
  * Make a CSS-anchored element draggable via a translate offset.
@@ -29,10 +30,8 @@ export function useDraggable(storageKey, { axis } = {}) {
 
   const [pos, setPos] = useState(() => {
     if (!storageKey) return { x: 0, y: 0 };
-    try {
-      const saved = JSON.parse(localStorage.getItem(storageKey));
-      if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') return saved;
-    } catch { /* ignore malformed value */ }
+    const saved = storage.getJSON(storageKey); // null when missing or malformed
+    if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') return saved;
     return { x: 0, y: 0 };
   });
 
@@ -85,7 +84,7 @@ export function useDraggable(storageKey, { axis } = {}) {
   }, [pos, axis]);
 
   useEffect(() => {
-    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(pos));
+    if (storageKey) storage.setJSON(storageKey, pos);
   }, [pos, storageKey]);
 
   return {

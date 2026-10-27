@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { storage } from '../utils/safeStorage';
 
 // Create axios instance
 const API = axios.create({
@@ -7,7 +8,7 @@ const API = axios.create({
 
 // Add token to every request automatically
 API.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = storage.get('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -29,7 +30,7 @@ API.interceptors.response.use(
     if (error.response?.status === 401) {
       const hadToken = !!error.config?.headers?.Authorization;
       const isSessionCheck = error.config?.url === '/auth/me';
-      if (hadToken) localStorage.removeItem('token');
+      if (hadToken) storage.remove('token');
       if (hadToken && !isSessionCheck) {
         const here = `${window.location.pathname}${window.location.search}`;
         window.location.href = `/login?returnTo=${encodeURIComponent(here)}`;

@@ -1,4 +1,5 @@
 import { todosAPI } from './api';
+import { storage } from '../utils/safeStorage';
 
 // Where the to-do list ("My to-do") is kept. Two backends with ONE interface, so
 // the list's UI and its store (services/todoStore.js) never ask whether anyone
@@ -71,7 +72,7 @@ const newId = () => {
 
 const read = () => {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY));
+    const raw = storage.getJSON(KEY);
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((it) => it && typeof it._id === 'string' && typeof it.text === 'string')
@@ -82,11 +83,7 @@ const read = () => {
   }
 };
 const write = (items) => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(items));
-  } catch {
-    throw fail('STORAGE');
-  }
+  if (!storage.setJSON(KEY, items)) throw fail('STORAGE');
   return items;
 };
 // Same rule as the server: trimmed, 1–200 characters.

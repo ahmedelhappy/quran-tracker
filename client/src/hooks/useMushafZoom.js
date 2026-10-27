@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { storage } from '../utils/safeStorage';
 
 /**
  * Zoom for the mushaf — an opt-in escape from "the page fits the window", which
@@ -63,13 +64,11 @@ const stepFrom = (z, dir) => (dir > 0
   : [...ZOOM_STEPS].reverse().find((s) => s < z - EPS) ?? ZOOM_MIN);
 
 function readStored() {
-  try {
-    const v = parseFloat(localStorage.getItem(STORAGE_KEY));
-    return Number.isFinite(v) ? clampZoom(v) : ZOOM_MIN;
-  } catch { return ZOOM_MIN; }
+  const v = parseFloat(storage.get(STORAGE_KEY));
+  return Number.isFinite(v) ? clampZoom(v) : ZOOM_MIN;
 }
 function persist(z) {
-  try { localStorage.setItem(STORAGE_KEY, String(z)); } catch { /* storage unavailable */ }
+  storage.set(STORAGE_KEY, String(z));
 }
 
 // The smallest possible store, so the zoom control can subscribe with

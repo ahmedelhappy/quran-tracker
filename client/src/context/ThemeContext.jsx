@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ThemeContext } from '../hooks/useTheme';
+import { storage } from '../utils/safeStorage';
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'light');
+  const [theme, setThemeState] = useState(() => storage.get('theme') || 'light');
 
   useEffect(() => {
     const root = document.documentElement;
@@ -31,7 +32,7 @@ export function ThemeProvider({ children }) {
 
   const setTheme = (t) => {
     setThemeState(t);
-    localStorage.setItem('theme', t);
+    storage.set('theme', t);
   };
 
   return (

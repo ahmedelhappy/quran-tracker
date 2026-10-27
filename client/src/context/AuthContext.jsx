@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../services/api';
 import { AuthContext } from '../hooks/useAuth';
 import i18n from '../i18n';
+import { storage } from '../utils/safeStorage';
 
 // The context object and its useAuth() hook live in hooks/useAuth.js, so that
 // this file exports only a component.
@@ -28,20 +29,20 @@ export const AuthProvider = ({ children }) => {
   // With no explicit local choice (a fresh device), adopt the account's saved
   // preference instead.
   const syncLanguage = useCallback((userData) => {
-    const explicitLocalLang = localStorage.getItem('langExplicit') === '1' ? localStorage.getItem('lang') : null;
+    const explicitLocalLang = storage.get('langExplicit') === '1' ? storage.get('lang') : null;
     if (explicitLocalLang) {
       if (userData.language !== explicitLocalLang) {
         authAPI.updateProfile({ language: explicitLocalLang }).catch(() => {});
       }
     } else if (userData.language && userData.language !== i18n.language) {
       i18n.changeLanguage(userData.language);
-      localStorage.setItem('lang', userData.language);
+      storage.set('lang', userData.language);
     }
   }, []);
 
   // Verify token and get user data
   const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('token');
+    const token = storage.get('token');
 
     if (!token) {
       setLoading(false);
@@ -55,7 +56,7 @@ export const AuthProvider = ({ children }) => {
       syncLanguage(userData);
     } catch (err) {
       console.log(err);
-      localStorage.removeItem('token');
+      storage.remove('token');
       setUser(null);
     } finally {
       setLoading(false);
@@ -75,7 +76,7 @@ export const AuthProvider = ({ children }) => {
 
       const { token, ...userData } = response.data.data;
 
-      localStorage.setItem('token', token);
+      storage.set('token', token);
       setUser(userData);
       syncLanguage(userData);
 
@@ -95,7 +96,7 @@ export const AuthProvider = ({ children }) => {
 
       const { token, ...userData } = response.data.data;
 
-      localStorage.setItem('token', token);
+      storage.set('token', token);
       setUser(userData);
       syncLanguage(userData);
 
@@ -119,7 +120,7 @@ export const AuthProvider = ({ children }) => {
     const response = await authAPI.changePassword({ currentPassword, newPassword });
     const token = response.data?.data?.token;
     if (token) {
-      localStorage.setItem('token', token);
+      storage.set('token', token);
       return { signedOut: false };
     }
     console.error('Password changed but the response carried no token; signing out');
@@ -129,7 +130,7 @@ export const AuthProvider = ({ children }) => {
 
   // Logout user
   const logout = () => {
-    localStorage.removeItem('token');
+    storage.remove('token');
     setUser(null);
   };
 

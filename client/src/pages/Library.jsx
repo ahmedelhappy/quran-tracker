@@ -61,6 +61,7 @@ import { useDraggable } from '../hooks/useDraggable';
 import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
+import { storage } from '../utils/safeStorage';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
 // the word index it searches loads after that (services/quranSearch.js).
@@ -368,7 +369,7 @@ export default function Library() {
   // effect (including the one that persists it) can touch it. That ordering is
   // the whole point: this value is what a bare /library opens on.
   const [lastOpenedPage] = useState(() => {
-    const stored = Number(localStorage.getItem('lastMushafPage'));
+    const stored = Number(storage.get('lastMushafPage'));
     return stored >= 1 && stored <= 604 ? stored : null;
   });
 
@@ -387,7 +388,7 @@ export default function Library() {
 
   // ── View mode: single page or two-page spread (spread needs width, so it's
   // only honoured on large screens — but works in the memorize session too).
-  const [view, setView] = useState(() => (localStorage.getItem('mushafView') === 'double' ? 'double' : 'single'));
+  const [view, setView] = useState(() => (storage.get('mushafView') === 'double' ? 'double' : 'single'));
   const [isWide, setIsWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   const twoPage = view === 'double' && isWide;
 
@@ -399,7 +400,7 @@ export default function Library() {
   // a DEFAULT. `userSetSidebarRef` records that the reader chose for themselves,
   // and from then on their choice wins: show the sidebar with the tafsir open and
   // both stay docked, and closing the tafsir won't undo it.
-  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('mushafSidebar') !== '0');
+  const [sidebarOpen, setSidebarOpen] = useState(() => storage.get('mushafSidebar') !== '0');
   const sidebarOpenRef = useRef(sidebarOpen);
   const userSetSidebarRef = useRef(false);
   const sidebarBeforeTafsirRef = useRef(null);
@@ -410,18 +411,18 @@ export default function Library() {
   const setSidebarByUser = useCallback((next) => {
     userSetSidebarRef.current = true;
     setSidebarOpen(next);
-    localStorage.setItem('mushafSidebar', next ? '1' : '0');
+    storage.set('mushafSidebar', next ? '1' : '0');
   }, []);
   const toggleSidebarRef = useRef(null);
 
   // The sidebar's tools row (the timer) — collapsed to one line by default, and
   // remembered. Kept here rather than in the row so the edge indicator can open
   // it along with the sidebar.
-  const [toolsOpen, setToolsOpen] = useState(() => localStorage.getItem('readerTools') === '1');
-  useEffect(() => { localStorage.setItem('readerTools', toolsOpen ? '1' : '0'); }, [toolsOpen]);
+  const [toolsOpen, setToolsOpen] = useState(() => storage.get('readerTools') === '1');
+  useEffect(() => { storage.set('readerTools', toolsOpen ? '1' : '0'); }, [toolsOpen]);
   // Which of the row's tools is showing: 'timer' or 'todo'.
-  const [toolsTab, setToolsTab] = useState(() => (localStorage.getItem('readerToolsTab') === 'todo' ? 'todo' : 'timer'));
-  useEffect(() => { localStorage.setItem('readerToolsTab', toolsTab); }, [toolsTab]);
+  const [toolsTab, setToolsTab] = useState(() => (storage.get('readerToolsTab') === 'todo' ? 'todo' : 'timer'));
+  useEffect(() => { storage.set('readerToolsTab', toolsTab); }, [toolsTab]);
 
   // Page-turn animation: the last travel direction ('fwd' | 'back') drives which
   // way the content slides; disabled entirely when the OS asks for reduced motion.
@@ -516,8 +517,8 @@ export default function Library() {
   const selectToolRef = useRef(null);
 
   // ── Annotation visibility (clean-reading toggle) ───────────────────
-  const [annoVisible, setAnnoVisible] = useState(() => localStorage.getItem('mushafAnnoVisible') !== '0');
-  useEffect(() => { localStorage.setItem('mushafAnnoVisible', annoVisible ? '1' : '0'); }, [annoVisible]);
+  const [annoVisible, setAnnoVisible] = useState(() => storage.get('mushafAnnoVisible') !== '0');
+  useEffect(() => { storage.set('mushafAnnoVisible', annoVisible ? '1' : '0'); }, [annoVisible]);
 
   // ── Annotation navigation ──────────────────────────────────────────
   const [annoSummary, setAnnoSummary] = useState([]); // [{ pageNumber, counts, noteExcerpt }]
@@ -526,13 +527,13 @@ export default function Library() {
 
   // The "tap a verse" cue retires once the reader has selected a verse (self-test
   // keeps its own cue). The drag flag suppresses the popover's tooltip mid-drag.
-  const [seenVerseTap, setSeenVerseTap] = useState(() => localStorage.getItem('seenVerseTapCue') === '1');
+  const [seenVerseTap, setSeenVerseTap] = useState(() => storage.get('seenVerseTapCue') === '1');
   const [handleDragging, setHandleDragging] = useState(false);
 
   // ── Audio state ─────────────────────────────────────────
   // A saved id from an older build always resolves; one this build doesn't know
   // quietly becomes the default.
-  const [reciter, setReciter] = useState(() => resolveReciterId(localStorage.getItem('reciter')));
+  const [reciter, setReciter] = useState(() => resolveReciterId(storage.get('reciter')));
   // The verse being recited, as a GLOBAL ayah number (1–6236) rather than an index
   // into `verses`: playback has to be able to name verses that aren't on screen —
   // a repeat range ending two pages later, or plain continuous recitation running
@@ -622,14 +623,14 @@ export default function Library() {
   // ── Playback speed (persisted) ──────────────────────────
   const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
   const [playbackRate, setPlaybackRate] = useState(() => {
-    const v = parseFloat(localStorage.getItem('playbackRate'));
+    const v = parseFloat(storage.get('playbackRate'));
     return SPEEDS.includes(v) ? v : 1;
   });
   // The pause between verses (persisted): 'natural' plays the reciter's pause exactly as
   // recorded; 'tight' trims the silence at the two edges of each handover down to about
   // TIGHT_PAUSE_MS, never into a word. See the handover effect.
-  const [versePause, setVersePause] = useState(() => (localStorage.getItem('versePause') === 'tight' ? 'tight' : 'natural'));
-  useEffect(() => { localStorage.setItem('versePause', versePause); }, [versePause]);
+  const [versePause, setVersePause] = useState(() => (storage.get('versePause') === 'tight' ? 'tight' : 'natural'));
+  useEffect(() => { storage.set('versePause', versePause); }, [versePause]);
 
   // Kept current during render, so a timer or a promise callback never acts on a
   // value from the render that scheduled it.
@@ -705,7 +706,7 @@ export default function Library() {
   const [tafsirVerseKey, setTafsirVerseKey] = useState(null);
   const [tafsirOpen, setTafsirOpen] = useState(false);
   const [tafsirEdition, setTafsirEdition] = useState(() => {
-    const saved = localStorage.getItem('tafsirEdition');
+    const saved = storage.get('tafsirEdition');
     return TAFSIR_EDITIONS.some(e => e.id === saved) ? saved : TAFSIR_EDITIONS[0].id;
   });
   // How wide the docked tafsir panel is, in px, remembered across visits. Only
@@ -714,7 +715,7 @@ export default function Library() {
   const TAFSIR_MIN_W = 300;
   const TAFSIR_MAX_W = 720;
   const [tafsirWidth, setTafsirWidth] = useState(() => {
-    const saved = Number(localStorage.getItem('tafsirPanelWidth'));
+    const saved = Number(storage.get('tafsirPanelWidth'));
     return saved >= TAFSIR_MIN_W && saved <= TAFSIR_MAX_W ? saved : 400;
   });
   const [tafsirResizing, setTafsirResizing] = useState(false);
@@ -729,7 +730,7 @@ export default function Library() {
   // Verse action popover — placed near the selection each time, then draggable via
   // the grip (current instance only, so no persisted position).
   const { ref: popoverRef, style: popoverDragStyle, setPos: setPopoverPos, dragHandlers: popoverDragHandlers } = useDraggable(null);
-  useEffect(() => { localStorage.removeItem('versePopoverPos'); }, []); // drop the old persisted spot
+  useEffect(() => { storage.remove('versePopoverPos'); }, []); // drop the old persisted spot
   const lastPointerRef = useRef(null);   // last pointer-down in the reader (for placement)
   const placeNextRef = useRef(false);    // re-place the popover only after a word click
   // The popover can be dismissed WITHOUT dropping the selection: the verse stays
@@ -823,7 +824,7 @@ export default function Library() {
   // current page in single view (unchanged there).
   const bookmarkTargetPage = twoPage ? activePage : currentPage;
 
-  useEffect(() => { localStorage.setItem('mushafView', view); }, [view]);
+  useEffect(() => { storage.set('mushafView', view); }, [view]);
   useEffect(() => { toggleSidebarRef.current = () => setSidebarByUser(!sidebarOpenRef.current); }, [setSidebarByUser]);
 
   // Docking the tafsir takes the sidebar's room, so opening it hides the sidebar
@@ -910,7 +911,7 @@ export default function Library() {
   // that `currentPage` is just the un-resolved default, and writing it would
   // destroy the very value the resolution above is about to read.
   useEffect(() => {
-    if (pageResolved) localStorage.setItem('lastMushafPage', String(currentPage));
+    if (pageResolved) storage.set('lastMushafPage', String(currentPage));
   }, [currentPage, pageResolved]);
 
   // The reader's saved bookmarks — an account feature, so nothing is asked for
@@ -1344,7 +1345,7 @@ export default function Library() {
   useEffect(() => {
     if (libTourCheckedRef.current) return;
     const forceTour = searchParams.get('tour') === '1';
-    if (!forceTour && localStorage.getItem('seenLibraryTour')) {
+    if (!forceTour && storage.get('seenLibraryTour')) {
       libTourCheckedRef.current = true;
       return;
     }
@@ -1360,13 +1361,13 @@ export default function Library() {
       const tour = startLibraryTour({
         t,
         onDone: () => {
-          localStorage.setItem('seenLibraryTour', '1');
+          storage.set('seenLibraryTour', '1');
           markTour(false);
           tourRef.current = null;
         },
       });
       if (tour) { tourRef.current = tour; markTour(true); }
-      else localStorage.setItem('seenLibraryTour', '1');
+      else storage.set('seenLibraryTour', '1');
     }, 350);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1383,11 +1384,11 @@ export default function Library() {
   // Play + Tafsir buttons in the popover.
   useEffect(() => {
     if (selectedVerseKey == null || tourActiveRef.current) return;
-    if (localStorage.getItem('seenVerseActionsHint')) return;
+    if (storage.get('seenVerseActionsHint')) return;
     const id = setTimeout(() => {
-      if (tourActiveRef.current || localStorage.getItem('seenVerseActionsHint')) return;
+      if (tourActiveRef.current || storage.get('seenVerseActionsHint')) return;
       if (!document.querySelector('[data-tour="verse-actions"]')) return;
-      localStorage.setItem('seenVerseActionsHint', '1');
+      storage.set('seenVerseActionsHint', '1');
       markTour(true);
       startVerseActionsCoachmark({ t, onDone: () => { markTour(false); } });
     }, 200);
@@ -1401,7 +1402,7 @@ export default function Library() {
     warmGenRef.current += 1;   // the verses warmed ahead belong to a different recording
     releaseBuf(1 - activeBufRef.current);
     markBuf(activeBufRef.current, null, 'idle');
-    localStorage.setItem('reciter', reciter);
+    storage.set('reciter', reciter);
   }, [reciter, releaseBuf]);
 
   // Drive the active <audio> element: point it at the current verse and play.
@@ -1468,7 +1469,7 @@ export default function Library() {
   // primed with the next verse and must start at the same speed) and persist it.
   useEffect(() => {
     [0, 1].forEach((i) => applyRate(bufEl(i)));
-    localStorage.setItem('playbackRate', String(playbackRate));
+    storage.set('playbackRate', String(playbackRate));
   }, [playbackRate]);
 
   // Reset both counters whenever what they are counting against changes — the
@@ -2623,7 +2624,7 @@ export default function Library() {
   const selectVerse = useCallback((verseKey) => {
     setSelectedVerseKey(prev => (prev === verseKey ? null : verseKey));
     setSeenVerseTap(true);
-    localStorage.setItem('seenVerseTapCue', '1'); // the "tap a verse" cue has served its purpose
+    storage.set('seenVerseTapCue', '1'); // the "tap a verse" cue has served its purpose
   }, []);
 
   // Re-reads memorized/partial pages after a units mutation — cheaper to just
@@ -2713,7 +2714,7 @@ export default function Library() {
     placeNextRef.current = true;
     setPopoverPlaceTick((n) => n + 1);   // re-place even if the actions are already up
     setSeenVerseTap(true);
-    localStorage.setItem('seenVerseTapCue', '1');
+    storage.set('seenVerseTapCue', '1');
     const span = rangeSelectionRef.current;
     if (span && ord != null && ord >= span.startOrd && ord <= span.endOrd) {
       setSelectedVerseKey(null);
@@ -3690,7 +3691,7 @@ export default function Library() {
   const showSidebar = sidebarOpen;
 
   useEffect(() => {
-    localStorage.setItem('tafsirEdition', tafsirEdition);
+    storage.set('tafsirEdition', tafsirEdition);
   }, [tafsirEdition]);
 
   // ── Derived data ─────────────────────────────────────────
@@ -3903,7 +3904,7 @@ export default function Library() {
   const commitTafsirWidth = useCallback((w) => {
     const next = clampTafsirWidth(w);
     setTafsirWidth(next);
-    localStorage.setItem('tafsirPanelWidth', String(next));
+    storage.set('tafsirPanelWidth', String(next));
   }, [clampTafsirWidth]);
 
   const startTafsirResize = useCallback((e) => {

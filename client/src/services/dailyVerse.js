@@ -13,6 +13,7 @@
 // falls back to the offline curated quotes in the locale files.
 
 import { toArabicDigits } from './quranApi';
+import { storage } from '../utils/safeStorage';
 
 const ALQURAN_API = 'https://api.alquran.cloud/v1';
 
@@ -49,22 +50,10 @@ const dayOfYear = () => {
 
 const todayKey = () => new Date().toISOString().split('T')[0];
 
-const readCache = (key) => {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-};
+const readCache = (key) => storage.getJSON(key);
 
-const writeCache = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage full / unavailable — the in-day fetch still works, just uncached */
-  }
-};
+// Storage full / unavailable: the in-day fetch still works, just uncached.
+const writeCache = (key, value) => storage.setJSON(key, value);
 
 // Returns { text, source, lang } for today's verse in the given UI language, or
 // throws if the API is unreachable (so the caller can fall back). Cached per
