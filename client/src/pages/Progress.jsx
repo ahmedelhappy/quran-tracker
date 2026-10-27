@@ -12,7 +12,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
-import { round1, formatPageList } from '../utils/formatNumber';
+import { round1 } from '../utils/formatNumber';
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 // Sun..Sat rows; labels only on Mon/Wed/Fri like GitHub's contribution graph.
@@ -179,8 +179,9 @@ export default function Progress() {
   const [showAllSurahs, setShowAllSurahs] = useState(false);
   const [showSurahBreakdown, setShowSurahBreakdown] = useState(false);
   const [showDetailedMap, setShowDetailedMap] = useState(false);
-  // In-place progress editing: a draft page-set the map/breakdown edit, saved via
-  // updateMemorized. editMode gates every interactive affordance below.
+  // In-place progress editing: a draft page-set the map/breakdown edit, saved as
+  // the pages it ADDS and REMOVES against what was loaded (changeMemorized).
+  // editMode gates every interactive affordance below.
   const [editMode, setEditMode] = useState(false);
   const [draft, setDraft] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
@@ -229,7 +230,14 @@ export default function Progress() {
     return n;
   }, [editMode, draft, memorizedSet]);
 
-  const enterEditMode = () => { setDraft(new Set(memorizedSet)); setEditMode(true); };
+  // The editor starts from what the server said; with no successful read there
+  // is nothing to start from, so it cannot open (it would seed an empty set).
+  const canEdit = !loading && !error && overallStats != null;
+  const enterEditMode = () => {
+    if (!canEdit) return;
+    setDraft(new Set(memorizedSet));
+    setEditMode(true);
+  };
   const cancelEdit = () => { setEditMode(false); setDraft(new Set(memorizedSet)); };
   const togglePage = (page) => setDraft(prev => {
     const next = new Set(prev);
@@ -255,29 +263,18 @@ export default function Progress() {
     if (changedCount === 0) { setEditMode(false); return; }
     setSaving(true);
     try {
-      // updateMemorized is segment-preserving: pages already memorized keep their
-      // verse segments, only added/removed whole pages change. See the server note.
-      // Removals must be named: exactly the loaded pages the draft dropped. A page
-      // memorized elsewhere since this view loaded makes the server refuse (409).
-      const confirmRemoval = [...memorizedSet].filter(p => !draft.has(p));
-      await progressAPI.updateMemorized({ memorizedPages: Array.from(draft), confirmRemoval });
+      // Only what the user changed is sent: the pages the draft added and the
+      // loaded pages it dropped. Everything else is untouched, so a page marked
+      // on another device since this view loaded can never be removed by it,
+      // and a page that stays keeps its verse segments and history (H-02).
+      const add = [...draft].filter(p => !memorizedSet.has(p));
+      const remove = [...memorizedSet].filter(p => !draft.has(p));
+      await progressAPI.changeMemorized({ add, remove });
       await load();
       showToast(t('progress.changesSaved'), 'success');
       setEditMode(false);
-    } catch (err) {
-      const stale = err.response?.status === 409 && err.response.data?.code === 'CONFIRM_REMOVAL'
-        ? err.response.data.data?.unconfirmed ?? [] : [];
-      if (stale.length) {
-        // Pages memorized somewhere else after this view loaded: nothing was
-        // saved. Keep them in the draft (the user never saw them, so never chose
-        // to drop them) and reload, so the next save neither removes them nor
-        // hits the same refusal.
-        setDraft(prev => new Set([...prev, ...stale]));
-        await load();
-        showToast(t(stale.length === 1 ? 'progress.staleSave' : 'progress.staleSavePlural', { pages: formatPageList(stale, isArabic) }), 'info');
-      } else {
-        showToast(t('progress.saveFailed'), 'error');
-      }
+    } catch {
+      showToast(t('progress.saveFailed'), 'error');
     } finally {
       setSaving(false);
     }
@@ -540,7 +537,8 @@ export default function Progress() {
                     {!editMode ? (
                       <button
                         onClick={enterEditMode}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#143728] px-3 py-1.5 rounded-lg transition-colors"
+                        disabled={!canEdit}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#1B4332] hover:bg-[#143728] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <FiEdit2 className="w-3.5 h-3.5" /> {t('progress.editProgress')}
                       </button>

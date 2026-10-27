@@ -278,8 +278,6 @@
     "cancel": "Cancel",
     "changesSaved": "Progress updated",
     "saveFailed": "Couldn't save your changes",
-    "staleSave": "Page {{pages}} was marked memorized somewhere else after this page loaded, so nothing was saved. It's now kept in your selection — check it and save again.",
-    "staleSavePlural": "Pages {{pages}} were marked memorized somewhere else after this page loaded, so nothing was saved. They're now kept in your selection — check it and save again.",
     "projectedCompletion": "Projected completion",
     "projectedFinish": "Projected finish date",
     "atPace": "at {{count}} pages/day",
