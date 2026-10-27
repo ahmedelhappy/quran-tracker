@@ -118,8 +118,14 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
   const cutCoverage = (range) => { if (range) setCoverage((c) => subtractOrdRanges(c, [range])); };
   const setSelectedPages = (next) => {
     // The page-shaped tabs still think in pages; translate back onto the model.
-    const pages = typeof next === 'function' ? next(fullyCoveredPages(coverage)) : next;
-    setCoverage(mergeOrdRanges([...pages].map(pageOrdRange)));
+    // They only see WHOLE pages, so they only replace whole pages: the sub-page
+    // coverage they cannot show (a half page, a hizb's mid-page end) is carried
+    // over. Rebuilding from pages alone dropped it, and the save then removed
+    // those verses — toggling Juz 1 deleted a half-memorized page 22.
+    const prevFull = fullyCoveredPages(coverage);
+    const pages = typeof next === 'function' ? next(prevFull) : next;
+    const subPage = subtractOrdRanges(coverage, [...prevFull].map(pageOrdRange));
+    setCoverage(mergeOrdRanges([...subPage, ...[...pages].map(pageOrdRange)]));
   };
   const [selectionMode, setSelectionMode] = useState('juz');
   const [surahSearch, setSurahSearch] = useState('');
