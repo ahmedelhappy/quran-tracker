@@ -366,6 +366,8 @@
     "saveProgress": "Save Progress",
     "progressUpdated": "Progress updated!",
     "progressUpdateFailed": "Failed to update progress",
+    "progressPartlySaved": "Only part of your change was saved. Open the editor again to see what is stored and finish the rest.",
+    "progressReloading": "Loading your memorized pages…",
     "progressLoadFailed": "Couldn't load your memorized pages, so they can't be edited right now.",
     "profileUpdated": "Profile updated!",
     "profileUpdateFailed": "Failed to update profile",

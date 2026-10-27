@@ -101,7 +101,7 @@ function validateRanges(pageRanges) {
 }
 
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partialPages }) {
+function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
   // Single source of truth: the selection as VERSE ranges (global ayah numbers).
   //
   // It used to be a set of whole page numbers, which is fine for Juz / Surah /
@@ -275,12 +275,20 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
-    } catch {
-      // When part of the save went through, reload: the editor re-seeds from
-      // what is really stored, so the next save is a delta of that. When none
-      // did, the user's selection stays as it is to try again.
-      if (landed) onSave();
-      showToast(t('settings.progressUpdateFailed'), 'error');
+    } catch (err) {
+      console.error('Settings: saving the memorization editor failed', landed ? '(partly saved)' : '', err.response?.status ?? err.code ?? err);
+      if (landed) {
+        // Part of it went through. Re-seeding the open editor from the reload
+        // would silently replace the user's remaining edits with what is
+        // stored, so close it and say what happened: the next save is a delta
+        // of what is really there.
+        showToast(t('settings.progressPartlySaved'), 'error');
+        onSave();
+        onClose();
+      } else {
+        // Nothing landed: the selection stays as it is, to try again.
+        showToast(t('settings.progressUpdateFailed'), 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -574,13 +582,25 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
           )}
         </div>
 
-        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex flex-wrap items-center justify-end gap-3 rounded-b-2xl">
+          {/* The editor saves a delta of what it loaded, so it cannot save while
+              that is being reloaded or the reload failed. */}
+          {progressLoad !== 'ready' && (
+            <p role={progressLoad === 'error' ? 'alert' : 'status'} className={`me-auto text-xs ${progressLoad === 'error' ? 'text-red-700 dark:text-red-300' : 'text-[#707974] dark:text-gray-400'}`}>
+              {progressLoad === 'error' ? t('settings.progressLoadFailed') : t('settings.progressReloading')}
+              {progressLoad === 'error' && (
+                <button type="button" onClick={onRetryLoad} className="ms-2 font-semibold underline underline-offset-2">
+                  {t('common.retry')}
+                </button>
+              )}
+            </p>
+          )}
           <button onClick={onClose} className="px-4 py-2 text-sm text-[#404944] dark:text-gray-300 border border-[#bfc9c3] dark:border-gray-600 rounded-lg hover:bg-[#f9f9ff] dark:hover:bg-gray-700 transition-colors">
             {t('settings.cancel')}
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || hasRangeErrors}
+            disabled={saving || hasRangeErrors || progressLoad !== 'ready'}
             className="px-5 py-2 text-sm font-medium bg-[#003527] text-white rounded-lg hover:bg-[#064e3b] transition-colors disabled:opacity-60 flex items-center gap-2"
           >
             {saving ? t('settings.saving') : <><FiSave className="w-4 h-4" /> {t('settings.saveProgress')}</>}
@@ -893,7 +913,8 @@ export default function Settings() {
       setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
       setPartialPages(allRes.data.data.partialPages ?? []);
       setProgressLoad('ready');
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('Settings: loading memorized pages failed', err.response?.status ?? err.code ?? err);
       if (req === progressReqRef.current) setProgressLoad('error');
     });
   }, []);
@@ -1935,6 +1956,8 @@ export default function Settings() {
         isOpen={editProgressOpen}
         onClose={() => setEditProgressOpen(false)}
         onSave={loadProgress}
+        onRetryLoad={loadProgress}
+        progressLoad={progressLoad}
         memorizedPageNums={memorizedPageNums}
         partialPages={partialPages}
       />

@@ -366,6 +366,8 @@
     "saveProgress": "حفظ التقدم",
     "progressUpdated": "تم تحديث التقدم!",
     "progressUpdateFailed": "تعذّر تحديث التقدم",
+    "progressPartlySaved": "حُفظ جزء من تغييرك فقط. افتح المحرر مرة أخرى لترى ما هو محفوظ وتُكمل الباقي.",
+    "progressReloading": "جارٍ تحميل صفحاتك المحفوظة…",
     "progressLoadFailed": "تعذّر تحميل صفحاتك المحفوظة، لذا لا يمكن تعديلها الآن.",
     "profileUpdated": "تم تحديث الملف الشخصي!",
     "profileUpdateFailed": "تعذّر تحديث الملف الشخصي",
