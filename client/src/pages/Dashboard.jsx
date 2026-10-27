@@ -70,6 +70,9 @@ const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded b
 // alone, finishing one showed the other as "Done" without recording it (H-03).
 const taskKey = (type, pageNumber, segment) =>
   type === 'new' ? `new-${pageNumber}-${segment?.fromVerseKey ?? 'full'}` : `review-${pageNumber}`;
+// Stands for a page's latest completion when it was not recorded by this
+// screen (see canUndo); never a real task's key.
+const LATEST_UNKNOWN = 'latest-unknown';
 
 // ── Task card ────────────────────────────────────────────
 const TaskCard = ({ page, type, done, marking, canUndo = true, onComplete, onAlreadyKnow, onUndo, badge, onHowTo, tourAnchor = false }) => {
@@ -489,7 +492,8 @@ export default function Dashboard() {
   // completion saved) and cannot be told which half: with both halves of a page
   // done here, undoing the earlier one would really remove the later one. So
   // the earlier half shows "Done" without Undo until the later one is undone.
-  // Reviews are whole-page and each has its own snapshot.
+  // Reviews are whole-page and each has its own snapshot. LATEST_UNKNOWN on top
+  // of a page's list means its latest completion is not one made here.
   const canUndo = (type, pageNumber, key) => {
     if (type !== 'new') return true;
     const keys = newDoneOrder.get(pageNumber);
@@ -516,6 +520,13 @@ export default function Dashboard() {
       // first attempt did land, or a mark from another tab. The task is done.
       if (type === 'new' && err.response?.status === 409 && err.response.data?.code === 'ALREADY_MEMORIZED') {
         setCompletedKeys(prev => new Set(prev).add(key));
+        // Which completion the server holds as the page's latest is unknown
+        // here (this half's lost reply, the other half from another tab, the
+        // whole page from the Library), and Undo would take back THAT one. So
+        // no half of this page offers Undo: one that did could remove the
+        // other half on the server while the screen showed the opposite.
+        pushNewDone(pageNumber, key);
+        pushNewDone(pageNumber, LATEST_UNKNOWN);
         showToast(t('dashboard.pageMarkedMemorized', { number: pageNumber }), 'success');
       } else {
         showToast(t('dashboard.failedMark'), 'error');
