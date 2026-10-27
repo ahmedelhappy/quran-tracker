@@ -2,9 +2,26 @@ const { test, before, after, beforeEach, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
+const vm = require('vm');
 
 const { connect, disconnect, clearDatabase, createUser, tokenFor } = require('./helpers');
 const app = require('../app');
+const User = require('../models/User');
+
+// Runs the email pattern in a sandbox cut off after `ms`. A backtracking regex
+// blocks the event loop, so neither a test timeout nor a timing assertion could
+// ever fire: the run would just hang. The vm's timeout DOES interrupt it, so a
+// regression fails here in a second instead.
+const boundedMatch = (input, ms = 1000) => {
+  try {
+    return vm.runInNewContext('pattern.test(input)', { pattern: User.EMAIL_PATTERN, input }, { timeout: ms });
+  } catch (error) {
+    if (error.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') {
+      assert.fail(`the email pattern was still running after ${ms} ms on a ${input.length}-char input`);
+    }
+    throw error;
+  }
+};
 
 describe('Auth API', () => {
   before(connect);
@@ -21,7 +38,7 @@ describe('Auth API', () => {
         .post('/api/auth/register')
         .send({ name: 'Ali', email: 'ali@example.com', password: '123' });
 
-      // A model ValidationError is the client's mistake — never a 500.
+      // The password policy's own 400 — never a 500.
       assert.equal(res.status, 400);
       assert.equal(res.body.success, false);
       assert.ok(!res.body.data, 'no user/token should be returned for an invalid password');
@@ -57,6 +74,15 @@ describe('Auth API', () => {
       assert.equal(noName.body.message, 'Please provide your name');
       assert.ok(!noName.body.error, 'no raw error text on a client error');
 
+      // Neither missing nor over-long names are pre-checked by the controller,
+      // so these two are the MODEL's ValidationError mapped to a 400.
+      const longName = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'x'.repeat(60), email: 'longname@example.com', password: 'secret123' });
+      assert.equal(longName.status, 400);
+      assert.equal(longName.body.message, 'Name cannot exceed 50 characters');
+
+      // Refused by the password policy, before the model.
       const noPassword = await request(app)
         .post('/api/auth/register')
         .send({ name: 'Ali', email: 'nopw@example.com' });
@@ -170,7 +196,7 @@ describe('Auth API', () => {
 
   // C-01: the old pattern backtracked exponentially — 'a'×32 + '!' held the event
   // loop for ~4.5 s and every two more characters quadrupled it.
-  test('a malicious email is refused with 400 at once, not after a regex stall', async () => {
+  test('a malicious email is refused with 400 at once, not after a regex stall', { timeout: 10000 }, async () => {
     // Warm the app up so the timing below measures validation, not first-load.
     await request(app).get('/health');
     const payloads = [
@@ -178,7 +204,11 @@ describe('Auth API', () => {
       'a'.repeat(32) + '!',
       'a'.repeat(300) + '@example.com',              // over the 254 cap
       `${'a'.repeat(30)}@${'b.'.repeat(100)}c d`,    // under the cap, a space in the tail
+      `${'a'.repeat(240)}@${'b'.repeat(12)}`,        // just under the cap, no dot after the @
     ];
+    // The controller runs this same pattern: prove it safe on every payload in
+    // the sandbox first, so a regression fails instead of freezing the app.
+    for (const email of payloads) boundedMatch(email);
     for (const email of payloads) {
       const t0 = performance.now();
       const res = await request(app)
@@ -191,13 +221,13 @@ describe('Auth API', () => {
     }
   });
 
-  test('the model\'s email pattern stays linear even past the length cap', async () => {
-    const User = require('../models/User');
+  test('the model\'s email pattern stays linear even past the length cap', { timeout: 10000 }, async () => {
     // 100k characters through the raw pattern, and the model's own validation
     // (the backstop for any write path that skips the controller check).
     const t0 = performance.now();
-    assert.equal(User.EMAIL_PATTERN.test('a'.repeat(100000) + '!'), false);
-    assert.equal(User.EMAIL_PATTERN.test(`a@${'b.'.repeat(50000)} `), false);
+    assert.equal(boundedMatch('a'.repeat(100000) + '!'), false);
+    assert.equal(boundedMatch(`a@${'b.'.repeat(50000)} `), false);
+    assert.equal(boundedMatch('a'.repeat(5000) + '!'), false); // the address validated below
     const err = await new User({ name: 'X', email: 'a'.repeat(5000) + '!', password: 'secret123' })
       .validate().then(() => null, (e) => e);
     const ms = performance.now() - t0;
