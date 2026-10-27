@@ -65,8 +65,14 @@ const JuzRing = ({ pct = 0 }) => {
 
 const Sk = ({ h = 'h-4', w = 'w-full' }) => <div className={`${h} ${w} rounded bg-[#e7eefe] dark:bg-gray-700 animate-pulse`} />;
 
+// One key per TASK. On a half-page plan the two halves of a page are two tasks
+// (today's half, and the other half offered under "Want more?"); keyed by page
+// alone, finishing one showed the other as "Done" without recording it (H-03).
+const taskKey = (type, pageNumber, segment) =>
+  type === 'new' ? `new-${pageNumber}-${segment?.fromVerseKey ?? 'full'}` : `review-${pageNumber}`;
+
 // ── Task card ────────────────────────────────────────────
-const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo, badge, onHowTo, tourAnchor = false }) => {
+const TaskCard = ({ page, type, done, marking, canUndo = true, onComplete, onAlreadyKnow, onUndo, badge, onHowTo, tourAnchor = false }) => {
   const { t, i18n } = useTranslation();
   const isNew = type === 'new';
   const accentColor = isNew ? '#004f35' : '#fe932c';
@@ -134,20 +140,22 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
           <span className="text-xs font-semibold uppercase tracking-wide text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-4 py-2 rounded-lg">
             {t('dashboard.done')}
           </span>
+          {canUndo && (
           <Tooltip label={t('tooltips.undo')}>
             <button
-              onClick={() => onUndo(page.pageNumber, type)}
+              onClick={() => onUndo(page.pageNumber, type, page.segment)}
               className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors"
             >
               {t('dashboard.undo')}
             </button>
           </Tooltip>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-3 self-stretch sm:self-auto">
           {isNew && onAlreadyKnow && (
             <button
-              onClick={() => onAlreadyKnow(page.pageNumber)}
+              onClick={() => onAlreadyKnow(page.pageNumber, page.segment)}
               disabled={marking}
               className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2 transition-colors disabled:opacity-60 whitespace-nowrap"
             >
@@ -172,7 +180,7 @@ const TaskCard = ({ page, type, done, marking, onComplete, onAlreadyKnow, onUndo
 };
 
 // ── Extra task card ──────────────────────────────────────
-const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
+const ExtraTaskCard = ({ page, type, done, marking, canUndo = true, onComplete, onUndo }) => {
   const { t, i18n } = useTranslation();
   const { pageNumber } = page;
   const isNew = type === 'new';
@@ -210,9 +218,11 @@ const ExtraTaskCard = ({ page, type, done, marking, onComplete, onUndo }) => {
       {done ? (
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-[#004f35] dark:text-emerald-400 bg-[#004f35]/10 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg">{t('dashboard.done')}</span>
+          {canUndo && (
           <Tooltip label={t('tooltips.undo')}>
-            <button onClick={() => onUndo(pageNumber, type)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
+            <button onClick={() => onUndo(pageNumber, type, page.segment)} className="text-xs text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-200 underline">{t('dashboard.undo')}</button>
           </Tooltip>
+          )}
         </div>
       ) : (
         <button
@@ -322,8 +332,11 @@ export default function Dashboard() {
   const tourRef = useRef(null);
   const tourTimeoutRef = useRef(null);
   const tourCheckedRef = useRef(false);
+  // Keyed per TASK (see taskKey): both halves of one page are separate tasks.
   const [completedKeys, setCompletedKeys] = useState(new Set());
   const [markingKeys, setMarkingKeys] = useState(new Set());
+  // page -> the keys of its 'new' tasks completed here, oldest first (see canUndo).
+  const [newDoneOrder, setNewDoneOrder] = useState(() => new Map());
   const [tipOpen, setTipOpen] = useState(false);
   const [cycleBannerDismissed, setCycleBannerDismissed] = useState(false);
   const [showAllReview, setShowAllReview] = useState(false);
@@ -466,8 +479,29 @@ export default function Dashboard() {
     }
   };
 
+  const pushNewDone = (pageNumber, key) => setNewDoneOrder(prev => {
+    const next = new Map(prev);
+    next.set(pageNumber, [...(next.get(pageNumber) ?? []).filter(k => k !== key), key]);
+    return next;
+  });
+  // Undo is offered on a page's MOST RECENT 'new' completion only. The server's
+  // undo takes back the page's latest 'new' (it restores the snapshot that
+  // completion saved) and cannot be told which half: with both halves of a page
+  // done here, undoing the earlier one would really remove the later one. So
+  // the earlier half shows "Done" without Undo until the later one is undone.
+  // Reviews are whole-page and each has its own snapshot.
+  const canUndo = (type, pageNumber, key) => {
+    if (type !== 'new') return true;
+    const keys = newDoneOrder.get(pageNumber);
+    return !keys || keys[keys.length - 1] === key;
+  };
+  const taskState = (type, pageNumber, segment) => {
+    const key = taskKey(type, pageNumber, segment);
+    return { done: completedKeys.has(key), marking: markingKeys.has(key), canUndo: canUndo(type, pageNumber, key) };
+  };
+
   const markComplete = async (pageNumber, type, segment) => {
-    const key = `${type}-${pageNumber}`;
+    const key = taskKey(type, pageNumber, segment);
     if (markingKeys.has(key) || completedKeys.has(key)) return;
     setMarkingKeys(prev => new Set(prev).add(key));
     try {
@@ -475,6 +509,7 @@ export default function Dashboard() {
       // tells the server to record just that verse range instead of the whole page.
       await progressAPI.markComplete(segment ? { pageNumber, type, segment } : { pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
+      if (type === 'new') pushNewDone(pageNumber, key);
       showToast(t(type === 'new' ? 'dashboard.pageMarkedMemorized' : 'dashboard.pageMarkedReviewed', { number: pageNumber }), 'success');
     } catch (err) {
       // The page is already memorized — typically a retried request whose
@@ -490,11 +525,20 @@ export default function Dashboard() {
     }
   };
 
-  const undoComplete = async (pageNumber, type) => {
-    const key = `${type}-${pageNumber}`;
+  const undoComplete = async (pageNumber, type, segment) => {
+    const key = taskKey(type, pageNumber, segment);
+    if (!canUndo(type, pageNumber, key)) return;
     try {
       const res = await progressAPI.uncomplete({ pageNumber, type });
       setCompletedKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
+      if (type === 'new') {
+        setNewDoneOrder(prev => {
+          const next = new Map(prev);
+          const keys = (next.get(pageNumber) ?? []).filter(k => k !== key);
+          if (keys.length) next.set(pageNumber, keys); else next.delete(pageNumber);
+          return next;
+        });
+      }
       // The server may have just restored the streak (this was the day's last
       // completion) — reflect that in the stats chip without a full refetch.
       const restoredStreak = res.data?.data?.currentStreak;
@@ -507,8 +551,8 @@ export default function Dashboard() {
     }
   };
 
-  const alreadyKnow = async (pageNumber) => {
-    const key = `new-${pageNumber}`;
+  const alreadyKnow = async (pageNumber, segment) => {
+    const key = taskKey('new', pageNumber, segment);
     if (markingKeys.has(key) || completedKeys.has(key)) return;
     setMarkingKeys(prev => new Set(prev).add(key));
     try {
@@ -516,6 +560,7 @@ export default function Dashboard() {
       const taskRes = await progressAPI.getTodayTasks(isOverrideDay ? { ignoreOffDay: 'true' } : undefined);
       setData(taskRes.data.data);
       setCompletedKeys(new Set());
+      setNewDoneOrder(new Map());
     } catch {
       showToast(t('dashboard.failedMark'), 'error');
     } finally {
@@ -579,8 +624,8 @@ export default function Dashboard() {
     ? `${t('hints.review')} ${t('hints.reviewToday', { breakdown: reviewBreakdown })}`
     : t('hints.review');
 
-  const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(`new-${p.pageNumber}`));
-  const revPending = allReviewPages.filter(p => !completedKeys.has(`review-${p.pageNumber}`));
+  const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(taskKey('new', p.pageNumber, p.segment)));
+  const revPending = allReviewPages.filter(p => !completedKeys.has(taskKey('review', p.pageNumber)));
 
   const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
     (completedKeys.size > 0 || data.stats?.todayComplete);
@@ -972,8 +1017,8 @@ export default function Dashboard() {
                           </div>
                           <div className="space-y-2">
                             {extraData.extraNew.map(page => (
-                              <ExtraTaskCard key={`extra-new-${page.pageNumber}`} page={page} type="new"
-                                done={completedKeys.has(`new-${page.pageNumber}`)} marking={markingKeys.has(`new-${page.pageNumber}`)}
+                              <ExtraTaskCard key={`extra-${taskKey('new', page.pageNumber, page.segment)}`} page={page} type="new"
+                                {...taskState('new', page.pageNumber, page.segment)}
                                 onComplete={markComplete} onUndo={undoComplete} />
                             ))}
                           </div>
@@ -989,7 +1034,7 @@ export default function Dashboard() {
                           <div className="space-y-2">
                             {extraData.extraReview.map(page => (
                               <ExtraTaskCard key={`extra-review-${page.pageNumber}`} page={page} type="review"
-                                done={completedKeys.has(`review-${page.pageNumber}`)} marking={markingKeys.has(`review-${page.pageNumber}`)}
+                                {...taskState('review', page.pageNumber)}
                                 onComplete={markComplete} onUndo={undoComplete} />
                             ))}
                           </div>
@@ -1069,8 +1114,8 @@ export default function Dashboard() {
                         <p className="text-sm text-[#404944] dark:text-gray-400 py-4">{t('dashboard.noNewToday')}</p>
                       ) : (
                         (data?.newPages ?? []).map((p, idx) => (
-                          <TaskCard key={`new-${p.pageNumber}`} page={p} type="new"
-                            done={completedKeys.has(`new-${p.pageNumber}`)} marking={markingKeys.has(`new-${p.pageNumber}`)}
+                          <TaskCard key={taskKey('new', p.pageNumber, p.segment)} page={p} type="new"
+                            {...taskState('new', p.pageNumber, p.segment)}
                             onComplete={markComplete} onAlreadyKnow={alreadyKnow} onUndo={undoComplete}
                             onHowTo={() => setHowToOpen(true)} tourAnchor={idx === 0} />
                         ))
@@ -1109,8 +1154,7 @@ export default function Dashboard() {
                           <TaskCard
                             key={`review-${p.pageNumber}`}
                             page={p} type="review"
-                            done={completedKeys.has(`review-${p.pageNumber}`)}
-                            marking={markingKeys.has(`review-${p.pageNumber}`)}
+                            {...taskState('review', p.pageNumber)}
                             onComplete={markComplete}
                             onUndo={undoComplete}
                             badge={p.isRecent ? t('dashboard.recentBadge') : undefined}
