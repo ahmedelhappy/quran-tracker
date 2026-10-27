@@ -124,8 +124,9 @@ const checkIn = (ignoreOffDay = false) => {
 // Progress API functions
 export const progressAPI = {
   completeOnboarding: (data) => API.post('/progress/onboarding', data),
-  updateMemorized: (data) => API.put('/progress/memorized', data),
-  // { add?: [pages], remove?: [pages] } — touches only the named pages.
+  // { add?: [pages], remove?: [pages] } — touches only the named pages. Every
+  // editor saves through this (and the units endpoint) as a delta of what it
+  // loaded; the whole-set replace (PUT) is no longer called from the client.
   changeMemorized: (data) => API.patch('/progress/memorized', data),
   resetProgress: () => API.delete('/progress/reset'),
   getTodayTasks: (params) => API.get('/progress/today', { params }),

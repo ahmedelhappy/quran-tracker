@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
@@ -18,7 +18,6 @@ import {
   hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
   coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
-import { formatPageList } from '../utils/formatNumber';
 import { useDragSelect } from '../hooks/useDragSelect';
 import { newPasswordProblem } from '../utils/passwordRules';
 
@@ -238,39 +237,44 @@ function EditProgressModal({ isOpen, onClose, onSave, memorizedPageNums, partial
 
   const handleSave = async () => {
     setSaving(true);
+    let landed = false; // whether any request of this save went through
     try {
-      // The editor's contract is "this is exactly what I have memorized", so save
-      // it as a replace: every fully-covered page through the whole-page endpoint
-      // (which clears whatever was there before), then the sub-page remainder —
-      // the mid-page ends of a Hizb selection — added back as verse ranges through
-      // the units endpoint, which writes them as partial `segments`. The remainder
-      // is merged first, so a whole hizb of quarters costs one request, not four.
-      const { fullPages, leftovers } = splitCoverageForSave(coverage);
-      // Removals must be named: every loaded page that is not saved whole
-      // (including partial pages re-added just below). Anything memorized since
-      // the editor loaded makes the server refuse (409) rather than delete it.
-      const keep = new Set(fullPages);
-      const confirmRemoval = memorizedPageNums.filter(p => !keep.has(p));
-      await progressAPI.updateMemorized({ memorizedPages: fullPages, confirmRemoval });
-      for (const ref of toVerseKeyRanges(leftovers)) {
+      // Save only what the user CHANGED, worked out in verses against what the
+      // editor loaded: the verses added and the verses removed. It used to save
+      // the whole selection as a replace, which deleted every page the editor
+      // did not show — a page marked elsewhere since it loaded, or everything
+      // when the load had failed (H-02). Anything the user did not touch is now
+      // never sent, so it keeps its dates, reviews and verse segments.
+      //
+      // Whole pages go through the page delta in one request (a page entirely
+      // added was empty before; one entirely removed is empty now); the
+      // mid-page remainders — a Hizb boundary, a half page — go through the
+      // units endpoint as verse ranges, removals first. Ranges are merged, so a
+      // whole hizb of quarters costs one request, not four.
+      const loaded = coverageFromProgress(memorizedPageNums, partialPages);
+      const added = splitCoverageForSave(mergeOrdRanges(subtractOrdRanges(coverage, loaded)));
+      const removed = splitCoverageForSave(mergeOrdRanges(subtractOrdRanges(loaded, coverage)));
+      if (added.fullPages.length || removed.fullPages.length) {
+        await progressAPI.changeMemorized({ add: added.fullPages, remove: removed.fullPages });
+        landed = true;
+      }
+      for (const ref of toVerseKeyRanges(removed.leftovers)) {
+        await progressAPI.updateUnits({ action: 'remove', unit: 'verses', ref });
+        landed = true;
+      }
+      for (const ref of toVerseKeyRanges(added.leftovers)) {
         await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
+        landed = true;
       }
       showToast(t('settings.progressUpdated'), 'success');
       onSave();
       onClose();
-    } catch (err) {
-      const stale = err.response?.status === 409 && err.response.data?.code === 'CONFIRM_REMOVAL'
-        ? err.response.data.data?.unconfirmed ?? [] : [];
-      if (stale.length) {
-        // Pages memorized somewhere else after the editor opened: nothing was
-        // saved (the refusal comes before the verse ranges). Reload; the editor
-        // re-seeds itself from the fresh progress, so the next save starts from
-        // what is really stored instead of hitting the same refusal.
-        onSave();
-        showToast(t(stale.length === 1 ? 'settings.staleSave' : 'settings.staleSavePlural', { pages: formatPageList(stale, isArabic) }), 'info');
-      } else {
-        showToast(t('settings.progressUpdateFailed'), 'error');
-      }
+    } catch {
+      // When part of the save went through, reload: the editor re-seeds from
+      // what is really stored, so the next save is a delta of that. When none
+      // did, the user's selection stays as it is to try again.
+      if (landed) onSave();
+      showToast(t('settings.progressUpdateFailed'), 'error');
     } finally {
       setSaving(false);
     }
@@ -782,7 +786,14 @@ export default function Settings() {
   // The verse ranges behind any page that is only partly memorized — the editor
   // needs them to seed itself exactly, or saving would round them up to whole pages.
   const [partialPages, setPartialPages] = useState([]);
+  // Whether the three above hold the account's real progress: 'loading' |
+  // 'ready' | 'error'. The editor seeds itself from them, so it only opens once
+  // they are ready — a failed read used to leave them empty and open an editor
+  // that showed (and could save) "nothing memorized" (H-02).
+  const [progressLoad, setProgressLoad] = useState('loading');
   const [editProgressOpen, setEditProgressOpen] = useState(false);
+  // Arrived with ?edit=1 (the Progress page's CTA): open once the read is in.
+  const [editRequested, setEditRequested] = useState(false);
 
   const [profileName, setProfileName] = useState(user?.name ?? '');
   const [profileDirty, setProfileDirty] = useState(false);
@@ -860,31 +871,52 @@ export default function Settings() {
     }
   }, [user]);
 
-  useEffect(() => {
-    Promise.all([
+  // Load (or reload, after a save or a reset) the memorized pages. The editor
+  // seeds itself from memorizedPageNums AND partialPages, so they always come
+  // in together — stale partials would re-seed the half pages wrongly.
+  const progressReqRef = useRef(0);
+  const loadProgress = useCallback(() => {
+    const req = ++progressReqRef.current;
+    setProgressLoad('loading');
+    return Promise.all([
       progressAPI.getJuzProgress(),
       progressAPI.getAllProgress(),
     ]).then(([juzRes, allRes]) => {
+      if (req !== progressReqRef.current) return;
       setMemorizedJuz(juzRes.data.data);
       setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
       setPartialPages(allRes.data.data.partialPages ?? []);
-    }).catch(() => {});
+      setProgressLoad('ready');
+    }).catch(() => {
+      if (req === progressReqRef.current) setProgressLoad('error');
+    });
+  }, []);
+
+  useEffect(() => {
+    loadProgress();
     progressAPI.getTodayTasks().then(res => {
       setTodayStats(res.data.data.stats);
       progressAPI.checkIn(); // this read used to tick the streak itself
     }).catch(() => {});
-  }, []);
+  }, [loadProgress]);
 
-  // Auto-open the Edit Progress modal when arriving from the Progress page CTA.
+  // Auto-open the Edit Progress modal when arriving from the Progress page CTA —
+  // once the progress has loaded (see the effect below), never over an empty set.
   useEffect(() => {
     if (searchParams.get('edit') === '1') {
-      setEditProgressOpen(true);
+      setEditRequested(true);
       const next = new URLSearchParams(searchParams);
       next.delete('edit');
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (editRequested && progressLoad === 'ready') {
+      setEditRequested(false);
+      setEditProgressOpen(true);
+    }
+  }, [editRequested, progressLoad]);
 
   useEffect(() => {
     setProfileDirty((user?.name ?? '') !== profileName && profileName.trim().length > 0);
@@ -1039,6 +1071,9 @@ export default function Settings() {
   const handleResetProgress = async () => {
     try {
       await progressAPI.resetProgress();
+      // What the page holds is now gone on the server: reload it, or the editor
+      // would open on the pages that were just deleted.
+      loadProgress();
       await refreshUser();
       showToast(t('settings.progressReset'), 'success');
     } catch {
@@ -1215,11 +1250,26 @@ export default function Settings() {
                     <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.priorMemDesc')}</p>
                     <button
                       onClick={() => setEditProgressOpen(true)}
-                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 shrink-0"
+                      disabled={progressLoad !== 'ready'}
+                      className="px-4 py-2 rounded-lg border border-[#bfc9c3] dark:border-gray-600 text-[#003527] dark:text-gray-200 font-medium hover:bg-[#e7eefe] dark:hover:bg-gray-700 transition-colors flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                     >
-                      <FiEdit2 className="w-4 h-4" /> {t('settings.editProgress')}
+                      {progressLoad === 'loading'
+                        ? <span className="w-4 h-4 rounded-full border-2 border-current/30 border-t-current animate-spin" aria-hidden="true" />
+                        : <FiEdit2 className="w-4 h-4" />}
+                      {t('settings.editProgress')}
                     </button>
                   </div>
+                  {progressLoad === 'error' && (
+                    <div role="alert" className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-xl px-4 py-3">
+                      <p className="text-sm font-medium text-red-700 dark:text-red-300">{t('settings.progressLoadFailed')}</p>
+                      <button
+                        onClick={loadProgress}
+                        className="self-start sm:self-auto inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
+                      >
+                        <FiRefreshCw className="w-4 h-4" aria-hidden="true" /> {t('common.retry')}
+                      </button>
+                    </div>
+                  )}
                   <div className="bg-[#f9f9ff] dark:bg-gray-700/50 rounded-xl p-4 border border-[#bfc9c3] dark:border-gray-600">
                     <p className="text-xs text-[#707974] dark:text-gray-400 mb-2 uppercase tracking-wide font-medium">{t('settings.currentlyTracking')}</p>
                     <div className="flex flex-wrap gap-2">
@@ -1878,16 +1928,7 @@ export default function Settings() {
       <EditProgressModal
         isOpen={editProgressOpen}
         onClose={() => setEditProgressOpen(false)}
-        onSave={() => Promise.all([
-          progressAPI.getJuzProgress(),
-          progressAPI.getAllProgress(),
-        ]).then(([juzRes, allRes]) => {
-          setMemorizedJuz(juzRes.data.data);
-          setMemorizedPageNums(allRes.data.data.memorizedPages ?? []);
-          // The editor seeds itself from both, so a refresh must carry both —
-          // stale partials would re-seed the half pages wrongly.
-          setPartialPages(allRes.data.data.partialPages ?? []);
-        }).catch(() => {})}
+        onSave={loadProgress}
         memorizedPageNums={memorizedPageNums}
         partialPages={partialPages}
       />
