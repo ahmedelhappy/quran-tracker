@@ -776,6 +776,7 @@
     "annotations": {
       "colorInk": "Ink",
       "pageLoadFailed": "Couldn't load your notes and drawing for this page.",
+      "notLoadedYet": "Your notes on this page haven't loaded yet — load them first, so nothing you saved is overwritten.",
       "hideAll": "Hide annotations",
       "showAll": "Show annotations",
       "colorYellow": "Yellow highlight",

@@ -2902,6 +2902,15 @@ export default function Library() {
     (page, predicate) => (annotationsByPage.get(page) ?? []).find(predicate),
     [annotationsByPage]
   );
+  // Whether a page's annotations are known: read, and the latest read did not
+  // fail. A verse action sets a STATE worked out from what is on screen — the
+  // note's text, a colour on or off — so on a page whose read failed the note
+  // sheet opened empty and saving it replaced the stored note the reader never
+  // saw (H-02). Until then those actions are off, and the page's Retry shows.
+  const annoKnown = useCallback(
+    (page) => annotationsByPage.has(page) && !annoFailedPages.has(page),
+    [annotationsByPage, annoFailedPages]
+  );
 
   // ── One path for every verse-annotation change ─────────────────────
   // A popover action, its undo and its redo all go through the batch endpoint:
@@ -3009,32 +3018,43 @@ export default function Library() {
     }
   }, [commitAnnoOps, recordAnnoStep, historyToastAction, showToast, t, fmtNum, noteRead]);
 
+  // The guard of the actions below (see annoKnown): true, with a toast, when
+  // the page's annotations are not known.
+  const refuseUnknownPage = useCallback((page) => {
+    if (annoKnown(page)) return false;
+    showToast(t('library.annotations.notLoadedYet'), 'error');
+    return true;
+  }, [annoKnown, showToast, t]);
+
   // Highlight a verse in `color`; clicking the active colour again removes it,
   // a different colour updates it (whole-verse; word spans stay a server option).
   const setVerseHighlight = useCallback((page, verseKey, color) => {
+    if (refuseUnknownPage(page)) return;
     const existing = findAnn(page, (a) => a.kind === 'highlight' && a.verseKey === verseKey);
     const value = existing?.color === color ? null : color;
     applyVerseAction([{ kind: 'highlight', pageNumber: page, verseKey, value }], 'highlight',
       t(value ? 'library.annotations.highlightAdded' : 'library.annotations.highlightRemoved'));
-  }, [findAnn, applyVerseAction, t]);
+  }, [findAnn, applyVerseAction, t, refuseUnknownPage]);
 
   // Toggle a verse-level or (verseKey null) whole-page hard flag.
   const toggleHard = useCallback((page, verseKey) => {
+    if (refuseUnknownPage(page)) return;
     const existing = findAnn(page, (a) => a.kind === 'hard' && (a.verseKey ?? null) === (verseKey ?? null));
     applyVerseAction([{ kind: 'hard', pageNumber: page, verseKey: verseKey ?? null, value: !existing }], 'hard',
       t(existing ? 'library.annotations.hardRemoved' : 'library.annotations.hardAdded'));
-  }, [findAnn, applyVerseAction, t]);
+  }, [findAnn, applyVerseAction, t, refuseUnknownPage]);
 
   // Open the note editor for a verse (prefilled if a note already exists). Closes
   // the tafsir sheet so the two side panels never stack.
   const openNote = useCallback((page, verseKey) => {
+    if (refuseUnknownPage(page)) return;
     const existing = findAnn(page, (a) => a.kind === 'note' && a.verseKey === verseKey);
     setTafsirOpen(false);
     // `saved`: the text as stored, so a page turn can tell an untouched sheet
     // (safe to close) from one holding typing that exists nowhere else.
     setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null, saved: existing?.text ?? '' });
     setNoteDraft(existing?.text ?? '');
-  }, [findAnn]);
+  }, [findAnn, refuseUnknownPage]);
 
   // Saving and removing a note are undoable like the rest: the reply carries the
   // note's previous text, so an undo can put exactly that text back.
@@ -4387,6 +4407,7 @@ export default function Library() {
   const selectedIsHard = selectedVerse
     ? selectedVerseAnns.some(a => a.kind === 'hard' && a.verseKey === selectedVerse.verseKey)
     : false;
+  const selectedAnnoKnown = selectedVerse ? annoKnown(selectedVerse.page) : false;
   // "Al-Baqarah 255" for any verse in the Quran, on screen or not — the repeat-range
   // pickers and the audio bar both name verses the current page doesn't hold.
   const ordLabel = (ord) => {
@@ -4755,7 +4776,7 @@ export default function Library() {
                   <button
                     type="button"
                     onClick={() => toggleHard(pd.page, null)}
-                    disabled={savingAnnotation || markVersesMode}
+                    disabled={savingAnnotation || markVersesMode || !annoKnown(pd.page)}
                     aria-label={label}
                     aria-pressed={isPageHard}
                     className="inline-flex items-center justify-center rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -5745,7 +5766,7 @@ export default function Library() {
                         <Tooltip key={key} label={t(labelKey)}>
                           <button
                             onClick={() => setVerseHighlight(selectedVerse.page, selectedVerse.verseKey, key)}
-                            disabled={savingAnnotation}
+                            disabled={savingAnnotation || !selectedAnnoKnown}
                             aria-label={t(labelKey)}
                             aria-pressed={active}
                             className={`w-6 h-6 rounded-full transition-transform disabled:opacity-50 ${cls} ${
@@ -5760,8 +5781,9 @@ export default function Library() {
                     <Tooltip label={selectedHasNote ? t('library.annotations.editNote') : t('library.annotations.addNote')}>
                       <button
                         onClick={() => openNote(selectedVerse.page, selectedVerse.verseKey)}
+                        disabled={!selectedAnnoKnown}
                         aria-label={selectedHasNote ? t('library.annotations.editNote') : t('library.annotations.addNote')}
-                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors ${
+                        className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors disabled:opacity-50 ${
                           selectedHasNote
                             ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300'
                             : 'border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
@@ -5773,7 +5795,7 @@ export default function Library() {
                     <Tooltip label={selectedIsHard ? t('library.annotations.unmarkHard') : t('library.annotations.markHard')}>
                       <button
                         onClick={() => toggleHard(selectedVerse.page, selectedVerse.verseKey)}
-                        disabled={savingAnnotation}
+                        disabled={savingAnnotation || !selectedAnnoKnown}
                         aria-label={selectedIsHard ? t('library.annotations.unmarkHard') : t('library.annotations.markHard')}
                         aria-pressed={selectedIsHard}
                         className={`w-8 h-8 rounded-full border flex items-center justify-center transition-colors disabled:opacity-50 ${
