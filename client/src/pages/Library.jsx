@@ -443,6 +443,12 @@ export default function Library() {
   // memorizedPages already includes these pages too (any progress counts).
   const [partialPages, setPartialPages] = useState(new Map());
   const [savingMemorized, setSavingMemorized] = useState(false);
+  // Whether the two above hold the account's real progress: 'idle' (signed
+  // out) | 'loading' | 'ready' | 'error'. A failed load used to look exactly
+  // like "nothing memorized", and every tick acted on that empty view — one
+  // untick sent [] and wiped 40 pages (H-02). Until it is 'ready' the ticks are
+  // disabled and say why, and an error offers a retry instead.
+  const [progressLoad, setProgressLoad] = useState('idle');
 
   // ── Mark verses (sub-page memorization) ──────────────────
   // Tap the first verse, then the last verse, to add that exact range via
@@ -885,27 +891,40 @@ export default function Library() {
   // The memorized pages, and — with neither a ?page nor a last-opened page — the
   // first page not yet memorized. Both need an account, so this waits until it is
   // known whether there is one: a visitor simply opens page 1.
-  useEffect(() => {
-    if (authLoading) return;
-    if (!signedIn) {
-      setMemorizedPages(new Set());
-      setPartialPages(new Map());
-      landOn(1);
-      return;
-    }
+  const progressReqRef = useRef(0);
+  const loadProgress = useCallback(() => {
+    const req = ++progressReqRef.current;
+    setProgressLoad('loading');
     progressAPI.getAllProgress().then(res => {
+      if (req !== progressReqRef.current) return;
       const pages = res.data?.data?.memorizedPages ?? [];
       const memorized = new Set(pages);
       setMemorizedPages(memorized);
       const partial = res.data?.data?.partialPages ?? [];
       setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
+      setProgressLoad('ready');
       let nextNew = null;
       for (let p = 1; p <= 604; p++) { if (!memorized.has(p)) { nextNew = p; break; } }
       landOn(nextNew ?? 1);
     }).catch(() => {
+      if (req !== progressReqRef.current) return;
+      setProgressLoad('error');
       landOn(1);
     });
-  }, [authLoading, signedIn, landOn]);
+  }, [landOn]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!signedIn) {
+      progressReqRef.current++;
+      setMemorizedPages(new Set());
+      setPartialPages(new Map());
+      setProgressLoad('idle');
+      landOn(1);
+      return;
+    }
+    loadProgress();
+  }, [authLoading, signedIn, landOn, loadProgress]);
 
   // Remember the last page opened. Only once the landing page is resolved: before
   // that `currentPage` is just the un-resolved default, and writing it would
@@ -2629,12 +2648,17 @@ export default function Library() {
 
   // Re-reads memorized/partial pages after a units mutation — cheaper to just
   // refetch than to reconcile every affected page's fraction locally.
+  // A failed refresh keeps what is on screen (it was a real read); a successful
+  // one is a real read too, so it also clears an earlier load error.
   const refreshMemorizedPages = useCallback(() => {
     if (!signedInRef.current) return;
+    const req = progressReqRef.current; // dropped if a sign-out or new load came since
     progressAPI.getAllProgress().then(res => {
+      if (req !== progressReqRef.current) return;
       setMemorizedPages(new Set(res.data?.data?.memorizedPages ?? []));
       const partial = res.data?.data?.partialPages ?? [];
       setPartialPages(new Map(partial.map(p => [p.pageNumber, p.fraction])));
+      setProgressLoad('ready');
     }).catch(() => {});
   }, []);
 
@@ -3458,7 +3482,7 @@ export default function Library() {
   // back on failure. Adding uses markComplete (it also registers the
   // memorization event + streak); removing deletes just that page.
   const markPageMemorized = async (page) => {
-    if (savingMemorized || memorizedPages.has(page)) return;
+    if (progressLoad !== 'ready' || savingMemorized || memorizedPages.has(page)) return;
     noteRead();
     const prevPages = memorizedPages;
     const prevPartial = partialPages;
@@ -3494,7 +3518,7 @@ export default function Library() {
   };
 
   const unmarkPageMemorized = async (page) => {
-    if (savingMemorized || !memorizedPages.has(page)) return;
+    if (progressLoad !== 'ready' || savingMemorized || !memorizedPages.has(page)) return;
     noteRead();
     const prevPages = memorizedPages;
     const prevPartial = partialPages;
@@ -4378,6 +4402,39 @@ export default function Library() {
               of a spread can be marked/unmarked on its own. */}
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-amber-800/60 dark:text-amber-200/40 select-none">
             {signedIn && (() => {
+              // Not loaded (yet, or at all): the tick cannot know the page's state,
+              // so it is disabled and says why rather than offering a guess.
+              if (progressLoad !== 'ready') {
+                const failed = progressLoad === 'error';
+                const label = failed ? t('library.memorizedLoadFailed') : t('library.memorizedLoading');
+                return (
+                  <>
+                    <Tooltip label={label}>
+                      <button
+                        type="button"
+                        disabled
+                        aria-label={label}
+                        aria-busy={!failed}
+                        data-tour="lib-mark"
+                        className="inline-flex items-center justify-center rounded-full p-0.5 disabled:cursor-not-allowed"
+                      >
+                        {failed
+                          ? <FiAlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                          : <span className="block w-4 h-4 rounded-full border-2 border-amber-800/25 border-t-amber-800/70 dark:border-amber-200/20 dark:border-t-amber-200/60 animate-spin" />}
+                      </button>
+                    </Tooltip>
+                    {failed && (
+                      <button
+                        type="button"
+                        onClick={loadProgress}
+                        className="text-[11px] font-semibold text-red-700 dark:text-red-400 underline underline-offset-2 hover:text-red-800 dark:hover:text-red-300"
+                      >
+                        {t('common.retry')}
+                      </button>
+                    )}
+                  </>
+                );
+              }
               const done = memorizedPages.has(pd.page);
               const fraction = partialPages.get(pd.page);
               const isPartial = done && fraction != null;
@@ -5145,9 +5202,25 @@ export default function Library() {
                         {signedIn && (
             <>
             {/* Stats */}
-            <div className="text-sm text-[#707974] dark:text-gray-500">
-              {t('library.pagesMemorizedStat', { count: memorizedCount })}
-            </div>
+            {progressLoad === 'error' ? (
+              <div role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-red-700 dark:text-red-400">
+                <FiAlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>{t('library.memorizedLoadFailed')}</span>
+                <button
+                  type="button"
+                  onClick={loadProgress}
+                  className="font-semibold underline underline-offset-2 hover:text-red-800 dark:hover:text-red-300"
+                >
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-[#707974] dark:text-gray-500">
+                {progressLoad === 'ready'
+                  ? t('library.pagesMemorizedStat', { count: memorizedCount })
+                  : t('library.memorizedLoading')}
+              </div>
+            )}
             </>
             )}
 

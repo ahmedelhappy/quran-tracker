@@ -664,6 +664,8 @@
     "unmarkedToast": "Page {{n}} removed from memorized",
     "markPage": "Mark page {{n}} as memorized",
     "removePage": "Remove page {{n}} from memorized",
+    "memorizedLoading": "Loading your memorized pages…",
+    "memorizedLoadFailed": "Couldn't load your memorized pages, so marking is paused.",
     "halfMemorized": "Page {{n}} — {{pct}}% memorized",
     "pageLabel": "Page",
     "search": {
