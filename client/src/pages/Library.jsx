@@ -3477,7 +3477,13 @@ export default function Library() {
       // plan serves it as a half today (the server refuses a bare 'new' then).
       await progressAPI.markComplete({ pageNumber: page, type: 'new', wholePage: true });
       showToast(t('library.markedToast', { n: fmtNum(page) }), 'success');
-    } catch {
+    } catch (err) {
+      // Already memorized (marked in another tab or device since this view
+      // loaded): what the user asked for is already true, so keep the tick.
+      if (err.response?.status === 409 && err.response.data?.code === 'ALREADY_MEMORIZED') {
+        showToast(t('library.markedToast', { n: fmtNum(page) }), 'success');
+        return;
+      }
       setMemorizedPages(prevPages); // roll back the optimistic change
       setPartialPages(prevPartial);
       showToast(t('common.error'), 'error');

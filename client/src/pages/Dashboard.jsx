@@ -475,8 +475,15 @@ export default function Dashboard() {
       await progressAPI.markComplete(segment ? { pageNumber, type, segment } : { pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
       showToast(t(type === 'new' ? 'dashboard.pageMarkedMemorized' : 'dashboard.pageMarkedReviewed', { number: pageNumber }), 'success');
-    } catch {
-      showToast(t('dashboard.failedMark'), 'error');
+    } catch (err) {
+      // The page is already memorized — typically a retried request whose
+      // first attempt did land, or a mark from another tab. The task is done.
+      if (type === 'new' && err.response?.status === 409 && err.response.data?.code === 'ALREADY_MEMORIZED') {
+        setCompletedKeys(prev => new Set(prev).add(key));
+        showToast(t('dashboard.pageMarkedMemorized', { number: pageNumber }), 'success');
+      } else {
+        showToast(t('dashboard.failedMark'), 'error');
+      }
     } finally {
       setMarkingKeys(prev => { const s = new Set(prev); s.delete(key); return s; });
     }
