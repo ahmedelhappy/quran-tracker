@@ -3615,10 +3615,20 @@ export default function Library() {
   // Save any pending drawing if the reader leaves the Library mid-stroke (the
   // app stays loaded, so the requests finish; a conflict still merges). The
   // debounce / retry timer goes with it, or it would save the same ink again.
+  // This is the last try, so a failure is said out loud: the toasts live above
+  // the router and outlive the Library (a console line was all there was).
+  const inkLostToastRef = useRef(null);
+  useEffect(() => {
+    inkLostToastRef.current = (page) => showToast(t('library.draw.lostOnLeave', { n: fmtNum(page) }), 'error');
+  }, [showToast, t, fmtNum]);
   useEffect(() => () => {
     if (drawSaveTimerRef.current) { clearTimeout(drawSaveTimerRef.current); drawSaveTimerRef.current = null; }
+    const toast = inkLostToastRef.current;
     for (const page of drawDirtyRef.current) {
-      saveInkPage(page).catch((e) => console.error(`Unsaved ink on page ${page}:`, e.response?.status ?? e.message));
+      saveInkPage(page).catch((e) => {
+        console.error(`Unsaved ink on page ${page}:`, e.response?.status ?? e.message);
+        toast?.(page);
+      });
     }
   }, [saveInkPage]);
 
@@ -3647,11 +3657,20 @@ export default function Library() {
       }
       if (saves.length) annotationsAPI.saveDrawingsOnUnload(saves);
     };
+    // While saves are failing (offline, the server down) the unload request
+    // would most likely fail too: ask before the tab closes or reloads.
+    const onBeforeUnload = (e) => {
+      if (!drawFailingRef.current || !drawDirtyRef.current.size) return;
+      e.preventDefault();
+      e.returnValue = ''; // older browsers show the prompt only with this set
+    };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, []);
 

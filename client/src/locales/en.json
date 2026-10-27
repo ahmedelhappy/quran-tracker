@@ -767,6 +767,7 @@
       "waitingForInk": "Loading this page's drawing…",
       "merged": "This page's drawing had changed elsewhere — your strokes were added to it.",
       "saveFailed": "Your drawing couldn't be saved yet. It stays here and saving keeps retrying.",
+      "lostOnLeave": "Your drawing on page {{n}} couldn't be saved before you left the reader.",
       "unsavedTitle": "Your drawing isn't saved",
       "unsavedMessage": "Some of your strokes couldn't be saved yet. Stay to keep retrying, or leave annotate mode and discard them.",
       "discardAndLeave": "Discard and leave",
