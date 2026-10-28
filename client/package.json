@@ -10,6 +10,12 @@
     "preview": "vite preview",
     "test": "vitest run"
   },
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0"
+  },
+  "volta": {
+    "node": "24.19.0"
+  },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "axios": "^1.13.4",
@@ -41,5 +47,8 @@
     "tailwindcss": "^4.1.18",
     "vite": "^7.2.4",
     "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "esbuild@0.27.2": true
   }
 }
