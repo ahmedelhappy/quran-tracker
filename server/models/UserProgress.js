@@ -71,7 +71,7 @@ const userProgressSchema = new mongoose.Schema({
   undoReview: { type: undoSnapshotSchema, default: undefined, select: false },
 }, {
   // createdAt decides whether an undo without a snapshot may delete the page
-  // (completeTask's legacy branch) and dates getAllProgress, so it is stamped
+  // (unmarkPageComplete's legacy branch) and dates getAllProgress, so it is stamped
   // from the same clock the controllers read: a test that pins the clock gets
   // documents made "today" by that clock, not by the wall.
   timestamps: { currentTime: () => clock.now() }
