@@ -126,8 +126,11 @@ jobs:
         working-directory: client
       - run: npm run test:e2e
         working-directory: client
-      - name: Keep the report of a failed run
-        if: failure()
+      # Kept after every run that finished, not only a failed one: a flow that
+      # fails once and passes on its retry leaves the job green, and the trace
+      # of the failed attempt is the only evidence of an intermittent bug.
+      - name: Keep the Playwright report
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

@@ -22,9 +22,12 @@ export default defineConfig({
   forbidOnly: isCI,
   // A flow that fails is reported, not retried into a pass locally; CI gets one
   // retry (with a trace) so a runner hiccup is told apart from a real failure.
+  // A flow that only passed on its retry is still flagged: the github reporter
+  // puts its first failure on the run as an annotation, and the html report
+  // (uploaded after every CI run) keeps that attempt's trace.
   retries: isCI ? 1 : 0,
   workers: isCI ? 2 : 3,
-  reporter: isCI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: isCI ? [['list'], ['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
     trace: 'retain-on-failure',
