@@ -1,13 +1,15 @@
 // Flow 2: completing a review starts the streak on the dashboard, and undoing
 // it takes the streak back to where it was — on screen and on the server.
-import { test, expect, API, createAccount, signIn } from './support/test.js'
+import { test, expect, API, createAccount, signIn, clearOfUtcMidnight } from './support/test.js'
 
 // A task card is the bordered row that holds "Page N".
 const taskCard = (page, pageNumber) => page.locator('div.border-s-4', {
   has: page.getByText(`Page ${pageNumber}`, { exact: true }),
 })
 
-test('complete a review, see the streak start, undo it and see it go back', async ({ page, request }) => {
+test('complete a review, see the streak start, undo it and see it go back', async ({ page, request }, testInfo) => {
+  // A completion and its undo must fall on the same day, or the undo is refused.
+  await clearOfUtcMidnight(testInfo)
   // Juz 30 known and every day a working day: today has reviews from it.
   const pages = Array.from({ length: 23 }, (_, i) => 582 + i)
   const account = await createAccount(request, {

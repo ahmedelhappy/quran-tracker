@@ -1,6 +1,6 @@
 // Flow 4: change the daily goal and the rest days in Settings, and the week
 // plan on the dashboard follows: two new pages a day, and tomorrow a rest day.
-import { test, expect, API, createAccount, signIn } from './support/test.js'
+import { test, expect, API, createAccount, signIn, clearOfUtcMidnight } from './support/test.js'
 
 const DAY_MS = 86400000
 // The labels the app uses: the week plan's date heading, and the Settings
@@ -8,7 +8,9 @@ const DAY_MS = 86400000
 const dayHeading = (date) => date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' })
 const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-test('a new daily goal and rest day show up in the week plan', async ({ page, request }) => {
+test('a new daily goal and rest day show up in the week plan', async ({ page, request }, testInfo) => {
+  // "Today", "tomorrow" and the rest-day weekday below must be the server's too.
+  await clearOfUtcMidnight(testInfo)
   const account = await createAccount(request, {
     label: 'plan',
     onboard: { dailyNewPages: 1 },

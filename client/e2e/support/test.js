@@ -62,6 +62,24 @@ export const test = base.extend({
 
 export { expect }
 
+// Keeps a flow inside one UTC day. The server decides "today" each time it is
+// asked, and a flow that reads the date itself (the week plan's headings) or
+// undoes what it just did (the undo window ends at 00:00Z) breaks if midnight
+// falls between two of those moments. A flow cannot outlast its 60 s timeout,
+// so one that starts with more than 90 s left in the day finishes in it; one
+// that starts later waits for the new day first. Call it before the flow
+// creates anything: onboarding dates pages relative to "today" too.
+const DAY_MS = 86_400_000
+const MIDNIGHT_MARGIN_MS = 90_000
+export const clearOfUtcMidnight = async (testInfo, now = Date.now()) => {
+  const left = DAY_MS - (now % DAY_MS)
+  if (left > MIDNIGHT_MARGIN_MS) return 0
+  const wait = left + 1000
+  testInfo.setTimeout(testInfo.timeout + wait)
+  await new Promise((resolve) => setTimeout(resolve, wait))
+  return wait
+}
+
 // Registers an account through the API. `onboard` also finishes onboarding
 // (optionally with pages already memorized), so a flow can start on the
 // dashboard instead of walking the wizard again.
