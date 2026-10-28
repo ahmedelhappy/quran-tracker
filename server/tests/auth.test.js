@@ -12,6 +12,13 @@ const User = require('../models/User');
 // blocks the event loop, so neither a test timeout nor a timing assertion could
 // ever fire: the run would just hang. The vm's timeout DOES interrupt it, so a
 // regression fails here in a second instead.
+//
+// This cut-off is the ReDoS guard, not a wall-clock budget: a linear pattern
+// needs well under 10 ms even on a 100k-character input, while the backtracking
+// one this replaced needs seconds at 33 characters and centuries at 100k. That
+// gap is orders of magnitude wide, so the verdict cannot depend on how busy the
+// machine is — a tight millisecond budget (100 ms) did, and failed under the full
+// suite's parallel load.
 const boundedMatch = (input, ms = 1000) => {
   try {
     return vm.runInNewContext('pattern.test(input)', { pattern: User.EMAIL_PATTERN, input }, { timeout: ms });
@@ -217,22 +224,27 @@ describe('Auth API', () => {
       const ms = performance.now() - t0;
       assert.equal(res.status, 400, `${email.length}-char email`);
       assert.equal(res.body.success, false);
-      assert.ok(ms < 100, `${email.length}-char email took ${ms.toFixed(0)} ms`);
+      // A backstop for a stall in the request path itself (the pattern is already
+      // proven above). A refusal takes a few ms; the old stall took seconds, so a
+      // full second tells them apart on any machine, however loaded.
+      assert.ok(ms < 1000, `${email.length}-char email took ${ms.toFixed(0)} ms`);
     }
   });
 
   test('the model\'s email pattern stays linear even past the length cap', { timeout: 10000 }, async () => {
     // 100k characters through the raw pattern, and the model's own validation
-    // (the backstop for any write path that skips the controller check).
-    const t0 = performance.now();
+    // (the backstop for any write path that skips the controller check). The
+    // sandbox's cut-off is the whole timing check: at this length even a
+    // quadratic pattern would need ~10^10 steps and trip it, so no wall-clock
+    // budget is needed on top (see boundedMatch).
     assert.equal(boundedMatch('a'.repeat(100000) + '!'), false);
     assert.equal(boundedMatch(`a@${'b.'.repeat(50000)} `), false);
     assert.equal(boundedMatch('a'.repeat(5000) + '!'), false); // the address validated below
+    // Proven bounded on this exact input just above, so running it outside the
+    // sandbox cannot hang.
     const err = await new User({ name: 'X', email: 'a'.repeat(5000) + '!', password: 'secret123' })
       .validate().then(() => null, (e) => e);
-    const ms = performance.now() - t0;
     assert.ok(err && err.errors.email, 'the model rejects the address');
-    assert.ok(ms < 100, `took ${ms.toFixed(0)} ms`);
   });
 
   // M-04: the change used to revoke the very session that made it.
