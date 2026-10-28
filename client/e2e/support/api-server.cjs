@@ -49,7 +49,9 @@ const main = async () => {
   await mongoose.connect(mongod.getUri());
 
   // The real 604-page metadata, built from the committed structure file the way
-  // the production seed builds it.
+  // the production seed builds it — and checked the same way: buildQuranPages
+  // throws unless all 604 pages are there, so a damaged file stops the stack
+  // here rather than surfacing as missing pages halfway through a flow.
   const QuranMetadata = require(path.join(SERVER_DIR, 'models/QuranMetadata'));
   const { buildQuranPages } = require(path.join(SERVER_DIR, 'seed/quranData'));
   await QuranMetadata.insertMany(buildQuranPages());

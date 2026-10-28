@@ -35,6 +35,14 @@ describe('Seed scripts need an explicit target (L-13)', () => {
     assert.deepEqual(pages[49].surahs.map((s) => s.number), [3], 'page 50 is Aal-Imran alone');
   });
 
+  test('buildQuranPages refuses a structure that is not all 604 pages', () => {
+    const { buildQuranPages } = require('../seed/quranData');
+    const full = require('../seed/data/quranStructure.json');
+    assert.throws(() => buildQuranPages(full.slice(0, 603)), /Expected 604 pages, built 603/);
+    assert.throws(() => buildQuranPages([...full, full[603]]), /Expected 604 pages, built 605/);
+    assert.throws(() => buildQuranPages({}), /not a list of pages/);
+  });
+
   for (const file of ['quranData.js', 'demoData.js']) {
     test(`${file} refuses without --uri even with MONGODB_URI exported, and writes nothing`, async () => {
       const res = runSeed(file, [], { MONGODB_URI: memoryUri() });

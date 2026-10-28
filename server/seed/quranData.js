@@ -6,8 +6,13 @@ const { parseTargetArgs } = require('../scripts/lib/target');
 // Build the 604 QuranMetadata documents straight from the committed structure
 // file (seed/data/quranStructure.json), which is generated once from the
 // quran.com API by seed/fetchQuranStructure.js. No guessing, no runtime API calls.
-function buildQuranPages() {
-  return quranStructure.map((page) => ({
+//
+// Throws unless it built exactly 604 pages, so every caller — this seed, the
+// end-to-end API, tests — fails on a truncated or damaged structure file
+// instead of loading part of the mushaf and failing later as missing pages.
+function buildQuranPages(structure = quranStructure) {
+  if (!Array.isArray(structure)) throw new Error('The Quran structure file is not a list of pages');
+  const pages = structure.map((page) => ({
     pageNumber: page.pageNumber,
     juzNumber: page.juzNumber,
     hizbNumber: page.hizbNumber,
@@ -19,6 +24,8 @@ function buildQuranPages() {
     verseKeys: page.verseKeys,
     rubBoundaries: page.rubBoundaries,
   }));
+  if (pages.length !== 604) throw new Error(`Expected 604 pages, built ${pages.length}`);
+  return pages;
 }
 
 // Seed — always replaces existing data. The target must be named on the command
@@ -30,7 +37,6 @@ async function seedQuranData(uri, log = console.log) {
   // Build (and sanity-check) the pages before touching the database, so a bad
   // structure file can never leave the collection empty.
   const pages = buildQuranPages();
-  if (pages.length !== 604) throw new Error(`Expected 604 pages, built ${pages.length}`);
 
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   try {
