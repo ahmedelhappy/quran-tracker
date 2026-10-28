@@ -4,6 +4,7 @@ const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
 const { PAGE_RULE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
 const { isStreakContinued } = require('../utils/streak');
+const clock = require('../utils/clock');
 // Every write below changes how many pages this user has memorized, which is
 // exactly what the leaderboard ranks — so each one drops the cached board.
 // Without this the board keeps serving a stale rank for up to its whole TTL.
@@ -62,7 +63,7 @@ const computeNewPageTargetForDate = (dailyNewPages, planStartDate, targetDate) =
 // prevActiveDate are always kept as a matched pair from the same moment, so
 // restoring both together can never leave the fields incoherent.
 const reconcileStreakAfterUndo = async (userId) => {
-  const todayStart = new Date();
+  const todayStart = clock.now();
   todayStart.setUTCHours(0, 0, 0, 0);
   const tomorrowStart = new Date(todayStart);
   tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
@@ -76,7 +77,7 @@ const reconcileStreakAfterUndo = async (userId) => {
   });
 
   const user = await User.findById(userId);
-  const todayString = getDateString(new Date());
+  const todayString = getDateString(clock.now());
   const lastActiveIsToday = user.lastActiveDate && getDateString(user.lastActiveDate) === todayString;
 
   if (!remainingToday && lastActiveIsToday) {
@@ -205,7 +206,7 @@ const getMetadataMap = (pageNumbers) => getMetadataForPages(pageNumbers);
 // both read it, so the assistant can never name a different next page than the
 // dashboard shows. (It used to: the summary walked whole pages while the
 // dashboard served a partly memorized page's remainder first.)
-const planToday = (user, allMemorizedPages, now = new Date()) => {
+const planToday = (user, allMemorizedPages, now = clock.now()) => {
   const todayString = getDateString(now);
   const totalPagesWithProgress = allMemorizedPages.length;
   const fullPages = allMemorizedPages.filter(p => !p.segments || p.segments.length === 0).length;
@@ -361,7 +362,7 @@ const dayCompletion = (plan) => {
 const buildProgressSummary = async (user) => {
   const userId = user._id;
   const offDays = user.offDays || [];
-  const isOffDay = offDays.includes(new Date().getUTCDay());
+  const isOffDay = offDays.includes(clock.now().getUTCDay());
 
   const allMemorizedPages = await UserProgress.find(
     { userId, status: 'memorized', ...realPageMatch() },
@@ -423,11 +424,11 @@ exports.completeOnboarding = async (req, res) => {
     await User.findByIdAndUpdate(userId, {
       dailyNewPages: dailyGoal,
       onboardingComplete: true,
-      planStartDate: new Date(),
+      planStartDate: clock.now(),
     });
 
     if (memorizedPages.length > 0) {
-      const yesterday = new Date();
+      const yesterday = clock.now();
       yesterday.setUTCHours(0, 0, 0, 0);
       yesterday.setDate(yesterday.getDate() - 1);
 
@@ -479,7 +480,7 @@ exports.getTodayTasks = async (req, res) => {
     const ignoreOffDay = req.query.ignoreOffDay === 'true';
 
     // --- OFF DAY ---
-    if (!ignoreOffDay && offDays.includes(new Date().getUTCDay())) {
+    if (!ignoreOffDay && offDays.includes(clock.now().getUTCDay())) {
       const offDayProgress = await UserProgress.find({ userId, status: 'memorized', ...realPageMatch() }, { pageNumber: 1, segments: 1 });
       const totalMemorized = totalMemorizedFraction(offDayProgress);
       const fullPages = offDayProgress.filter(p => !p.segments || p.segments.length === 0).length;
@@ -659,7 +660,7 @@ exports.checkIn = async (req, res) => {
   try {
     const userId = req.user._id;
     const user = await User.findById(userId);
-    const now = new Date();
+    const now = clock.now();
     const todayString = getDateString(now);
     const offDays = user.offDays || [];
     const ignoreOffDay = req.body.ignoreOffDay === true;
@@ -728,7 +729,7 @@ exports.markPageComplete = async (req, res) => {
       return res.status(400).json({ success: false, message: `pageNumber ${PAGE_RULE}` });
     }
 
-    const now = new Date();
+    const now = clock.now();
 
     if (type === 'new') {
       // alreadyKnow: true → back-date memorizedDate to yesterday so the page doesn't
@@ -878,7 +879,7 @@ exports.unmarkPageComplete = async (req, res) => {
       return res.status(400).json({ success: false, message: 'type must be "new" or "review"' });
     }
 
-    const todayString = getDateString(new Date());
+    const todayString = getDateString(clock.now());
     const progress = await UserProgress.findOne({ userId, pageNumber }).select('+undoNew +undoReview');
     // The snapshots markPageComplete left, one per kind, when they belong to a
     // completion made today (see the model). Both can be live at once: on a
@@ -975,7 +976,7 @@ exports.unmarkPageComplete = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Page was not reviewed today' });
       } else {
         // A review recorded before snapshots existed: the old approximation.
-        const yesterday = new Date();
+        const yesterday = clock.now();
         yesterday.setUTCDate(yesterday.getUTCDate() - 1);
         yesterday.setUTCHours(0, 0, 0, 0);
         await UserProgress.updateOne(
@@ -1087,7 +1088,7 @@ exports.getWeekPlan = async (req, res) => {
       }
     };
 
-    const today = new Date();
+    const today = clock.now();
     today.setUTCHours(0, 0, 0, 0);
     const todayString = getDateString(today);
 
@@ -1280,7 +1281,7 @@ exports.getAllProgress = async (req, res) => {
 // Start of yesterday (UTC) — the date given to pages added through an editor, so
 // they land in today's review queue rather than counting as today's new pages.
 const startOfYesterdayUTC = () => {
-  const d = new Date();
+  const d = clock.now();
   d.setUTCHours(0, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() - 1);
   return d;
@@ -1448,7 +1449,7 @@ exports.resetProgress = async (req, res) => {
       lastActiveDate: null,
       prevStreak: null,
       prevActiveDate: null,
-      planStartDate: new Date(),
+      planStartDate: clock.now(),
     });
 
     leaderboardCache.clear();
@@ -1470,7 +1471,7 @@ exports.getJuzProgress = async (req, res) => {
     const memorizedPages = new Set(memorizedProgress.map(p => p.pageNumber));
     const fractionByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, pageFraction(p.pageNumber, p.segments)]));
     const reviewDateByPage = Object.fromEntries(memorizedProgress.map(p => [p.pageNumber, p.lastReviewedDate]));
-    const now = new Date();
+    const now = clock.now();
 
     const juzRanges = [
       { juz: 1,  start: 1,   end: 21  },
@@ -1574,7 +1575,7 @@ exports.updateUnits = async (req, res) => {
     const existingDocs = await UserProgress.find({ userId, pageNumber: { $in: pageNumbers } });
     const existingByPage = new Map(existingDocs.map(d => [d.pageNumber, d]));
 
-    const yesterday = new Date();
+    const yesterday = clock.now();
     yesterday.setUTCHours(0, 0, 0, 0);
     yesterday.setDate(yesterday.getDate() - 1);
 

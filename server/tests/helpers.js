@@ -14,6 +14,7 @@ const QuranMetadata = require('../models/QuranMetadata');
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const { resetMetadataCache } = require('../utils/quranMetadataCache');
+const clock = require('../utils/clock');
 
 let mongod;
 
@@ -86,8 +87,9 @@ async function addMemorizedPage(userId, pageNumber, { memorizedDate, lastReviewe
 }
 
 // Build a Date offset by whole days from now (negative = past), normalized to UTC midnight.
+// "Now" is the server's clock, so a test that pins it gets days relative to that.
 function daysAgo(n) {
-  const d = new Date();
+  const d = clock.now();
   d.setUTCHours(0, 0, 0, 0);
   d.setUTCDate(d.getUTCDate() - n);
   return d;

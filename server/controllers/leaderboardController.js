@@ -4,6 +4,7 @@ const { serverError } = require('../utils/errorResponse');
 const { pageFraction } = require('../utils/segments');
 const { realPageMatch } = require('../utils/pageNumbers');
 const { effectiveStreak } = require('../utils/streak');
+const clock = require('../utils/clock');
 const leaderboardCache = require('../utils/leaderboardCache');
 
 // Test hook — the test process is reused across cases, so clear the cache in
@@ -24,7 +25,7 @@ const pagesByUser = async (ids, period) => {
   };
   if (period === 'week') {
     // The last 7 UTC days (today + the 6 days before it).
-    const start = new Date();
+    const start = clock.now();
     start.setUTCHours(0, 0, 0, 0);
     start.setUTCDate(start.getUTCDate() - 6);
     match.memorizedDate = { $gte: start };

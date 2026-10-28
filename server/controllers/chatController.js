@@ -3,6 +3,7 @@ const path = require('path');
 const Groq = require('groq-sdk');
 const { buildProgressSummary } = require('./progressController');
 const { tryConsume } = require('../utils/chatBudget');
+const clock = require('../utils/clock');
 
 // The app's own guide (server/chat/appGuide.md), read once when the server boots.
 // It is what lets the assistant answer "how do I…?" about THIS app — the pages, the
@@ -48,7 +49,7 @@ const listPages = (nums, max = 30) => (nums.length > max
 // as authoritative. Used to answer "what should I memorize today?", "how many pages
 // are left?", "what's my streak?" from real data instead of guessing.
 const buildUserContextMessage = (summary) => {
-  const todayUTC = new Date().toISOString().split('T')[0];
+  const todayUTC = clock.now().toISOString().split('T')[0];
   const lines = [
     `THE USER'S CURRENT DATA (authoritative and live, as of ${todayUTC} UTC):`,
     `- Name: ${summary.name}`,
