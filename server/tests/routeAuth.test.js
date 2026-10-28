@@ -100,6 +100,11 @@ describe('401 sweep over every registered route', () => {
   });
 
   test('every protected route answers 401 to a missing, garbage, expired, forged or orphaned token', async () => {
+    // Every bad token names a user who still exists, so the 401 has to come
+    // from the token check itself. Minted for a deleted user, a forged or
+    // expired token would be refused at the "User not found" lookup anyway, and
+    // the sweep would stay green if jwt.verify were swapped for jwt.decode.
+    const live = await createUser({ email: 'live@example.com' });
     const ghost = await createUser({ email: 'ghost@example.com' });
     const orphanToken = tokenFor(ghost._id);
     await User.deleteOne({ _id: ghost._id });
@@ -108,10 +113,10 @@ describe('401 sweep over every registered route', () => {
       'no Authorization header': undefined,
       'an empty Bearer': 'Bearer ',
       'a garbage token': 'Bearer not-a-jwt-at-all',
-      'a token with another scheme': `Basic ${tokenFor(ghost._id)}`,
-      'an expired token': `Bearer ${jwt.sign({ id: ghost._id, iat: now - 7200, exp: now - 3600 }, process.env.JWT_SECRET)}`,
-      'a token signed with another secret': `Bearer ${jwt.sign({ id: ghost._id }, 'not-the-server-secret')}`,
-      'an unsigned (alg: none) token': `Bearer ${jwt.sign({ id: ghost._id }, null, { algorithm: 'none' })}`,
+      'a token with another scheme': `Basic ${tokenFor(live._id)}`,
+      'an expired token': `Bearer ${jwt.sign({ id: live._id, iat: now - 7200, exp: now - 3600 }, process.env.JWT_SECRET)}`,
+      'a token signed with another secret': `Bearer ${jwt.sign({ id: live._id }, 'not-the-server-secret')}`,
+      'an unsigned (alg: none) token': `Bearer ${jwt.sign({ id: live._id }, null, { algorithm: 'none' })}`,
       "a deleted user's token": `Bearer ${orphanToken}`,
     };
 
