@@ -14,6 +14,10 @@ const isCI = !!process.env.CI
 // E2E_REUSE_SERVERS=1 keeps stacks you started yourself (node e2e/support/*) —
 // handy while writing a flow. Off by default, so a run never tests a stale build.
 const reuse = !isCI && process.env.E2E_REUSE_SERVERS === '1'
+// Locally, an installed Chrome saves downloading Playwright's Chromium:
+// PW_CHROME_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe".
+// Unset (CI), Playwright's own Chromium is used.
+const chromeLaunch = process.env.PW_CHROME_PATH ? { executablePath: process.env.PW_CHROME_PATH } : {}
 
 export default defineConfig({
   testDir: './e2e',
@@ -33,16 +37,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  // The browsers and the viewport the app promises to work on: Chrome, Safari's
+  // engine (NFR-02) and a phone (NFR-03). `npx playwright install chromium webkit`.
   projects: [
     {
       name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        // Locally, an installed Chrome saves downloading Playwright's browser:
-        // PW_CHROME_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe".
-        // Unset (CI), Playwright's own Chromium is used — `npx playwright install chromium`.
-        launchOptions: process.env.PW_CHROME_PATH ? { executablePath: process.env.PW_CHROME_PATH } : {},
-      },
+      use: { ...devices['Desktop Chrome'], launchOptions: chromeLaunch },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'], launchOptions: chromeLaunch },
     },
   ],
   webServer: [

@@ -120,9 +120,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('client/package-lock.json') }}
-      # Downloads Chromium unless the cache already has it; the system
-      # libraries it needs are installed either way.
-      - run: npx playwright install --with-deps chromium
+      # Downloads Chromium (desktop and mobile projects) and WebKit (Safari)
+      # unless the cache already has them; the system libraries they need are
+      # installed either way.
+      - run: npx playwright install --with-deps chromium webkit
         working-directory: client
       - run: npm run test:e2e
         working-directory: client
