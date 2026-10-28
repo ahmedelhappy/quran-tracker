@@ -35,4 +35,10 @@ export default defineConfig([
       'react/jsx-no-undef': 'error',
     },
   },
+  {
+    // Vitest runs these in Node (jsdom on top for the DOM ones). The test API is
+    // imported explicitly from 'vitest', so only Node's own globals are added.
+    files: ['src/**/*.test.{js,jsx}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
 ])
