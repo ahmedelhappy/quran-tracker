@@ -13,9 +13,14 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or PR makes the older run pointless.
+# A newer push to a pull request makes its older run pointless, so that one is
+# cancelled. A push to main gets a group of its own (its commit), so it is never
+# cancelled or left pending behind a later one: every commit that lands on main
+# gets its own result, and one that broke main shows red, not "cancelled" by the
+# fix pushed right after it. (Sharing the branch's group without cancelling
+# would not do: GitHub still drops a pending run when a newer one queues.)
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
