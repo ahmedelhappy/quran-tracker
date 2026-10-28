@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const clock = require("../utils/clock");
 
 // RFC 5321 caps a forward path at 254 characters; nothing longer is a real address.
 const EMAIL_MAX_LENGTH = 254;
@@ -128,7 +129,9 @@ const userSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    // createdAt is the plan's start when planStartDate is unset, so it comes
+    // from the clock the scheduler reads (utils/clock), pinnable in tests.
+    timestamps: { currentTime: () => clock.now() },
   },
 );
 

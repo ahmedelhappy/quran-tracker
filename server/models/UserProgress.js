@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const clock = require('../utils/clock');
 
 // The page's state just before its latest dashboard completion, so undoing that
 // completion puts back exactly what was there (L-11) instead of guessing: an
@@ -69,7 +70,11 @@ const userProgressSchema = new mongoose.Schema({
   undoNew: { type: undoSnapshotSchema, default: undefined, select: false },
   undoReview: { type: undoSnapshotSchema, default: undefined, select: false },
 }, {
-  timestamps: true
+  // createdAt decides whether an undo without a snapshot may delete the page
+  // (completeTask's legacy branch) and dates getAllProgress, so it is stamped
+  // from the same clock the controllers read: a test that pins the clock gets
+  // documents made "today" by that clock, not by the wall.
+  timestamps: { currentTime: () => clock.now() }
 });
 
 // Compound index: each user can only have one record per page

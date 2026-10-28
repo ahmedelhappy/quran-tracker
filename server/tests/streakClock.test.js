@@ -14,6 +14,7 @@ const request = require('supertest');
 const { connect, disconnect, clearDatabase, seedMetadata, createUser, tokenFor } = require('./helpers');
 const app = require('../app');
 const User = require('../models/User');
+const UserProgress = require('../models/UserProgress');
 const clock = require('../utils/clock');
 const { isStreakContinued, effectiveStreak } = require('../utils/streak');
 
@@ -194,6 +195,24 @@ describe('Streak day boundaries on a pinned clock (M-15)', () => {
     const res = await uncomplete(user, 1, 'review');
     assert.equal(res.status, 400);
     assert.equal(res.body.message, 'Page was not reviewed today');
+  });
+
+  test("documents are stamped by the pinned clock, so a snapshot-less undo of today's page deletes it", async () => {
+    // Far from the real date on purpose: a createdAt from the wall clock could
+    // never match it, and the legacy undo branch compares exactly that.
+    setNow('2031-07-09T10:00:00.000Z');
+    const user = await createUser({ offDays: [] });
+    assert.equal(user.createdAt.toISOString(), '2031-07-09T10:00:00.000Z');
+    // A completion recorded before undo snapshots existed: no undoNew.
+    const legacy = await UserProgress.create({
+      userId: user._id, pageNumber: 4, status: 'memorized', memorizedDate: clock.now(),
+    });
+    assert.equal(legacy.createdAt.toISOString(), '2031-07-09T10:00:00.000Z');
+
+    setNow('2031-07-09T18:00:00.000Z');
+    const res = await uncomplete(user, 4);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(await UserProgress.countDocuments({ userId: user._id, pageNumber: 4 }), 0);
   });
 });
 
