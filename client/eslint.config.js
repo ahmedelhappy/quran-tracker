@@ -6,7 +6,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'playwright-report', 'test-results']),
   {
     files: ['**/*.{js,jsx}'],
     // Only the react plugin is registered (not its full recommended set, which
@@ -39,6 +39,12 @@ export default defineConfig([
     // Vitest runs these in Node (jsdom on top for the DOM ones). The test API is
     // imported explicitly from 'vitest', so only Node's own globals are added.
     files: ['src/**/*.test.{js,jsx}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
+  {
+    // The Playwright flows and their stack run in Node; the callbacks they hand
+    // to the page (addInitScript, evaluate) run in the browser, so both apply.
+    files: ['e2e/**/*.js', 'playwright.config.js'],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
 ])
