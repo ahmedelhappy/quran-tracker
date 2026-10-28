@@ -59,13 +59,39 @@ const main = async () => {
   const app = require(path.join(SERVER_DIR, 'app'));
   const server = app.listen(API_PORT, '127.0.0.1');
 
+  // Which paths of a model point at a user, read from the schema (`ref: 'User'`,
+  // alone or in an array) rather than assumed to be called userId.
+  const userPaths = (schema) => {
+    const paths = [];
+    schema.eachPath((name, type) => {
+      if (type.options?.ref === 'User' || (type.embeddedSchemaType ?? type.caster)?.options?.ref === 'User') paths.push(name);
+    });
+    return paths;
+  };
+  // Models that hold no one's data. Any other model must reference a user, or
+  // the count below fails: a new model that kept user data under some other
+  // link would otherwise be left out of both counts, and the deletion flow
+  // would pass while that data survived.
+  const USER_INDEPENDENT = new Set(['QuranMetadata']);
+
   const admin = express();
   admin.get('/counts/:userId', async (req, res) => {
     const counts = {};
     for (const name of mongoose.modelNames()) {
       const Model = mongoose.model(name);
-      if (name === 'User') counts.User = await Model.countDocuments({ _id: req.params.userId });
-      else if (Model.schema.path('userId')) counts[name] = await Model.countDocuments({ userId: req.params.userId });
+      if (name === 'User') {
+        counts.User = await Model.countDocuments({ _id: req.params.userId });
+        continue;
+      }
+      const paths = userPaths(Model.schema);
+      if (paths.length) {
+        counts[name] = await Model.countDocuments({ $or: paths.map((p) => ({ [p]: req.params.userId })) });
+      } else if (!USER_INDEPENDENT.has(name)) {
+        return res.status(500).json({
+          error: `Model ${name} has no ref: 'User' path, so its data cannot be counted for a user. ` +
+            "Add the ref, or list it in USER_INDEPENDENT if it holds no one's data.",
+        });
+      }
     }
     res.json(counts);
   });

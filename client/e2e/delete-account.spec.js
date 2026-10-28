@@ -42,7 +42,7 @@ test('deleting the account signs out, blocks sign-in and leaves no data behind',
   await expect(page).toHaveURL(/\/login$/)
 
   const after = await countsFor(request, account.id)
+  // Every model that can hold a user's data is in the count: the admin endpoint
+  // refuses (and countsFor fails) if one has no reference to a user it can follow.
   for (const [model, count] of Object.entries(after)) expect(count, model).toBe(0)
-  // Every model that held something before is in the after-count too.
-  expect(Object.keys(after)).toEqual(expect.arrayContaining(Object.keys(before)))
 })

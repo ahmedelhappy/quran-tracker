@@ -100,6 +100,6 @@ export const signIn = async (page, account) => {
 // port; see e2e/support/api-server.cjs).
 export const countsFor = async (request, userId) => {
   const res = await request.get(`${ADMIN}/counts/${userId}`)
-  expect(res.ok()).toBe(true)
+  expect(res.ok(), await res.text()).toBe(true)
   return res.json()
 }
