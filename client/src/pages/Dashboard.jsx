@@ -511,9 +511,15 @@ export default function Dashboard() {
     try {
       // segment is only ever present on a half-page plan's daily task — it
       // tells the server to record just that verse range instead of the whole page.
-      await progressAPI.markComplete(segment ? { pageNumber, type, segment } : { pageNumber, type });
+      const res = await progressAPI.markComplete(segment ? { pageNumber, type, segment } : { pageNumber, type });
       setCompletedKeys(prev => new Set(prev).add(key));
       if (type === 'new') pushNewDone(pageNumber, key);
+      // The day's first completion is what starts (or extends) the streak — show
+      // it in the chip now, as undoComplete does on the way back, not after a reload.
+      const newStreak = res.data?.data?.newStreak;
+      if (newStreak !== undefined) {
+        setData(prev => prev ? { ...prev, stats: { ...prev.stats, currentStreak: newStreak } } : prev);
+      }
       showToast(t(type === 'new' ? 'dashboard.pageMarkedMemorized' : 'dashboard.pageMarkedReviewed', { number: pageNumber }), 'success');
     } catch (err) {
       // The page is already memorized — typically a retried request whose
