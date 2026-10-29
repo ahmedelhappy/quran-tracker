@@ -8,6 +8,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
 import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorNotice from '../components/ErrorNotice';
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
@@ -385,19 +386,12 @@ export default function Progress() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
-        {/* Load error — friendly message + retry (degrades to empty state below) */}
-        {error && !loading && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p className="text-sm font-medium text-red-700 dark:text-red-300">{t('common.error')}</p>
-            <button
-              onClick={load}
-              className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors self-start sm:self-auto"
-            >
-              {t('common.retry')}
-            </button>
-          </div>
-        )}
+        {/* Load error — what happened, with Retry. With nothing loaded yet the
+            page below is not drawn: it showed 0.0% and "604 pages remaining",
+            which reads as the reader's real progress (M-14). */}
+        {error && !loading && <ErrorNotice onRetry={load} />}
 
+        {!(error && overallStats == null) && (<>
         {/* Tab bar */}
         <div className="border-b border-[#dce2f3] dark:border-gray-700 flex gap-6">
           {[
@@ -909,6 +903,7 @@ export default function Progress() {
             )}
           </div>
         )}
+        </>)}
 
       </main>
 
