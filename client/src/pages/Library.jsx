@@ -65,6 +65,7 @@ import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
+import { reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
@@ -988,7 +989,7 @@ export default function Library() {
     let cancelled = false;
     bookmarksAPI.list()
       .then(res => { if (!cancelled) { setBookmarks(res.data?.data ?? []); setBookmarksFailed(false); } })
-      .catch(() => { if (!cancelled) setBookmarksFailed(true); });
+      .catch((err) => { reportLoadFailure(err, 'bookmarks'); if (!cancelled) setBookmarksFailed(true); });
     return () => { cancelled = true; };
   }, [signedIn, bookmarksReload]);
 
@@ -1043,7 +1044,8 @@ export default function Library() {
         setArrivedKey(arrivalKey);
         setPageLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        reportLoadFailure(err, `mushaf pages ${visiblePages.join(', ')}`);
         if (cancelled) return;
         setPageError(true);
         setPageLoading(false);
@@ -2909,7 +2911,7 @@ export default function Library() {
     if (!signedInRef.current) return;
     annotationsAPI.listByKind('hard')
       .then((r) => { setHardList(r.data?.data ?? []); setHardFailed(false); })
-      .catch(() => setHardFailed(true));
+      .catch((err) => { reportLoadFailure(err, 'the hard list'); setHardFailed(true); });
   }, []);
 
   // The per-page annotation summary powers the navigator; refetched after any
@@ -2918,7 +2920,7 @@ export default function Library() {
     if (!signedInRef.current) return;
     annotationsAPI.getSummary()
       .then((r) => { setAnnoSummary(r.data?.data ?? []); setSummaryFailed(false); })
-      .catch(() => setSummaryFailed(true));
+      .catch((err) => { reportLoadFailure(err, 'the annotation summary'); setSummaryFailed(true); });
   }, []);
 
   // Load the visible page(s)' annotations alongside the mushaf pages, and the
@@ -3161,7 +3163,10 @@ export default function Library() {
     setSpanFailed(false);
     annotationsAPI.listVerseRange(spanFrom, spanTo)
       .then((r) => { if (req === spanAnnsReqRef.current) setSpanAnns({ from: spanFrom, to: spanTo, list: r.data?.data ?? [] }); })
-      .catch(() => { if (req === spanAnnsReqRef.current) setSpanFailed(true); });
+      .catch((err) => {
+        reportLoadFailure(err, "a span's annotations");
+        if (req === spanAnnsReqRef.current) setSpanFailed(true);
+      });
   }, [spanFrom, spanTo]);
   useEffect(() => {
     spanAnnsReloadRef.current = spanFrom == null ? null : loadSpanAnns;
@@ -4223,7 +4228,7 @@ export default function Library() {
           .then(run => { if (!cancelled && run.to > run.from) setTafsirRun(run); })
           .catch(() => { /* the label is a nicety — never fail the read over it */ });
       })
-      .catch(() => { if (!cancelled) setTafsirError(true); })
+      .catch((err) => { reportLoadFailure(err, `tafsir for ${tafsirVerse.verseKey}`); if (!cancelled) setTafsirError(true); })
       .finally(() => { if (!cancelled) setTafsirLoading(false); });
     return () => { cancelled = true; };
   }, [tafsirOpen, tafsirVerse, tafsirEdition, tafsirReloadKey]);

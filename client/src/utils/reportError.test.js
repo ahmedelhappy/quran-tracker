@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { reportError, installGlobalErrorHandlers } from './reportError';
+import { HttpStatusError, NetworkError } from './fetchWithTimeout';
+import { reportError, installGlobalErrorHandlers, reportLoadFailure } from './reportError';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -37,5 +38,36 @@ describe('reportError (M-14)', () => {
     win.dispatchEvent(ev);
     expect(log.mock.calls[0][1]).toBeInstanceOf(Error);
     expect(log.mock.calls[0][1].message).toBe('Script error.');
+  });
+});
+
+describe('reportLoadFailure (M-14)', () => {
+  it('a failed API request is logged with how it failed, not reported', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const timeout = Object.assign(new Error('timeout of 20000ms exceeded'), {
+      name: 'AxiosError', isAxiosError: true, code: 'ECONNABORTED', config: { url: '/progress/today' },
+    });
+    expect(reportLoadFailure(timeout, "today's plan")).toBe('request');
+    const status = Object.assign(new Error('Request failed with status code 503'), {
+      name: 'AxiosError', isAxiosError: true, response: { status: 503 }, config: { url: '/bookmarks' },
+    });
+    expect(reportLoadFailure(status, 'bookmarks')).toBe('request');
+    expect(warn).toHaveBeenNthCalledWith(1, "Couldn't load today's plan:", { name: 'AxiosError', status: undefined, code: 'ECONNABORTED', url: '/progress/today' });
+    expect(warn).toHaveBeenNthCalledWith(2, "Couldn't load bookmarks:", expect.objectContaining({ status: 503, url: '/bookmarks' }));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("another host's failed request (fetchWithTimeout) is a request failure too", () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(reportLoadFailure(new HttpStatusError('https://api.example/x', 502), 'tafsir')).toBe('request');
+    expect(reportLoadFailure(new NetworkError('https://api.example/x', new TypeError('Failed to fetch')), 'tafsir')).toBe('request');
+  });
+
+  it('a reply that could not be read, or a bug, is reported', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bug = new TypeError("Cannot read properties of undefined (reading 'data')");
+    expect(reportLoadFailure(bug, 'progress')).toBe('content');
+    expect(error).toHaveBeenCalledWith('Reported error (load):', bug, { source: 'load', what: 'progress' });
   });
 });

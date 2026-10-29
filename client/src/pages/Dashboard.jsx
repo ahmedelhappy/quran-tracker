@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { reportLoadFailure } from '../utils/reportError';
 import { progressAPI, authAPI, annotationsAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -334,7 +335,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   // Today's plan could not be loaded: the tasks show an error and Retry. It used
   // to fall through to "no new pages today" — wrong news about the reader's day.
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState(null); // null | 'request' | 'content' (reportLoadFailure)
   const [howToOpen, setHowToOpen] = useState(false);
   const tourRef = useRef(null);
   const tourTimeoutRef = useRef(null);
@@ -388,7 +389,7 @@ export default function Dashboard() {
   }, []);
   const loadToday = useCallback(async (ignoreOffDay = false) => {
     setLoading(true);
-    setLoadError(false);
+    setLoadError(null);
     try {
       const [taskRes, juzRes] = await Promise.all([
         progressAPI.getTodayTasks(ignoreOffDay ? { ignoreOffDay: 'true' } : undefined),
@@ -398,8 +399,9 @@ export default function Dashboard() {
       if (!aliveRef.current) return;
       setData(taskRes.data.data);
       setJuzData(juzRes.data.data);
-    } catch {
-      if (aliveRef.current) setLoadError(true);
+    } catch (err) {
+      const kind = reportLoadFailure(err, "today's plan");
+      if (aliveRef.current) setLoadError(kind);
     } finally {
       if (aliveRef.current) setLoading(false);
     }
@@ -480,8 +482,8 @@ export default function Dashboard() {
     try {
       const res = await progressAPI.getWeekPlan();
       setWeekData(res.data.data);
-    } catch {
-      // The tab says so, with Retry (below).
+    } catch (err) {
+      reportLoadFailure(err, 'the week plan'); // the tab says so, with Retry (below)
     } finally {
       setWeekLoading(false);
     }
@@ -613,6 +615,10 @@ export default function Dashboard() {
       extraReview: data?.extraReviewPages ?? [],
     });
   };
+
+  // "Check your connection" only when the request failed; a plan that came back
+  // but could not be used will not load on a better connection either.
+  const tasksErrorKey = loadError === 'content' ? 'dashboard.tasksLoadErrorContent' : 'dashboard.tasksLoadError';
 
   const stats = data?.stats;
   const completedJuz = juzData.filter(j => j.isComplete).length;
@@ -991,7 +997,7 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : loadError ? (
-              <ErrorNotice message={t('dashboard.tasksLoadError')} onRetry={() => loadToday(isOverrideDay)} />
+              <ErrorNotice message={t(tasksErrorKey)} onRetry={() => loadToday(isOverrideDay)} />
             ) : data?.isOffDay && !isOverrideDay ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-12 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center relative overflow-hidden">
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
@@ -1225,7 +1231,7 @@ export default function Dashboard() {
               {loading ? (
                 <Sk h="h-32" />
               ) : loadError ? (
-                <ErrorNotice message={t('dashboard.tasksLoadError')} onRetry={() => loadToday(isOverrideDay)} />
+                <ErrorNotice message={t(tasksErrorKey)} onRetry={() => loadToday(isOverrideDay)} />
               ) : (
                 <WeekDayCard
                   day={{ date: todayDateString }}

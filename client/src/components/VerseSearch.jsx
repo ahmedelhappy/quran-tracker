@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiSearch, FiX, FiCornerDownLeft, FiBookOpen, FiFile, FiLayers, FiAlertCircle, FiClock } from 'react-icons/fi';
 import { loadSearchEngine } from '../services/quranSearch';
+import { reportLoadFailure } from '../utils/reportError';
 import { parseJumps, arabicTokens } from '../utils/quranSearchQuery';
 import { verseOfOrd, pageOfOrd, ordOf } from '../utils/verseIndex';
 import { SURAH_BY_NUMBER } from '../data/surahPages';
@@ -53,7 +54,10 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
     setEngineState({ status: 'loading', engine: null });
     loadSearchEngine()
       .then((engine) => { if (!cancelled) setEngineState({ status: 'ready', engine }); })
-      .catch(() => { if (!cancelled) setEngineState({ status: 'error', engine: null }); });
+      .catch((err) => {
+        const kind = reportLoadFailure(err, 'the search index');
+        if (!cancelled) setEngineState({ status: 'error', engine: null, kind });
+      });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, retryKey]);
@@ -387,7 +391,8 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
               {engineState.status === 'error' && letters >= MIN_LETTERS && (
                 <div className="px-4 py-4 text-sm text-[#404944] dark:text-gray-300 flex items-center gap-2" role="alert">
                   <FiAlertCircle className="w-4 h-4 shrink-0 text-amber-600" aria-hidden="true" />
-                  <span className="flex-1">{t('library.search.loadError')}</span>
+                  {/* "Check your connection" only when the request failed. */}
+                  <span className="flex-1">{t(engineState.kind === 'content' ? 'library.search.loadErrorContent' : 'library.search.loadError')}</span>
                   <button type="button" onClick={() => setRetryKey((k) => k + 1)} className="font-semibold text-[#004f35] dark:text-emerald-400 hover:underline">
                     {t('common.retry')}
                   </button>

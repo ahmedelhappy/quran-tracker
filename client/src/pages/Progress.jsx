@@ -13,6 +13,7 @@ import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 import { round1 } from '../utils/formatNumber';
+import { reportLoadFailure } from '../utils/reportError';
 
 // recharts is most of this page's code; the chart arrives after the page (M-09).
 const MemorizationChart = lazy(() => import('../components/MemorizationChart'));
@@ -174,7 +175,7 @@ export default function Progress() {
   const [overallStats, setOverallStats] = useState(null);
   const [estimate, setEstimate] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(null); // null | 'request' | 'content' (reportLoadFailure)
   const [activeTab, setActiveTab] = useState('progress');
   const [showFullHistory, setShowFullHistory] = useState(false);
   const [showAllSurahs, setShowAllSurahs] = useState(false);
@@ -189,7 +190,7 @@ export default function Progress() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(false);
+    setError(null);
     try {
       const [juzRes, allRes, estRes] = await Promise.all([
         progressAPI.getJuzProgress(),
@@ -199,8 +200,8 @@ export default function Progress() {
       setJuzData(juzRes.data.data);
       setOverallStats(allRes.data.data);
       setEstimate(estRes.data.data);
-    } catch {
-      setError(true);
+    } catch (err) {
+      setError(reportLoadFailure(err, 'progress'));
     } finally {
       setLoading(false);
     }
@@ -389,7 +390,8 @@ export default function Progress() {
         {/* Load error — what happened, with Retry. With nothing loaded yet the
             page below is not drawn: it showed 0.0% and "604 pages remaining",
             which reads as the reader's real progress (M-14). */}
-        {error && !loading && <ErrorNotice onRetry={load} />}
+        {/* "Check your connection" only when the request failed (reportLoadFailure). */}
+        {error && !loading && <ErrorNotice onRetry={load} message={error === 'content' ? t('common.loadFailedContent') : undefined} />}
 
         {!(error && overallStats == null) && (<>
         {/* Tab bar */}
