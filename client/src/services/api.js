@@ -1,9 +1,11 @@
 import axios from 'axios';
 import { storage, TOKEN_KEY } from '../utils/safeStorage';
 
-// Create axios instance
+// Create axios instance. The localhost fallback is for `vite` (dev) only: a
+// production build refuses to run without VITE_API_URL (vite.config.js), so a
+// deployed site can never quietly call the visitor's own machine.
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : undefined),
 });
 
 // The token THIS TAB's screens belong to — kept in memory, not read from storage
