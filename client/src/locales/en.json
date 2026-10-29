@@ -796,6 +796,7 @@
       "colorPink": "Pink highlight",
       "navTitle": "Annotations",
       "navEmpty": "No annotations yet. Highlight a verse, add a note, or draw on a page.",
+      "navLoadError": "Couldn't load your annotations.",
       "prevAnnotated": "Prev",
       "nextAnnotated": "Next",
       "highlightAdded": "Highlight saved",
@@ -816,6 +817,7 @@
       "unmarkPageHard": "Unmark page {{n}} as hard",
       "hardTitle": "Hard verses & pages",
       "hardEmpty": "Nothing marked hard yet.",
+      "hardLoadError": "Couldn't load your hard list.",
       "removeHard": "Remove from hard list",
       "wholePage": "Whole page"
     },
@@ -832,6 +834,7 @@
       "unmarkHard": "Unmark all of them as hard",
       "partly": "{{label}} — on some of these verses",
       "noteDisabled": "A note belongs to one verse — open a single verse's actions to add one",
+      "loadError": "Couldn't load these verses' highlights — try again",
       "play": "Play these verses",
       "tafsir": "Tafsir, from the first of these verses",
       "tooMany": "That's too many verses for one change (at most {{max}}). Pick a shorter span."
@@ -856,6 +859,7 @@
       "added": "Bookmarked page {{n}}",
       "remove": "Remove bookmark",
       "empty": "No bookmarks yet.",
+      "loadError": "Couldn't load your bookmarks.",
       "pageLabel": "Page {{n}}",
       "labelPlaceholder": "Label (optional)",
       "marked": "Bookmarked",

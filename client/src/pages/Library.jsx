@@ -6,7 +6,7 @@ import {
   FiBookOpen, FiChevronLeft, FiChevronRight, FiChevronDown, FiAlertCircle, FiHeadphones, FiInfo, FiMove,
   FiEye, FiEyeOff, FiHelpCircle, FiCheckSquare, FiSquare, FiFile, FiColumns,
   FiMaximize2, FiMinimize2, FiCheckCircle, FiCircle, FiBookmark, FiTrash2, FiPlus, FiMapPin,
-  FiFlag, FiMessageSquare, FiCornerUpRight, FiSlash,
+  FiFlag, FiMessageSquare, FiCornerUpRight, FiSlash, FiRefreshCw,
   FiPenTool, FiEdit2, FiEdit3, FiRotateCcw, FiRotateCw, FiCheck, FiDroplet, FiType, FiRepeat, FiSearch,
 } from 'react-icons/fi';
 // Feather has no eraser; this one actually looks like the thing it does.
@@ -54,6 +54,7 @@ import { verseEdges, peekVerseEdges, matchesDuration } from '../services/verseEd
 import { fetchMushafPage, ensurePageFont, decodePageFont, takeReadyPages, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { setPrefetchFocus, holdPrefetch, resumePrefetch, stopPrefetch } from '../services/pagePrefetch';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+import ErrorNotice from '../components/ErrorNotice';
 import { SURAH_PAGES } from '../data/surahPages';
 import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
@@ -484,6 +485,13 @@ export default function Library() {
 
   // ── Bookmarks (account-saved, multiple per user) ────────
   const [bookmarks, setBookmarks] = useState([]);
+  // The last read of the bookmarks / hard list / annotation summary failed. Each
+  // used to swallow the failure and show "none yet", which reads as "you have
+  // none" (M-14); now its panel says so, with Retry.
+  const [bookmarksFailed, setBookmarksFailed] = useState(false);
+  const [bookmarksReload, setBookmarksReload] = useState(0);
+  const [hardFailed, setHardFailed] = useState(false);
+  const [summaryFailed, setSummaryFailed] = useState(false);
   const [bookmarkLabel, setBookmarkLabel] = useState('');
   const [savingBookmark, setSavingBookmark] = useState(false);
   // Per-row actions: which row is being renamed inline (and its draft), and the
@@ -974,9 +982,13 @@ export default function Library() {
   // The reader's saved bookmarks — an account feature, so nothing is asked for
   // while signed out.
   useEffect(() => {
-    if (!signedIn) { setBookmarks([]); return; }
-    bookmarksAPI.list().then(res => setBookmarks(res.data?.data ?? [])).catch(() => {});
-  }, [signedIn]);
+    if (!signedIn) { setBookmarks([]); setBookmarksFailed(false); return; }
+    let cancelled = false;
+    bookmarksAPI.list()
+      .then(res => { if (!cancelled) { setBookmarks(res.data?.data ?? []); setBookmarksFailed(false); } })
+      .catch(() => { if (!cancelled) setBookmarksFailed(true); });
+    return () => { cancelled = true; };
+  }, [signedIn, bookmarksReload]);
 
   // While the popover grip is held, suppress its "drag to move" tooltip.
   useEffect(() => {
@@ -2894,8 +2906,8 @@ export default function Library() {
   const loadHardList = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.listByKind('hard')
-      .then((r) => setHardList(r.data?.data ?? []))
-      .catch(() => {});
+      .then((r) => { setHardList(r.data?.data ?? []); setHardFailed(false); })
+      .catch(() => setHardFailed(true));
   }, []);
 
   // The per-page annotation summary powers the navigator; refetched after any
@@ -2903,8 +2915,8 @@ export default function Library() {
   const loadSummary = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.getSummary()
-      .then((r) => setAnnoSummary(r.data?.data ?? []))
-      .catch(() => {});
+      .then((r) => { setAnnoSummary(r.data?.data ?? []); setSummaryFailed(false); })
+      .catch(() => setSummaryFailed(true));
   }, []);
 
   // Load the visible page(s)' annotations alongside the mushaf pages, and the
@@ -3123,13 +3135,17 @@ export default function Library() {
   // reaches (most of them are usually off screen). Reloaded after every change
   // while the actions are up; only the latest reply is kept.
   const [spanAnns, setSpanAnns] = useState(null);   // { from, to, list }
+  // The read failed: the span's swatches stay disabled (they need its state),
+  // and a Retry button sits beside them instead of nothing at all (M-14).
+  const [spanFailed, setSpanFailed] = useState(false);
   const spanAnnsReqRef = useRef(0);
   const loadSpanAnns = useCallback(() => {
     if (spanFrom == null || !signedInRef.current) return;
     const req = ++spanAnnsReqRef.current;
+    setSpanFailed(false);
     annotationsAPI.listVerseRange(spanFrom, spanTo)
       .then((r) => { if (req === spanAnnsReqRef.current) setSpanAnns({ from: spanFrom, to: spanTo, list: r.data?.data ?? [] }); })
-      .catch(() => {});
+      .catch(() => { if (req === spanAnnsReqRef.current) setSpanFailed(true); });
   }, [spanFrom, spanTo]);
   useEffect(() => {
     spanAnnsReloadRef.current = spanFrom == null ? null : loadSpanAnns;
@@ -5121,8 +5137,11 @@ export default function Library() {
                   </button>
                 </Tooltip>
               </div>
+              {bookmarksFailed && (
+                <ErrorNotice variant="inline" message={t('library.bookmarks.loadError')} onRetry={() => setBookmarksReload((k) => k + 1)} />
+              )}
               {bookmarks.length === 0 ? (
-                <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
+                !bookmarksFailed && <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
               ) : (
                 <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
                   {bookmarks.map(b => {
@@ -5422,9 +5441,12 @@ export default function Library() {
                 </button>
               </div>
 
+              {summaryFailed && (
+                <ErrorNotice variant="inline" message={t('library.annotations.navLoadError')} onRetry={loadSummary} />
+              )}
               {annoNavOpen && (
                 annotatedPages.length === 0 ? (
-                  <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.navEmpty')}</p>
+                  !summaryFailed && <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.navEmpty')}</p>
                 ) : (
                   <ul className="flex flex-col gap-1 max-h-64 overflow-y-auto -mr-1 pr-1">
                     {annoSummary.map((s) => (
@@ -5482,9 +5504,12 @@ export default function Library() {
                   <FiChevronDown className={`w-4 h-4 text-[#707974] dark:text-gray-500 transition-transform ${hardOpen ? 'rotate-180' : ''}`} />
                 </span>
               </button>
+              {hardFailed && (
+                <ErrorNotice variant="inline" message={t('library.annotations.hardLoadError')} onRetry={loadHardList} />
+              )}
               {hardOpen && (
                 hardList.length === 0 ? (
-                  <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.hardEmpty')}</p>
+                  !hardFailed && <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.annotations.hardEmpty')}</p>
                 ) : (
                   <ul className="flex flex-col gap-1 max-h-56 overflow-y-auto -mr-1 pr-1">
                     {hardList.map((h) => (
@@ -5855,6 +5880,18 @@ export default function Library() {
                         </Tooltip>
                       );
                     })}
+                    {spanFailed && (
+                      <Tooltip label={t('library.span.loadError')}>
+                        <button
+                          type="button"
+                          onClick={loadSpanAnns}
+                          aria-label={t('library.span.loadError')}
+                          className="w-8 h-8 rounded-full border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <FiRefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                        </button>
+                      </Tooltip>
+                    )}
                     {spanState?.highlighted > 0 && (
                       <Tooltip label={t('library.span.removeHighlight')}>
                         <button
@@ -5974,7 +6011,22 @@ export default function Library() {
                 <p className="text-xs font-semibold text-[#003527] dark:text-gray-200 flex items-center gap-1.5">
                   <FiHeadphones className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400 shrink-0" />
                   {audioError
-                    ? <span className="text-[#ba1a1a] dark:text-red-400">{t('library.audioError')}</span>
+                    ? (
+                      // Retry starts the verse again with a fresh retry budget
+                      // (resumeActive), the same as pressing play — said out loud
+                      // here so the error is not a dead end (M-14).
+                      <span className="text-[#ba1a1a] dark:text-red-400">
+                        {t('library.audioError')}
+                        <button
+                          type="button"
+                          onClick={resumeActive}
+                          className="ms-1.5 inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:text-[#93000a] dark:hover:text-red-300"
+                        >
+                          <FiRefreshCw className="w-3 h-3" aria-hidden="true" />
+                          {t('common.retry')}
+                        </button>
+                      </span>
+                    )
                     : playingOrd == null
                       ? t('library.listen')
                       : playingIndex >= 0
