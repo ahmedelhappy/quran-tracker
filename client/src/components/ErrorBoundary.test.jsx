@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { lazy, Suspense } from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import ErrorBoundary from './ErrorBoundary';
 
 // The full-screen fallback reads its text from i18n; the defaults stand in.
@@ -32,6 +32,43 @@ describe('ErrorBoundary', () => {
     expect(await screen.findByText('chart unavailable')).toBeTruthy();
     expect(screen.getByText('Progress')).toBeTruthy();
     expect(screen.queryByText('Something went wrong')).toBeNull();
-    expect(consoleError).toHaveBeenCalledWith('Part of the page failed to render:', expect.any(TypeError), expect.anything());
+    expect(consoleError).toHaveBeenCalledWith(
+      'Reported error (error-boundary):',
+      expect.any(TypeError),
+      expect.objectContaining({ source: 'error-boundary', region: 'part of the page' }),
+    );
+  });
+
+  it('a function fallback gets reset, which draws the part again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let broken = true;
+    const Flaky = () => { if (broken) throw new Error('first render failed'); return <p>tafsir text</p>; };
+    const onReset = vi.fn();
+    render(
+      <div>
+        <p>reader</p>
+        <ErrorBoundary name="tafsir" onReset={onReset} fallback={({ error, reset }) => (
+          <button type="button" onClick={reset}>retry after {error.message}</button>
+        )}>
+          <Flaky />
+        </ErrorBoundary>
+      </div>,
+    );
+    const retry = screen.getByRole('button', { name: 'retry after first render failed' });
+    expect(screen.getByText('reader')).toBeTruthy();
+    broken = false;
+    fireEvent.click(retry);
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('tafsir text')).toBeTruthy();
+  });
+
+  it('reports a crash under the name of the region it happened in', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ErrorBoundary name="audio player" fallback={<p>x</p>}><Boom /></ErrorBoundary>);
+    expect(consoleError).toHaveBeenCalledWith(
+      'Reported error (error-boundary):',
+      expect.any(Error),
+      expect.objectContaining({ region: 'audio player', componentStack: expect.any(String) }),
+    );
   });
 });

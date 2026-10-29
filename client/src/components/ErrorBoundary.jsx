@@ -1,32 +1,47 @@
 import { Component } from 'react';
 import i18n from '../i18n';
+import { reportError } from '../utils/reportError';
 
 // Top-level error boundary. If a render error escapes the app, show a friendly,
 // bilingual recovery screen instead of a blank white page. Error boundaries must
 // be class components, so this reads translations from the i18n instance directly
 // (not the useTranslation hook) with English fallbacks in case i18n hasn't loaded.
 //
-// Given a `fallback`, it is a local boundary instead: that element takes the
-// place of the part that failed (e.g. a lazy chart whose chunk could not load)
-// and the rest of the page carries on.
+// Given a `fallback`, it is a local boundary instead: the fallback takes the
+// place of the part that failed (e.g. a lazy chart whose chunk could not load,
+// a crashed tafsir panel) and the rest of the page carries on (M-14). The
+// fallback is an element, or a function given { error, reset } — `reset` draws
+// the part again (after `onReset`, which can e.g. swap in a fresh lazy import).
+// `name` says which part it was in the error report.
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
+    this.reset = this.reset.bind(this);
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, info) {
-    // Surface the crash server-side/console for debugging and future reporting.
-    console.error(this.props.fallback ? 'Part of the page failed to render:' : 'Uncaught application error:', error, info);
+    reportError(error, {
+      source: 'error-boundary',
+      region: this.props.name ?? (this.props.fallback ? 'part of the page' : 'app'),
+      componentStack: info?.componentStack,
+    });
+  }
+
+  reset() {
+    this.props.onReset?.();
+    this.setState({ hasError: false, error: null });
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
-    if (this.props.fallback) return this.props.fallback;
+    const { fallback } = this.props;
+    if (typeof fallback === 'function') return fallback({ error: this.state.error, reset: this.reset });
+    if (fallback) return fallback;
 
     const t = (key, fallback) => i18n.t(key, { defaultValue: fallback });
     const isRtl = i18n.dir() === 'rtl';
