@@ -25,6 +25,12 @@ export default defineConfig(({ command, mode }) => {
   if (command === 'build') requireApiUrl(mode)
   return {
     plugins: [react()],
+    build: {
+      // Never inline a font as a data: URL, however small: the self-hosted UI
+      // fonts (src/fonts.css) must stay files, so they are cached on their own
+      // and the Content-Security-Policy's font-src can stay 'self' only.
+      assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined),
+    },
     // Vitest reads this block; `vite build` ignores it. Unit tests sit next to the
     // code they cover (src/**/*.test.js); the Playwright flows in e2e/ are a
     // separate runner and must not be picked up here.
