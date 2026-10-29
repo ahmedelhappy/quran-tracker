@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const app = require('./app');
 const Bookmark = require('./models/Bookmark');
+const { handleShutdownSignals } = require('./utils/shutdown');
 
 // Fail fast on missing critical configuration rather than booting a broken server
 // that only errors on the first request (or, worse, signs tokens with an
@@ -36,7 +37,10 @@ const PORT = process.env.PORT || 5000;
     } catch (err) {
       console.error('⚠️ Bookmark index sync failed:', err.message);
     }
-    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    const server = app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    // A deploy (SIGTERM) or Ctrl+C lets the requests in flight finish before
+    // the database connection closes, instead of cutting writes off half-way.
+    handleShutdownSignals({ server });
   } catch (err) {
     console.error('❌ MongoDB Error:', err);
     process.exit(1);
