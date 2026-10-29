@@ -1548,13 +1548,21 @@ export default function Library() {
   }, [playbackRate]);
 
   // Reset both counters whenever what they are counting against changes — the
-  // mode, either end of the range, either repeat count, or the reciter (a new
-  // recording restarts the verse, so a half-finished tally would be a lie).
+  // mode, either repeat count, or the reciter (a new recording restarts the
+  // verse, so a half-finished tally would be a lie).
   useEffect(() => {
     setRepeatsDone(0);
     setRangePasses(0);
-  }, [repeatMode, rangeStartOrd, rangeEndOrd, rangeRepeat, rangeVerseRepeat, verseRepeat,
-      reciter, setRepeatsDone, setRangePasses]);
+  }, [repeatMode, rangeRepeat, rangeVerseRepeat, verseRepeat, reciter, setRepeatsDone, setRangePasses]);
+  // ...and either end of the range, but only while range repeat is on. Off, the
+  // range pickers just follow the page and the selection (below), so a page turn
+  // or a tap on another verse moved them and reset a verse repeat mid-way: "2 of
+  // 3" went back to 0 and the verse played four or five times (L-17).
+  useEffect(() => {
+    if (repeatMode !== 'range') return;
+    setRepeatsDone(0);
+    setRangePasses(0);
+  }, [repeatMode, rangeStartOrd, rangeEndOrd, setRepeatsDone, setRangePasses]);
 
   // Until the reader actually turns range repeat on, keep the range pickers
   // defaulted to what's in front of them: start at the selected verse if there is
