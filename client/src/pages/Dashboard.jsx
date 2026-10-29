@@ -655,11 +655,14 @@ export default function Dashboard() {
   const reviewTotalCount = stats?.dailyReviewTotal ?? (reviewCycleCount + reviewRecentCount);
   const reviewBreakdown =
     reviewCycleCount > 0 && reviewRecentCount > 0
-      ? t('hints.reviewBoth', { cycle: reviewCycleCount, recent: reviewRecentCount })
+      ? t('hints.reviewBoth', {
+        cycle: t('hints.reviewCycleOnly', { count: reviewCycleCount }),
+        recent: t('hints.reviewRecentOnly', { count: reviewRecentCount }),
+      })
       : reviewCycleCount > 0
-        ? t('hints.reviewCycleOnly', { cycle: reviewCycleCount })
+        ? t('hints.reviewCycleOnly', { count: reviewCycleCount })
         : reviewRecentCount > 0
-          ? t('hints.reviewRecentOnly', { recent: reviewRecentCount })
+          ? t('hints.reviewRecentOnly', { count: reviewRecentCount })
           : '';
   // Stat-card hint: explains why the total may exceed the cycle target they set.
   const dailyReviewHintText = reviewBreakdown
@@ -815,7 +818,7 @@ export default function Dashboard() {
                 >
                   <FiZap className="w-4 h-4 text-[#fe932c]" />
                   <span className="text-xs font-bold uppercase tracking-wider">
-                    {streak} {t(streak === 1 ? 'dashboard.streakDay' : 'dashboard.streakDays')}
+                    {streak} {t('dashboard.streakDays', { count: streak })}
                   </span>
                   <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
                 </div>
@@ -847,7 +850,7 @@ export default function Dashboard() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.dailyReview')}</span>
                     <InfoHint text={dailyReviewHintText} label={t('dashboard.dailyReview')} size="xs" />
                   </div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats ? `${reviewTotalCount} ${t('dashboard.pages')}` : '—'}</div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats ? t('dashboard.reviewCount', { count: reviewTotalCount }) : '—'}</div>
                 </>
               )}
             </div>
@@ -1123,7 +1126,7 @@ export default function Dashboard() {
                         <div>
                           <p className="text-sm font-semibold text-[#003527] dark:text-emerald-400">{t('dashboard.pausedTitle')}</p>
                           <p className="text-xs text-[#707974] dark:text-gray-400 mt-1 leading-relaxed">
-                            {t('dashboard.pausedGoalNote', { pages: user?.dailyNewPages ?? 1 })}
+                            {t('dashboard.pausedGoalNote', { count: user?.dailyNewPages ?? 1 })}
                           </p>
                           <button
                             onClick={() => navigate('/settings?tab=memorization')}

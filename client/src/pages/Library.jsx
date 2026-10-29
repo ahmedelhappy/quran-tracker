@@ -2675,7 +2675,9 @@ export default function Library() {
       setRange(startOrd, endOrd);
       setRepeatMode('range');
       setRepeatOpen(true);
-      showToast(t('library.audio.rangeDragHint', { verses: fmtNum(endOrd - startOrd + 1) }), 'info');
+      showToast(t('library.audio.rangeDragHint', {
+        verses: t('library.span.verses', { count: endOrd - startOrd + 1, n: fmtNum(endOrd - startOrd + 1) }),
+      }), 'info');
     };
 
     const onCancel = () => { endRangeDrag(); };
@@ -5645,7 +5647,7 @@ export default function Library() {
             ) : (
               <div className="text-sm text-[#707974] dark:text-gray-500">
                 {progressLoad === 'ready'
-                  ? t('library.pagesMemorizedStat', { count: memorizedCount })
+                  ? t('library.pagesMemorizedStat', { n: fmtNum(memorizedCount), total: fmtNum(604) })
                   : t('library.memorizedLoading')}
               </div>
             )}
@@ -6248,7 +6250,10 @@ export default function Library() {
                               ? 'library.audio.rangeSpanOnePage'
                               : 'library.audio.rangeSpan',
                             {
-                              verses: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                              verses: t('library.span.verses', {
+                                count: rangeEndOrd - rangeStartOrd + 1,
+                                n: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                              }),
                               from: fmtNum(pageOfOrd(rangeStartOrd)),
                               to: fmtNum(pageOfOrd(rangeEndOrd)),
                             }

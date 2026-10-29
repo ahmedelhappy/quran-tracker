@@ -1620,7 +1620,7 @@ export default function Settings() {
                       })}
                     </div>
                     <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                      {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+                      {t('onboarding.availableDaysHint', { count: 7 - offDays.length })}
                     </p>
                   </div>
                 </div>
@@ -1657,7 +1657,7 @@ export default function Settings() {
                     <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
                         <p className="text-xs text-[#707974] dark:text-gray-400 leading-relaxed">
-                          {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
+                          {isPaused ? t('settings.pauseMemActive', { count: dailyPages }) : t('settings.pauseMemDesc')}
                         </p>
                         <p className="text-xs text-[#003527] dark:text-emerald-400 mt-1">{t('settings.pauseMemSwitchBack')}</p>
                       </div>
@@ -1981,7 +1981,7 @@ export default function Settings() {
         onClose={() => setResetModal(false)}
         onConfirm={handleResetProgress}
         title={t('settings.resetModal_title')}
-        message={t('settings.resetModal_message', { streak: user?.currentStreak ?? 0 })}
+        message={t('settings.resetModal_message', { count: user?.currentStreak ?? 0 })}
         confirmText={t('settings.resetConfirm')}
         isDanger
       />

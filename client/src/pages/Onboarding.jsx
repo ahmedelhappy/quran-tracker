@@ -58,20 +58,21 @@ const INTENSITY_OPTIONS = [
 const estimateReviewPages = (memorized, divisor) =>
   memorized > 0 ? Math.max(1, Math.round(memorized / divisor)) : null;
 
-// Returns display-friendly time estimate from a raw day count (unit is a translation key)
+// Returns display-friendly time estimate from a raw day count. The unit is a
+// translation key with plural forms, picked by `value` (t(unitKey, { count: value })).
 function formatEstimate(days) {
   if (!days || days <= 0) return null;
-  if (days < 7) return { value: days, unitKey: days === 1 ? 'onboarding.timeDay' : 'onboarding.timeDays' };
+  if (days < 7) return { value: days, unitKey: 'onboarding.timeDays' };
   if (days < 30) {
     const weeks = Math.round(days / 7);
-    return { value: weeks, unitKey: weeks === 1 ? 'onboarding.timeWeek' : 'onboarding.timeWeeks' };
+    return { value: weeks, unitKey: 'onboarding.timeWeeks' };
   }
   if (days < 365) {
     const months = Math.round(days / 30);
-    return { value: months, unitKey: months === 1 ? 'onboarding.timeMonth' : 'onboarding.timeMonths' };
+    return { value: months, unitKey: 'onboarding.timeMonths' };
   }
   const years = parseFloat((days / 365).toFixed(1));
-  return { value: years, unitKey: years === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
+  return { value: years, unitKey: 'onboarding.timeYears' };
 }
 
 // Expand the range rows into the set of pages they cover.
@@ -549,7 +550,11 @@ export default function Onboarding() {
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                {t('onboarding.totalSelectedAll', { pages: selectedCount, juz: selectedJuzCount, surah: selectedSurahCount })}
+                {t('onboarding.totalSelectedAll', {
+                  pages: t('units.pages', { count: selectedCount }),
+                  juz: t('units.juz', { count: selectedJuzCount }),
+                  surah: t('units.surahs', { count: selectedSurahCount }),
+                })}
               </p>
             </div>
           )}
@@ -564,7 +569,7 @@ export default function Onboarding() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { value: 0.5, label: '0.5', subKey: 'onboarding.pagesPerDay' },
-              { value: 1,   label: '1',   subKey: 'onboarding.pagePerDay' },
+              { value: 1,   label: '1',   subKey: 'onboarding.pagesPerDay' },
               { value: 2,   label: '2',   subKey: 'onboarding.pagesPerDay' },
               { value: 5,   label: '5',   subKey: 'onboarding.pagesPerDay', badgeKey: 'onboarding.intense' },
             ].map(({ value, label, subKey, badgeKey }) => (
@@ -578,7 +583,7 @@ export default function Onboarding() {
                 }`}
               >
                 <span className="text-4xl font-semibold">{label}</span>
-                <span className="text-xs">{t(subKey)}</span>
+                <span className="text-xs">{t(subKey, { count: value })}</span>
                 {badgeKey && (
                   <div className="absolute top-0 end-0 bg-[#fe932c] text-white text-[10px] px-2 py-1 rounded-es-lg font-bold">
                     {t(badgeKey)}
@@ -828,7 +833,7 @@ export default function Onboarding() {
             ))}
           </div>
           <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-            {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+            {t('onboarding.availableDaysHint', { count: 7 - offDays.length })}
           </p>
         </div>
 
@@ -872,7 +877,7 @@ export default function Onboarding() {
           <div className="bg-[#003527] rounded-2xl p-5 text-white">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#80bea6] mb-1">{t('onboarding.estimatedCompletion')}</p>
             <p className="text-4xl font-bold">{estimateDisplay ? `${estimateDisplay.value}` : '—'}</p>
-            <p className="text-sm text-[#80bea6] capitalize">{estimateDisplay ? t(estimateDisplay.unitKey) : t('onboarding.timeMonths')}</p>
+            <p className="text-sm text-[#80bea6] capitalize">{estimateDisplay ? t(estimateDisplay.unitKey, { count: estimateDisplay.value }) : t('onboarding.timeMonths', { count: 5 })}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-5 sacred-shadow">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#404944] dark:text-gray-400 mb-1">{t('onboarding.targetGoalLabel')}</p>
@@ -883,8 +888,8 @@ export default function Onboarding() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { labelKey: 'onboarding.alreadyMemorizedStat', value: `${approxJuz} ${t('progress.juz')}` },
-            { labelKey: 'onboarding.dailyNew',             value: `${dailyPages} ${t(dailyPages !== 1 ? 'onboarding.pagesPerDay' : 'onboarding.pagePerDay')}` },
+            { labelKey: 'onboarding.alreadyMemorizedStat', value: t('units.juz', { count: approxJuz }) },
+            { labelKey: 'onboarding.dailyNew',             value: t('onboarding.dailyPagesValue', { count: dailyPages }) },
             { labelKey: 'dashboard.review',                value: reviewIntensity === 'fixed' ? t('dashboard.reviewCount', { count: fixedReviewValue }) : t(INTENSITY_OPTIONS.find(o => o.value === reviewIntensity)?.labelKey ?? 'settings.intensityStandard') },
             { labelKey: 'onboarding.offDaysStat',          value: offDayLabel },
           ].map(({ labelKey, value }) => (

@@ -26,15 +26,15 @@ const WEEKDAY_LABEL_KEYS = ['', 'settings.dayMon', '', 'settings.dayWed', '', 's
 const toISODate = (d) => d.toISOString().split('T')[0];
 const levelForCount = (c) => (c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 2 : c <= 4 ? 3 : 4);
 
-// Display-friendly time estimate from a raw day count; unit is a translation key
+// Display-friendly time estimate from a raw day count; the unit is a translation
+// key with plural forms, picked by `value`
 // (reuses the onboarding.time* strings so both estimate cards read identically).
 function formatEstimate(days) {
   if (!days || days <= 0) return null;
-  if (days < 7) return { value: days, unitKey: days === 1 ? 'onboarding.timeDay' : 'onboarding.timeDays' };
-  if (days < 30) { const w = Math.round(days / 7); return { value: w, unitKey: w === 1 ? 'onboarding.timeWeek' : 'onboarding.timeWeeks' }; }
-  if (days < 365) { const m = Math.round(days / 30); return { value: m, unitKey: m === 1 ? 'onboarding.timeMonth' : 'onboarding.timeMonths' }; }
-  const y = parseFloat((days / 365).toFixed(1));
-  return { value: y, unitKey: y === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
+  if (days < 7) return { value: days, unitKey: 'onboarding.timeDays' };
+  if (days < 30) return { value: Math.round(days / 7), unitKey: 'onboarding.timeWeeks' };
+  if (days < 365) return { value: Math.round(days / 30), unitKey: 'onboarding.timeMonths' };
+  return { value: parseFloat((days / 365).toFixed(1)), unitKey: 'onboarding.timeYears' };
 }
 
 const toUTCMidnight = (date) => {
@@ -509,7 +509,7 @@ export default function Progress() {
                   <div>
                     <div className="flex items-end gap-2">
                       <span className="text-4xl font-extrabold text-[#1A1A1A] dark:text-gray-100 tabular-nums">{estimateDisplay.value}</span>
-                      <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey)}</span>
+                      <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey, { count: estimateDisplay.value })}</span>
                     </div>
                     {/* Name the REST DAYS too, not just the daily pages. The estimate
                         has always divided the daily rate by the active days — 2.5
