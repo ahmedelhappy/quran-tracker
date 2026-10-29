@@ -1429,7 +1429,12 @@ export default function Library() {
       // The tour walks the sidebar, so make sure it is actually on screen.
       setSidebarByUser(true);
       if (forceTour) {
-        const next = new URLSearchParams(searchParams);
+        // From the URL as it is NOW, not as it was at mount: by this time the
+        // reader has added ?page= (the last page opened), and rebuilding from
+        // the mount-time params dropped it — the reader fell back to page 1 and
+        // saved that as the last page read (L-17). (Router's functional form
+        // would not help: this mount-time setter hands it the mount-time params.)
+        const next = new URLSearchParams(window.location.search);
         next.delete('tour');
         setSearchParams(next, { replace: true });
       }
