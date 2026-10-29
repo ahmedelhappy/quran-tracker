@@ -1596,6 +1596,14 @@ export default function Library() {
     setIsPlaying(true);
   };
 
+  // Load a verse into the player without starting it: paused stays paused.
+  const cueOrd = (ord) => {
+    if (!(ord >= 1 && ord <= TOTAL_AYAHS) || ord === playingOrd) return;
+    setAudioError(false);
+    setRepeatsDone(0);
+    setPlayingOrd(ord);
+  };
+
   // Replay the current verse from its start without reloading (verse-repeat).
   const replayCurrent = () => {
     const el = activeEl();
@@ -4157,15 +4165,21 @@ export default function Library() {
     const next = from + dir;
     if (next < 1 || next > TOTAL_AYAHS) return;
     const key = keyOfOrd(next);
-    const following = isPlaying || playingOrd != null;
+    // Audio comes along only if it is PLAYING. Paused on a verse, the loaded
+    // verse moves along but stays paused: counting "paused" as going made the
+    // arrows restart a recitation the reader had stopped (L-17).
+    const following = isPlaying;
+    const cued = !isPlaying && playingOrd != null;
     if (verses.some((v) => v.verseKey === key)) {
       setSelectedVerseKey(key);
       if (following) playOrd(next);
+      else if (cued) cueOrd(next);
       return;
     }
     pendingSelectRef.current = key;
     selectTurnRef.current = true;
     if (following) { followTurnRef.current = true; playOrd(next); }
+    else if (cued) cueOrd(next);
     if (!goToPage(pageOfOrd(next))) {
       // Nothing to turn to — drop the flags so they can't swallow a later turn.
       pendingSelectRef.current = null;
