@@ -2,7 +2,8 @@ const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { serverError } = require('../utils/errorResponse');
-const { PAGE_RULE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { PAGE_RULE, MAX_PAGE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { parsePlanSettings } = require('../utils/planSettings');
 const { isStreakContinued } = require('../utils/streak');
 const clock = require('../utils/clock');
 // Every write below changes how many pages this user has memorized, which is
@@ -403,54 +404,159 @@ const buildProgressSummary = async (user) => {
 
 exports.buildProgressSummary = buildProgressSummary;
 
-// @desc    Complete onboarding - save initial progress
+// Put a user's progress rows for `pages` back to `before` (the rows those pages
+// had when the request started): rows the request created are deleted, rows it
+// changed are restored as they were.
+const restoreProgress = async (userId, pages, before) => {
+  const existed = new Set(before.map((d) => d.pageNumber));
+  const created = pages.filter((p) => !existed.has(p));
+  if (created.length) await UserProgress.deleteMany({ userId, pageNumber: { $in: created } });
+  if (before.length) {
+    await UserProgress.bulkWrite(before.map((doc) => ({
+      replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true },
+    })));
+  }
+};
+
+// @desc    Complete onboarding: the memorized pages, the verse ranges of the
+//          partly memorized ones, the daily goal and the plan, in one request
 // @route   POST /api/progress/onboarding
 // @access  Private
+//
+// All or nothing (L-18). It used to be several requests — this one set
+// onboardingComplete first, then the client sent the verse ranges one by one
+// and the plan last — so a failure part-way left an account that counted as
+// onboarded with only some of its pages and the default plan, and a reload went
+// straight to the dashboard. Now:
+//   1. everything is validated before anything is written (a 400 writes nothing);
+//   2. the progress rows go in one ordered bulk write; if it fails, the rows it
+//      touched are put back as they were before the request;
+//   3. last, ONE update of the user document sets the goal, the plan and
+//      onboardingComplete together. A single-document write is atomic, so the
+//      flag is never set without the plan, nor before every page is saved.
+// Every write is an upsert of a final value (a whole page, or verses merged into
+// a page's segments), so a retry after any failure — even one whose response was
+// lost after the server finished — lands on the same state and duplicates nothing.
+//
+// Why not a multi-document transaction: Atlas would support one, but the local
+// and CI stacks (mongodb-memory-server, the e2e and harness servers) run a
+// standalone mongod, which refuses transactions, and a second code path for
+// them would be the untested one. The ordered write above needs neither.
 exports.completeOnboarding = async (req, res) => {
   try {
     const userId = req.user._id;
     const { dailyNewPages } = req.body;
+    const invalid = (code, message) => res.status(400).json({ success: false, code, message });
 
-    // Checked before anything is written, so a bad list leaves the account as it was.
+    // 1. Validate everything first, so a bad request leaves the account as it was.
     let memorizedPages = [];
     if (req.body.memorizedPages !== undefined) {
       const parsed = parsePageList(req.body.memorizedPages, 'memorizedPages');
-      if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
+      if (parsed.error) return invalid('INVALID_PAGE', parsed.error);
       memorizedPages = parsed.pages;
     }
 
+    // The sub-page remainder of the selection — the mid-page ends of a surah or
+    // a hizb — as verse ranges, stored as partial `segments` like /progress/units.
+    const verseRanges = req.body.verseRanges ?? [];
+    if (!Array.isArray(verseRanges) || verseRanges.length > MAX_PAGE) {
+      return invalid('INVALID_VERSE_RANGES', `verseRanges must be an array of at most ${MAX_PAGE} ranges`);
+    }
+    const whole = new Set(memorizedPages);
+    const rangesByPage = new Map(); // page → its parts of the ranges; whole pages left out
+    for (const ref of verseRanges) {
+      let range;
+      try {
+        range = compileUnitRange('verses', ref);
+      } catch (err) {
+        return invalid('INVALID_VERSE_RANGES', err.message);
+      }
+      for (const pr of rangeToPages(range.from, range.to)) {
+        if (whole.has(pr.pageNumber)) continue;
+        rangesByPage.set(pr.pageNumber, [...(rangesByPage.get(pr.pageNumber) ?? []), pr]);
+      }
+    }
+
+    const plan = parsePlanSettings(req.body);
+    if (plan.status) return invalid(plan.code, plan.message);
+
     const dailyGoal = Math.min(Math.max(parseFloat(dailyNewPages) || 1, 0.5), 10);
 
-    await User.findByIdAndUpdate(userId, {
-      dailyNewPages: dailyGoal,
-      onboardingComplete: true,
-      planStartDate: clock.now(),
-    });
+    // 2. The progress rows, in one ordered bulk write.
+    const touched = [...memorizedPages, ...rangesByPage.keys()];
+    const before = touched.length
+      ? await UserProgress.find({ userId, pageNumber: { $in: touched } }).lean()
+      : [];
+    const beforeByPage = new Map(before.map((d) => [d.pageNumber, d]));
 
-    if (memorizedPages.length > 0) {
-      const yesterday = clock.now();
-      yesterday.setUTCHours(0, 0, 0, 0);
-      yesterday.setDate(yesterday.getDate() - 1);
+    const yesterday = clock.now();
+    yesterday.setUTCHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-      const bulkOps = memorizedPages.map(pageNumber => ({
+    const bulkOps = memorizedPages.map(pageNumber => ({
+      updateOne: {
+        filter: { userId, pageNumber },
+        update: {
+          $set: {
+            userId,
+            pageNumber,
+            status: 'memorized',
+            memorizedDate: yesterday,
+            lastReviewedDate: yesterday,
+            reviewCount: 0,
+            segments: [],
+          },
+        },
+        upsert: true,
+      },
+    }));
+    for (const [pageNumber, ranges] of rangesByPage) {
+      const existing = beforeByPage.get(pageNumber);
+      const memorized = existing?.status === 'memorized';
+      // A page already memorized whole stays whole: merged into its empty
+      // `segments`, the new verses would read as all there is and shrink it.
+      if (memorized && !existing.segments?.length) continue;
+      let segments = memorized ? existing.segments : [];
+      const meta = PAGE_BY_NUMBER.get(pageNumber);
+      for (const pr of ranges) segments = addRangeToPage(segments, pr.fromVerseKey, pr.toVerseKey, meta).segments;
+      bulkOps.push({
         updateOne: {
           filter: { userId, pageNumber },
           update: {
-            $set: {
-              userId,
-              pageNumber,
-              status: 'memorized',
-              memorizedDate: yesterday,
-              lastReviewedDate: yesterday,
-              reviewCount: 0,
+            $set: { status: 'memorized', segments },
+            $setOnInsert: {
+              userId, pageNumber,
+              memorizedDate: yesterday, lastReviewedDate: yesterday, reviewCount: 0,
             },
           },
           upsert: true,
         },
-      }));
-
-      await UserProgress.bulkWrite(bulkOps);
+      });
     }
+
+    if (bulkOps.length) {
+      try {
+        await UserProgress.bulkWrite(bulkOps, { ordered: true });
+      } catch (writeError) {
+        // Some rows may have gone in before the failure: put them back, so the
+        // account is exactly as it was and onboarding can simply be sent again.
+        // Should even that fail, every row left over is one this request was
+        // writing, holding the value a retry writes again.
+        await restoreProgress(userId, touched, before)
+          .catch((err) => console.error('Onboarding: restoring progress after a failed write failed', err));
+        throw writeError;
+      }
+    }
+
+    // 3. Last, in one atomic single-document update: goal, plan and the flag.
+    await User.updateOne({ _id: userId }, {
+      $set: {
+        ...plan.update,
+        dailyNewPages: dailyGoal,
+        planStartDate: clock.now(),
+        onboardingComplete: true,
+      },
+    });
 
     leaderboardCache.clear();
 

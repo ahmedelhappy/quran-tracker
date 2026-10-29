@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { progressAPI, authAPI } from '../services/api';
+import { progressAPI } from '../services/api';
 import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import Tooltip from '../components/Tooltip';
@@ -136,7 +136,7 @@ const OnboardingHeader = ({ step }) => {
 };
 
 export default function Onboarding() {
-  const { refreshUser } = useAuth();
+  const { refreshUser, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
@@ -262,15 +262,18 @@ export default function Onboarding() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // Whole pages through onboarding, then the sub-page remainder — the mid-page
-      // ends of a Hizb selection — as verse ranges, which the units endpoint stores
-      // as partial `segments` instead of rounding them up to whole pages.
+      // One request, which the server applies all or nothing (L-18): the whole
+      // pages, the sub-page remainder — the mid-page ends of a Surah or Hizb —
+      // as verse ranges (stored as partial `segments`, not rounded up to pages),
+      // and the plan. It used to be several requests with the account marked
+      // onboarded by the first, so a failure part-way left it on the dashboard
+      // with part of the selection and the default plan. Now a failure leaves
+      // nothing behind and pressing the button again is safe.
       const { fullPages, leftovers } = splitCoverageForSave(coverage);
-      await progressAPI.completeOnboarding({ memorizedPages: fullPages, dailyNewPages: dailyPages });
-      for (const ref of toVerseKeyRanges(leftovers)) {
-        await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
-      }
-      await authAPI.updateProfile({
+      await progressAPI.completeOnboarding({
+        memorizedPages: fullPages,
+        verseRanges: toVerseKeyRanges(leftovers),
+        dailyNewPages: dailyPages,
         offDays,
         memorizationDirection: direction === 'fromEnd' ? 'fromEnd' : 'fromStart',
         newMemorizationStartPage: direction === 'custom' ? customStartPage : null,
@@ -278,6 +281,9 @@ export default function Onboarding() {
           ? { cycleReviewCount: fixedReviewValue, recentReviewCount: null }
           : { reviewIntensity, cycleReviewCount: null, recentReviewCount: null }),
       });
+      // The account is onboarded now. If re-reading it fails, the stale copy
+      // would bounce the dashboard straight back here, so mark it locally.
+      updateUser({ onboardingComplete: true, dailyNewPages: dailyPages });
       await refreshUser();
       navigate('/dashboard');
     } catch {
