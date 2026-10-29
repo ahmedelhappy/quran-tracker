@@ -9,16 +9,34 @@ const CLIENT_DIR = fileURLToPath(new URL('.', import.meta.url))
 // made without it would ship a site whose every sign-in fails. Stop the build
 // instead. `vite` (dev) and Vitest are not builds and keep the localhost
 // fallback. loadEnv sees both the shell's environment and client/.env*.
-const requireApiUrl = (mode) => {
-  const url = loadEnv(mode, CLIENT_DIR, 'VITE_').VITE_API_URL?.trim()
+//
+// Throws on a value that cannot work; returns warnings for one that works but
+// is probably a mistake. The value is checked exactly as it ships: the bundle
+// gets it untrimmed, and a space pasted after it ends up inside every API path.
+// A production build against this machine's own API is only warned about: the
+// e2e suite and CI build against 127.0.0.1 on purpose.
+export const checkApiUrl = (url, { production }) => {
   const hint = 'Set it to the API\'s base URL, e.g. VITE_API_URL=https://<your-api-host>/api ' +
     '(in client/.env for a local build, in the hosting project\'s environment variables for a deploy).'
-  if (!url) throw new Error(`VITE_API_URL is not set, so this build would not know where the API is.\n${hint}`)
+  if (!url?.trim()) throw new Error(`VITE_API_URL is not set, so this build would not know where the API is.\n${hint}`)
+  if (url !== url.trim()) {
+    throw new Error(`VITE_API_URL has spaces or a line break around it (${JSON.stringify(url)}), and it would ship that way.\n${hint}`)
+  }
   let parsed
   try { parsed = new URL(url) } catch { parsed = null }
   if (!parsed || !/^https?:$/.test(parsed.protocol)) {
     throw new Error(`VITE_API_URL is not an http(s) URL: "${url}".\n${hint}`)
   }
+  if (production && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)) {
+    return [`VITE_API_URL is ${url}: this production build will call an API on the visitor's own machine. ` +
+      'Fine for e2e tests and CI; for a deploy, set it to the real API.']
+  }
+  return []
+}
+
+const requireApiUrl = (mode) => {
+  const warnings = checkApiUrl(loadEnv(mode, CLIENT_DIR, 'VITE_').VITE_API_URL, { production: mode === 'production' })
+  for (const w of warnings) console.warn(`\n\x1b[33m!!! ${w}\x1b[0m\n`)
 }
 
 // Each language's strings are a JSON file of their own (src/i18n.js), and the
