@@ -13,9 +13,17 @@
    cached for a year.
    Licenses: assets/fonts/OFL.txt.
 
-   'Scheherazade New' stays in the Quran-text font stack (index.css) only as a
-   fallback for any glyph Amiri Quran lacks; it is not shipped. The mushaf itself
-   uses the QCF page fonts in public/fonts/, which this file does not touch. */
+   Scheherazade New (last in this file) is the exception: its name is reserved
+   under its license, so it ships as SIL's own unmodified web fonts, whole, not
+   as Google's subsets. It is the face of the search box's verse snippets and of
+   the mushaf's margin ornaments (۞ ۩, sized for its glyphs in index.css), and a
+   fallback behind Amiri Quran. No unicode-range: one file per weight covers
+   everything, and a browser fetches it only once something on screen uses it,
+   so the landing page never does. 400, and 700 for the bold ornament labels
+   (600 resolves to it), are the weights the app used from Google Fonts.
+
+   The mushaf itself uses the QCF page fonts in public/fonts/, which this file
+   does not touch. */
 
 /* latin-ext */
 @font-face {
@@ -124,4 +132,19 @@
   font-display: swap;
   src: url('./assets/fonts/amiri-quran-400-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Scheherazade New: SIL release 4.500, unmodified (see the note above) */
+@font-face {
+  font-family: 'Scheherazade New';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/ScheherazadeNew-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Scheherazade New';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./assets/fonts/ScheherazadeNew-Bold.woff2') format('woff2');
 }
