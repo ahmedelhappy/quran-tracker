@@ -35,3 +35,33 @@ test('a failed plan shows an error with Retry, and Retry loads it', async ({ pag
   await expect(alert).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Mark as Complete' }).first()).toBeVisible()
 })
+
+// A plan that arrives but breaks the tasks' own JSX (here a continuation page
+// whose surahs are not a list) crashes only the tasks: the stats, timer and
+// to-do stay up, with the region's notice where the tasks were (M-14).
+test('a plan that crashes the tasks leaves the rest of the dashboard up', async ({ page, request }) => {
+  const pages = Array.from({ length: 23 }, (_, i) => 582 + i)
+  const account = await createAccount(request, {
+    label: 'crash',
+    onboard: { memorizedPages: pages, dailyNewPages: 1 },
+    profile: { offDays: [] },
+  })
+  await signIn(page, account)
+
+  await page.route('**/api/progress/today**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const response = await route.fetch()
+    const json = await response.json()
+    json.data.stats.targetNewPages = 0
+    json.data.newPages = []
+    json.data.continuationPage = { pageNumber: 9, surahs: { length: 1 } }
+    return route.fulfill({ response, json })
+  })
+  await page.goto('/dashboard')
+
+  const notice = page.getByRole('alert').filter({ hasText: 'This part of the page ran into a problem.' })
+  await expect(notice).toBeVisible()
+  await expect(page.getByText('Something went wrong')).toHaveCount(0)
+  await expect(page.getByText('Session timer')).toBeVisible()
+  await expect(page.getByText('My to-do')).toBeVisible()
+})

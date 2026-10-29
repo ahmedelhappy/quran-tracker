@@ -13,6 +13,18 @@ import { reportError } from '../utils/reportError';
 // fallback is an element, or a function given { error, reset } — `reset` draws
 // the part again (after `onReset`, which can e.g. swap in a fresh lazy import).
 // `name` says which part it was in the error report.
+//
+// A boundary catches only what its CHILD components throw while they render.
+// JSX written straight into a page — `{bookmarks.map((b) => …)}` — is worked
+// out in the page's own render, above any boundary inside it, so a throw there
+// went past the local boundary to the crash screen. For such a region, pass the
+// JSX as a function instead of as children:
+//   <ErrorBoundary name="sidebar" fallback={…}>{() => (<aside>…</aside>)}</ErrorBoundary>
+// It is then called while RenderRegion (a child of the boundary) renders, so
+// the region's own throws stay in the region. No hooks inside the function: it
+// is called from another component's render.
+const RenderRegion = ({ render }) => render();
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -38,7 +50,10 @@ class ErrorBoundary extends Component {
   }
 
   render() {
-    if (!this.state.hasError) return this.props.children;
+    if (!this.state.hasError) {
+      const { children } = this.props;
+      return typeof children === 'function' ? <RenderRegion render={children} /> : children;
+    }
     const { fallback } = this.props;
     if (typeof fallback === 'function') return fallback({ error: this.state.error, reset: this.reset });
     if (fallback) return fallback;

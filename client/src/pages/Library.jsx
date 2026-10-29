@@ -4961,9 +4961,13 @@ export default function Library() {
               but an explicit toggle outranks that; see the effect above. ── */}
           {/* Each pane of the reader has a boundary of its own (M-14): a crash in
               the sidebar, the audio bar, the tafsir or the search box is shown
-              in its place, with Retry, while the mushaf stays readable. */}
+              in its place, with Retry, while the mushaf stays readable. The
+              sidebar, audio bar and tafsir are written inline here, so each is
+              passed as a function: a throw in its JSX then happens inside its
+              boundary, not in the reader's own render (see ErrorBoundary). */}
           {showSidebar && (
           <ErrorBoundary name="reader sidebar" fallback={({ reset }) => <RegionFallback className="w-full lg:w-72 shrink-0" onRetry={reset} />}>
+          {() => (
           <aside className="reader-panel reader-panel--start w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl lg:rounded-s-none border border-[#dce2f3] dark:border-gray-700 lg:border-s-0 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-20 lg:self-start">
 
             {/* Page navigation */}
@@ -5574,6 +5578,7 @@ export default function Library() {
             )}
 
                       </aside>
+          )}
           </ErrorBoundary>
           )}
 
@@ -5980,6 +5985,7 @@ export default function Library() {
                 Its boundary leaves the <audio> pair below alone: they hold the
                 playback, and the bar's Retry redraws the controls around it. */}
             <ErrorBoundary name="audio player" fallback={({ reset }) => <RegionFallback className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto" onRetry={reset} />}>
+            {() => (
             <div ref={audioBarRef} data-tour="lib-audio" data-keeps-selection className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
@@ -6207,6 +6213,7 @@ export default function Library() {
 
               <ReciterPicker value={reciter} onChange={setReciter} isArabic={isArabic} />
             </div>
+            )}
             </ErrorBoundary>
 
             {/* The ping-pong pair: one plays while the other preloads the next verse.
@@ -6246,7 +6253,7 @@ export default function Library() {
                 <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={() => setTafsirOpen(false)} />
               </div>
             )}>
-            <>
+            {() => (<>
               <div
                 className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
                 onClick={() => setTafsirOpen(false)}
@@ -6432,7 +6439,7 @@ export default function Library() {
                   )}
                 </div>
               </div>
-            </>
+            </>)}
             </ErrorBoundary>
           )}
 

@@ -71,4 +71,45 @@ describe('ErrorBoundary', () => {
       expect.objectContaining({ region: 'audio player', componentStack: expect.any(String) }),
     );
   });
+
+  // A page's own JSX (a list mapped inline) is worked out in the PAGE's render,
+  // above a boundary written inside it; passed as a function, it runs inside.
+  describe('a region written inline in the page', () => {
+    const Page = ({ bookmarks, asFunction }) => {
+      const list = () => (
+        <ul>{bookmarks.map((b) => <li key={b.id}>{b.label.trim()}</li>)}</ul>
+      );
+      return (
+        <div>
+          <p>mushaf</p>
+          <ErrorBoundary name="sidebar" fallback={<p>sidebar failed</p>}>
+            {asFunction ? list : list()}
+          </ErrorBoundary>
+        </div>
+      );
+    };
+    // A bad entry from the server: label missing, so .trim() throws.
+    const bad = [{ id: 1, label: 'Juz 1' }, { id: 2 }];
+
+    it('as plain children, a throw in it escapes to the boundary above the page', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      render(<ErrorBoundary fallback={<p>whole app failed</p>}><Page bookmarks={bad} /></ErrorBoundary>);
+      expect(screen.getByText('whole app failed')).toBeTruthy();
+      expect(screen.queryByText('mushaf')).toBeNull();
+    });
+
+    it('as a function, the throw stays in the region and the page carries on', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      render(<ErrorBoundary fallback={<p>whole app failed</p>}><Page bookmarks={bad} asFunction /></ErrorBoundary>);
+      expect(screen.getByText('sidebar failed')).toBeTruthy();
+      expect(screen.getByText('mushaf')).toBeTruthy();
+      expect(screen.queryByText('whole app failed')).toBeNull();
+    });
+
+    it('as a function, it renders as before when nothing throws', () => {
+      render(<Page bookmarks={[{ id: 1, label: ' Juz 1 ' }]} asFunction />);
+      expect(screen.getByText('Juz 1')).toBeTruthy();
+      expect(screen.getByText('mushaf')).toBeTruthy();
+    });
+  });
 });

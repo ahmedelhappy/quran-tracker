@@ -942,8 +942,11 @@ export default function Dashboard() {
               the plan is on its way. */}
           <div className="min-h-[24rem]">
           {/* A crash in the day's tasks stays here (M-14): the stats, timer and
-              to-do above keep working, and Retry draws the tasks again. */}
+              to-do above keep working, and Retry draws the tasks again. The
+              tasks are a function, so a throw in their JSX happens inside the
+              boundary (see ErrorBoundary). */}
           <ErrorBoundary name="dashboard tasks" fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
+          {() => (<>
           {activeTab === 'today' && (
             loading ? (
               /* The skeleton stands in for the REAL shape — two columns, a heading
@@ -1228,6 +1231,7 @@ export default function Dashboard() {
               )}
             </div>
           )}
+          </>)}
           </ErrorBoundary>
           </div>
         </section>
