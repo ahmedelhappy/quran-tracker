@@ -8,7 +8,9 @@ import { FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 //   block  — a section's worth: the Progress/Leaderboard error banner
 //   inline — one line inside a small panel (a sidebar list, a toolbar)
 // `onRetry` is optional: without it the notice only says what happened.
-export default function ErrorNotice({ message, onRetry, variant = 'block', className = '' }) {
+// `onDismiss` (block only) adds Close, for a notice standing in for a panel
+// that floats over the page (the tafsir sheet, the search box).
+export default function ErrorNotice({ message, onRetry, onDismiss, variant = 'block', className = '' }) {
   const { t } = useTranslation();
   const text = message ?? t('common.loadFailed');
 
@@ -40,15 +42,28 @@ export default function ErrorNotice({ message, onRetry, variant = 'block', class
         <FiAlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
         <span>{text}</span>
       </p>
-      {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="self-start sm:self-auto shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] dark:bg-emerald-700 dark:hover:bg-emerald-600 px-4 py-2 rounded-lg transition-colors"
-        >
-          <FiRefreshCw className="w-4 h-4" aria-hidden="true" />
-          {t('common.retry')}
-        </button>
+      {(onRetry || onDismiss) && (
+        <div className="self-start sm:self-auto shrink-0 flex items-center gap-3">
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="text-sm text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 underline underline-offset-2"
+            >
+              {t('common.close')}
+            </button>
+          )}
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] dark:bg-emerald-700 dark:hover:bg-emerald-600 px-4 py-2 rounded-lg transition-colors"
+            >
+              <FiRefreshCw className="w-4 h-4" aria-hidden="true" />
+              {t('common.retry')}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

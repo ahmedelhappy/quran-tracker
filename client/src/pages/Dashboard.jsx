@@ -9,7 +9,8 @@ import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
-import ErrorNotice from '../components/ErrorNotice';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorNotice, { RegionFallback } from '../components/ErrorNotice';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
 import { LuHourglass, LuListTodo } from 'react-icons/lu';
@@ -875,7 +876,9 @@ export default function Dashboard() {
                 <LuHourglass className="w-3.5 h-3.5 text-[#004f35] dark:text-emerald-400" aria-hidden="true" />
                 {t('timer.cardTitle')}
               </span>
-              <TimeTool layout="row" />
+              <ErrorBoundary name="dashboard timer" fallback={({ reset }) => <RegionFallback variant="inline" onRetry={reset} />}>
+                <TimeTool layout="row" />
+              </ErrorBoundary>
             </div>
 
             {/* "My to-do" — the same list as the Library sidebar's to-do tab. Its
@@ -891,7 +894,9 @@ export default function Dashboard() {
                   {t('todo.cardTitle')}
                 </span>
                 <div className="flex-1 min-h-0">
-                  <TodoList variant="card" />
+                  <ErrorBoundary name="dashboard to-do" fallback={({ reset }) => <RegionFallback variant="inline" onRetry={reset} />}>
+                    <TodoList variant="card" />
+                  </ErrorBoundary>
                 </div>
               </div>
             </div>
@@ -936,6 +941,9 @@ export default function Dashboard() {
           {/* A floor under the day's tasks, so the sections below hold still while
               the plan is on its way. */}
           <div className="min-h-[24rem]">
+          {/* A crash in the day's tasks stays here (M-14): the stats, timer and
+              to-do above keep working, and Retry draws the tasks again. */}
+          <ErrorBoundary name="dashboard tasks" fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
           {activeTab === 'today' && (
             loading ? (
               /* The skeleton stands in for the REAL shape — two columns, a heading
@@ -1220,6 +1228,7 @@ export default function Dashboard() {
               )}
             </div>
           )}
+          </ErrorBoundary>
           </div>
         </section>
 

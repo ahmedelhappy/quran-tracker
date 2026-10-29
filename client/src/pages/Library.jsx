@@ -54,7 +54,8 @@ import { verseEdges, peekVerseEdges, matchesDuration } from '../services/verseEd
 import { fetchMushafPage, ensurePageFont, decodePageFont, takeReadyPages, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { setPrefetchFocus, holdPrefetch, resumePrefetch, stopPrefetch } from '../services/pagePrefetch';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
-import ErrorNotice from '../components/ErrorNotice';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorNotice, { RegionFallback } from '../components/ErrorNotice';
 import { SURAH_PAGES } from '../data/surahPages';
 import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
@@ -66,8 +67,10 @@ import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
-// the word index it searches loads after that (services/quranSearch.js).
-const VerseSearch = lazy(() => import('../components/VerseSearch'));
+// the word index it searches loads after that (services/quranSearch.js). React.lazy
+// keeps a failed import for good, so its boundary's Retry swaps in a fresh one
+// (loadVerseSearch again) — a chunk that failed offline loads once back online.
+const loadVerseSearch = () => lazy(() => import('../components/VerseSearch'));
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -813,6 +816,7 @@ export default function Library() {
   // survives page turns; it is never saved anywhere.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
+  const [VerseSearch, setVerseSearch] = useState(loadVerseSearch);
   const [searchQuery, setSearchQuery] = useState('');
   const [find, setFind] = useState(null);
   const findBarRef = useRef(null);
@@ -4957,7 +4961,11 @@ export default function Library() {
           {/* ── Sidebar — shown or hidden by its own toggle. Docking the tafsir
               hides it by default (that column of room is what the panel takes),
               but an explicit toggle outranks that; see the effect above. ── */}
+          {/* Each pane of the reader has a boundary of its own (M-14): a crash in
+              the sidebar, the audio bar, the tafsir or the search box is shown
+              in its place, with Retry, while the mushaf stays readable. */}
           {showSidebar && (
+          <ErrorBoundary name="reader sidebar" fallback={({ reset }) => <RegionFallback className="w-full lg:w-72 shrink-0" onRetry={reset} />}>
           <aside className="reader-panel reader-panel--start w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl lg:rounded-s-none border border-[#dce2f3] dark:border-gray-700 lg:border-s-0 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-20 lg:self-start">
 
             {/* Page navigation */}
@@ -5568,6 +5576,7 @@ export default function Library() {
             )}
 
                       </aside>
+          </ErrorBoundary>
           )}
 
           {/* ── Mushaf column ─────────────────────────────── */}
@@ -5969,7 +5978,10 @@ export default function Library() {
               </div>
             )}
 
-            {/* ── Sticky audio bar — stays visible with the popover (reciter, speed, repeat live here) ── */}
+            {/* ── Sticky audio bar — stays visible with the popover (reciter, speed, repeat live here) ──
+                Its boundary leaves the <audio> pair below alone: they hold the
+                playback, and the bar's Retry redraws the controls around it. */}
+            <ErrorBoundary name="audio player" fallback={({ reset }) => <RegionFallback className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto" onRetry={reset} />}>
             <div ref={audioBarRef} data-tour="lib-audio" data-keeps-selection className="sticky bottom-3 z-20 w-full max-w-[720px] mx-auto bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-2xl border border-[#dce2f3] dark:border-gray-700 shadow-lg px-4 py-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <Tooltip label={t('tooltips.prevVerse')}>
@@ -6197,6 +6209,7 @@ export default function Library() {
 
               <ReciterPicker value={reciter} onChange={setReciter} isArabic={isArabic} />
             </div>
+            </ErrorBoundary>
 
             {/* The ping-pong pair: one plays while the other preloads the next verse.
                 The playback-state handlers — spinner, error line, auto-advance —
@@ -6230,6 +6243,11 @@ export default function Library() {
               576×852 frame — simply renders smaller rather than being covered.
               The sidebar hides itself to pay for that room (see showSidebar). */}
           {tafsirOpen && (
+            <ErrorBoundary name="tafsir panel" fallback={({ reset }) => (
+              <div className="fixed bottom-24 inset-x-4 z-50 md:inset-x-auto md:end-6 md:w-96">
+                <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={() => setTafsirOpen(false)} />
+              </div>
+            )}>
             <>
               <div
                 className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
@@ -6417,6 +6435,7 @@ export default function Library() {
                 </div>
               </div>
             </>
+            </ErrorBoundary>
           )}
 
         </div>
@@ -6686,6 +6705,15 @@ export default function Library() {
       {/* Mounted on the first open and kept, so its loaded index and the last query
           are still there the next time. Client-side only: works signed out. */}
       {searchMounted && (
+        <ErrorBoundary
+          name="verse search"
+          onReset={() => setVerseSearch(loadVerseSearch)}
+          fallback={({ reset }) => (searchOpen ? (
+            <div className="fixed top-24 inset-x-4 z-50 mx-auto max-w-md">
+              <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={closeSearch} />
+            </div>
+          ) : null)}
+        >
         <Suspense fallback={null}>
           <VerseSearch
             open={searchOpen}
@@ -6702,6 +6730,7 @@ export default function Library() {
             onClearRecent={clearRecent}
           />
         </Suspense>
+        </ErrorBoundary>
       )}
 
       <Footer />

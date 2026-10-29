@@ -12,6 +12,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SessionUnavailable, { SessionNotice } from './components/SessionUnavailable';
 import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
+import ErrorBoundary from './components/ErrorBoundary';
+import { RegionFallback } from './components/ErrorNotice';
 
 // Pages are lazy-loaded so each route ships its own chunk — this keeps heavy,
 // route-specific dependencies (Recharts on /progress, driver.js tours on
@@ -49,9 +51,22 @@ const OnboardingWrapper = () => {
   return <Onboarding />;
 };
 
+// The assistant floats over every page, so a crash in it must stay in it (M-14):
+// its boundary puts a small notice with Retry where the launcher was, and the
+// page underneath carries on. (Without it, one bad reply took the whole app down
+// to the crash screen.)
 const PersistentChatbot = () => {
   const { user } = useAuth();
-  return user && user.onboardingComplete ? <Chatbot /> : null;
+  if (!user || !user.onboardingComplete) return null;
+  return (
+    <ErrorBoundary name="chat assistant" fallback={({ reset }) => (
+      <div className="fixed bottom-24 end-6 z-50 w-72 max-w-[calc(100vw-3rem)]">
+        <RegionFallback className="shadow-lg" onRetry={reset} />
+      </div>
+    )}>
+      <Chatbot />
+    </ErrorBoundary>
+  );
 };
 
 // A new page starts at its top. Only a change of PAGE counts: the reader moves
