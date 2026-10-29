@@ -244,6 +244,7 @@
     "chartTitle": "Pages Memorized Over Time",
     "chartEmpty": "Your activity will appear here as you progress",
     "chartStart": "Start memorizing pages to see your chart",
+    "chartUnavailable": "The chart couldn't load. Reload the page to try again.",
     "achievementsEarned": "{{count}} / {{total}} Earned",
     "juzComplete": "{{count}} Juz Complete",
     "dayStreak": "{{count}} Day Streak",

@@ -244,6 +244,7 @@
     "chartTitle": "الصفحات المحفوظة عبر الزمن",
     "chartEmpty": "سيظهر نشاطك هنا مع تقدمك",
     "chartStart": "ابدأ بحفظ الصفحات لعرض الرسم البياني",
+    "chartUnavailable": "تعذّر تحميل الرسم البياني. أعد تحميل الصفحة للمحاولة مرة أخرى.",
     "achievementsEarned": "{{count}} / {{total}} مكتسب",
     "juzComplete": "{{count}} جزء مكتمل",
     "dayStreak": "سلسلة من {{count}} يوم",

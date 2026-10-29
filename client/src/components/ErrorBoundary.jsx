@@ -5,6 +5,10 @@ import i18n from '../i18n';
 // bilingual recovery screen instead of a blank white page. Error boundaries must
 // be class components, so this reads translations from the i18n instance directly
 // (not the useTranslation hook) with English fallbacks in case i18n hasn't loaded.
+//
+// Given a `fallback`, it is a local boundary instead: that element takes the
+// place of the part that failed (e.g. a lazy chart whose chunk could not load)
+// and the rest of the page carries on.
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -17,11 +21,12 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     // Surface the crash server-side/console for debugging and future reporting.
-    console.error('Uncaught application error:', error, info);
+    console.error(this.props.fallback ? 'Part of the page failed to render:' : 'Uncaught application error:', error, info);
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    if (this.props.fallback) return this.props.fallback;
 
     const t = (key, fallback) => i18n.t(key, { defaultValue: fallback });
     const isRtl = i18n.dir() === 'rtl';

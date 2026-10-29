@@ -7,6 +7,7 @@ import { useToast } from '../hooks/useToast';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
@@ -821,9 +822,19 @@ export default function Progress() {
                   <p className="text-xs text-gray-300 dark:text-gray-600">{t('progress.chartStart')}</p>
                 </div>
               ) : (
-                <Suspense fallback={<div className="h-[220px] rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />}>
-                  <MemorizationChart data={chartData} />
-                </Suspense>
+                // Its own boundary: a chart that cannot load (its chunk failed)
+                // leaves the rest of the page standing, with a note in its place.
+                <ErrorBoundary
+                  fallback={(
+                    <div className="h-[220px] rounded flex items-center justify-center px-4 text-center text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/40">
+                      {t('progress.chartUnavailable')}
+                    </div>
+                  )}
+                >
+                  <Suspense fallback={<div className="h-[220px] rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />}>
+                    <MemorizationChart data={chartData} />
+                  </Suspense>
+                </ErrorBoundary>
               )}
             </div>
           </>
