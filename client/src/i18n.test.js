@@ -3,12 +3,17 @@ import en from './locales/en.json';
 import ar from './locales/ar.json';
 
 // The language files are fetched (i18n.js). `failing` makes every request for
-// that language fail, the way a dropped connection or a stale deploy's 404 does.
+// that language fail, the way a dropped connection or a stale deploy's 404 does;
+// `stalling` makes them never answer, until the request's signal gives up.
 const failing = new Set();
+const stalling = new Set();
 const requests = [];
-const fakeFetch = vi.fn(async (url) => {
+const fakeFetch = vi.fn(async (url, { signal } = {}) => {
   const lng = /ar\.json|\/ar-/.test(url) ? 'ar' : 'en';
   requests.push(lng);
+  if (stalling.has(lng)) {
+    return new Promise((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason)));
+  }
   if (failing.has(lng)) return { ok: false, status: 503, json: async () => ({}) };
   return { ok: true, status: 200, json: async () => (lng === 'ar' ? ar : en) };
 });
@@ -29,6 +34,7 @@ afterAll(() => vi.unstubAllGlobals());
 
 beforeEach(() => {
   failing.clear();
+  stalling.clear();
   requests.length = 0;
   localStorage.clear();
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -75,6 +81,24 @@ describe('switchLanguage', () => {
     expect(requests).toEqual(['ar']);
     expect(i18n.language).toBe('ar');
     await switchLanguage('en');
+  });
+
+  it('gives up on a request that never answers, so start-up cannot hang', async () => {
+    i18n.removeResourceBundle('ar', 'translation');
+    stalling.add('ar');
+    // The real limit is seconds; here each attempt "times out" at once.
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+      const c = new AbortController();
+      setTimeout(() => c.abort(new DOMException('signal timed out', 'TimeoutError')), 5);
+      return c.signal;
+    });
+    const stop = onLanguageUnavailable(() => {});
+
+    expect(await switchLanguage('ar')).toBe(false);
+    expect(timeout).toHaveBeenCalledWith(6000);
+    expect(requests).toEqual(['ar', 'ar', 'ar']);
+    expect(i18n.language).toBe('en');
+    stop();
   });
 
   it('holds a failure until the notice is listening', async () => {

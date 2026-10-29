@@ -29,13 +29,19 @@ const NS = 'translation';
 // to it fetches it again — where null would mark it failed for the rest of the
 // session. With an error set i18next stores nothing (it adds a bundle only when
 // there is no error), so the `true` never stands in for the strings.
+//
+// A request that stalls (no answer at all) is given up after LOAD_TIMEOUT_MS
+// and counts as a failure like any other, so start-up always settles and the
+// app renders: in English if need be, never a blank page for good. ~20 KB
+// gzipped needs well under that even on a poor mobile connection.
+const LOAD_TIMEOUT_MS = 6000;
 const localeFiles = {
   type: 'backend',
   init() {},
   read(language, namespace, callback) {
     const url = LOCALES[language];
     if (!url) return callback(null, {});
-    fetch(url)
+    fetch(url, { signal: AbortSignal.timeout?.(LOAD_TIMEOUT_MS) })
       .then((res) => {
         if (res.ok) return res.json();
         // A tab from before a deploy asking for a file the deploy replaced.

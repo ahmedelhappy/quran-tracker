@@ -10,7 +10,8 @@ import './index.css'
 installStaleChunkReload()
 
 // After the active language's strings have arrived (they are a file of their
-// own). It settles even if they could not be fetched: i18n.js has retried by
+// own). It settles even if they could not be fetched, or never answered (each
+// try is cut after a few seconds): i18n.js has retried by
 // then and fallen back to English, or, if English failed too, the app renders
 // with raw keys and a toast that says why — still better than a blank page.
 i18nReady.finally(() => {
