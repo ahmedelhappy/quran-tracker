@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FiMessageSquare, FiSend } from 'react-icons/fi';
+import { FiMessageSquare, FiSend, FiRefreshCw } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { chatAPI } from '../services/api';
 import { useDraggable } from '../hooks/useDraggable';
@@ -56,21 +56,15 @@ export default function Chatbot() {
   };
   const showSuggestions = !loading && messages.every((m) => m.isWelcome);
 
-  const send = async (textArg) => {
-    const text = (typeof textArg === 'string' ? textArg : input).trim();
-    if (!text || loading) return;
-
-    const userMsg = { role: 'user', content: text };
-    const next = [...messages, userMsg];
-    setMessages(next);
-    setInput('');
+  // Ask the assistant to answer `conversation`, which ends with the reader's turn.
+  const ask = async (conversation) => {
     setLoading(true);
 
     // Send the last 6 messages (3 turns) — only what was really said: not the
     // static welcome, and not this widget's own error notices, which the model
     // would otherwise read as things it had said. Each goes as just its role and
     // text; the UI flags stay here.
-    const history = next
+    const history = conversation
       .filter((m) => !m.isWelcome && !m.isError)
       .slice(-6)
       .map(({ role, content }) => ({ role, content }));
@@ -85,23 +79,44 @@ export default function Chatbot() {
     } catch (err) {
       // A 429 is either today's message budget (the server says which with a
       // code) or the short burst limit; a 504 is a model that answered too
-      // slowly. Each gets its own message rather than a generic failure.
+      // slowly, and ECONNABORTED the client's own deadline (api.js) running
+      // out first. Each gets its own message rather than a generic failure.
       const status = err.response?.status;
       const messageKey = status === 429
         ? (err.response?.data?.code === 'CHAT_DAILY_LIMIT' ? 'chatbot.dailyLimit' : 'chatbot.rateLimit')
-        : status === 504 ? 'chatbot.timeout' : 'chatbot.error';
+        : status === 504 || err.code === 'ECONNABORTED' ? 'chatbot.timeout' : 'chatbot.error';
       // The generic notice hides the cause; a 400 here is a bug in what this
       // widget sent, so keep the server's reason where a developer will see it.
       if (messageKey === 'chatbot.error') {
         console.error('Chat request failed:', status ?? '', err.response?.data?.message ?? err.message);
       }
+      // Every failure but the day's budget can be asked again (M-14): a timeout,
+      // a dropped connection or a busy server usually answers the second time.
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: t(messageKey), isError: true },
+        { role: 'assistant', content: t(messageKey), isError: true, canRetry: messageKey !== 'chatbot.dailyLimit' },
       ]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const send = (textArg) => {
+    const text = (typeof textArg === 'string' ? textArg : input).trim();
+    if (!text || loading) return;
+    const next = [...messages, { role: 'user', content: text }];
+    setMessages(next);
+    setInput('');
+    ask(next);
+  };
+
+  // The last reply failed: drop its notice and ask again for the same turn —
+  // without the reader typing it again, and without a second copy of it.
+  const retryLast = () => {
+    if (loading || !messages[messages.length - 1]?.canRetry) return;
+    const conversation = messages.slice(0, -1);
+    setMessages(conversation);
+    ask(conversation);
   };
 
   const handleKey = (e) => {
@@ -176,6 +191,16 @@ export default function Chatbot() {
                   {msg.role === 'assistant' && !msg.isWelcome
                     ? <ReplyText text={msg.content} onNavigate={afterLink} />
                     : msg.content}
+                  {msg.canRetry && i === messages.length - 1 && !loading && (
+                    <button
+                      type="button"
+                      onClick={retryLast}
+                      className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-[#004f35] dark:text-emerald-400 hover:underline"
+                    >
+                      <FiRefreshCw className="w-3 h-3" aria-hidden="true" />
+                      {t('common.retry')}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
