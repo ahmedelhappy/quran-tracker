@@ -65,12 +65,11 @@ import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
+import { isChunkLoadError } from '../utils/staleChunkReload';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
-// the word index it searches loads after that (services/quranSearch.js). React.lazy
-// keeps a failed import for good, so its boundary's Retry swaps in a fresh one
-// (loadVerseSearch again) — a chunk that failed offline loads once back online.
-const loadVerseSearch = () => lazy(() => import('../components/VerseSearch'));
+// the word index it searches loads after that (services/quranSearch.js).
+const VerseSearch = lazy(() => import('../components/VerseSearch'));
 
 const JUZ_START_PAGES = [
   1,22,42,62,82,102,122,142,162,182,
@@ -816,7 +815,6 @@ export default function Library() {
   // survives page turns; it is never saved anywhere.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMounted, setSearchMounted] = useState(false);
-  const [VerseSearch, setVerseSearch] = useState(loadVerseSearch);
   const [searchQuery, setSearchQuery] = useState('');
   const [find, setFind] = useState(null);
   const findBarRef = useRef(null);
@@ -6707,10 +6705,17 @@ export default function Library() {
       {searchMounted && (
         <ErrorBoundary
           name="verse search"
-          onReset={() => setVerseSearch(loadVerseSearch)}
-          fallback={({ reset }) => (searchOpen ? (
+          // A chunk that could not be fetched cannot be fetched again without a
+          // reload: the browser remembers a failed module import for the life of
+          // the page (Chrome makes no new request), so its Retry reloads —
+          // the page number is in the URL. A crash inside the box redraws it.
+          fallback={({ error, reset }) => (searchOpen ? (
             <div className="fixed top-24 inset-x-4 z-50 mx-auto max-w-md">
-              <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={closeSearch} />
+              <RegionFallback
+                className="shadow-lg"
+                onRetry={isChunkLoadError(error) ? () => window.location.reload() : reset}
+                onDismiss={closeSearch}
+              />
             </div>
           ) : null)}
         >

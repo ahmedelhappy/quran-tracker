@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { installStaleChunkReload, reloadForStaleBuild, RELOAD_GAP_MS, RELOAD_STAMP_KEY } from './staleChunkReload';
+import { installStaleChunkReload, reloadForStaleBuild, isChunkLoadError, RELOAD_GAP_MS, RELOAD_STAMP_KEY } from './staleChunkReload';
 
 const fakeWindow = ({ onLine = true } = {}) => {
   const target = new EventTarget();
@@ -48,5 +48,18 @@ describe('installStaleChunkReload', () => {
     win.dispatchEvent(new Event('vite:preloadError'));
     win.dispatchEvent(new Event('vite:preloadError'));
     expect(win.location.reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isChunkLoadError', () => {
+  it("knows a failed lazy import in Chrome's, Firefox's and Safari's words", () => {
+    expect(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: http://x/assets/VerseSearch-a1.js'))).toBe(true);
+    expect(isChunkLoadError(new TypeError('error loading dynamically imported module: http://x/assets/a.js'))).toBe(true);
+    expect(isChunkLoadError(new TypeError('Importing a module script failed.'))).toBe(true);
+  });
+
+  it('is false for an ordinary render error, or nothing', () => {
+    expect(isChunkLoadError(new TypeError("Cannot read properties of undefined (reading 'map')"))).toBe(false);
+    expect(isChunkLoadError(null)).toBe(false);
   });
 });

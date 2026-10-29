@@ -27,6 +27,14 @@ export const reloadForStaleBuild = (win = window, now = Date.now) => {
 // Vite reports every failed lazy import() as a `vite:preloadError` event. (The
 // language files are fetched, not imported: i18n.js calls reloadForStaleBuild
 // itself on a 404.)
+// A lazy import() whose file could not be fetched, in each browser's wording.
+// The page cannot recover from it in place: a failed module import is
+// remembered for the life of the document, so asking again fails without even
+// a request. Only a reload helps.
+export const isChunkLoadError = (err) =>
+  /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i
+    .test(String(err?.message ?? ''));
+
 export const installStaleChunkReload = (win = window, now = Date.now) => {
   win.addEventListener('vite:preloadError', () => { reloadForStaleBuild(win, now); });
 };
