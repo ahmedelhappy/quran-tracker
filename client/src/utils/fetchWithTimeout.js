@@ -20,12 +20,25 @@
 // is not going to. Bigger downloads pass a longer one.
 export const DEFAULT_TIMEOUT_MS = 15_000;
 
+// `cause` is what the aborted fetch itself rejected with.
 export class RequestTimeoutError extends Error {
-  constructor(url, timeoutMs) {
-    super(`No answer from ${url} within ${timeoutMs} ms`);
+  constructor(url, timeoutMs, cause) {
+    super(`No answer from ${url} within ${timeoutMs} ms`, cause ? { cause } : undefined);
     this.name = 'RequestTimeoutError';
     this.url = url;
     this.timeoutMs = timeoutMs;
+  }
+}
+
+// fetch() itself rejected: offline, the host refused or could not be found, the
+// connection dropped, CORS. fetch reports all of those as a bare TypeError —
+// the same type a bug in our own code throws — so it is named here, where it is
+// still known to have come from fetch. `cause` is that TypeError.
+export class NetworkError extends Error {
+  constructor(url, cause) {
+    super(`No connection to ${url}`, { cause });
+    this.name = 'NetworkError';
+    this.url = url;
   }
 }
 
@@ -41,11 +54,12 @@ export class HttpStatusError extends Error {
 
 // Did the REQUEST fail (offline, refused, aborted, timed out, a non-2xx) rather
 // than the content? Worth asking again later; a file that arrived but cannot be
-// used is not. fetch itself rejects with a TypeError when the network fails.
+// used is not. A plain TypeError is NOT one: that is what a bug throws (reading
+// a field of undefined), and taking it for the network hid bugs as "offline".
 export const isRequestFailure = (err) =>
   err instanceof RequestTimeoutError
   || err instanceof HttpStatusError
-  || err?.name === 'TypeError'
+  || err instanceof NetworkError
   || err?.name === 'AbortError';
 
 export async function fetchWithTimeout(url, { timeoutMs = DEFAULT_TIMEOUT_MS, signal, read, ...init } = {}) {
@@ -58,10 +72,18 @@ export async function fetchWithTimeout(url, { timeoutMs = DEFAULT_TIMEOUT_MS, si
     else signal.addEventListener('abort', forward, { once: true });
   }
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
+    let res;
+    try {
+      res = await fetch(url, { ...init, signal: controller.signal });
+    } catch (err) {
+      // Aborted — by the deadline (made a timeout below) or by the caller (their
+      // abort, as it was). Anything else fetch rejects with is the network.
+      if (controller.signal.aborted) throw err;
+      throw new NetworkError(url, err);
+    }
     return read ? await read(res) : res;
   } catch (err) {
-    throw timedOut ? new RequestTimeoutError(url, timeoutMs) : err;
+    throw timedOut ? new RequestTimeoutError(url, timeoutMs, err) : err;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', forward);
@@ -69,7 +91,7 @@ export async function fetchWithTimeout(url, { timeoutMs = DEFAULT_TIMEOUT_MS, si
 }
 
 // The parsed JSON of a 2xx response; anything else throws (HttpStatusError for a
-// non-2xx, RequestTimeoutError past the deadline, the fetch's own error offline).
+// non-2xx, RequestTimeoutError past the deadline, NetworkError offline).
 export const fetchJSON = (url, options = {}) => fetchWithTimeout(url, {
   ...options,
   read: async (res) => {

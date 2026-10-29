@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  fetchWithTimeout, fetchJSON, RequestTimeoutError, HttpStatusError, isRequestFailure, DEFAULT_TIMEOUT_MS,
+  fetchWithTimeout, fetchJSON, RequestTimeoutError, HttpStatusError, NetworkError, isRequestFailure, DEFAULT_TIMEOUT_MS,
 } from './fetchWithTimeout';
 
 // A fetch that never answers, as a stalled host does — it only ends when its
@@ -73,9 +73,37 @@ describe('fetchWithTimeout', () => {
   it('tells a failed request from content that cannot be used', () => {
     expect(isRequestFailure(new RequestTimeoutError('/x', 1))).toBe(true);
     expect(isRequestFailure(new HttpStatusError('/x', 502))).toBe(true);
-    expect(isRequestFailure(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isRequestFailure(new NetworkError('/x', new TypeError('Failed to fetch')))).toBe(true);
     expect(isRequestFailure(abortError())).toBe(true);
     expect(isRequestFailure(new DOMException('bad data', 'EncodingError'))).toBe(false);
     expect(isRequestFailure(new Error('Unexpected payload'))).toBe(false);
+    // A bug's TypeError is not the network.
+    expect(isRequestFailure(new TypeError("Cannot read properties of undefined (reading 'verses')"))).toBe(false);
+  });
+
+  it("names fetch's own rejection a NetworkError, and keeps the TypeError as its cause", async () => {
+    const offline = new TypeError('Failed to fetch');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw offline; }));
+    const err = await fetchJSON('https://api.example/x').catch((e) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+    expect(err.cause).toBe(offline);
+    expect(err.url).toBe('https://api.example/x');
+    expect(isRequestFailure(err)).toBe(true);
+  });
+
+  it('a bug in reading the body stays itself, not a network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ a: 1 })));
+    const err = await fetchWithTimeout('/x', { read: (res) => res.json().then((j) => j.missing.field) }).catch((e) => e);
+    expect(err).toBeInstanceOf(TypeError);
+    expect(isRequestFailure(err)).toBe(false);
+  });
+
+  it('a timeout keeps what the aborted fetch rejected with as its cause', async () => {
+    vi.stubGlobal('fetch', hangingFetch());
+    const pending = fetchWithTimeout('/x', { timeoutMs: 10 }).catch((e) => e);
+    await vi.advanceTimersByTimeAsync(10);
+    const err = await pending;
+    expect(err).toBeInstanceOf(RequestTimeoutError);
+    expect(err.cause?.name).toBe('AbortError');
   });
 });
