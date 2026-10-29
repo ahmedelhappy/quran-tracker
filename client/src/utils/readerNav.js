@@ -17,3 +17,17 @@ export const pageFromInput = (text) => {
   const n = Number(s);
   return n >= 1 && n <= TOTAL_PAGES ? n : null;
 };
+
+// The next (dir > 0) or previous annotated page from what is on screen,
+// wrapping around. In the two-page spread both pages are on screen, so "next"
+// must look past the LEFT page and "previous" before the RIGHT one: comparing
+// with the anchor (right) page alone picked the left page again and again, and
+// the button pulsed it forever.
+export const adjacentAnnotatedPage = (annotatedPages, visiblePages, dir) => {
+  if (!annotatedPages.length) return null;
+  const sorted = [...annotatedPages].sort((a, b) => a - b);
+  const last = Math.max(...visiblePages);
+  const first = Math.min(...visiblePages);
+  if (dir > 0) return sorted.find((p) => p > last) ?? sorted[0];
+  return [...sorted].reverse().find((p) => p < first) ?? sorted[sorted.length - 1];
+};

@@ -67,7 +67,7 @@ import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
 import { reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
-import { clampPage, pageFromInput } from '../utils/readerNav';
+import { clampPage, pageFromInput, adjacentAnnotatedPage } from '../utils/readerNav';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
 // the word index it searches loads after that (services/quranSearch.js).
@@ -3755,13 +3755,10 @@ export default function Library() {
     goToPage(page);
   }, [goToPage]);
   const gotoAdjacentAnnotated = useCallback((dir) => {
-    if (!annotatedPages.length) return;
-    const after = annotatedPages.filter((p) => (dir > 0 ? p > currentPage : p < currentPage));
-    const target = dir > 0
-      ? (after[0] ?? annotatedPages[0])                        // next, wrap to first
-      : (after[after.length - 1] ?? annotatedPages[annotatedPages.length - 1]); // prev, wrap to last
-    jumpToAnnotatedPage(target);
-  }, [annotatedPages, currentPage, jumpToAnnotatedPage]);
+    // From the whole spread, not its anchor page: wraps at either end.
+    const target = adjacentAnnotatedPage(annotatedPages, visiblePages, dir);
+    if (target != null) jumpToAnnotatedPage(target);
+  }, [annotatedPages, visiblePages, jumpToAnnotatedPage]);
 
   // Clear the arrival pulse once its animation has run.
   useEffect(() => {
