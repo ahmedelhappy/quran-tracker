@@ -139,8 +139,7 @@
     "firstCycleMsg": "You've reviewed all your memorized pages at least once. Ready to start memorizing new ones?",
     "firstCycleResume": "Start Memorizing",
     "firstCycleDismiss": "Not yet",
-    "failedTasks": "Failed to load today's tasks",
-    "failedWeekPlan": "Failed to load week plan",
+    "tasksLoadError": "Couldn't load today's plan. Check your connection and try again.",
     "failedMark": "Failed to mark page. Try again.",
     "pageMarkedMemorized": "Page {{number}} marked as memorized!",
     "pageMarkedReviewed": "Page {{number}} marked as reviewed!",
@@ -590,7 +589,8 @@
   "errorBoundary": {
     "title": "Something went wrong",
     "message": "An unexpected error occurred. Reloading the page usually fixes it.",
-    "reload": "Reload page"
+    "reload": "Reload page",
+    "region": "This part of the page ran into a problem."
   },
   "session": {
     "offlineTitle": "You're offline",
@@ -606,6 +606,7 @@
     "loading": "Loading...",
     "error": "Something went wrong.",
     "retry": "Retry",
+    "loadFailed": "Couldn't load this. Check your connection and try again.",
     "close": "Close",
     "cancel": "Cancel",
     "confirm": "Confirm",

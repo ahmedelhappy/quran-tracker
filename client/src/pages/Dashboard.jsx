@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import appI18n from '../i18n';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { progressAPI, authAPI, annotationsAPI } from '../services/api';
@@ -10,6 +9,7 @@ import Footer from '../components/Footer';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
+import ErrorNotice from '../components/ErrorNotice';
 import { startDashboardTour } from '../components/dashboardTour';
 import { FiBook, FiList, FiCalendar, FiChevronDown, FiChevronUp, FiZap, FiPause, FiVolume2, FiHelpCircle, FiTarget, FiFlag } from 'react-icons/fi';
 import { LuHourglass, LuListTodo } from 'react-icons/lu';
@@ -331,6 +331,9 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [juzData, setJuzData] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Today's plan could not be loaded: the tasks show an error and Retry. It used
+  // to fall through to "no new pages today" — wrong news about the reader's day.
+  const [loadError, setLoadError] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
   const tourRef = useRef(null);
   const tourTimeoutRef = useRef(null);
@@ -373,32 +376,34 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [i18n.language]);
 
-  // Today's plan loads ONCE, on mount. The error message is read through the
-  // app's i18next instance at the moment of failure, not through `t` or the
-  // hook's `i18n`: react-i18next hands out a NEW one of each whenever the
-  // language changes, so depending on them would refetch the whole plan on
-  // every language switch just to translate a toast. `alive` drops a result
-  // that lands after the dashboard has gone (no toast for a page you left).
+  // Today's plan loads on mount, and again from the error's Retry (or the rest
+  // day's "memorize anyway", with ignoreOffDay). Nothing it depends on changes
+  // with the language, so a language switch never refetches the plan.
+  // `aliveRef` drops a result that lands after the dashboard has gone.
+  const aliveRef = useRef(true);
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const [taskRes, juzRes] = await Promise.all([
-          progressAPI.getTodayTasks(),
-          progressAPI.getJuzProgress(),
-        ]);
-        progressAPI.checkIn();
-        if (!alive) return;
-        setData(taskRes.data.data);
-        setJuzData(juzRes.data.data);
-      } catch {
-        if (alive) showToast(appI18n.t('dashboard.failedTasks'), 'error');
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [showToast]);
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+  const loadToday = useCallback(async (ignoreOffDay = false) => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [taskRes, juzRes] = await Promise.all([
+        progressAPI.getTodayTasks(ignoreOffDay ? { ignoreOffDay: 'true' } : undefined),
+        progressAPI.getJuzProgress(),
+      ]);
+      progressAPI.checkIn(ignoreOffDay);
+      if (!aliveRef.current) return;
+      setData(taskRes.data.data);
+      setJuzData(juzRes.data.data);
+    } catch {
+      if (aliveRef.current) setLoadError(true);
+    } finally {
+      if (aliveRef.current) setLoading(false);
+    }
+  }, []);
+  useEffect(() => { loadToday(); }, [loadToday]);
 
   // The hard-annotations summary loads independently — it never blocks the tasks.
   useEffect(() => {
@@ -476,7 +481,7 @@ export default function Dashboard() {
       const res = await progressAPI.getWeekPlan();
       setWeekData(res.data.data);
     } catch {
-      showToast(t('dashboard.failedWeekPlan'), 'error');
+      // The tab says so, with Retry (below).
     } finally {
       setWeekLoading(false);
     }
@@ -818,7 +823,7 @@ export default function Dashboard() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.dailyReview')}</span>
                     <InfoHint text={dailyReviewHintText} label={t('dashboard.dailyReview')} size="xs" />
                   </div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{reviewTotalCount} {t('dashboard.pages')}</div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats ? `${reviewTotalCount} ${t('dashboard.pages')}` : '—'}</div>
                 </>
               )}
             </div>
@@ -959,6 +964,8 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+            ) : loadError ? (
+              <ErrorNotice message={t('dashboard.tasksLoadError')} onRetry={() => loadToday(isOverrideDay)} />
             ) : data?.isOffDay && !isOverrideDay ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-12 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center relative overflow-hidden">
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none flex items-center justify-center text-[#004f35]">
@@ -979,22 +986,9 @@ export default function Dashboard() {
                     {t('dashboard.reflection')}
                   </button>
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       setIsOverrideDay(true);
-                      setLoading(true);
-                      try {
-                        const [taskRes, juzRes] = await Promise.all([
-                          progressAPI.getTodayTasks({ ignoreOffDay: 'true' }),
-                          progressAPI.getJuzProgress(),
-                        ]);
-                        progressAPI.checkIn(true);
-                        setData(taskRes.data.data);
-                        setJuzData(juzRes.data.data);
-                      } catch {
-                        showToast(t('dashboard.failedTasks'), 'error');
-                      } finally {
-                        setLoading(false);
-                      }
+                      loadToday(true);
                     }}
                     className="bg-transparent border border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:bg-[#d3daea] dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 text-xs font-semibold px-6 py-3 rounded-lg transition-colors uppercase tracking-wide"
                   >
@@ -1204,6 +1198,8 @@ export default function Dashboard() {
               {/* Today card — always from loaded data */}
               {loading ? (
                 <Sk h="h-32" />
+              ) : loadError ? (
+                <ErrorNotice message={t('dashboard.tasksLoadError')} onRetry={() => loadToday(isOverrideDay)} />
               ) : (
                 <WeekDayCard
                   day={{ date: todayDateString }}
@@ -1220,7 +1216,7 @@ export default function Dashboard() {
                   <WeekDayCard key={i} day={day} isToday={false} todayData={null} />
                 ))
               ) : (
-                <p className="text-sm text-[#707974] dark:text-gray-500 py-3 text-center">{t('dashboard.weekPlanError')}</p>
+                <ErrorNotice message={t('dashboard.weekPlanError')} onRetry={loadWeekPlan} />
               )}
             </div>
           )}
