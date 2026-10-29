@@ -1,16 +1,36 @@
+# The API's Render web service, as a blueprint. Values marked `sync: false` are
+# never written here: Render asks for them when the blueprint is first applied
+# and keeps them in the dashboard afterwards.
 services:
   - type: web
     name: quran-tracker-api
     runtime: node
     rootDir: server
-    buildCommand: npm install
+    # The lockfile, exactly — `npm install` could resolve newer versions than the
+    # ones the tests ran against. NODE_ENV=production below makes it skip the
+    # dev dependencies (the in-memory test database, nodemon, supertest).
+    buildCommand: npm ci
     startCommand: node server.js
+    # app.js answers 200 here without touching the database; Render holds a
+    # deploy back until it does, and restarts an instance that stops answering.
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      # Same as the repo's .nvmrc (a test keeps the two in step). Pinned here
+      # so the runtime never depends on which version file Render finds from
+      # rootDir — the .nvmrc sits at the repo root, outside server/.
+      - key: NODE_VERSION
+        value: 24.19.0
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
         sync: false
+      # The deployed client's origin, added to the CORS allow-list.
       - key: CLIENT_URL
         sync: false
+      # The assistant. Without it chat answers 503 (not configured).
+      - key: GROQ_API_KEY
+        sync: false
+      # Optional, with defaults when unset (see server/.env.example): GROQ_MODEL,
+      # TRUST_PROXY, CHAT_MAX_TOKENS, CHAT_TIMEOUT_MS, CHAT_DAILY_LIMIT.
