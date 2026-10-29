@@ -67,6 +67,7 @@ import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
 import { reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
+import { clampPage, pageFromInput } from '../utils/readerNav';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
 // the word index it searches loads after that (services/quranSearch.js).
@@ -78,7 +79,6 @@ const JUZ_START_PAGES = [
   402,422,442,462,482,502,522,542,562,582,
 ];
 
-const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
 const SIDEBAR_WIDTH = 288;   // lg:w-72 — the offset the sidebar's edge tab rides to
 
 // "Clicking off the verse" has to mean clicking EMPTY SPACE. Reaching for the
@@ -3786,12 +3786,15 @@ export default function Library() {
     return next;
   });
 
-  const handlePageInputKey = (e) => { if (e.key === 'Enter') goToPage(pageInput); };
-  const handlePageInputBlur = () => {
-    const n = Number(pageInput);
-    if (!n || n < 1 || n > 604) setPageInput(String(currentPage));
+  // Enter and leaving the box read it the same way: a whole page number goes
+  // there; anything else (empty, 0, 605, 12.5) puts the current page back.
+  const commitPageInput = () => {
+    const n = pageFromInput(pageInput);
+    if (n == null) setPageInput(String(currentPage));
     else goToPage(n);
   };
+  const handlePageInputKey = (e) => { if (e.key === 'Enter') commitPageInput(); };
+  const handlePageInputBlur = commitPageInput;
 
   // ── Mark / unmark a single page as memorized ──────────
   // The per-page check button on each page card is the only mark/unmark
