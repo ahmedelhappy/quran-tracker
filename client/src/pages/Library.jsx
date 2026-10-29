@@ -4223,6 +4223,8 @@ export default function Library() {
   // range drag has turned the page out from under it. A key we have NEVER resolved
   // is a different matter — that one really is loading, and gets the skeleton.
   const lastTafsirVerseRef = useRef(null);
+  // Re-renders the panel when a span's first verse text arrives into the ref.
+  const [, bumpSpanVerse] = useReducer((n) => n + 1, 0);
   const onPageTafsirVerse = panelVerseKey != null
     ? verses.find((v) => v.verseKey === panelVerseKey) ?? null
     : null;
@@ -4359,7 +4361,25 @@ export default function Library() {
     const verseKey = keyOfOrd(ord);
     const v = verseOfOrd(ord);
     if (!verses.some((x) => x.verseKey === verseKey) && v) {
-      lastTafsirVerseRef.current = { verseKey, id: ord, surahNumber: v.surahNumber, ayahNumber: v.ayahNumber, page: pageOfOrd(ord) };
+      // Its Quran text comes from that page's data: the global address alone has
+      // only numbers, and the panel showed an empty verse box (L-17). The page
+      // was on screen moments ago, so it is normally cached; if not, it is
+      // fetched and the box fills in when it arrives.
+      const page = pageOfOrd(ord);
+      const fromPage = (pd) => pd?.verses?.find((x) => x.verseKey === verseKey);
+      const known = fromPage(peekMushafPage(page));
+      lastTafsirVerseRef.current = known
+        ? { ...known, page }
+        : { verseKey, id: ord, surahNumber: v.surahNumber, ayahNumber: v.ayahNumber, page };
+      if (!known) {
+        fetchMushafPage(page).then((pd) => {
+          const found = fromPage(pd);
+          if (found && lastTafsirVerseRef.current?.verseKey === verseKey) {
+            lastTafsirVerseRef.current = { ...found, page };
+            bumpSpanVerse();
+          }
+        }).catch((err) => reportLoadFailure('Library: the span verse text', err));
+      }
     }
     setNotePanel(null);
     setTafsirVerseKey(verseKey);
@@ -6409,15 +6429,17 @@ export default function Library() {
                     </div>
                   ) : !tafsirVerse ? tafsirSkeleton : (
                     <>
-                      {/* The verse, mushaf-styled */}
-                      <div dir="rtl" className="rounded-xl bg-[#fdf8ec] dark:bg-[#1f1b14] border border-amber-200/70 dark:border-amber-900/40 px-4 py-3">
-                        <p className="mushaf-text !text-xl text-[#1f1505] dark:text-[#f3e9d2]">
-                          {verseText(tafsirVerse)}
-                          <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                            ﴿{toArabicDigits(tafsirVerse.ayahNumber)}﴾
-                          </span>
-                        </p>
-                      </div>
+                      {/* The verse, mushaf-styled — only once its text is known, never an empty frame */}
+                      {verseText(tafsirVerse) && (
+                        <div dir="rtl" data-testid="tafsir-verse-text" className="rounded-xl bg-[#fdf8ec] dark:bg-[#1f1b14] border border-amber-200/70 dark:border-amber-900/40 px-4 py-3">
+                          <p className="mushaf-text !text-xl text-[#1f1505] dark:text-[#f3e9d2]">
+                            {verseText(tafsirVerse)}
+                            <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
+                              ﴿{toArabicDigits(tafsirVerse.ayahNumber)}﴾
+                            </span>
+                          </p>
+                        </div>
+                      )}
 
                       {/* Surah / verse + play (toggles: pauses if this verse is playing) */}
                       <div className="flex items-center justify-between gap-3">
