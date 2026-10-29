@@ -442,9 +442,19 @@ export const fetchMushafPage = (page) => {
   if (shaping.has(page)) return shaping.get(page);
   const job = (async () => {
     const verses = shapeVerses(page, await fetchVersesCached(page));
-    const nextSpill = await computeNextSpill(page, verses);
+    // The spill only decides where a header plate is drawn, and it needs page+1.
+    // When page+1 cannot be had, this page is still shown — it already has its
+    // own verses — just without the plate, and it is NOT cached, so the next ask
+    // builds it again with the plate once page+1 loads. It used to fail the page.
+    let nextSpill = null;
+    let complete = true;
+    try {
+      nextSpill = await computeNextSpill(page, verses);
+    } catch {
+      complete = false;
+    }
     const shaped = { page, verses, lines: buildLines(page, verses, nextSpill), ornamental: page <= 2 };
-    lruSet(pageCache, page, shaped);
+    if (complete) lruSet(pageCache, page, shaped);
     return shaped;
   })().finally(() => shaping.delete(page));
   shaping.set(page, job);
