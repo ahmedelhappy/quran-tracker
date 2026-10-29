@@ -21,6 +21,7 @@ import {
 } from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
 import { newPasswordProblem } from '../utils/passwordRules';
+import { reportLoadFailure } from '../utils/reportError';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -922,10 +923,12 @@ export default function Settings() {
 
   useEffect(() => {
     loadProgress();
+    // Only for the review-mode estimates: without it they are left out (and the
+    // fixed count is not pre-filled), so a failure is logged, not shown.
     progressAPI.getTodayTasks().then(res => {
       setTodayStats(res.data.data.stats);
       progressAPI.checkIn(); // this read used to tick the streak itself
-    }).catch(() => {});
+    }).catch((err) => reportLoadFailure(err, "today's review stats"));
   }, [loadProgress]);
 
   // Auto-open the Edit Progress modal when arriving from the Progress page CTA —
@@ -1559,8 +1562,11 @@ export default function Settings() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (reviewMode === 'intensity') {
-                          setCycleReviewValue(todayStats?.dailyReviewTarget ?? 5);
+                        // Start the fixed count at what the intensity gives today.
+                        // Unknown (today's stats did not load): leave the count as
+                        // it is — a made-up 5 could be far from the reader's load.
+                        if (reviewMode === 'intensity' && todayStats?.dailyReviewTarget != null) {
+                          setCycleReviewValue(todayStats.dailyReviewTarget);
                         }
                         setReviewMode('fixed');
                       }}

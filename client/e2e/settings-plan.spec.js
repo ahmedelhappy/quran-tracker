@@ -47,3 +47,24 @@ test('a new daily goal and rest day show up in the week plan', async ({ page, re
   // The rest day does not eat pages: the plan picks up where today left off.
   await expect(dayCard(dayAfter)).toContainText('Pages 3, 4')
 })
+
+// Switching to a fixed review count starts it at today's intensity target. When
+// today's stats could not be loaded that target is unknown, and the count the
+// reader already had is kept — it used to be reset to a made-up 5 (M-14).
+test("without today's stats, Fixed number keeps the count already there", async ({ page, request }) => {
+  const account = await createAccount(request, { label: 'fixed', onboard: { dailyNewPages: 1 } })
+  await signIn(page, account)
+  await page.route('**/api/progress/today**', (route) => (route.request().method() === 'GET'
+    ? route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, contentType: 'application/json', body: '{}' })
+    : route.fallback()))
+  await page.goto('/settings?tab=memorization')
+
+  await page.getByRole('button', { name: /Fixed number/ }).click()
+  // The review count's box (0–40), not the custom daily goal's.
+  const count = page.locator('input[type="number"][max="40"]')
+  await count.fill('12')
+  await page.getByRole('button', { name: /Relaxed/ }).click()
+  await expect(count).toHaveCount(0)
+  await page.getByRole('button', { name: /Fixed number/ }).click()
+  await expect(count).toHaveValue('12')
+})
