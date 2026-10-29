@@ -40,11 +40,41 @@ export function safeAppPath(raw) {
 // Bare paths stop at punctuation, so "see /progress." keeps its full stop.
 const LINK_RE = /\[([^\]\n]{1,80})\]\(([^)\s]{1,200})\)|(^|[\s(])(\/(?:dashboard|progress|leaderboard|about|library|settings)(?:\?[A-Za-z0-9=&]*)?)/g;
 
+// "**[label](target)**" → "[label](target)": bold around a link would otherwise
+// leave stray asterisks on either side of it. The same result as
+//   text.replace(/\*\*(\[[^\]\n]+\]\([^)\s]+\))\*\*/g, '$1')
+// but in one pass. That regex scanned from EVERY "**[" to the label's end and then
+// backtracked all the way, so a reply made of "**[" repeated took quadratic time
+// (200 K characters: 8.5 s, the tab frozen). Here the label and the target can
+// each end in only one place — the first ']' or newline, the first ')' or space —
+// and later candidates only look further on, so one forward-moving scan head per
+// part finds every end: each character is looked at a bounded number of times.
+const isSpace = (c) => /\s/.test(c);
+export function unboldLinks(text) {
+  const n = text.length;
+  let out = '';
+  let copied = 0;
+  let labelEnd = 0;    // the first ']' or '\n' at or after the label being tried
+  let targetEnd = 0;   // the first ')' or whitespace at or after the target being tried
+  for (let i = text.indexOf('**['); i !== -1; i = text.indexOf('**[', i + 1)) {
+    const labelStart = i + 3;
+    if (labelEnd < labelStart) labelEnd = labelStart;
+    while (labelEnd < n && text[labelEnd] !== ']' && text[labelEnd] !== '\n') labelEnd++;
+    if (labelEnd === labelStart || text[labelEnd] !== ']' || text[labelEnd + 1] !== '(') continue;
+    const targetStart = labelEnd + 2;
+    if (targetEnd < targetStart) targetEnd = targetStart;
+    while (targetEnd < n && text[targetEnd] !== ')' && !isSpace(text[targetEnd])) targetEnd++;
+    if (targetEnd === targetStart || text[targetEnd] !== ')' || text[targetEnd + 1] !== '*' || text[targetEnd + 2] !== '*') continue;
+    out += text.slice(copied, i) + text.slice(i + 2, targetEnd + 1);
+    copied = targetEnd + 3;
+    i = targetEnd + 2;   // the next search starts after this match, as /g does
+  }
+  return copied === 0 ? text : out + text.slice(copied);
+}
+
 // Split a reply into text and link pieces: { text } | { to, label }.
 export function splitChatLinks(raw) {
-  // "**[label](/path)**" — bold around a link would otherwise leave stray asterisks
-  // on either side of it.
-  const text = String(raw ?? '').replace(/\*\*(\[[^\]\n]+\]\([^)\s]+\))\*\*/g, '$1');
+  const text = unboldLinks(String(raw ?? ''));
   const out = [];
   let last = 0;
   const push = (t) => { if (t) out.push({ text: t }); };
