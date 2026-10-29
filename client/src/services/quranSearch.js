@@ -14,11 +14,13 @@
 //   - every word but the last must match a whole word; the LAST may be the start of
 //     one, so results keep up while a word is still being typed;
 //   - one Uthmani word can hold two tokens ("يا أيها" is position 1 of 2:104), so a
-//     phrase can begin or end inside a word — the whole word is highlighted.
+//     phrase can begin or end inside a word — the whole word is highlighted;
+//   - text pasted in the Uthmani spelling offers several plain spellings per word
+//     (uthmaniQuerySlots), and a place matches when some choice of them does.
 // Each place the phrase matches is one OCCURRENCE; a verse that matches twice
 // contributes two.
 
-import { arabicTokens } from '../utils/quranSearchQuery';
+import { arabicTokens, uthmaniQuerySlots } from '../utils/quranSearchQuery';
 import { fetchJSON } from '../utils/fetchWithTimeout';
 
 const INDEX_URL = '/data/search-index.json';
@@ -53,8 +55,75 @@ export const buildSearchEngine = async (json, { pause } = {}) => {
   const posOf = Uint16Array.from(tokPos);
   const wordCache = new Map();
 
+  // Uthmani text pasted in: each slot is a word's possible spellings, each spelling
+  // one or two tokens. Same rules as a typed phrase — consecutive, inside one
+  // verse, the very last token may be a prefix — tried over every choice of
+  // spelling, depth first, so a mismatch on the first word ends a start position.
+  const searchSlots = (slots) => {
+    const k = slots.length;
+    const lastSlot = k - 1;
+    // Spellings as token ids; one with a token the Quran never uses is dropped.
+    // The last token of the last slot keeps its text for the prefix test.
+    const alts = slots.map((slot, s) => slot.flatMap((spelling) => {
+      const head = s === lastSlot ? spelling.slice(0, -1) : spelling;
+      const ids = head.map((t) => vocab.get(t));
+      if (ids.some((id) => id === undefined)) return [];
+      return [{ ids, last: s === lastSlot ? spelling[spelling.length - 1] : null }];
+    }));
+    if (alts.some((a) => a.length === 0)) return [];
+    const prefixOk = new Map(); // last token text → Uint8Array over the vocabulary
+    for (const a of alts[lastSlot]) {
+      if (prefixOk.has(a.last)) continue;
+      const ok = new Uint8Array(vocabList.length);
+      for (let i = 0; i < vocabList.length; i++) if (vocabList[i].startsWith(a.last)) ok[i] = 1;
+      prefixOk.set(a.last, ok);
+    }
+    // The token index just past slot s matched from token j, or -1.
+    const matchFrom = (s, j) => {
+      if (s === k) return j;
+      for (const a of alts[s]) {
+        const n = a.ids.length + (a.last != null ? 1 : 0);
+        if (j + n > tokens.length) continue;
+        let ok = true;
+        for (let i = 0; i < a.ids.length && ok; i++) ok = tokens[j + i] === a.ids[i];
+        if (ok && a.last != null) ok = prefixOk.get(a.last)[tokens[j + a.ids.length]] === 1;
+        if (!ok) continue;
+        const end = matchFrom(s + 1, j + n);
+        if (end >= 0) return end;
+      }
+      return -1;
+    };
+    // The tokens a match can start on, so the depth-first walk runs only there.
+    const startOk = new Uint8Array(vocabList.length);
+    for (const a of alts[0]) {
+      if (a.ids.length) startOk[a.ids[0]] = 1;
+      else for (let i = 0; i < vocabList.length; i++) startOk[i] |= prefixOk.get(a.last)[i];
+    }
+    const occurrences = [];
+    let prevKey = -1;
+    for (let j = 0; j < tokens.length; j++) {
+      if (!startOk[tokens[j]]) continue;
+      const end = matchFrom(0, j);
+      if (end < 0) continue;
+      const ord = verseOf[j];
+      if (verseOf[end - 1] !== ord) continue;           // never across two verses
+      const from = posOf[j];
+      const to = posOf[end - 1];
+      const key = ord * 1e6 + from * 1e3 + to;
+      if (key === prevKey) continue;
+      prevKey = key;
+      occurrences.push({ ord, from, to });
+    }
+    return occurrences;
+  };
+
   // { tokens, occurrences: [{ ord, from, to }] } in mushaf order.
   const search = (query) => {
+    const slots = uthmaniQuerySlots(query);
+    if (slots) {
+      const first = slots.flatMap((slot) => slot[0]);
+      return { tokens: first, occurrences: slots.length ? searchSlots(slots) : [] };
+    }
     const q = arabicTokens(query);
     if (!q.length) return { tokens: q, occurrences: [] };
     const k = q.length;

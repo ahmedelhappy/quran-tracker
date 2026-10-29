@@ -3,8 +3,12 @@
 // Two kinds of query, both handled here as pure functions (no React, no index):
 //
 //  1. TEXT — Arabic words matched against the Quran. Both the index and the query go
-//     through the same `normalizeArabic`, so a query typed with full tashkeel, with
-//     none, or pasted from a mushaf all meet the text on the same letters.
+//     through the same `normalizeArabic`, so a query typed with full tashkeel or with
+//     none meets the text on the same letters. The index is in the plain (imla'i)
+//     spelling, though, and text pasted from a mushaf is Uthmani, which spells many
+//     words differently (ٱلْكِتَـٰبَ for الكتاب, يَـٰٓأَيُّهَا for يا أيها): such a query
+//     is read through `uthmaniQuerySlots` instead, which offers each word's plain
+//     spellings.
 //  2. JUMPS — references and names that go straight somewhere: "2:255", "البقرة 255",
 //     "Al-Baqarah 255", a surah name in Arabic or a common English spelling,
 //     "page 50" / "صفحة 50", "juz 30" / "جزء 30", "hizb 5" / "حزب 5".
@@ -34,7 +38,9 @@ import { ayahCount } from './verseIndex';
 //   وٰ → ا             the Uthmani waw-with-dagger-alef, so "ٱلصَّلَوٰة" pasted from a
 //                      mushaf meets the imla'i "الصلاة" (the index never contains وٰ)
 // The hamza itself is never DROPPED: that would merge different words — "ماء"
-// (water) would become "ما", one of the commonest words in the text.
+// (water) would become "ما", one of the commonest words in the text. (A combining
+// hamza that NFC cannot seat on a letter, as Uthmani writes it on a tatweel in
+// مَسْـُٔولًا, is still stripped as a mark here; uthmaniQuerySlots turns it into ء.)
 const MARKS = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u08D3-\u08FF\u0640\u200B-\u200F\u061C\uFEFF]/g;
 const UTHMANI_WAW_ALEF = /\u0648[\u064B-\u0652\u0640]*\u0670/g;
 const LETTER_MAP = {
@@ -59,6 +65,100 @@ export const normalizeArabic = (s) =>
 // Normalised search tokens: Arabic letters and digits; anything else separates words.
 export const arabicTokens = (s) =>
   normalizeArabic(s).replace(/[^\u0621-\u064A0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+
+// ── Uthmani text pasted from a mushaf ────────────────────────────────────────
+// The index is in the plain spelling, and Uthmani differs from it in ways no single
+// normalisation can undo: the dagger alef stands for a written alef in كتاب
+// (ٱلْكِتَـٰبَ) but for nothing in الرحمن (ٱلرَّحْمَـٰنِ); the small yeh is a real yeh in
+// إبراهيم (إِبْرَٰهِـۧمَ) and an unwritten one in بِهِۦ. So a pasted word becomes a short
+// list of the plain spellings it can stand for, and the search accepts any of them.
+// Typed text never contains these signs, so it never comes this way and matches
+// exactly what it matched before.
+//
+// The signs: the dagger alef, alef wasla, the Quranic marks, a hamza on a
+// tatweel, and two hamza spellings the plain script never uses — ءَا / ءَأ for آ / أأ
+// (ءَامَنُوا۟, ءَأَنتُمْ) and أ followed by a bare ء (أَءِذَا for أإذا).
+const UTHMANI_SIGNS = /\u0671|[\u0670\u06D6-\u06ED\u08D3-\u08FF]|\u0640[\u064B-\u0652]*\u0654|\u0621\u064E[\u0622\u0623\u0627]|\u0623[\u064B-\u0652]*\u0621/;
+export const looksUthmani = (s) => UTHMANI_SIGNS.test(String(s ?? '').normalize('NFC'));
+
+// The hamza Uthmani seats on a tatweel (شَيْـًٔا, بِـَٔايَـٰتِ) is the plain ء.
+const HAMZA_ON_TATWEEL = /\u0640[\u064B-\u0652]*\u0654|\u0654/g;
+// Small letters written above or below a word: present in some plain spellings
+// (يُحْيِۦ, ٱلْغَاوُۥنَ, نُـۨجِى) and absent in others (بِهِۦ, لَهُۥ).
+const SMALL_LETTERS = { '\u06E5': 'و', '\u06E6': 'ي', '\u06E7': 'ي', '\u06E8': 'ن' };
+const IS_MARK = /[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED\u08D3-\u08FF\u0640]/;
+const MAX_SPELLINGS = 64; // per word; real words need far fewer
+
+const replaceLast = (s, from, to) => {
+  const i = s.lastIndexOf(from);
+  return i < 0 ? s : s.slice(0, i) + to + s.slice(i + from.length);
+};
+
+// One pasted word → its possible plain spellings, each as normalised tokens (a
+// spelling can be two tokens: the vocative يَـٰٓأَيُّهَا is the index's "يا أيها").
+export const uthmaniWordSpellings = (word) => {
+  const chars = [...String(word ?? '').normalize('NFC').replace(HAMZA_ON_TATWEEL, 'ء')];
+  let outs = [''];
+  const letters = []; // the word's letters so far, marks left out
+  chars.forEach((c) => {
+    const lastLetter = letters[letters.length - 1] ?? null;
+    let next;
+    if (c === '\u0670') {
+      // The dagger alef: written as ا (كتاب), or not at all (الرحمن). After و or ى
+      // it can replace that letter (الصلاة, مولانا); after a word-initial ي or ه
+      // it closes the vocative / attention particle (يا قوم, ها أنتم, ويا قوم).
+      const initial = letters.length === 1 || (letters.length === 2 && 'وف'.includes(letters[0]));
+      next = outs.flatMap((o) => {
+        const alts = [o, `${o}ا`];
+        if (lastLetter === 'و' || lastLetter === 'ى' || lastLetter === 'ي') alts.push(replaceLast(o, lastLetter, 'ا'));
+        if (initial && (lastLetter === 'ي' || lastLetter === 'ه')) alts.push(`${o}ا `);
+        return alts;
+      });
+    } else if (SMALL_LETTERS[c]) {
+      next = outs.flatMap((o) => [o, o + SMALL_LETTERS[c]]);
+    } else if (c === '\u06DC' && lastLetter === 'ص') {
+      next = outs.flatMap((o) => [o, replaceLast(o, 'ص', 'س')]); // بَصْۜطَةً is بسطة
+    } else if ((c === '\u06DF' || c === '\u06E0') && lastLetter) {
+      // The small zero marks a letter that is written but not read: the plain
+      // spelling sometimes keeps it (تَجِدُوا۟, أُو۟لُوا۟ → أولو) and sometimes not
+      // (يَتْلُوا۟ → يتلو, سَأُو۟رِيكُمْ → سأريكم).
+      next = outs.flatMap((o) => [o, replaceLast(o, lastLetter, '')]);
+    } else if (c === 'ء') {
+      // Uthmani writes a bare ء where the plain spelling seats it on an alef:
+      // أَرَءَيْتُمْ is أرأيتم, أَءِذَا is أإذا, يَسْـَٔلُونَكَ is يسألونك.
+      next = outs.flatMap((o) => [o + c, `${o}ا`]);
+      letters.push(c);
+    } else {
+      next = outs.map((o) => o + c);
+      if (!IS_MARK.test(c)) letters.push(c);
+    }
+    outs = next.slice(0, MAX_SPELLINGS);
+  });
+  const spellings = new Map();
+  const add = (tokens) => {
+    // A verse number pasted along with the text is not a word of it.
+    const words = tokens.filter((t) => !/^[0-9]+$/.test(t));
+    if (words.length) spellings.set(words.join(' '), words);
+  };
+  for (const o of outs) {
+    // One lam for two: ٱلَّيْلِ is الليل.
+    const variants = [o, o.replace(/(\u0671|\u0627)\u0644([\u064B-\u0650\u0652]*\u0651)/, '$1\u0644\u0644$2')];
+    for (const v of variants) {
+      const tokens = arabicTokens(v);
+      add(tokens);
+      // ءَا is the plain آ: ءَامَنُوا۟ is آمنوا, ٱلْقُرْءَانُ is القرآن.
+      if (tokens.some((t) => t.includes('ءا'))) add(tokens.map((t) => t.replaceAll('ءا', 'ا')));
+    }
+  }
+  return [...spellings.values()].slice(0, MAX_SPELLINGS);
+};
+
+// A pasted query → one slot per word, each the list of spellings it may match; or
+// null when the query is not Uthmani text and goes through arabicTokens as typed.
+export const uthmaniQuerySlots = (query) => {
+  if (!looksUthmani(query)) return null;
+  return String(query).split(/\s+/).map(uthmaniWordSpellings).filter((slot) => slot.length);
+};
 
 // ── Surah names ──────────────────────────────────────────────────────────────
 // Latin: transliterations wander ("Baqarah", "baqara", "Al Baqara", "Yaseen",
