@@ -15,10 +15,24 @@ export function reportError(error, context = {}) {
   console.error(`Reported error (${context.source ?? 'app'}):`, error, context);
 }
 
+// Two error events that say nothing about a bug, and would drown the ones that do
+// in an error service:
+//  - "ResizeObserver loop completed with undelivered notifications" (older:
+//    "…loop limit exceeded"): the browser putting off a resize callback to the
+//    next frame. Nothing is lost, and nothing can be done about it.
+//  - "Script error." with no error object: a script from ANOTHER origin threw,
+//    and the browser hides everything about it — no message, file or stack.
+const isNoise = (event) => {
+  const message = event.message ?? '';
+  if (message.startsWith('ResizeObserver loop')) return true;
+  return message === 'Script error.' && !event.error;
+};
+
 // Errors no boundary sees: a throw in an event handler, a timer or a promise
 // nobody caught. The browser logs these too; this sends them to the same hook.
 export function installGlobalErrorHandlers(win = window) {
   win.addEventListener('error', (event) => {
+    if (isNoise(event)) return;
     reportError(event.error ?? new Error(event.message), {
       source: 'window.error',
       file: event.filename,

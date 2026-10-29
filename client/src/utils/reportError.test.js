@@ -34,10 +34,31 @@ describe('reportError (M-14)', () => {
     const win = new EventTarget();
     installGlobalErrorHandlers(win);
     const ev = new Event('error');
-    ev.message = 'Script error.';
+    ev.message = 'Unexpected token <';
     win.dispatchEvent(ev);
     expect(log.mock.calls[0][1]).toBeInstanceOf(Error);
-    expect(log.mock.calls[0][1].message).toBe('Script error.');
+    expect(log.mock.calls[0][1].message).toBe('Unexpected token <');
+  });
+
+  it('ignores the ResizeObserver loop notice and an opaque cross-origin "Script error."', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const win = new EventTarget();
+    installGlobalErrorHandlers(win);
+    for (const message of [
+      'ResizeObserver loop completed with undelivered notifications.',
+      'ResizeObserver loop limit exceeded',
+      'Script error.',
+    ]) {
+      const ev = new Event('error');
+      ev.message = message;
+      win.dispatchEvent(ev);
+    }
+    expect(log).not.toHaveBeenCalled();
+    // A same-origin throw that happens to say "Script error." still counts.
+    const real = new Event('error');
+    Object.assign(real, { message: 'Script error.', error: new Error('Script error.') });
+    win.dispatchEvent(real);
+    expect(log).toHaveBeenCalledTimes(1);
   });
 });
 
