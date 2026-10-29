@@ -18,6 +18,14 @@ const mongoose = require('mongoose');
 // process actually exiting.
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+// The two steps of a stop, named in every error log line so a failed deploy
+// says which one went wrong: waiting for the requests in flight, or closing
+// the database once they have.
+const STEPS = {
+  draining: 'finishing in-flight requests',
+  disconnecting: 'closing the database',
+};
+
 const createShutdown = ({
   server,
   disconnect = () => mongoose.disconnect(),
@@ -33,6 +41,7 @@ const createShutdown = ({
     log.log(`${signal} received: finishing in-flight requests, then closing the database`);
 
     pending = new Promise((resolve) => {
+      let step = 'draining';
       let finished = false;
       const finish = (code) => {
         if (finished) return;
@@ -43,7 +52,7 @@ const createShutdown = ({
       };
 
       const timer = setTimeout(() => {
-        log.error(`Shutdown took longer than ${timeoutMs} ms: cutting the remaining connections`);
+        log.error(`Shutdown took longer than ${timeoutMs} ms while ${STEPS[step]}: cutting the remaining connections`);
         server.closeAllConnections?.();
         finish(1);
       }, timeoutMs);
@@ -58,11 +67,13 @@ const createShutdown = ({
         if (finished) return;
         try {
           if (closeErr && closeErr.code !== 'ERR_SERVER_NOT_RUNNING') throw closeErr;
+          step = 'disconnecting';
           await disconnect();
           log.log('HTTP server and database closed');
           finish(0);
         } catch (err) {
-          log.error('Shutdown failed:', err.message);
+          // The whole error, stack included: this is the last thing the process says.
+          log.error(`Shutdown failed while ${STEPS[step]}:`, err);
           finish(1);
         }
       });

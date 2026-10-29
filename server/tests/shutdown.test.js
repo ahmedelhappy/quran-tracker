@@ -93,11 +93,12 @@ describe('graceful shutdown (M-21)', () => {
     await entered.promise;
 
     const exits = [];
+    const errors = [];
     let disconnected = false;
     const started = Date.now();
     const code = await createShutdown({
       server,
-      log: quiet,
+      log: { log() {}, error: (...args) => errors.push(args) },
       timeoutMs: 300,
       exit: (c) => exits.push(c),
       disconnect: async () => { disconnected = true; },
@@ -108,6 +109,67 @@ describe('graceful shutdown (M-21)', () => {
     assert.ok(Date.now() - started >= 290, 'waited for the timeout');
     assert.equal(await hanging, 'ECONNRESET');
     assert.equal(disconnected, false);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0][0], /longer than 300 ms while finishing in-flight requests/);
+  });
+
+  test('a database that never closes is cut after the timeout, and the log says it was the database', async () => {
+    const server = await listen((req, res) => res.end('ok'));
+    const errors = [];
+    const exits = [];
+    const code = await createShutdown({
+      server,
+      log: { log() {}, error: (...args) => errors.push(args) },
+      timeoutMs: 300,
+      exit: (c) => exits.push(c),
+      disconnect: () => new Promise(() => {}),
+    })('SIGTERM');
+
+    assert.equal(code, 1);
+    assert.deepEqual(exits, [1]);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0][0], /longer than 300 ms while closing the database/);
+  });
+
+  test('a failing disconnect exits 1 and logs the step and the whole error', async () => {
+    const server = await listen((req, res) => res.end('ok'));
+    const errors = [];
+    const exits = [];
+    const failure = new Error('connection pool is wedged');
+    const code = await createShutdown({
+      server,
+      log: { log() {}, error: (...args) => errors.push(args) },
+      exit: (c) => exits.push(c),
+      disconnect: async () => { throw failure; },
+    })('SIGTERM');
+
+    assert.equal(code, 1);
+    assert.deepEqual(exits, [1]);
+    assert.equal(server.listening, false);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0][0], /failed while closing the database/);
+    assert.equal(errors[0][1], failure, 'the error itself, with its stack, not just its message');
+  });
+
+  test('a server that fails to close exits 1 without touching the database, and says so', async () => {
+    const failure = Object.assign(new Error('close blew up'), { code: 'EBOOM' });
+    const server = { close: (cb) => setImmediate(() => cb(failure)), closeIdleConnections() {} };
+    const errors = [];
+    const exits = [];
+    let disconnected = false;
+    const code = await createShutdown({
+      server,
+      log: { log() {}, error: (...args) => errors.push(args) },
+      exit: (c) => exits.push(c),
+      disconnect: async () => { disconnected = true; },
+    })('SIGTERM');
+
+    assert.equal(code, 1);
+    assert.deepEqual(exits, [1]);
+    assert.equal(disconnected, false);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0][0], /failed while finishing in-flight requests/);
+    assert.equal(errors[0][1], failure);
   });
 
   test('a second signal joins the first stop; SIGTERM and SIGINT are both wired and removable', async () => {
