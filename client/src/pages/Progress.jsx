@@ -1,18 +1,19 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { progressAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { useTheme } from '../hooks/useTheme';
 import { useToast } from '../hooks/useToast';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import InfoHint from '../components/InfoHint';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 import { round1 } from '../utils/formatNumber';
+
+// recharts is most of this page's code; the chart arrives after the page (M-09).
+const MemorizationChart = lazy(() => import('../components/MemorizationChart'));
 
 const HEAT_COLORS = ['bg-gray-200 dark:bg-gray-700', 'bg-green-100 dark:bg-green-900/40', 'bg-green-300 dark:bg-green-700', 'bg-[#40916C]', 'bg-[#1B4332]'];
 // Sun..Sat rows; labels only on Mon/Wed/Fri like GitHub's contribution graph.
@@ -165,9 +166,7 @@ export default function Progress() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const { theme } = useTheme();
   const { showToast } = useToast();
-  const isDark = theme === 'dark';
   const isArabic = i18n.language === 'ar';
   const [juzData, setJuzData] = useState([]);
   const [overallStats, setOverallStats] = useState(null);
@@ -822,19 +821,9 @@ export default function Progress() {
                   <p className="text-xs text-gray-300 dark:text-gray-600">{t('progress.chartStart')}</p>
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={chartData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#F0F0F0'} />
-                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12, fill: isDark ? '#9CA3AF' : '#4A4A4A' }} axisLine={false} tickLine={false} width={32} />
-                    <Tooltip
-                      contentStyle={isDark ? { background: '#1F2937', border: '1px solid #374151', color: '#F9FAFB', borderRadius: 8, fontSize: 12 } : { border: 'none', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,.1)', fontSize: 12 }}
-                      itemStyle={isDark ? { color: '#6EE7B7' } : {}}
-                      formatter={(v) => [t('progress.pagesCount', { count: v }), t('progress.memorized')]}
-                    />
-                    <Line type="monotone" dataKey="pages" stroke={isDark ? '#6EE7B7' : '#1B4332'} strokeWidth={2.5} dot={{ fill: isDark ? '#6EE7B7' : '#1B4332', r: 3 }} activeDot={{ r: 5, fill: isDark ? '#A7F3D0' : '#1B4332' }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <Suspense fallback={<div className="h-[220px] rounded bg-gray-100 dark:bg-gray-700 animate-pulse" />}>
+                  <MemorizationChart data={chartData} />
+                </Suspense>
               )}
             </div>
           </>
