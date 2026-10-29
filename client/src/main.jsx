@@ -1,14 +1,19 @@
-import './i18n'
+import { i18nReady } from './i18n'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import './index.css'
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
-)
+// After the active language's strings have arrived (they are a chunk of their
+// own). It settles even if they could not be fetched: i18next has already
+// retried by then, and the app is still better than a blank page.
+i18nReady.finally(() => {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  )
+})
