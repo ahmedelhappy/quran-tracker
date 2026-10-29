@@ -9,6 +9,7 @@ const { loginThrottle } = require('../utils/loginThrottle');
 const { deleteUserData } = require('../utils/userData');
 const chatBudget = require('../utils/chatBudget');
 const { PAGE_RULE, toPageNumber } = require('../utils/pageNumbers');
+const { parsePlanSettings } = require('../utils/planSettings');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -251,27 +252,11 @@ exports.updateProfile = async (req, res) => {
       updateData.dailyNewPages = pages;
     }
 
-    const { reviewIntensity, offDays } = req.body;
-
-    if (reviewIntensity !== undefined) {
-      if (!['light', 'standard', 'strong'].includes(reviewIntensity)) {
-        return res.status(400).json({
-          success: false,
-          message: 'reviewIntensity must be "light", "standard", or "strong"'
-        });
-      }
-      updateData.reviewIntensity = reviewIntensity;
-    }
-
-    if (offDays !== undefined) {
-      if (!Array.isArray(offDays) || !offDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
-        return res.status(400).json({
-          success: false,
-          message: 'offDays must be an array of integers between 0 (Sun) and 6 (Sat)'
-        });
-      }
-      updateData.offDays = offDays;
-    }
+    // The plan fields (rest days, review intensity / counts, where new work
+    // starts) share their rules with onboarding, which saves them too.
+    const plan = parsePlanSettings(req.body);
+    if (plan.status) return res.status(plan.status).json({ success: false, code: plan.code, message: plan.message });
+    Object.assign(updateData, plan.update);
 
     const { language } = req.body;
 
@@ -283,26 +268,6 @@ exports.updateProfile = async (req, res) => {
         });
       }
       updateData.language = language;
-    }
-
-    if (req.body.recentReviewCount !== undefined) {
-      const v = req.body.recentReviewCount;
-      if (v === null) {
-        updateData.recentReviewCount = null;
-      } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n <= 20) updateData.recentReviewCount = n;
-      }
-    }
-
-    if (req.body.cycleReviewCount !== undefined) {
-      const v = req.body.cycleReviewCount;
-      if (v === null) {
-        updateData.cycleReviewCount = null;
-      } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n <= 40) updateData.cycleReviewCount = n;
-      }
     }
 
     if (req.body.pauseNewMemorization !== undefined) {
@@ -322,28 +287,6 @@ exports.updateProfile = async (req, res) => {
         const n = toPageNumber(v);
         if (n === null) return res.status(400).json({ success: false, message: `cycleReviewStartPage ${PAGE_RULE}` });
         updateData.cycleReviewStartPage = n;
-      }
-    }
-
-    if (req.body.memorizationDirection !== undefined) {
-      if (!['fromStart', 'fromEnd'].includes(req.body.memorizationDirection)) {
-        return res.status(400).json({
-          success: false,
-          message: 'memorizationDirection must be "fromStart" or "fromEnd"'
-        });
-      }
-      updateData.memorizationDirection = req.body.memorizationDirection;
-    }
-
-    if (req.body.newMemorizationStartPage !== undefined) {
-      const v = req.body.newMemorizationStartPage;
-      if (v === null) {
-        updateData.newMemorizationStartPage = null;
-      } else {
-        // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
-        const n = toPageNumber(v);
-        if (n === null) return res.status(400).json({ success: false, message: `newMemorizationStartPage ${PAGE_RULE}` });
-        updateData.newMemorizationStartPage = n;
       }
     }
 
