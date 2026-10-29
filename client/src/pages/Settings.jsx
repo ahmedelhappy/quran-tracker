@@ -16,7 +16,7 @@ import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon,
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 import {
-  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
+  hizbOrdRange, rubOrdRange, surahOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
   coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
@@ -141,6 +141,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 
   // Pages memorized when the modal opened — lets us flag (in red) anything the user removes.
   const origSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
+  const origCoverage = useMemo(() => coverageFromProgress(memorizedPageNums, partialPages), [memorizedPageNums, partialPages]);
   const countIn = (set, start, end) => { let c = 0; for (let p = start; p <= end; p++) if (set.has(p)) c++; return c; };
   // Percentage of a unit's VERSES that are covered, for the tile badge.
   const verseCoveragePct = (merged, range) => {
@@ -174,11 +175,11 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
     return next;
   });
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Hizb and quarter-Hizb are verse-exact: their boundaries fall mid-page, so
-  // they add and remove the unit's own verse span rather than whole pages. That
-  // is what stops a selection bleeding into the unit next door, and it is the
-  // same span the server compiles for PUT /api/progress/units.
+  // Surah, Hizb and quarter-Hizb are verse-exact: their boundaries fall
+  // mid-page, so they add and remove the unit's own verse span rather than whole
+  // pages. That is what stops a selection bleeding into the unit next door, lets
+  // a surah's last verses on the next surah's first page be selected (M-13), and
+  // it is the same span the server compiles for PUT /api/progress/units.
   const toggleUnitRange = (range) => {
     if (!range) return;
     if (coverageOf(coverage, range) === 'full') cutCoverage(range);
@@ -186,6 +187,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
   };
   const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
   const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
+  const toggleSurah = (n) => toggleUnitRange(surahOrdRange(n));
   const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
@@ -239,7 +241,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
   const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
   const selectedCount = selectedPages.size;
   const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
-  const fullSurahCount = SURAH_PAGES.filter(s => countIn(selectedPages, s.start, s.end) === (s.end - s.start + 1)).length;
+  const fullSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
   const fullHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
   const fullRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
 
@@ -475,12 +477,15 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
               />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {filteredSurahs.map(s => {
-                  const size = s.end - s.start + 1;
-                  const sel = countIn(selectedPages, s.start, s.end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, s.start, s.end) > 0;
-                  const pct = Math.round((sel / size) * 100);
+                  const range = surahOrdRange(s.number);
+                  const state = coverageOf(coverage, range);
+                  const isFull = state === 'full';
+                  const isPartial = state === 'partial';
+                  // Against the verses held when the editor opened: a surah's
+                  // first and last pages are shared, so "a page of it was
+                  // memorized" would flag a surah none of whose verses were.
+                  const isRemoved = state === 'none' && coverageOf(origCoverage, range) !== 'none';
+                  const pct = verseCoveragePct(coverage, range);
                   return (
                     <button
                       key={s.number}

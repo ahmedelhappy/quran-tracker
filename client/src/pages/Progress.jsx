@@ -12,6 +12,7 @@ import ErrorNotice from '../components/ErrorNotice';
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
+import { surahOrdRange, coverageFromProgress } from '../utils/unitRanges';
 import { round1 } from '../utils/formatNumber';
 import { reportLoadFailure } from '../utils/reportError';
 
@@ -305,15 +306,30 @@ export default function Progress() {
     : null;
   const dateLocale = isArabic ? 'ar-u-ca-gregory-nu-arab' : 'en-US';
 
-  const surahStats = useMemo(() => SURAH_PAGES.map(surah => {
-    const total = surah.end - surah.start + 1;
-    let count = 0;
-    for (let p = surah.start; p <= surah.end; p++) {
-      if (activeSet.has(p)) count++;
-    }
-    const pct = total > 0 ? Math.round(count / total * 100) : 0;
-    return { ...surah, pct };
-  }), [activeSet]);
+  // Per-surah progress counts VERSES, not pages: a surah's first and last pages
+  // usually hold a neighbour's verses too, so "every page touched" called a
+  // surah complete when only its neighbour's half of a shared page was
+  // memorized (M-13). Partial pages count their exact segments; a page toggled
+  // in edit mode counts as whole, like everywhere else while editing.
+  const surahStats = useMemo(() => {
+    const segmentsKept = (overallStats?.partialPages ?? [])
+      .filter(p => !editMode || draft.has(p.pageNumber) === memorizedSet.has(p.pageNumber));
+    const coverage = coverageFromProgress([...activeSet], segmentsKept);
+    return SURAH_PAGES.map(surah => {
+      const range = surahOrdRange(surah.number);
+      let covered = 0;
+      for (const m of coverage) {
+        if (m.to < range.from) continue;
+        if (m.from > range.to) break;
+        covered += Math.min(m.to, range.to) - Math.max(m.from, range.from) + 1;
+      }
+      const total = range.to - range.from + 1;
+      // Never round a surah up to complete, or down to untouched.
+      const raw = (covered / total) * 100;
+      const pct = covered === total ? 100 : covered === 0 ? 0 : Math.min(99, Math.max(1, Math.round(raw)));
+      return { ...surah, pct };
+    });
+  }, [activeSet, overallStats, editMode, draft, memorizedSet]);
 
   const surahComplete   = surahStats.filter(s => s.pct === 100).length;
   const surahInProgress = surahStats.filter(s => s.pct > 0 && s.pct < 100).length;

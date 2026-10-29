@@ -12,7 +12,7 @@ import LanguageToggle from '../components/LanguageToggle';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 import {
-  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
+  hizbOrdRange, rubOrdRange, surahOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
   coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
 } from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
@@ -144,7 +144,7 @@ export default function Onboarding() {
 
   const [step, setStep] = useState(1);
   // Single source of truth: the selection as VERSE ranges (global ayah numbers).
-  // Juz and Surah start at the top of a page, so page-rounding suits them; a Hizb
+  // A Juz starts at the top of a page, so page-rounding suits it; a Surah, Hizb
   // or quarter-Hizb boundary falls mid-page and adjacent units SHARE that page, so
   // rounding up used to spill a selection into both neighbours. Verses are the
   // honest unit, and the page-shaped tabs read a derived view of them.
@@ -174,7 +174,7 @@ export default function Onboarding() {
 
   const selectedCount = selectedPages.size;
   const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
-  const selectedSurahCount = SURAH_PAGES.filter(s => isCovered(selectedPages, s.start, s.end)).length;
+  const selectedSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
   const selectedHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
   const selectedRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
 
@@ -194,10 +194,11 @@ export default function Onboarding() {
   });
 
   const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Hizb and quarter-Hizb are verse-exact: they add and remove the unit's own
-  // verse span, which is what stops a selection bleeding into the unit next door
-  // over the page the two share. Same span the server compiles for /progress/units.
+  // Surah, Hizb and quarter-Hizb are verse-exact: they add and remove the unit's
+  // own verse span, which is what stops a selection bleeding into the unit next
+  // door over the page the two share — and what lets a surah's last verses, on
+  // the page the next surah opens, be selected at all (M-13). Same span the
+  // server compiles for /progress/units.
   const toggleUnitRange = (range) => {
     if (!range) return;
     if (coverageOf(coverage, range) === 'full') setCoverage((c) => subtractOrdRanges(c, [range]));
@@ -205,6 +206,7 @@ export default function Onboarding() {
   };
   const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
   const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
+  const toggleSurah = (n) => toggleUnitRange(surahOrdRange(n));
   const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
 
   const filteredSurahs = SURAH_PAGES.filter(s => {
@@ -460,7 +462,8 @@ export default function Onboarding() {
               />
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
                 {filteredSurahs.map(s => {
-                  const surahSelected = isCovered(selectedPages, s.start, s.end);
+                  const surahState = coverageOf(coverage, surahOrdRange(s.number));
+                  const surahSelected = surahState === 'full';
                   return (
                   <button
                     key={s.number}
@@ -470,13 +473,15 @@ export default function Onboarding() {
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors touch-pan-y select-none ${
                       surahSelected
                         ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
+                        : surahState === 'partial'
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
+                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
                     }`}
                   >
                     <span className="text-xs font-medium leading-tight">
                       {s.number}. {isArabic ? s.arabic : s.name}
                     </span>
-                    <span className={`text-[10px] mt-0.5 leading-tight ${surahSelected ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
+                    <span className={`text-[10px] mt-0.5 leading-tight ${surahSelected ? 'text-white/70' : surahState === 'partial' ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
                       {isArabic ? s.name : s.arabic}
                     </span>
                   </button>
