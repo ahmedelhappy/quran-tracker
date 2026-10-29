@@ -5,6 +5,9 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 // Each language is a chunk of its own, fetched when it is first needed: at start
 // only the active one (the other is ~20 KB gzipped a visitor would download for
 // nothing — both used to sit in the entry chunk, M-09), the other on a switch.
+// A production build starts fetching the active one next to the entry chunk
+// (preloadActiveLocale in vite.config.js); keep its choice in step with the
+// detection below.
 const LOCALES = {
   en: () => import('./locales/en.json'),
   ar: () => import('./locales/ar.json'),

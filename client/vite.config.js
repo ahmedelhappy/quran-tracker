@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 const CLIENT_DIR = fileURLToPath(new URL('.', import.meta.url))
 
@@ -20,11 +21,55 @@ const requireApiUrl = (mode) => {
   }
 }
 
+// Each language's strings are a chunk of their own (src/i18n.js), and the app
+// renders only once the active one has arrived. Left to itself, that chunk is
+// requested only after the entry chunk has downloaded and run: one more round
+// trip before the first paint. This adds a tiny script to index.html that
+// starts fetching the visitor's language (the same localStorage 'lang' i18n.js
+// reads, English otherwise) next to the entry chunk. It is a file, not an
+// inline script, so the Content-Security-Policy can keep script-src 'self'.
+const preloadActiveLocale = () => {
+  let base = '/'
+  return {
+    name: 'preload-active-locale',
+    apply: 'build',
+    // After Vite's own HTML plugin, so index.html is already in the bundle.
+    enforce: 'post',
+    configResolved(config) { base = config.base },
+    generateBundle(_, bundle) {
+      const chunkFor = (lng) => Object.values(bundle).find(
+        (c) => c.type === 'chunk' && c.facadeModuleId?.replace(/\\/g, '/').endsWith(`/src/locales/${lng}.json`),
+      )?.fileName
+      const en = chunkFor('en')
+      const ar = chunkFor('ar')
+      const html = bundle['index.html']
+      if (!en || !ar || !html) this.error('preload-active-locale: the locale chunks or index.html are missing')
+      const source = `(function () {
+  var lang;
+  try { lang = localStorage.getItem('lang'); } catch (e) { /* storage blocked: English */ }
+  var link = document.createElement('link');
+  link.rel = 'modulepreload';
+  link.crossOrigin = '';
+  link.href = ${JSON.stringify(base)} + (lang === 'ar' ? ${JSON.stringify(ar)} : ${JSON.stringify(en)});
+  document.head.appendChild(link);
+})();
+`
+      const hash = createHash('sha256').update(source).digest('base64url').slice(0, 8)
+      const fileName = `assets/locale-preload-${hash}.js`
+      this.emitFile({ type: 'asset', fileName, source })
+      const tag = `<script async src="${base}${fileName}"></script>\n    `
+      const html2 = String(html.source).replace(/<script type="module"/, (m) => tag + m)
+      if (html2 === html.source) this.error('preload-active-locale: no module script in index.html')
+      html.source = html2
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   if (command === 'build') requireApiUrl(mode)
   return {
-    plugins: [react()],
+    plugins: [react(), preloadActiveLocale()],
     build: {
       // Never inline a font as a data: URL, however small: the self-hosted UI
       // fonts (src/fonts.css) must stay files, so they are cached on their own
