@@ -146,8 +146,11 @@ async function measure(url) {
   let tail = head;
   if (head.length >= HEAD_BYTES) {   // a file that fit in one request is already whole
     const res = await fetchWithTimeout(url, { method: 'HEAD' });
+    // A refused HEAD (a 5xx while the CDN struggles) says nothing about the file:
+    // thrown as a request failure, so the verse is not cached as unmeasurable.
+    if (!res.ok) throw new HttpStatusError(url, res.status);
     size = Number(res.headers.get('content-length'));
-    if (!res.ok || !(size > HEAD_BYTES)) return null;
+    if (!(size > HEAD_BYTES)) return null;
     tail = await getBytes(url, `${Math.max(HEAD_BYTES, size - TAIL_BYTES)}-${size - 1}`);
   }
   const id3v1 = tail.length >= 128 && tail[tail.length - 128] === 0x54
