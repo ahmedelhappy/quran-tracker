@@ -14,7 +14,8 @@
 //                 the stable anchor for future bookmarks / word annotations.
 
 import { SURAH_PAGES } from '../data/surahPages';
-import { fetchJSON, fetchWithTimeout, HttpStatusError } from '../utils/fetchWithTimeout';
+import { fetchJSON, fetchWithTimeout, HttpStatusError, isRequestFailure } from '../utils/fetchWithTimeout';
+import { reportError } from '../utils/reportError';
 
 const QURAN_API = 'https://api.quran.com/api/v4';
 const FONT_VERSION = 'v1';
@@ -446,11 +447,18 @@ export const fetchMushafPage = (page) => {
     // When page+1 cannot be had, this page is still shown — it already has its
     // own verses — just without the plate, and it is NOT cached, so the next ask
     // builds it again with the plate once page+1 loads. It used to fail the page.
+    // Only a failed REQUEST is let through like that (offline, a timeout, a 5xx):
+    // anything else is a bug or a payload we cannot read, which would fail the
+    // same way next time, so it is reported and fails the page as before.
     let nextSpill = null;
     let complete = true;
     try {
       nextSpill = await computeNextSpill(page, verses);
-    } catch {
+    } catch (err) {
+      if (!isRequestFailure(err)) {
+        reportError(err, { source: 'mushaf', page, step: 'next-page header' });
+        throw err;
+      }
       complete = false;
     }
     const shaped = { page, verses, lines: buildLines(page, verses, nextSpill), ornamental: page <= 2 };
