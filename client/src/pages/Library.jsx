@@ -2926,6 +2926,20 @@ export default function Library() {
   useEffect(() => { if (pageResolved && signedIn) loadAnnotationsForPages(visiblePages); }, [visiblePages, pageResolved, signedIn, loadAnnotationsForPages]);
   useEffect(() => { if (signedIn) { loadHardList(); loadSummary(); } }, [signedIn, loadHardList, loadSummary]);
 
+  // Retry after the sidebar crashed (M-14). Drawing the same lists again would
+  // only crash again, so they are emptied at once — the sidebar comes back as it
+  // looks while they first load — and read afresh. (A visitor has none of them;
+  // each loader does nothing while signed out.)
+  const reloadSidebar = () => {
+    setBookmarks([]);
+    setHardList([]);
+    setAnnoSummary([]);
+    setBookmarksReload((k) => k + 1);
+    loadHardList();
+    loadSummary();
+    refreshMemorizedPages();
+  };
+
   const findAnn = useCallback(
     (page, predicate) => (annotationsByPage.get(page) ?? []).find(predicate),
     [annotationsByPage]
@@ -4214,6 +4228,15 @@ export default function Library() {
     return () => { cancelled = true; };
   }, [tafsirOpen, tafsirVerse, tafsirEdition, tafsirReloadKey]);
 
+  // Retry after the tafsir panel crashed (M-14): the commentary is read again,
+  // and what crashed is cleared now so the panel redraws as loading, not as it was.
+  const reloadTafsir = () => {
+    setTafsirText('');
+    setTafsirRun(null);
+    setTafsirLoading(true);
+    setTafsirReloadKey((k) => k + 1);
+  };
+
   // Drag the panel's inner edge to resize it. The handle always sits on the
   // panel's INLINE-START edge — the side facing the mushaf in both writing
   // directions — so dragging toward the mushaf widens the panel in LTR and
@@ -4966,7 +4989,7 @@ export default function Library() {
               passed as a function: a throw in its JSX then happens inside its
               boundary, not in the reader's own render (see ErrorBoundary). */}
           {showSidebar && (
-          <ErrorBoundary name="reader sidebar" fallback={({ reset }) => <RegionFallback className="w-full lg:w-72 shrink-0" onRetry={reset} />}>
+          <ErrorBoundary name="reader sidebar" onReset={reloadSidebar} fallback={({ reset }) => <RegionFallback className="w-full lg:w-72 shrink-0" onRetry={reset} />}>
           {() => (
           <aside className="reader-panel reader-panel--start w-full lg:w-72 shrink-0 bg-white dark:bg-gray-800 rounded-2xl lg:rounded-s-none border border-[#dce2f3] dark:border-gray-700 lg:border-s-0 p-4 flex flex-col gap-5 sacred-shadow lg:sticky lg:top-20 lg:self-start">
 
@@ -6248,7 +6271,7 @@ export default function Library() {
               576×852 frame — simply renders smaller rather than being covered.
               The sidebar hides itself to pay for that room (see showSidebar). */}
           {tafsirOpen && (
-            <ErrorBoundary name="tafsir panel" fallback={({ reset }) => (
+            <ErrorBoundary name="tafsir panel" onReset={reloadTafsir} fallback={({ reset }) => (
               <div className="fixed bottom-24 inset-x-4 z-50 md:inset-x-auto md:end-6 md:w-96">
                 <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={() => setTafsirOpen(false)} />
               </div>

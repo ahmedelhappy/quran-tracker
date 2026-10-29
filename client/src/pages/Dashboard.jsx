@@ -475,8 +475,7 @@ export default function Dashboard() {
     tourRef.current = null;
   }, []);
 
-  const loadWeekPlan = async () => {
-    if (weekData || weekLoading) return;
+  const fetchWeekPlan = async () => {
     setWeekLoading(true);
     try {
       const res = await progressAPI.getWeekPlan();
@@ -486,6 +485,22 @@ export default function Dashboard() {
     } finally {
       setWeekLoading(false);
     }
+  };
+  const loadWeekPlan = () => {
+    if (weekData || weekLoading) return;
+    fetchWeekPlan();
+  };
+
+  // Retry after the tasks crashed (M-14). Drawing the same data again would only
+  // crash again, so the day is fetched afresh: today's plan, the week if that tab
+  // is showing, and the "want more" lists are rebuilt from the new plan when next
+  // opened.
+  const reloadTasks = () => {
+    setShowWantMore(false);
+    setExtraData(null);
+    setWeekData(null);
+    if (activeTab === 'week') fetchWeekPlan();
+    loadToday(isOverrideDay);
   };
 
   const pushNewDone = (pageNumber, key) => setNewDoneOrder(prev => {
@@ -942,10 +957,10 @@ export default function Dashboard() {
               the plan is on its way. */}
           <div className="min-h-[24rem]">
           {/* A crash in the day's tasks stays here (M-14): the stats, timer and
-              to-do above keep working, and Retry draws the tasks again. The
+              to-do above keep working, and Retry loads the tasks again. The
               tasks are a function, so a throw in their JSX happens inside the
               boundary (see ErrorBoundary). */}
-          <ErrorBoundary name="dashboard tasks" fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
+          <ErrorBoundary name="dashboard tasks" onReset={reloadTasks} fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
           {() => (<>
           {activeTab === 'today' && (
             loading ? (
