@@ -93,7 +93,10 @@ export const TOKEN_KEY = 'token';
 //   guestTodos                                       the SIGNED-OUT to-do list:
 //                                                    not the account's (that one is
 //                                                    on the server) and its only copy
-//   dailyVerse:<day>:<lang>                          the same verse for everyone (a cache)
+//   dailyVerse:<day>:<lang>                          the same verse for everyone (a cache);
+//                                                    only the current day's are kept —
+//                                                    services/dailyVerse.js removes the
+//                                                    older days' when it stores a new one
 // Nothing is kept in sessionStorage, and the chat history lives only in the
 // chat component, which remounts with the account (AccountScope in App.jsx).
 export const USER_SCOPED_KEYS = [TOKEN_KEY, 'lastMushafPage', 'recentPages'];

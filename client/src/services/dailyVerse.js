@@ -8,9 +8,9 @@
 //
 // The verse is picked deterministically by day-of-year from a curated list of
 // uplifting ayat (patience, remembrance, and the virtue of the Qur'an — fitting a
-// memorization tracker), cached per day+language in localStorage, and fetched from
-// the same alquran.cloud API the reader already uses. On any failure the caller
-// falls back to the offline curated quotes in the locale files.
+// memorization tracker), cached per day+language in localStorage (today's only),
+// and fetched from the same alquran.cloud API the reader already uses. On any
+// failure the caller falls back to the offline curated quotes in the locale files.
 
 import { toArabicDigits } from './quranApi';
 import { storage } from '../utils/safeStorage';
@@ -51,17 +51,35 @@ const dayOfYear = () => {
 
 const todayKey = () => new Date().toISOString().split('T')[0];
 
+export const DAILY_VERSE_PREFIX = 'dailyVerse:';
+const cacheKeyFor = (day, code) => `${DAILY_VERSE_PREFIX}${day}:${code}`;
+
 const readCache = (key) => storage.getJSON(key);
 
-// Storage full / unavailable: the in-day fetch still works, just uncached.
-const writeCache = (key, value) => storage.setJSON(key, value);
+// Only the current day's verses are worth keeping (in each language: switching
+// language shouldn't refetch). Every earlier day's used to stay in localStorage
+// for good, two keys a day for as long as the app was used (L-15).
+export const purgeOldDailyVerses = (day = todayKey()) => {
+  const current = `${DAILY_VERSE_PREFIX}${day}:`;
+  for (const key of storage.keys()) {
+    if (key.startsWith(DAILY_VERSE_PREFIX) && !key.startsWith(current)) storage.remove(key);
+  }
+};
+
+// Storage full / unavailable: the in-day fetch still works, just uncached. Old
+// days go first, which also frees their room for today's.
+const writeCache = (day, key, value) => {
+  purgeOldDailyVerses(day);
+  storage.setJSON(key, value);
+};
 
 // Returns { text, source, lang } for today's verse in the given UI language, or
 // throws if the API is unreachable (so the caller can fall back). Cached per
 // (day, language) in localStorage.
 export const getDailyVerse = async (lang) => {
   const code = lang === 'ar' ? 'ar' : 'en';
-  const cacheKey = `dailyVerse:${todayKey()}:${code}`;
+  const day = todayKey();
+  const cacheKey = cacheKeyFor(day, code);
   const cached = readCache(cacheKey);
   if (cached) return cached;
 
@@ -74,6 +92,6 @@ export const getDailyVerse = async (lang) => {
     ? `${data.surah.name} · ${toArabicDigits(data.numberInSurah)}`
     : `${data.surah.englishName} ${data.surah.number}:${data.numberInSurah}`;
   const verse = { text: data.text, source, lang: code };
-  writeCache(cacheKey, verse);
+  writeCache(day, cacheKey, verse);
   return verse;
 };
