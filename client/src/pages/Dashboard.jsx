@@ -409,13 +409,15 @@ export default function Dashboard() {
   useEffect(() => { loadToday(); }, [loadToday]);
 
   // The hard-annotations summary loads independently — it never blocks the tasks.
+  // The chip is an extra (nothing is missing from the day without it), so a
+  // failure is only logged, and the chip stays hidden.
   useEffect(() => {
     annotationsAPI.listByKind('hard').then((res) => {
       const list = res.data?.data ?? [];
       setHardInfo(list.length
         ? { count: list.length, firstPage: Math.min(...list.map((a) => a.pageNumber)) }
         : { count: 0, firstPage: null });
-    }).catch(() => {});
+    }).catch((err) => reportLoadFailure(err, 'the hard-verses count'));
   }, []);
 
   // First-run onboarding helpers: run the guided tour once, then show the
