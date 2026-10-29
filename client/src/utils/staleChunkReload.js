@@ -24,7 +24,9 @@ export const reloadForStaleBuild = (win = window, now = Date.now) => {
   return true;
 };
 
-// Vite reports every failed lazy import() as a `vite:preloadError` event.
+// Vite reports every failed lazy import() as a `vite:preloadError` event. (The
+// language files are fetched, not imported: i18n.js calls reloadForStaleBuild
+// itself on a 404.)
 export const installStaleChunkReload = (win = window, now = Date.now) => {
   win.addEventListener('vite:preloadError', () => { reloadForStaleBuild(win, now); });
 };

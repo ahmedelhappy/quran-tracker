@@ -610,7 +610,12 @@
     "confirm": "Confirm",
     "validationRange": "Must be between 1 and 604",
     "validationEndGreater": "End page must be greater than start page",
-    "validationNoOverlap": "Ranges cannot overlap"
+    "validationNoOverlap": "Ranges cannot overlap",
+    "languageUnavailable": "Couldn't load {{language}}. Check your connection and try again.",
+    "languageNames": {
+      "en": "English",
+      "ar": "Arabic"
+    }
   },
   "tooltips": {
     "language": "Switch between Arabic and English",

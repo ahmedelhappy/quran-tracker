@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider } from './context/ToastContext';
+import { useToast } from './hooks/useToast';
+import { onLanguageUnavailable } from './i18n';
 import { ThemeProvider } from './context/ThemeContext';
 import { TimerProvider } from './context/TimerContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -62,6 +64,30 @@ const ScrollToTop = () => {
   return null;
 };
 
+// Tells the reader when a language's strings could not be fetched (i18n.js has
+// retried and logged it by then): on a switch the screen simply stays in its
+// language, and at start it falls back to English. In the language on screen —
+// and with English defaults for when no language could be loaded at all. Once
+// per language within a few seconds: a failure at start and the account's saved
+// language retrying it right after would otherwise say the same thing twice.
+const LanguageLoadNotice = () => {
+  const { i18n } = useTranslation();
+  const { showToast } = useToast();
+  useEffect(() => {
+    const lastShown = {};
+    return onLanguageUnavailable((lng) => {
+      if (Date.now() - (lastShown[lng] ?? 0) < 10_000) return;
+      lastShown[lng] = Date.now();
+      const language = i18n.t(`common.languageNames.${lng}`, { defaultValue: lng === 'ar' ? 'Arabic' : 'English' });
+      showToast(i18n.t('common.languageUnavailable', {
+        language,
+        defaultValue: "Couldn't load {{language}}. Check your connection and try again.",
+      }), 'error');
+    });
+  }, [i18n, showToast]);
+  return null;
+};
+
 // Everything under the router belongs to ONE account. When the signed-in user
 // changes under a mounted page — another tab signed out and in as someone else —
 // the pages remount instead of going on showing (and saving into the new
@@ -112,6 +138,7 @@ function App() {
     <ThemeProvider>
     <AuthProvider>
       <ToastProvider>
+      <LanguageLoadNotice />
       {/* Above the router: the one timer outlives every route change. */}
       <TimerProvider>
         <Router>

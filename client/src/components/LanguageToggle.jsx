@@ -4,11 +4,14 @@ import { useAuth } from '../hooks/useAuth';
 import { authAPI } from '../services/api';
 import Tooltip from './Tooltip';
 import { storage } from '../utils/safeStorage';
+import { switchLanguage } from '../i18n';
 
-// The app's single language-switching code path. Calling i18n.changeLanguage
-// persists the choice (detector cache → localStorage 'lang') and App.jsx's
-// language effect updates document.documentElement.lang/dir. Logged-in users
-// additionally get the preference saved on their profile.
+// The app's single language-switching code path. switchLanguage (i18n.js)
+// fetches the language's strings first and switches only once they are here,
+// remembering the choice (localStorage 'lang'); App.jsx's language effect
+// updates document.documentElement.lang/dir. Logged-in users additionally get
+// the preference saved on their profile. When the strings could not be fetched
+// the screen stays as it was, nothing is saved and a toast says so.
 //
 // The 'langExplicit' flag marks this as a deliberate choice (as opposed to the
 // language i18next merely fell back to) — AuthContext reads it to decide which
@@ -21,9 +24,8 @@ const LanguageToggle = ({ variant = 'icon', className = '' }) => {
   const isArabic = i18n.language === 'ar';
   const nextLang = isArabic ? 'en' : 'ar';
 
-  const toggle = () => {
-    i18n.changeLanguage(nextLang);
-    storage.set('lang', nextLang);
+  const toggle = async () => {
+    if (!(await switchLanguage(nextLang))) return;
     storage.set('langExplicit', '1');
     if (user) {
       authAPI.updateProfile({ language: nextLang }).catch(() => {});

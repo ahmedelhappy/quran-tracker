@@ -21,13 +21,15 @@ const requireApiUrl = (mode) => {
   }
 }
 
-// Each language's strings are a chunk of their own (src/i18n.js), and the app
-// renders only once the active one has arrived. Left to itself, that chunk is
-// requested only after the entry chunk has downloaded and run: one more round
-// trip before the first paint. This adds a tiny script to index.html that
+// Each language's strings are a JSON file of their own (src/i18n.js), and the
+// app renders only once the active one has arrived. Left to itself, that file
+// is requested only after the entry chunk has downloaded and run: one more
+// round trip before the first paint. This adds a tiny script to index.html that
 // starts fetching the visitor's language (the same localStorage 'lang' i18n.js
 // reads, English otherwise) next to the entry chunk. It is a file, not an
 // inline script, so the Content-Security-Policy can keep script-src 'self'.
+// The preload is as=fetch with crossorigin, the request i18n.js's fetch() makes,
+// so the browser hands that fetch the preloaded response instead of a second one.
 const preloadActiveLocale = () => {
   let base = '/'
   return {
@@ -37,19 +39,22 @@ const preloadActiveLocale = () => {
     enforce: 'post',
     configResolved(config) { base = config.base },
     generateBundle(_, bundle) {
-      const chunkFor = (lng) => Object.values(bundle).find(
-        (c) => c.type === 'chunk' && c.facadeModuleId?.replace(/\\/g, '/').endsWith(`/src/locales/${lng}.json`),
+      const fileFor = (lng) => Object.values(bundle).find(
+        (f) => f.type === 'asset' && f.originalFileNames?.some(
+          (name) => name.replace(/\\/g, '/').endsWith(`src/locales/${lng}.json`),
+        ),
       )?.fileName
-      const en = chunkFor('en')
-      const ar = chunkFor('ar')
+      const en = fileFor('en')
+      const ar = fileFor('ar')
       const html = bundle['index.html']
-      if (!en || !ar || !html) this.error('preload-active-locale: the locale chunks or index.html are missing')
+      if (!en || !ar || !html) this.error('preload-active-locale: the locale files or index.html are missing')
       const source = `(function () {
   var lang;
   try { lang = localStorage.getItem('lang'); } catch (e) { /* storage blocked: English */ }
   var link = document.createElement('link');
-  link.rel = 'modulepreload';
-  link.crossOrigin = '';
+  link.rel = 'preload';
+  link.as = 'fetch';
+  link.crossOrigin = 'anonymous';
   link.href = ${JSON.stringify(base)} + (lang === 'ar' ? ${JSON.stringify(ar)} : ${JSON.stringify(en)});
   document.head.appendChild(link);
 })();

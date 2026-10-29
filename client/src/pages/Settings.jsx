@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useTheme } from '../hooks/useTheme';
 import { authAPI, progressAPI } from '../services/api';
+import { switchLanguage } from '../i18n';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
@@ -1028,9 +1029,11 @@ export default function Settings() {
     }
   };
 
-  const changeLanguage = () => {
+  // Saved to the account only once the language's strings have loaded (see
+  // switchLanguage); otherwise the screen stays as it was and a toast says so.
+  const changeLanguage = async () => {
     const newLang = i18n.language === 'en' ? 'ar' : 'en';
-    i18n.changeLanguage(newLang);
+    if (!(await switchLanguage(newLang))) return;
     authAPI.updateProfile({ language: newLang }).catch(() => {});
   };
 

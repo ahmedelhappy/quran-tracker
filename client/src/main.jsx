@@ -6,13 +6,13 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installStaleChunkReload } from './utils/staleChunkReload'
 import './index.css'
 
-// Before any lazy chunk can fail (the active language's is already on its way,
-// but a failure only arrives after this module has run).
+// Before any lazy chunk is requested.
 installStaleChunkReload()
 
-// After the active language's strings have arrived (they are a chunk of their
-// own). It settles even if they could not be fetched: i18next has already
-// retried by then, and the app is still better than a blank page.
+// After the active language's strings have arrived (they are a file of their
+// own). It settles even if they could not be fetched: i18n.js has retried by
+// then and fallen back to English, or, if English failed too, the app renders
+// with raw keys and a toast that says why — still better than a blank page.
 i18nReady.finally(() => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>

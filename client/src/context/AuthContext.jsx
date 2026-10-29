@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { authAPI, getSessionToken, setSessionToken, adoptSessionToken } from '../services/api';
 import { AuthContext } from '../hooks/useAuth';
-import i18n from '../i18n';
+import i18n, { switchLanguage } from '../i18n';
 import { storage, TOKEN_KEY, clearUserScopedStorage } from '../utils/safeStorage';
 import { clearRecentPages } from '../services/recentPages';
 
@@ -42,8 +42,8 @@ export const AuthProvider = ({ children }) => {
         authAPI.updateProfile({ language: explicitLocalLang }).catch(() => {});
       }
     } else if (userData.language && userData.language !== i18n.language) {
-      i18n.changeLanguage(userData.language);
-      storage.set('lang', userData.language);
+      // Remembers it on this device once its strings have loaded.
+      switchLanguage(userData.language);
     }
   }, []);
 

@@ -610,7 +610,12 @@
     "confirm": "تأكيد",
     "validationRange": "يجب أن يكون بين 1 و 604",
     "validationEndGreater": "يجب أن تكون صفحة النهاية أكبر من صفحة البداية",
-    "validationNoOverlap": "لا يمكن أن تتداخل النطاقات"
+    "validationNoOverlap": "لا يمكن أن تتداخل النطاقات",
+    "languageUnavailable": "تعذّر تحميل {{language}}. تحقّق من اتصالك وحاول مرة أخرى.",
+    "languageNames": {
+      "en": "اللغة الإنجليزية",
+      "ar": "اللغة العربية"
+    }
   },
   "tooltips": {
     "language": "التبديل بين العربية والإنجليزية",
