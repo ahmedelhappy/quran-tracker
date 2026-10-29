@@ -1,5 +1,6 @@
 import { keyOfOrd } from '../utils/verseIndex';
 import { fetchJSON } from '../utils/fetchWithTimeout';
+import { LruCache } from '../utils/lruCache';
 
 const ALQURAN_API = 'https://api.alquran.cloud/v1';
 const AUDIO_CDN = 'https://cdn.islamic.network/quran/audio';
@@ -258,7 +259,19 @@ const fetchPageEdition = async (pageNumber, edition) => {
   return data.data.ayahs.map(a => ({ ...a, text: a.text.replace(new RegExp('\\uFEFF', 'g'), '') }));
 };
 
-const pageTextCache = new Map();
+// Every cache here is bounded (L-15): a long session steps through hundreds of
+// pages and thousands of verses, and these used to keep all of them for as long
+// as the tab was open. Least recently used goes first.
+//
+// Per page: the same 40 the mushaf's own page cache keeps (mushafApi.js) — two
+// turns either way of a spread several times over.
+export const PAGE_CACHE_MAX = 40;
+// Per verse: a single entry of the long books runs to 20–32 K characters, and a
+// passage's "covers verses X–Y" check reads up to 24 neighbours (findTafsirRun).
+// 200 holds the current passage and several before it, at a few MB at worst.
+export const AYAH_CACHE_MAX = 200;
+
+const pageTextCache = new LruCache(PAGE_CACHE_MAX);
 
 export const fetchPageText = async (pageNumber) => {
   if (pageTextCache.has(pageNumber)) return pageTextCache.get(pageNumber);
@@ -267,7 +280,7 @@ export const fetchPageText = async (pageNumber) => {
   return ayahs;
 };
 
-const tafsirPageCache = new Map();
+const tafsirPageCache = new LruCache(PAGE_CACHE_MAX);
 
 export const fetchPageTafsir = async (pageNumber, edition = 'ar.muyassar') => {
   const key = `${edition}:${pageNumber}`;
@@ -299,7 +312,7 @@ export const htmlFragmentToText = (html) =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-const tafsirAyahCache = new Map();
+const tafsirAyahCache = new LruCache(AYAH_CACHE_MAX);
 
 export const fetchAyahTafsir = async (slug, surahNumber, ayahNumberInSurah) => {
   const key = `${slug}:${surahNumber}:${ayahNumberInSurah}`;
@@ -312,7 +325,7 @@ export const fetchAyahTafsir = async (slug, surahNumber, ayahNumberInSurah) => {
   return data.text;
 };
 
-const hefzCache = new Map();
+const hefzCache = new LruCache(AYAH_CACHE_MAX);
 
 // One ayah's commentary from hefzmoyaser. Throws on anything unexpected so the
 // caller can fall back to the spa5k copy rather than showing an empty panel.
