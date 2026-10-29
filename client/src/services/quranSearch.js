@@ -19,6 +19,7 @@
 // contributes two.
 
 import { arabicTokens } from '../utils/quranSearchQuery';
+import { fetchJSON } from '../utils/fetchWithTimeout';
 
 const INDEX_URL = '/data/search-index.json';
 
@@ -102,12 +103,17 @@ const yieldToMain = () => (globalThis.scheduler?.yield
   ? globalThis.scheduler.yield()
   : new Promise((resolve) => setTimeout(resolve, 0)));
 
+// The index is ~1.3 MB (~300 KB on the wire), so its deadline is longer than a
+// page's, but it has one (M-14): a stalled download ends in the search box's
+// error + Retry instead of a spinner that never stops.
+const INDEX_TIMEOUT_MS = 30_000;
+
 let loading = null;
-// Fetch and build once; a failure is forgotten so the next open tries again.
+// Fetch and build once; a failure (a timeout included) is forgotten so the next
+// open tries again.
 export const loadSearchEngine = () => {
   if (!loading) {
-    loading = fetch(INDEX_URL)
-      .then((r) => { if (!r.ok) throw new Error(`search index ${r.status}`); return r.json(); })
+    loading = fetchJSON(INDEX_URL, { timeoutMs: INDEX_TIMEOUT_MS })
       .then(async (json) => {
         const t0 = performance.now();
         const engine = await buildSearchEngine(json, { pause: yieldToMain });

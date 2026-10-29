@@ -14,6 +14,7 @@
 
 import { toArabicDigits } from './quranApi';
 import { storage } from '../utils/safeStorage';
+import { fetchJSON } from '../utils/fetchWithTimeout';
 
 const ALQURAN_API = 'https://api.alquran.cloud/v1';
 
@@ -65,9 +66,8 @@ export const getDailyVerse = async (lang) => {
   if (cached) return cached;
 
   const verseKey = VERSE_KEYS[dayOfYear() % VERSE_KEYS.length];
-  const res = await fetch(`${ALQURAN_API}/ayah/${verseKey}/${EDITION[code]}`);
-  if (!res.ok) throw new Error('Failed to fetch daily verse');
-  const { data } = await res.json();
+  // Bounded (M-14): the quote below the dashboard shows as soon as this settles.
+  const { data } = await fetchJSON(`${ALQURAN_API}/ayah/${verseKey}/${EDITION[code]}`);
   if (!data?.text) throw new Error('Empty daily verse');
 
   const source = code === 'ar'

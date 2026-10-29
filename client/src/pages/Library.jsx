@@ -53,6 +53,7 @@ import {
 import { verseEdges, peekVerseEdges, matchesDuration } from '../services/verseEdges';
 import { fetchMushafPage, ensurePageFont, decodePageFont, takeReadyPages, mushafFontFamily, peekMushafPage } from '../services/mushafApi';
 import { setPrefetchFocus, holdPrefetch, resumePrefetch, stopPrefetch } from '../services/pagePrefetch';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { SURAH_PAGES } from '../data/surahPages';
 import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
@@ -1272,7 +1273,9 @@ export default function Library() {
   // One blind request at the edge, and nothing else: no state, no element, no reader
   // visible consequence either way.
   const touchAyah = useCallback((rec, ord) => {
-    fetch(getAyahAudioUrl(rec, ord), { mode: 'no-cors', method: ayahWarmMethod(rec) })
+    // Bounded to the headers' arrival (no `read`), so a touch the edge never
+    // answers is let go instead of holding a connection for minutes.
+    fetchWithTimeout(getAyahAudioUrl(rec, ord), { mode: 'no-cors', method: ayahWarmMethod(rec) })
       .catch(() => { /* a failed warm-up is a no-op by design */ });
   }, []);
 

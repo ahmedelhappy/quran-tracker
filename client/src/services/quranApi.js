@@ -1,4 +1,5 @@
 import { keyOfOrd } from '../utils/verseIndex';
+import { fetchJSON } from '../utils/fetchWithTimeout';
 
 const ALQURAN_API = 'https://api.alquran.cloud/v1';
 const AUDIO_CDN = 'https://cdn.islamic.network/quran/audio';
@@ -247,10 +248,12 @@ export const TAFSIR_EDITIONS = [
   { id: 'irab',      source: 'ayah', slug: 'al-i-rab-al-muyassar',      nameAr: 'الإعراب الميسّر',   nameEn: "I'rab (grammar) — Al-Muyassar", kind: 'irab' },
 ];
 
+// Every fetch below is bounded (fetchJSON's deadline) and caches only a result it
+// has checked, so a request that failed, timed out or brought back something
+// unexpected is asked again next time instead of being remembered (M-14).
 const fetchPageEdition = async (pageNumber, edition) => {
-  const res = await fetch(`${ALQURAN_API}/page/${pageNumber}/${edition}`);
-  if (!res.ok) throw new Error('Failed to fetch page');
-  const data = await res.json();
+  const data = await fetchJSON(`${ALQURAN_API}/page/${pageNumber}/${edition}`);
+  if (!Array.isArray(data?.data?.ayahs)) throw new Error('Unexpected page payload');
   // The API occasionally prefixes the first ayah with a BOM (U+FEFF) — strip it.
   return data.data.ayahs.map(a => ({ ...a, text: a.text.replace(new RegExp('\\uFEFF', 'g'), '') }));
 };
@@ -301,9 +304,10 @@ const tafsirAyahCache = new Map();
 export const fetchAyahTafsir = async (slug, surahNumber, ayahNumberInSurah) => {
   const key = `${slug}:${surahNumber}:${ayahNumberInSurah}`;
   if (tafsirAyahCache.has(key)) return tafsirAyahCache.get(key);
-  const res = await fetch(`${TAFSIR_CDN}/${slug}/${surahNumber}/${ayahNumberInSurah}.json`);
-  if (!res.ok) throw new Error('Failed to fetch tafsir');
-  const data = await res.json();
+  const data = await fetchJSON(`${TAFSIR_CDN}/${slug}/${surahNumber}/${ayahNumberInSurah}.json`);
+  // Not a string: an unexpected payload, which cached would pin an empty panel
+  // on this verse for the rest of the session.
+  if (typeof data?.text !== 'string') throw new Error('Unexpected tafsir payload');
   tafsirAyahCache.set(key, data.text);
   return data.text;
 };
@@ -317,9 +321,7 @@ export const fetchHefzAyahTafsir = async (bookId, surahNumber, ayahNumberInSurah
   if (hefzCache.has(key)) return hefzCache.get(key);
   const url = `${HEFZ_API}/tafsir/show?chapter=${surahNumber}&verse=${ayahNumberInSurah}`
     + `&book_id=${bookId}&riwaya=${HEFZ_RIWAYA_HAFS}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error('Failed to fetch tafsir');
-  const data = await res.json();
+  const data = await fetchJSON(url, { headers: { Accept: 'application/json' } });
   const text = htmlFragmentToText(data?.data?.tafsir);
   if (!text) throw new Error('Empty tafsir');
   hefzCache.set(key, text);

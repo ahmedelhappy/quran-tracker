@@ -14,6 +14,7 @@
 //                 the stable anchor for future bookmarks / word annotations.
 
 import { SURAH_PAGES } from '../data/surahPages';
+import { fetchJSON, fetchWithTimeout, HttpStatusError } from '../utils/fetchWithTimeout';
 
 const QURAN_API = 'https://api.quran.com/api/v4';
 const FONT_VERSION = 'v1';
@@ -66,8 +67,11 @@ const hasFontFace = () => typeof FontFace !== 'undefined' && typeof document !==
 export const decodePageFont = (page) => {
   if (!hasFontFace() || registeredFaces.has(page) || decodedFaces.has(page)) return Promise.resolve(true);
   if (decoding.has(page)) return decoding.get(page);
-  const job = fetch(fontUrl(page))
-    .then((r) => { if (!r.ok) throw new Error('font'); return r.arrayBuffer(); })
+  // Bounded like every request (M-14): a font that never arrives must not keep
+  // this page's turn waiting, and a timed-out decode is forgotten like any failure.
+  const job = fetchWithTimeout(fontUrl(page), {
+    read: (r) => { if (!r.ok) throw new HttpStatusError(fontUrl(page), r.status); return r.arrayBuffer(); },
+  })
     .then((buf) => {
       const face = new FontFace(mushafFontFamily(page), buf);
       return face.load();
@@ -245,9 +249,10 @@ const fetchVersesByPage = async (page) => {
   // per_page is capped at 50 server-side; no mushaf page has that many ayahs,
   // but follow pagination defensively so a dense page is never truncated.
   for (;;) {
-    const res = await fetch(`${base}&per_page=50&page=${p}`);
-    if (!res.ok) throw new Error('Failed to fetch mushaf page');
-    const data = await res.json();
+    // Each request bounded (M-14); a timeout rejects like any failure, and
+    // fetchVersesCached below then drops the promise so the next ask retries.
+    const data = await fetchJSON(`${base}&per_page=50&page=${p}`);
+    if (!Array.isArray(data?.verses)) throw new Error('Unexpected mushaf page payload');
     all.push(...data.verses);
     if (!data.pagination?.next_page) break;
     p = data.pagination.next_page;

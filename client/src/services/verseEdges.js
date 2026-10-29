@@ -21,6 +21,7 @@
 // and every failure is null — callers treat an unknown edge as no silence at all.
 
 import { getAyahEdgeUrl } from './quranApi';
+import { fetchWithTimeout, HttpStatusError, isRequestFailure } from '../utils/fetchWithTimeout';
 
 const HEAD_BYTES = 12 * 1024;
 const TAIL_BYTES = 16 * 1024;
@@ -128,9 +129,13 @@ async function decode(bytes, rate) {
 }
 
 async function getBytes(url, range) {
-  const res = await fetch(url, { headers: { Range: `bytes=${range}` } });
-  if (!res.ok) throw new Error(String(res.status));
-  return new Uint8Array(await res.arrayBuffer());
+  return fetchWithTimeout(url, {
+    headers: { Range: `bytes=${range}` },
+    read: async (res) => {
+      if (!res.ok) throw new HttpStatusError(url, res.status);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+  });
 }
 
 async function measure(url) {
@@ -140,7 +145,7 @@ async function measure(url) {
   let size = head.length;
   let tail = head;
   if (head.length >= HEAD_BYTES) {   // a file that fit in one request is already whole
-    const res = await fetch(url, { method: 'HEAD' });
+    const res = await fetchWithTimeout(url, { method: 'HEAD' });
     size = Number(res.headers.get('content-length'));
     if (!res.ok || !(size > HEAD_BYTES)) return null;
     tail = await getBytes(url, `${Math.max(HEAD_BYTES, size - TAIL_BYTES)}-${size - 1}`);
@@ -199,7 +204,15 @@ export function verseEdges(reciterId, ord) {
   const key = `${reciterId}:${ord}`;
   if (cache.has(key)) return cache.get(key);
   const url = getAyahEdgeUrl(reciterId, ord);
-  const p = url ? measure(url).catch(() => null) : Promise.resolve(null);
+  const p = url
+    ? measure(url).catch((err) => {
+      // A request that failed or timed out says nothing about the file, so it is
+      // not remembered as "can't be measured": the verse is measured again the
+      // next time it plays (M-14). A file that can't be decoded stays null.
+      if (isRequestFailure(err) && cache.get(key) === p) cache.delete(key);
+      return null;
+    })
+    : Promise.resolve(null);
   cache.set(key, p);
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
   p.then((v) => { p.value = v; });   // read synchronously once settled (peekVerseEdges)
