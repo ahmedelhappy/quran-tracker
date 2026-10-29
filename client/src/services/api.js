@@ -7,12 +7,23 @@ import { storage, TOKEN_KEY } from '../utils/safeStorage';
 //
 // Every request has a deadline (M-14). Without one, an API that accepts the
 // connection and never answers left a screen spinning until the browser gave up.
-// 20 s, the session check's bound since it was added: a normal answer takes well
-// under a second, and a server still waking up (a cold start on the host) is
-// waited out for that long before the screen offers Retry. Past it, axios
-// rejects with code ECONNABORTED and no response — what every caller already
-// treats as "no answer" (see isTransient below).
+// Past it, axios rejects with code ECONNABORTED and no response — what every
+// caller already treats as "no answer" (see isTransient below).
+//
+// A read (GET) gets 20 s, the session check's bound since it was added: a normal
+// answer takes well under a second, and past 20 s the screen offers Retry, which
+// costs nothing to press. That is NOT long enough for every cold start: a free
+// Render instance waking up takes ~30–60 s, so the first read after a quiet spell
+// can still time out once and need that Retry (the hosting plan is the owner's
+// call).
+//
+// A write (POST/PUT/PATCH/DELETE) gets 60 s. Giving up on a write does not stop
+// it: the server still applies one that was merely slow, so a short deadline
+// told the reader "that failed" about a save that went on to succeed — the worst
+// kind of wrong during a cold start. 60 s waits out the wake-up. Writes are
+// never retried automatically; the reader decides whether to try again.
 export const API_TIMEOUT_MS = 20_000;
+export const API_WRITE_TIMEOUT_MS = 60_000;
 // The assistant's own deadline on the server is 20 s (CHAT_TIMEOUT_MS, answered
 // with a 504 the widget explains); the client waits a little longer than that so
 // it hears the server's answer rather than cutting it off.
@@ -20,7 +31,16 @@ const CHAT_TIMEOUT_MS = 30_000;
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : undefined),
-  timeout: API_TIMEOUT_MS,
+});
+
+// The deadline above for each request, by method — unless the call names its
+// own (the chat's, below).
+const READ_METHODS = new Set(['get', 'head', 'options']);
+API.interceptors.request.use((config) => {
+  if (!config.timeout) {
+    config.timeout = READ_METHODS.has((config.method ?? 'get').toLowerCase()) ? API_TIMEOUT_MS : API_WRITE_TIMEOUT_MS;
+  }
+  return config;
 });
 
 // The token THIS TAB's screens belong to — kept in memory, not read from storage
