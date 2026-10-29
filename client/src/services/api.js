@@ -4,8 +4,23 @@ import { storage, TOKEN_KEY } from '../utils/safeStorage';
 // Create axios instance. The localhost fallback is for `vite` (dev) only: a
 // production build refuses to run without VITE_API_URL (vite.config.js), so a
 // deployed site can never quietly call the visitor's own machine.
+//
+// Every request has a deadline (M-14). Without one, an API that accepts the
+// connection and never answers left a screen spinning until the browser gave up.
+// 20 s, the session check's bound since it was added: a normal answer takes well
+// under a second, and a server still waking up (a cold start on the host) is
+// waited out for that long before the screen offers Retry. Past it, axios
+// rejects with code ECONNABORTED and no response — what every caller already
+// treats as "no answer" (see isTransient below).
+export const API_TIMEOUT_MS = 20_000;
+// The assistant's own deadline on the server is 20 s (CHAT_TIMEOUT_MS, answered
+// with a 504 the widget explains); the client waits a little longer than that so
+// it hears the server's answer rather than cutting it off.
+const CHAT_TIMEOUT_MS = 30_000;
+
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : undefined),
+  timeout: API_TIMEOUT_MS,
 });
 
 // The token THIS TAB's screens belong to — kept in memory, not read from storage
@@ -101,7 +116,7 @@ export const authAPI = {
   // rather than an endless spinner.
   // `token` checks a token this tab has not adopted yet (one another tab stored).
   getMe: (token) => API.get('/auth/me', {
-    timeout: 20000,
+    timeout: API_TIMEOUT_MS,
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   }),
   updateProfile: (data) => API.put('/auth/profile', data),
@@ -251,7 +266,7 @@ export const leaderboardAPI = {
 };
 
 export const chatAPI = {
-  sendMessage: (messages) => API.post('/chat', { messages }),
+  sendMessage: (messages) => API.post('/chat', { messages }, { timeout: CHAT_TIMEOUT_MS }),
 };
 
 export default API;
