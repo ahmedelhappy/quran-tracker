@@ -91,7 +91,13 @@ const isEligible = (task) =>
 const runTask = (task) => {
   running.add(task.id);
   inFlight += 1;
-  const job = task.kind === 'data' ? fetchMushafPage(task.p)
+  // A page comes back WITHOUT being cached when page+1 (which its header plate
+  // needs) could not be had — fetchMushafPage still hands it over for the reader
+  // to draw. For the queue that is a failure like any other: counted as done, it
+  // is not (isDone stays false), and the queue asked again at once, sending a
+  // request for page+1 every idle slot while offline or while quran.com fails.
+  const job = task.kind === 'data'
+    ? fetchMushafPage(task.p).then(() => { if (!peekMushafPage(task.p)) throw new Error('incomplete page'); })
     : task.kind === 'font' ? decodePageFont(task.p).then((ok) => { if (!ok) throw new Error('font'); })
       : primePageFont(task.p, idleStep).then((ok) => { if (!ok) throw new Error('prime'); });
   job
