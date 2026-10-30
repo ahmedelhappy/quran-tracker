@@ -220,8 +220,11 @@ export default function MushafPage({
           to a pixel and absolutely positioned, so it is outside the 15-slot grid and
           changes nothing about the printed page. */}
       <div className="mushaf-sr-text">
+        {/* The label is in the interface's language, the verse in Arabic: only
+            the verse is marked lang="ar", so an English reading of "Surah …,
+            ayah …" isn't voiced by the Arabic voice (and vice versa). */}
         {(pageData?.verses ?? []).map((v) => (
-          <p key={v.verseKey} lang="ar">{verseLabel(v)}: {v.textUthmani}</p>
+          <p key={v.verseKey}>{verseLabel(v)}: <span lang="ar">{v.textUthmani}</span></p>
         ))}
       </div>
       {lines.map((line) => {
@@ -234,7 +237,7 @@ export default function MushafPage({
         if (line.type === 'surah') {
           return (
             <div key={`s-${line.lineNumber}`} className="mushaf-surah-line" style={rowStyle}>
-              <div className="mushaf-surah-frame" role="img" aria-label={`سورة ${surahName(line.surahNumber)}`}>
+              <div className="mushaf-surah-frame" role="img" lang="ar" aria-label={`سورة ${surahName(line.surahNumber)}`}>
                 <span className="mushaf-surah-glyph">{`${String(line.surahNumber).padStart(3, '0')}surah`}</span>
               </div>
             </div>
