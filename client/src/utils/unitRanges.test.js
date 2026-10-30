@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount, clampOrd, TOTAL_AYAHS, TOTAL_PAGES } from './verseIndex';
 import {
   rubOrdRange, hizbOrdRange, unitOrdRange, pageOrdRange, mergeOrdRanges, coverageOf,
-  toVerseKeyRanges, subtractOrdRanges, fullyCoveredPages, splitCoverageForSave, coverageFromProgress,
+  toVerseKeyRanges, subtractOrdRanges, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, pressedOf,
 } from './unitRanges';
 
 describe('verseIndex — one number per verse', () => {
@@ -121,5 +121,14 @@ describe('coverage maths', () => {
     // A reversed or unknown segment is read safely.
     expect(coverageFromProgress([5], [{ pageNumber: 5, segments: [{ from: '2:40', to: '2:38' }, { from: 'x', to: '2:1' }] }]))
       .toEqual([{ from: ordOfKey('2:38'), to: ordOfKey('2:40') }]);
+  });
+});
+
+describe("pressedOf — a tile's state for assistive tech (M-12)", () => {
+  it('reports full, partial and none as pressed, mixed and not pressed', () => {
+    const juz30 = { from: pageOrdRange(582).from, to: pageOrdRange(604).to };
+    expect(pressedOf(coverageOf(mergeOrdRanges([juz30]), juz30))).toBe(true);
+    expect(pressedOf(coverageOf(mergeOrdRanges([pageOrdRange(582)]), juz30))).toBe('mixed');
+    expect(pressedOf(coverageOf([], juz30))).toBe(false);
   });
 });

@@ -589,6 +589,8 @@
     "error": "Something went wrong.",
     "retry": "Retry",
     "skipToContent": "Skip to main content",
+    "juzN": "Juz {{n}}",
+    "hizbN": "Hizb {{n}}",
     "loadFailed": "Couldn't load this. Check your connection and try again.",
     "loadFailedContent": "Couldn't load this — something went wrong on our side. Please try again later.",
     "close": "Close",

@@ -14,7 +14,7 @@ import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 import {
   hizbOrdRange, rubOrdRange, surahOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
-  coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
+  coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges, pressedOf,
 } from '../utils/unitRanges';
 import { useDragSelect } from '../hooks/useDragSelect';
 
@@ -375,6 +375,7 @@ export default function Onboarding() {
                 <button
                   key={mode}
                   onClick={() => handleTabSwitch(mode)}
+                  aria-pressed={selectionMode === mode}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -396,6 +397,8 @@ export default function Onboarding() {
                     data-tile-id={juz}
                     onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
                     onClick={() => ds.handleClick(juz, toggleJuz)}
+                    aria-pressed={isCovered(selectedPages, start, end)}
+                    aria-label={t('common.juzN', { n: juz })}
                     className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                       isCovered(selectedPages, start, end)
                         ? 'bg-[#003527] text-white border-[#003527]'
@@ -426,6 +429,8 @@ export default function Onboarding() {
                     data-tile-id={hizb}
                     onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
                     onClick={() => ds.handleClick(hizb, toggleHizb)}
+                    aria-pressed={pressedOf(coverageOf(coverage, hizbOrdRange(hizb)))}
+                    aria-label={t('common.hizbN', { n: hizb })}
                     className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                       coverageOf(coverage, hizbOrdRange(hizb)) === 'full'
                         ? 'bg-[#003527] text-white border-[#003527]'
@@ -453,6 +458,7 @@ export default function Onboarding() {
                       data-tile-id={rub}
                       onPointerDown={(e) => ds.start(e, rub, toggleRub)}
                       onClick={() => ds.handleClick(rub, toggleRub)}
+                      aria-pressed={pressedOf(coverageOf(coverage, rubOrdRange(rub)))}
                       className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
                         coverageOf(coverage, rubOrdRange(rub)) === 'full'
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -476,6 +482,7 @@ export default function Onboarding() {
             <div>
               <input
                 type="text"
+                aria-label={t('onboarding.surahSearchPlaceholder')}
                 placeholder={t('onboarding.surahSearchPlaceholder')}
                 value={surahSearch}
                 onChange={e => setSurahSearch(e.target.value)}
@@ -491,6 +498,7 @@ export default function Onboarding() {
                     data-tile-id={s.number}
                     onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
                     onClick={() => ds.handleClick(s.number, toggleSurah)}
+                    aria-pressed={pressedOf(surahState)}
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors touch-pan-y select-none ${
                       surahSelected
                         ? 'bg-[#003527] text-white border-[#003527]'
@@ -528,6 +536,9 @@ export default function Onboarding() {
                         <input
                           type="number" min="1" max="604" value={r.start}
                           onChange={e => updateRange(i, 'start', e.target.value)}
+                          aria-label={t('onboarding.rangeStart')}
+                          aria-invalid={!!rangeErrors[i]?.start}
+                          aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `onboarding-range-error-${i}` : undefined}
                           placeholder={t('onboarding.rangeStart')}
                           className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
                         />
@@ -537,6 +548,9 @@ export default function Onboarding() {
                         <input
                           type="number" min="1" max="604" value={r.end}
                           onChange={e => updateRange(i, 'end', e.target.value)}
+                          aria-label={t('onboarding.rangeEnd')}
+                          aria-invalid={!!rangeErrors[i]?.end}
+                          aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `onboarding-range-error-${i}` : undefined}
                           placeholder={t('onboarding.rangeEnd')}
                           className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
                         />
@@ -550,7 +564,7 @@ export default function Onboarding() {
                       )}
                     </div>
                     {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
+                      <p id={`onboarding-range-error-${i}`} className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                     )}
                   </div>
                 ))}
@@ -590,6 +604,7 @@ export default function Onboarding() {
               <button
                 key={value}
                 onClick={() => setDailyPages(value)}
+                aria-pressed={dailyPages === value}
                 className={`flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 transition-colors relative overflow-hidden ${
                   dailyPages === value
                     ? 'border-[#003527] bg-[#b0f0d6] dark:bg-emerald-900/40 text-[#064e3b] dark:text-emerald-300'
@@ -623,6 +638,7 @@ export default function Onboarding() {
               <button
                 key={value}
                 onClick={() => setDirection(value)}
+                aria-pressed={direction === value}
                 className={`flex flex-col items-start gap-1.5 p-5 rounded-xl border-2 text-start transition-colors ${
                   direction === value
                     ? 'border-[#003527] bg-[#b0f0d6] dark:bg-emerald-900/40 text-[#064e3b] dark:text-emerald-300'
@@ -651,6 +667,7 @@ export default function Onboarding() {
                   <button
                     key={mode}
                     onClick={() => setCustomStartMode(mode)}
+                    aria-pressed={customStartMode === mode}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                       customStartMode === mode
                         ? 'bg-[#003527] text-white border-[#003527]'
@@ -668,6 +685,8 @@ export default function Onboarding() {
                     <button
                       key={juz}
                       onClick={() => { setCustomStartPage(start); setCustomStartSel(`juz-${juz}`); }}
+                      aria-pressed={customStartSel === `juz-${juz}`}
+                      aria-label={t('common.juzN', { n: juz })}
                       className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
                         customStartSel === `juz-${juz}`
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -688,6 +707,7 @@ export default function Onboarding() {
                       <button
                         key={s.number}
                         onClick={() => { setCustomStartPage(s.start); setCustomStartSel(`surah-${s.number}`); }}
+                        aria-pressed={isSelected}
                         className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
                           isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
                         }`}
@@ -718,7 +738,7 @@ export default function Onboarding() {
             onClick={() => setStep(1)}
             className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800"
           >
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => setStep(3)}
@@ -820,10 +840,11 @@ export default function Onboarding() {
           {reviewIntensity === 'fixed' && (
             <div className="mt-4 flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('onboarding.fixedReviewLabel')}</p>
-                <p className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.fixedReviewHint')}</p>
+                <p id="onboarding-fixed-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('onboarding.fixedReviewLabel')}</p>
+                <p id="onboarding-fixed-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.fixedReviewHint')}</p>
               </div>
               <input type="number" min="1" max="40" value={fixedReviewValue}
+                aria-labelledby="onboarding-fixed-review-label" aria-describedby="onboarding-fixed-review-hint"
                 onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 40) setFixedReviewValue(n); }}
                 className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
             </div>
@@ -853,7 +874,7 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(2)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => {
@@ -936,7 +957,7 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={handleSubmit}

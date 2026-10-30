@@ -87,6 +87,11 @@ export const coverageOf = (merged, range) => {
   return covered === range.to - range.from + 1 ? 'full' : 'partial';
 };
 
+// The pressed state a selection tile reports to assistive tech (M-12): the
+// three coverage states as aria-pressed's true / "mixed" / false, so a partly
+// selected Juz or Surah is not told apart from the others by colour alone.
+export const pressedOf = (state) => (state === 'full' ? true : state === 'partial' ? 'mixed' : false);
+
 // The verse-key ranges to send to PUT /api/progress/units as `unit: 'verses'`.
 // Selections are merged first, so picking a whole hizb-worth of quarters costs
 // one request rather than four, and "select everything" costs one rather than 240.

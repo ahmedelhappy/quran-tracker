@@ -334,6 +334,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                 <button
                   key={mode}
                   onClick={() => handleTabSwitch(mode)}
+                  aria-pressed={selectionMode === mode}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectionMode === mode
                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -368,6 +369,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                       data-tile-id={juz}
                       onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
                       onClick={() => ds.handleClick(juz, toggleJuz)}
+                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
                       className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -411,6 +413,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                       data-tile-id={hizb}
                       onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
                       onClick={() => ds.handleClick(hizb, toggleHizb)}
+                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
                       className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -451,6 +454,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                         data-tile-id={rub}
                         onPointerDown={(e) => ds.start(e, rub, toggleRub)}
                         onClick={() => ds.handleClick(rub, toggleRub)}
+                        aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
                         className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border touch-pan-y select-none ${
                           isFull
                             ? 'bg-[#003527] text-white border-[#003527]'
@@ -500,6 +504,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                       data-tile-id={s.number}
                       onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
                       onClick={() => ds.handleClick(s.number, toggleSurah)}
+                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
                       className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors touch-pan-y select-none ${
                         isFull
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -1396,6 +1401,7 @@ export default function Settings() {
                         <button
                           key={v}
                           onClick={() => { setDailyMode('fixed'); setDailyPages(v); }}
+                          aria-pressed={dailyMode === 'fixed' && dailyPages === v}
                           className={`px-6 py-3 rounded-xl border font-medium transition-colors ${
                             dailyMode === 'fixed' && dailyPages === v
                               ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
@@ -1519,6 +1525,7 @@ export default function Settings() {
                               key={mode}
                               type="button"
                               onClick={() => setMemStartMode(mode)}
+                              aria-pressed={memStartMode === mode}
                               className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                                 memStartMode === mode
                                   ? 'bg-[#003527] text-white border-[#003527]'
@@ -1539,6 +1546,7 @@ export default function Settings() {
                                   key={juz}
                                   type="button"
                                   onClick={() => setMemStartPage(start)}
+                                  aria-pressed={isSelected}
                                   className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
                                     isSelected
                                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -1561,6 +1569,7 @@ export default function Settings() {
                                   key={s.number}
                                   type="button"
                                   onClick={() => setMemStartPage(s.start)}
+                                  aria-pressed={isSelected}
                                   className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
                                     isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
                                   }`}
@@ -1604,6 +1613,7 @@ export default function Settings() {
                           key={value}
                           type="button"
                           onClick={() => { setReviewMode('intensity'); setIntensity(value); }}
+                          aria-pressed={selected}
                           className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
                             selected
                               ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
@@ -1612,7 +1622,7 @@ export default function Settings() {
                         >
                           <div className="flex justify-between items-center mb-2">
                             <span className={`font-medium ${selected ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
-                            <span className={selected ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
+                            <span aria-hidden="true" className={selected ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
                           </div>
                           {estimate != null && (
                             <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
@@ -1632,6 +1642,7 @@ export default function Settings() {
                         }
                         setReviewMode('fixed');
                       }}
+                      aria-pressed={reviewMode === 'fixed'}
                       className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
                         reviewMode === 'fixed'
                           ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
@@ -1640,7 +1651,7 @@ export default function Settings() {
                     >
                       <div className="flex justify-between items-center mb-2">
                         <span className={`font-medium ${reviewMode === 'fixed' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeFixed')}</span>
-                        <span className={reviewMode === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'fixed' ? '●' : '○'}</span>
+                        <span aria-hidden="true" className={reviewMode === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'fixed' ? '●' : '○'}</span>
                       </div>
                       <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('settings.modeFixedDesc')}</p>
                     </button>
@@ -1795,6 +1806,7 @@ export default function Settings() {
                       { mode: 'page',  labelKey: 'settings.cycleStartByPage' },
                     ].map(({ mode, labelKey }) => (
                       <button key={mode} onClick={() => setCycleStartMode(mode)}
+                        aria-pressed={cycleStartMode === mode}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                           cycleStartMode === mode
                             ? 'bg-[#003527] text-white border-[#003527]'
@@ -1822,6 +1834,8 @@ export default function Settings() {
                         return (
                           <button key={juz.juzNumber}
                             onClick={() => saveCycleStart(juz.firstMemPage)}
+                            aria-pressed={isSelected}
+                            aria-label={t('common.juzN', { n: juz.juzNumber })}
                             disabled={cycleStartSaving}
                             className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
                               isSelected
@@ -1851,6 +1865,7 @@ export default function Settings() {
                         const isSelected = cycleStartPage === s.firstMemPage;
                         return (
                           <button key={s.number} onClick={() => saveCycleStart(s.firstMemPage)}
+                            aria-pressed={isSelected}
                             disabled={cycleStartSaving}
                             className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors disabled:opacity-60 ${
                               isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
