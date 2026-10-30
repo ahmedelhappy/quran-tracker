@@ -150,6 +150,32 @@ describe('Onboarding in one request, all or nothing (L-18)', () => {
     assert.equal((await reload(user)).onboardingComplete, true);
   });
 
+  test('a failed account update takes the rows back too, so a smaller retry keeps only its own pages', async () => {
+    const user = await createUser({ onboardingComplete: false });
+    mock.method(User, 'updateOne', async () => { throw new Error('write concern timeout (simulated)'); }, { times: 1 });
+    assert.equal((await onboard(user, SELECTION)).status, 500);
+    assert.deepEqual(await rows(user), [], 'nothing of the failed selection is left');
+
+    // Back to the (now empty) selection, a smaller choice this time: pages 2 and
+    // 3 must not stay memorized from the attempt that failed.
+    const retry = await onboard(user, { ...SELECTION, memorizedPages: [1], verseRanges: [] });
+    assert.equal(retry.status, 200);
+    assert.deepEqual(await rows(user), [full(1)]);
+  });
+
+  test('an account update that went in before its error keeps the rows it belongs with', async () => {
+    const user = await createUser({ onboardingComplete: false });
+    // A write-concern timeout: the update is applied, the reply still an error.
+    const realUpdateOne = User.updateOne.bind(User);
+    mock.method(User, 'updateOne', async (...args) => {
+      await realUpdateOne(...args);
+      throw new Error('write concern timeout (simulated)');
+    }, { times: 1 });
+    assert.equal((await onboard(user, SELECTION)).status, 500);
+    assert.equal((await reload(user)).onboardingComplete, true);
+    assert.deepEqual(await rows(user), SAVED, 'an onboarded account is not left without its pages');
+  });
+
   test('sending it twice (a response lost after the server finished) changes nothing more', async () => {
     const user = await createUser({ onboardingComplete: false });
     assert.equal((await onboard(user, SELECTION)).status, 200);

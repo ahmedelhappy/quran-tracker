@@ -433,10 +433,21 @@ const restoreProgress = async (userId, pages, before) => {
 //      touched are put back as they were before the request;
 //   3. last, ONE update of the user document sets the goal, the plan and
 //      onboardingComplete together. A single-document write is atomic, so the
-//      flag is never set without the plan, nor before every page is saved.
+//      flag is never set without the plan, nor before every page is saved. If
+//      it fails, the rows of step 2 are put back as well.
 // Every write is an upsert of a final value (a whole page, or verses merged into
 // a page's segments), so a retry after any failure — even one whose response was
 // lost after the server finished — lands on the same state and duplicates nothing.
+//
+// What this cannot undo: the process dying between steps 2 and 3 (or a restore
+// that itself fails) leaves step 2's rows on an account that is not onboarded,
+// and a retry with a SMALLER selection would keep the pages it dropped. A retry
+// does not clear them, because it cannot tell them apart from progress the
+// account had before onboarding — a signed-in account that has not onboarded
+// can already save pages from the Library (units, memorized, complete),
+// and those rows look the same. Telling them apart would take a marker on every
+// row this endpoint writes; for a crash in a window of one write, the person
+// can still fix the pages in Settings.
 //
 // Why not a multi-document transaction: Atlas would support one, but the local
 // and CI stacks (mongodb-memory-server, the e2e and harness servers) run a
@@ -549,14 +560,33 @@ exports.completeOnboarding = async (req, res) => {
     }
 
     // 3. Last, in one atomic single-document update: goal, plan and the flag.
-    await User.updateOne({ _id: userId }, {
-      $set: {
-        ...plan.update,
-        dailyNewPages: dailyGoal,
-        planStartDate: clock.now(),
-        onboardingComplete: true,
-      },
-    });
+    try {
+      await User.updateOne({ _id: userId }, {
+        $set: {
+          ...plan.update,
+          dailyNewPages: dailyGoal,
+          planStartDate: clock.now(),
+          onboardingComplete: true,
+        },
+      });
+    } catch (writeError) {
+      // The rows of step 2 must go too: the account still is not onboarded, so
+      // the client shows an empty selection again, and a smaller one sent then
+      // would leave the pages it dropped memorized for good. But a write-concern
+      // timeout can arrive AFTER the update was applied — then the account is
+      // onboarded and its rows must stay — so undo them only when a fresh read
+      // shows the flag still off. A failed read leaves them: they hold exactly
+      // what this request was saving.
+      if (bulkOps.length) {
+        const now = await User.findById(userId, { onboardingComplete: 1 }).lean()
+          .catch((err) => { console.error('Onboarding: re-reading the account after a failed update failed', err); return undefined; });
+        if (now && !now.onboardingComplete) {
+          await restoreProgress(userId, touched, before)
+            .catch((err) => console.error('Onboarding: restoring progress after a failed account update failed', err));
+        }
+      }
+      throw writeError;
+    }
 
     leaderboardCache.clear();
 
