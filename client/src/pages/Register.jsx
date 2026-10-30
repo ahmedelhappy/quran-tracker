@@ -20,20 +20,37 @@ const Register = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+  // What is wrong, said under the field it is about (or under the form, for a
+  // refusal from the server) and tied to it with aria-invalid +
+  // aria-describedby; the field takes focus. The toast stays as the summary
+  // (M-12).
+  const [error, setError] = useState(null); // { field: 'password' | 'confirm' | 'form', message } | null
+  const set = (key) => (e) => { setForm(f => ({ ...f, [key]: e.target.value })); setError(null); };
+  const fail = (field, message) => {
+    setError({ field, message });
+    if (field !== 'form') document.getElementById(field === 'confirm' ? 'confirmPassword' : 'password')?.focus();
+    showToast(message, 'error');
+  };
+  const errorFor = (field) => (error?.field === field || error?.field === 'form'
+    ? { 'aria-invalid': true, 'aria-describedby': `register-error-${error.field}` }
+    : {});
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.password !== form.confirm) { showToast(t('auth.passwordsMismatch'), 'error'); return; }
+    setError(null);
+    if (form.password !== form.confirm) { fail('confirm', t('auth.passwordsMismatch')); return; }
     const pwProblem = newPasswordProblem(form.password);
-    if (pwProblem === 'tooShort') { showToast(t('auth.passwordTooShort'), 'error'); return; }
-    if (pwProblem === 'tooLong') { showToast(t('auth.passwordTooLong'), 'error'); return; }
+    if (pwProblem === 'tooShort') { fail('password', t('auth.passwordTooShort')); return; }
+    if (pwProblem === 'tooLong') { fail('password', t('auth.passwordTooLong')); return; }
     setLoading(true);
     const result = await register(form.name.trim(), form.email, form.password);
     setLoading(false);
     if (result.success) navigate('/onboarding');
-    else showToast(result.message || t('auth.registrationFailed'), 'error');
+    else fail('form', result.message || t('auth.registrationFailed'));
   };
+  const errorText = (field) => (error?.field === field
+    ? <p id={`register-error-${field}`} className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1">{error.message}</p>
+    : null);
 
   const inputCls = 'w-full ps-11 pe-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border border-[#bfc9c3]/50 dark:border-gray-600 text-[#151c27] dark:text-white rounded-lg text-sm focus:bg-white dark:focus:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent transition-all placeholder:text-[#bfc9c3] dark:placeholder:text-gray-500';
   const labelCls = 'block text-xs font-medium text-[#404944] dark:text-gray-200 uppercase tracking-wider mb-1.5';
@@ -65,7 +82,7 @@ const Register = () => {
               <label className={labelCls} htmlFor="fullName">{t('auth.fullName')}</label>
               <div className="relative group">
                 <FiUser className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
-                <input id="fullName" type="text" value={form.name} onChange={set('name')} placeholder={t('auth.namePlaceholder')} required className={inputCls} />
+                <input id="fullName" type="text" autoComplete="name" value={form.name} onChange={set('name')} placeholder={t('auth.namePlaceholder')} required className={inputCls} />
               </div>
             </div>
 
@@ -73,7 +90,7 @@ const Register = () => {
               <label className={labelCls} htmlFor="email">{t('auth.email')}</label>
               <div className="relative group">
                 <FiMail className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
-                <input id="email" type="email" value={form.email} onChange={set('email')} placeholder={t('auth.emailPlaceholder')} required className={inputCls} />
+                <input id="email" type="email" autoComplete="email" {...(error?.field === 'form' ? errorFor('form') : {})} value={form.email} onChange={set('email')} placeholder={t('auth.emailPlaceholder')} required className={inputCls} />
               </div>
             </div>
 
@@ -81,27 +98,31 @@ const Register = () => {
               <label className={labelCls} htmlFor="password">{t('auth.password')}</label>
               <div className="relative group">
                 <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
-                <input id="password" type={showPw ? 'text' : 'password'} value={form.password} onChange={set('password')} placeholder={t('auth.passwordPlaceholder')} required className={inputCls + ' pe-10'} />
+                <input id="password" type={showPw ? 'text' : 'password'} autoComplete="new-password" {...errorFor('password')} value={form.password} onChange={set('password')} placeholder={t('auth.passwordPlaceholder')} required className={inputCls + ' pe-10'} />
                 <Tooltip label={showPw ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
                   <button type="button" onClick={() => setShowPw(!showPw)} className="text-[#707974] hover:text-[#404944]">
-                    {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                    {showPw ? <FiEyeOff className="w-4 h-4" aria-hidden="true" /> : <FiEye className="w-4 h-4" aria-hidden="true" />}
                   </button>
                 </Tooltip>
               </div>
+              {errorText('password')}
             </div>
 
             <div>
               <label className={labelCls} htmlFor="confirmPassword">{t('auth.confirmPassword')}</label>
               <div className="relative group">
                 <FiLock className="absolute start-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#707974] group-focus-within:text-[#003527] dark:group-focus-within:text-emerald-400 transition-colors " />
-                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} value={form.confirm} onChange={set('confirm')} placeholder={t('auth.confirmPlaceholder')} required className={inputCls + ' pe-10'} />
+                <input id="confirmPassword" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" {...errorFor('confirm')} value={form.confirm} onChange={set('confirm')} placeholder={t('auth.confirmPlaceholder')} required className={inputCls + ' pe-10'} />
                 <Tooltip label={showConfirm ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
                   <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="text-[#707974] hover:text-[#404944]">
-                    {showConfirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                    {showConfirm ? <FiEyeOff className="w-4 h-4" aria-hidden="true" /> : <FiEye className="w-4 h-4" aria-hidden="true" />}
                   </button>
                 </Tooltip>
               </div>
+              {errorText('confirm')}
             </div>
+
+            {errorText('form')}
 
             <div className="pt-4">
               <button
@@ -110,7 +131,7 @@ const Register = () => {
                 className="w-full bg-[#003527] text-white font-medium rounded-lg py-3.5 px-6 hover:bg-[#064e3b] active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 shadow-[0_2px_8px_rgba(0,53,39,0.2)] disabled:opacity-60"
               >
                 <span>{loading ? t('auth.creating') : t('auth.createAccount')}</span>
-                {!loading && <span className="text-base inline-block rtl:rotate-180">→</span>}
+                {!loading && <span className="text-base inline-block rtl:rotate-180" aria-hidden="true">→</span>}
               </button>
             </div>
           </form>

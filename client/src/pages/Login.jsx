@@ -22,18 +22,27 @@ const Login = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Why the sign-in failed, said under the form as well as in the toast, and
+  // tied to both fields (aria-invalid + aria-describedby), so it is still
+  // there for a screen reader after the toast has gone (M-12).
+  const [error, setError] = useState(null);
+  const edit = (key) => (e) => { setForm(f => ({ ...f, [key]: e.target.value })); setError(null); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
     const result = await login(form.email, form.password);
     setLoading(false);
     if (result.success) {
       navigate(afterLogin);
     } else {
-      showToast(result.message || t('auth.invalidCredentials'), 'error');
+      const message = result.message || t('auth.invalidCredentials');
+      setError(message);
+      showToast(message, 'error');
     }
   };
+  const invalid = error ? { 'aria-invalid': true, 'aria-describedby': 'login-error' } : {};
 
   return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col relative">
@@ -58,10 +67,10 @@ const Login = () => {
               <div>
                 <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="email">{t('auth.email')}</label>
                 <div className="relative">
-                  <FiMail className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
+                  <FiMail className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" aria-hidden="true" />
                   <input
-                    id="email" type="email" value={form.email}
-                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    id="email" type="email" value={form.email} autoComplete="email" {...invalid}
+                    onChange={edit('email')}
                     placeholder={t('auth.emailPlaceholder')} required
                     className="w-full ps-10 pe-4 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
@@ -71,21 +80,25 @@ const Login = () => {
               <div>
                 <label className="block text-xs font-medium text-[#404944] dark:text-gray-200 mb-1" htmlFor="password">{t('auth.password')}</label>
                 <div className="relative">
-                  <FiLock className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" />
+                  <FiLock className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#404944] dark:text-gray-400" aria-hidden="true" />
                   <input
-                    id="password" type={showPw ? 'text' : 'password'} value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    id="password" type={showPw ? 'text' : 'password'} value={form.password} autoComplete="current-password" {...invalid}
+                    onChange={edit('password')}
                     placeholder="••••••••" required
                     className="w-full ps-10 pe-10 py-3 bg-[#f0f3ff] dark:bg-gray-700 border-transparent dark:border-gray-600 rounded-lg text-sm text-[#151c27] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#064e3b] transition-all dark:placeholder:text-gray-500"
                   />
                   <Tooltip label={showPw ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute end-3 top-1/2 -translate-y-1/2">
                     <button type="button" onClick={() => setShowPw(!showPw)}
                       className="text-[#707974] dark:text-gray-400 hover:text-[#404944]">
-                      {showPw ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                      {showPw ? <FiEyeOff className="w-4 h-4" aria-hidden="true" /> : <FiEye className="w-4 h-4" aria-hidden="true" />}
                     </button>
                   </Tooltip>
                 </div>
               </div>
+
+              {error && (
+                <p id="login-error" className="text-sm text-[#ba1a1a] dark:text-red-400">{error}</p>
+              )}
 
               <div className="pt-2">
                 <button type="submit" disabled={loading}
