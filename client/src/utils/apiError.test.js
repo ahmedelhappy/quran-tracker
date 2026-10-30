@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { AxiosError, CanceledError } from 'axios';
 import i18n from 'i18next';
 import { apiErrorMessage } from './apiError';
 import en from '../locales/en.json';
@@ -34,9 +35,43 @@ describe('apiErrorMessage (L-08)', () => {
     expect(apiErrorMessage(failed(400, { code: '<script>', message: 'x' }), t)).toBe(en.common.error);
   });
 
-  it('says the server could not be reached when there was no response', async () => {
+  // What axios rejects with when a request was sent and no reply came back.
+  const noReply = (code, message) => new AxiosError(message, code, {}, {});
+
+  it('says the server could not be reached only when a request got no reply', async () => {
     const t = await make('ar');
-    expect(apiErrorMessage(new Error('Network Error'), t)).toBe(ar.errors.NETWORK);
-    expect(apiErrorMessage(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' }), t)).toBe(ar.common.error);
+    expect(apiErrorMessage(noReply('ERR_NETWORK', 'Network Error'), t)).toBe(ar.errors.NETWORK);
+    expect(apiErrorMessage(new CanceledError(), t)).toBe(ar.common.error);
+  });
+
+  it('says the server is slow, not unreachable, when the request timed out', async () => {
+    const t = await make('ar');
+    expect(apiErrorMessage(noReply('ECONNABORTED', 'timeout of 60000ms exceeded'), t)).toBe(ar.errors.TIMEOUT);
+    expect(apiErrorMessage(noReply('ETIMEDOUT', 'timeout exceeded'), await make('en'))).toBe(en.errors.TIMEOUT);
+  });
+
+  describe('an error that is not a failed request', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is reported as a bug and gets the caller\'s fallback, not "check your connection"', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const t = await make('en');
+      // A plain Error that merely says "Network Error", and a throw in the caller's own code.
+      const lookalike = new Error('Network Error');
+      expect(apiErrorMessage(lookalike, t, 'auth.registrationFailed')).toBe(en.auth.registrationFailed);
+      const bug = new TypeError("Cannot destructure property 'token' of undefined");
+      expect(apiErrorMessage(bug, t)).toBe(en.common.error);
+      expect(logged.mock.calls.map((c) => c[1])).toEqual([lookalike, bug]);
+      expect(logged.mock.calls[0][2]).toEqual({ source: 'apiErrorMessage' });
+    });
+
+    it('is not reported when it is a real request failure or a cancel', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const t = await make('en');
+      apiErrorMessage(noReply('ERR_NETWORK', 'Network Error'), t);
+      apiErrorMessage(new CanceledError(), t);
+      apiErrorMessage(failed(500, { code: 'SERVER_ERROR' }), t);
+      expect(logged).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1276,6 +1276,7 @@
     "ONBOARDING_PARTIAL": "Saving stopped part-way, so some of your pages may already be marked memorized. Send the same selection again to finish, or correct the pages later in Settings.",
     "RATE_LIMITED": "Too many requests. Please slow down and try again shortly.",
     "SESSION_EXPIRED": "Your session has expired. Please sign in again.",
+    "TIMEOUT": "The server is taking too long to answer. Please try again in a moment.",
     "NETWORK": "Couldn't reach the server. Check your connection and try again."
   },
   "titles": {
