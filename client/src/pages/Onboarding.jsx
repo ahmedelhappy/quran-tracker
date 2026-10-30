@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { progressAPI } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import Tooltip from '../components/Tooltip';
@@ -268,8 +269,12 @@ export default function Onboarding() {
       // as verse ranges (stored as partial `segments`, not rounded up to pages),
       // and the plan. It used to be several requests with the account marked
       // onboarded by the first, so a failure part-way left it on the dashboard
-      // with part of the selection and the default plan. Now a failure leaves
-      // nothing behind and pressing the button again is safe.
+      // with part of the selection and the default plan. Now a failed request
+      // puts back what it wrote, and pressing the button again is safe. The one
+      // exception the server can see — it could not put the rows back — comes
+      // as ONBOARDING_PARTIAL, whose message says some pages may be saved.
+      // (A server that dies mid-request cannot say anything; see
+      // completeOnboarding in progressController.)
       const { fullPages, leftovers } = splitCoverageForSave(coverage);
       await progressAPI.completeOnboarding({
         memorizedPages: fullPages,
@@ -287,8 +292,17 @@ export default function Onboarding() {
       updateUser({ onboardingComplete: true, dailyNewPages: dailyPages });
       await refreshUser();
       navigate('/dashboard');
-    } catch {
-      showToast(t('onboarding.submitError'), 'error');
+    } catch (err) {
+      // The reason, in the reader's language: a slow or unreachable server, a
+      // rate limit, a partly saved selection — or, for a code with no sentence
+      // of its own, "try again". (apiErrorMessage reports anything that is not
+      // a failed request; a failed one is logged here with its code.)
+      if (err?.isAxiosError) {
+        console.warn('Onboarding could not be saved:', {
+          status: err.response?.status, code: err.response?.data?.code ?? err.code,
+        });
+      }
+      showToast(apiErrorMessage(err, t, 'onboarding.submitError'), 'error');
     } finally {
       setSubmitting(false);
     }

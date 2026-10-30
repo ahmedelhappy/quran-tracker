@@ -1,7 +1,7 @@
 // Flow 1: a new person registers, says they already know Juz 30 during
 // onboarding, and lands on a dashboard holding today's tasks: the first new page
 // and reviews drawn from Juz 30.
-import { test, expect, API, countsFor } from './support/test.js'
+import { test, expect, API, countsFor, createAccount, signIn } from './support/test.js'
 
 let counter = 0
 
@@ -41,4 +41,30 @@ test('register, pick Juz 30 in onboarding, and see today\'s tasks', async ({ pag
   const { data: user } = await me.json()
   expect(user.onboardingComplete).toBe(true)
   expect((await countsFor(request, user._id)).UserProgress).toBe(23)
+})
+
+// A failed save says why, not just "try again": here the server could not put
+// back what it had written (L-18), so some pages may already be saved and the
+// person is told to send the same selection again — which then finishes.
+test('a failed onboarding save says why, and sending it again finishes', async ({ page, request }) => {
+  const account = await createAccount(request, { label: 'onboarding-partial' })
+  await signIn(page, account)
+  await page.goto('/onboarding')
+  await page.getByRole('button', { name: "Let's Begin" }).click()
+  await page.getByRole('button', { name: '30', exact: true }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Generate My Plan' }).click()
+
+  await page.route('**/api/progress/onboarding', (route) => route.fulfill({
+    status: 500,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: false, code: 'ONBOARDING_PARTIAL', message: 'Onboarding failed part-way' }),
+  }), { times: 1 })
+  await page.getByRole('button', { name: 'Start My Journey' }).click()
+  await expect(page.getByText(/some of your pages may already be marked memorized/)).toBeVisible()
+  await expect(page).toHaveURL(/\/onboarding$/)
+
+  await page.getByRole('button', { name: 'Start My Journey' }).click()
+  await expect(page).toHaveURL(/\/dashboard$/)
+  expect((await countsFor(request, account.id)).UserProgress).toBe(23)
 })
