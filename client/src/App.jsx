@@ -14,6 +14,7 @@ import { safeReturnTo } from './utils/returnTo';
 import Chatbot from './components/Chatbot';
 import ErrorBoundary from './components/ErrorBoundary';
 import { RegionFallback } from './components/ErrorNotice';
+import { usePageTitle } from './hooks/usePageTitle';
 
 // Pages are lazy-loaded so each route ships its own chunk — this keeps heavy,
 // route-specific dependencies (Recharts on /progress, driver.js tours on
@@ -73,6 +74,12 @@ const PersistentChatbot = () => {
 // around the Library with ?page=…, and yanking that back to the top on every turn
 // would fight them. Instant, because this is a new page appearing, not a journey
 // across the current one — and a smooth ride would be one more thing to wait for.
+// The tab title of whichever route is showing, in the reader's language (L-09).
+const PageTitle = () => {
+  usePageTitle();
+  return null;
+};
+
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [pathname]);
@@ -158,6 +165,7 @@ function App() {
       <TimerProvider>
         <Router>
           <ScrollToTop />
+          <PageTitle />
           <AccountScope>
           <Suspense fallback={<PageLoader />}>
             <Routes>

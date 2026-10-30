@@ -5,20 +5,13 @@ import { createTimerStore } from '../services/timerStore';
 import { playChime, unlockChime, chimeUnlocked } from '../services/chime';
 import { toArabicDigits } from '../utils/formatNumber';
 import { liveReadout } from '../utils/timerCore';
+// The readout in front of the tab title; the page title behind it is the
+// route's own (utils/documentTitle.js keeps the two apart).
+import { setTitlePrefix } from '../utils/documentTitle';
 
 // What a phase end says, aloud and in a notification.
 const phaseMessageKey = (e) => (e.done ? 'timer.ended.done' : e.kind === 'focus' ? 'timer.ended.focus' : 'timer.ended.break');
 
-// The tab-title prefix this provider last put there, so it can be swapped or
-// taken off again without disturbing the rest of the title.
-let titlePrefix = '';
-const setTitlePrefix = (prefix) => {
-  const base = titlePrefix && document.title.startsWith(titlePrefix)
-    ? document.title.slice(titlePrefix.length)
-    : document.title;
-  titlePrefix = prefix;
-  document.title = prefix + base;
-};
 
 // The app-wide timer (see services/timerStore.js). Above the router, so the one
 // timer outlives every route change — the Library and the Dashboard show the

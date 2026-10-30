@@ -1276,5 +1276,18 @@
     "RATE_LIMITED": "Too many requests. Please slow down and try again shortly.",
     "SESSION_EXPIRED": "Your session has expired. Please sign in again.",
     "NETWORK": "Couldn't reach the server. Check your connection and try again."
+  },
+  "titles": {
+    "app": "Quran Tracker",
+    "home": "Quran Tracker — memorize the Quran, page by page",
+    "about": "About",
+    "library": "Quran Library",
+    "login": "Sign in",
+    "register": "Create account",
+    "dashboard": "Dashboard",
+    "onboarding": "Set up your plan",
+    "progress": "My Progress",
+    "settings": "Settings",
+    "leaderboard": "Leaderboard"
   }
 }
