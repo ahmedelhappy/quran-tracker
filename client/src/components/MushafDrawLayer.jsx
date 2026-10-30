@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useRef, useState, useEffect } from 'react';
 import { FiCheck, FiX, FiMessageSquare } from 'react-icons/fi';
 import { isSecondaryPress } from '../utils/selfTestCycle';
@@ -120,6 +121,7 @@ export default function MushafDrawLayer({
   const lastRef = useRef(null);
   const shiftRef = useRef(null);  // { anchorIdx } while a shift-straight segment is active
   const strokesRef = useRef(strokes);
+  const { t } = useTranslation();
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
 
   // Inline editor state for placing / editing a text note.
@@ -334,7 +336,7 @@ export default function MushafDrawLayer({
                 <button
                   type="button"
                   className="mushaf-text-note-del"
-                  aria-label="Delete note"
+                  aria-label={t('library.draw.deleteNote')}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); onDeleteText?.(n._id); }}
                 >
@@ -358,7 +360,7 @@ export default function MushafDrawLayer({
               onBlur={commitEditor}
               className={`mushaf-text-input mushaf-text-note--${color}`}
             />
-            <button type="button" className="mushaf-text-editor-ok" aria-label="Save note" onMouseDown={(e) => e.preventDefault()} onClick={commitEditor}>
+            <button type="button" className="mushaf-text-editor-ok" aria-label={t('library.draw.saveNote')} onMouseDown={(e) => e.preventDefault()} onClick={commitEditor}>
               <FiCheck className="w-full h-full" />
             </button>
           </div>

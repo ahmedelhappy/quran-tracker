@@ -755,6 +755,8 @@
       "done": "Done",
       "textPlaceholder": "Note…",
       "noteTitle": "Note",
+      "deleteNote": "Delete note",
+      "saveNote": "Save note",
       "clearTitle": "Clear this page's drawing?",
       "waitingForInk": "Loading this page's drawing…",
       "merged": "This page's drawing had changed elsewhere — your strokes were added to it.",
