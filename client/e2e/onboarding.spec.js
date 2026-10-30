@@ -64,6 +64,9 @@ test('a failed onboarding save says why, and sending it again finishes', async (
   await expect(page.getByText(/some of your pages may already be marked memorized/)).toBeVisible()
   await expect(page).toHaveURL(/\/onboarding$/)
 
+  // The toast sits over the button (both bottom-end), and pauses while
+  // hovered, so a person closes it first.
+  await page.getByRole('status').getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: 'Start My Journey' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
   expect((await countsFor(request, account.id)).UserProgress).toBe(23)
