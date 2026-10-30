@@ -61,6 +61,7 @@ import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
 } from '../utils/verseIndex';
 import { useDraggable } from '../hooks/useDraggable';
+import { useDialog } from '../hooks/useDialog';
 import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
@@ -904,6 +905,42 @@ export default function Library() {
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
+
+  // Below md the tafsir and note sheets come up over the page with a backdrop,
+  // so there they are modal dialogs; from md they sit beside it (M-12).
+  const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = (e) => setIsPhone(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // The three sheets are dialogs to the keyboard and screen readers (M-12):
+  // named by their heading, focus in on open, Escape closes, focus back to
+  // what opened them — or, when that was a popover button that has folded
+  // away since, to the verse itself on the page.
+  const verseAnchorFor = (verseKey) => (verseKey
+    ? document.querySelector(`.mushaf-word[role="button"][data-verse-key="${verseKey}"]`)
+    : null);
+  const tafsirDialog = useDialog({
+    open: tafsirOpen,
+    onClose: () => setTafsirOpen(false),
+    modal: isPhone,
+    fallbackFocus: () => verseAnchorFor(selectedVerseKey),
+  });
+  const noteDialog = useDialog({
+    open: notePanel != null,
+    onClose: () => setNotePanel(null),
+    modal: isPhone,
+    fallbackFocus: () => verseAnchorFor(notePanel?.verseKey),
+    // Escape with typing that exists nowhere else would throw it away; the
+    // close button (one Tab away) still does, deliberately. Nothing else
+    // changes: the global Escape ladder never ran inside the textarea.
+    onKeyDown: (e) => { if (e.key === 'Escape' && noteDirtyRef.current) e.preventDefault(); },
+  });
+  // Has a backdrop at every width: always modal.
+  const textNoteDialog = useDialog({ open: readTextNote != null, onClose: () => setReadTextNote(null) });
 
   // Mount: memorized pages (for the badge + stat), and — when the URL didn't
   // name a page — resolve the default landing page.
@@ -6340,10 +6377,12 @@ export default function Library() {
             )}>
             {() => (<>
               <div
+                data-dialog-keep
                 className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
                 onClick={() => setTafsirOpen(false)}
               />
               <div
+                {...tafsirDialog.dialogProps}
                 data-testid="tafsir-panel"
                 data-keeps-selection
                 className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
@@ -6382,8 +6421,8 @@ export default function Library() {
                 {/* Header */}
                 <div className="px-5 lg:pe-[25px] py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
-                    <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                    <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" aria-hidden="true" />
+                    <h3 id={tafsirDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                       {t(tafsirEd.kind === 'irab' ? 'library.irabTitle' : 'library.tafsirTitle')}
                     </h3>
                     <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
@@ -6537,16 +6576,17 @@ export default function Library() {
       {notePanel && (
         <>
           <div
+            data-dialog-keep
             className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
             onClick={() => setNotePanel(null)}
           />
-          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+          <div {...noteDialog.dialogProps} className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
                           md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0">
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
-                <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
+                <h3 id={noteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {notePanel.id ? t('library.annotations.editNote') : t('library.annotations.addNote')}
                 </h3>
               </div>
@@ -6571,6 +6611,8 @@ export default function Library() {
                 );
               })()}
               <textarea
+                data-autofocus
+                aria-label={t('library.annotations.noteLabel')}
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 maxLength={2000}
@@ -6610,16 +6652,17 @@ export default function Library() {
       {readTextNote && (
         <>
           <div
+            data-dialog-keep
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
             onClick={() => setReadTextNote(null)}
           />
-          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+          <div {...textNoteDialog.dialogProps} className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
                           md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:inset-x-auto md:start-1/2 md:-translate-x-1/2 md:w-[420px] md:max-h-[70vh] md:rounded-2xl md:border">
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
-                <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} />
-                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} aria-hidden="true" />
+                <h3 id={textNoteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {t('library.draw.noteTitle')}
                 </h3>
               </div>

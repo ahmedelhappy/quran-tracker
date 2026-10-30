@@ -787,6 +787,7 @@
       "addNote": "Add a note",
       "editNote": "Edit note",
       "notePlaceholder": "Write a note for this verse…",
+      "noteLabel": "Note for this verse",
       "noteSaved": "Note saved",
       "noteDeleted": "Note removed",
       "noteIndicator": "This verse has a note — open it",
