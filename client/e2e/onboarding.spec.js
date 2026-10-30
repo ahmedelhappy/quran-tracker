@@ -68,10 +68,16 @@ test('a failed onboarding save says why, and sending it again finishes', async (
   await expect(page.getByText(/some of your pages may already be marked memorized/)).toBeVisible()
   await expect(page).toHaveURL(/\/onboarding$/)
 
-  // The toast sits over the button (both bottom-end), and pauses while
-  // hovered, so a person closes it first.
-  await page.getByRole('status').getByRole('button', { name: 'Close' }).click()
-  await page.getByRole('button', { name: 'Start My Journey' }).click()
+  // The toast never covers the button that raised it (M-12, WCAG 2.4.11): it
+  // used to sit over it, both at the bottom end, so it had to be closed first.
+  // Now the button is clicked again with the toast still up.
+  const start = page.getByRole('button', { name: 'Start My Journey' })
+  const toastBox = await page.getByRole('status').locator('> div').first().boundingBox()
+  const startBox = await start.boundingBox()
+  const overlaps = toastBox.x < startBox.x + startBox.width && startBox.x < toastBox.x + toastBox.width &&
+    toastBox.y < startBox.y + startBox.height && startBox.y < toastBox.y + toastBox.height
+  expect(overlaps).toBe(false)
+  await start.click()
   await expect(page).toHaveURL(/\/dashboard$/)
   expect((await countsFor(request, account.id)).UserProgress).toBe(23)
 })

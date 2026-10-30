@@ -72,8 +72,16 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ showToast }}>
       {children}
       {/* data-dialog-keep: a modal's inert sweep (useDialog) skips this region,
-          so a toast raised while a dialog is up is still announced and clickable. */}
-      <div role="status" aria-live="polite" data-dialog-keep className="fixed bottom-6 end-6 z-[100] flex flex-col gap-2 pointer-events-none">
+          so a toast raised while a dialog is up is still announced and clickable.
+
+          Top centre, just under the navbar — never at the bottom, where every
+          action that raises a toast lives: the onboarding "Start my journey"
+          button (a 4-line error toast at the bottom end covered it at
+          1280×720), the Settings save bar, the progress editor's footer, the
+          Library audio bar and the chat panel. Centred, so it is the same in
+          either direction, and full-width-with-margins on a phone (M-12,
+          WCAG 2.4.11 Focus Not Obscured). */}
+      <div role="status" aria-live="polite" data-dialog-keep className="fixed top-20 inset-x-0 px-4 z-[100] flex flex-col items-center gap-2 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="pointer-events-auto">
             <ToastItem {...t} onDismiss={dismiss} />
