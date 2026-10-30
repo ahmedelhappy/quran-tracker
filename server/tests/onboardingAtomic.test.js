@@ -110,18 +110,20 @@ describe('Onboarding in one request, all or nothing (L-18)', () => {
     });
     const beforeRows = await rows(user);
 
-    // The bulk write gets its first operation in, then the connection "drops".
+    // The bulk write gets its first two operations in — page 1 created, page 3
+    // overwritten (its five reviews reset to none) — then the connection "drops".
     const realBulkWrite = UserProgress.bulkWrite.bind(UserProgress);
-    let wroteBeforeFailing = 0;
+    let midway = null;
     mock.method(UserProgress, 'bulkWrite', async (ops, options) => {
-      await realBulkWrite(ops.slice(0, 1), options);
-      wroteBeforeFailing = (await UserProgress.countDocuments({ userId: user._id })) - beforeRows.length;
+      await realBulkWrite(ops.slice(0, 2), options);
+      midway = await rows(user);
       throw Object.assign(new Error('connection reset (simulated)'), { name: 'MongoNetworkError' });
     }, { times: 1 });
 
     const failed = await onboard(user, SELECTION);
     assert.equal(failed.status, 500);
-    assert.equal(wroteBeforeFailing, 1, 'the failure really came after a row was written');
+    assert.deepEqual(midway.map((r) => [r.pageNumber, r.reviewCount]), [[1, 0], [3, 0]],
+      'the failure really came after a row was created and the old one changed');
     assert.deepEqual(await rows(user), beforeRows, 'the rows are as they were before the request');
     const u = await reload(user);
     assert.equal(u.onboardingComplete, false, 'not onboarded with part of the selection');
