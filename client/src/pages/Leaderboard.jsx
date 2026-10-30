@@ -103,6 +103,9 @@ export default function Leaderboard() {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
+      {/* The title bar is part of the page's content, so it sits inside the
+          one main landmark with the rest (the skip link lands on its heading). */}
+      <main className="flex-1 flex flex-col">
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-3xl mx-auto">
@@ -113,7 +116,7 @@ export default function Leaderboard() {
         </div>
       </div>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+      <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
 
         {/* Opt-in card (only when not yet opted in) */}
         {!optedIn && (
@@ -212,6 +215,7 @@ export default function Leaderboard() {
         {!loading && !error && optedIn && !data?.me && entries.length > 0 && (
           <p className="text-center text-sm text-[#707974] dark:text-gray-400">{t('leaderboard.notRankedYet')}</p>
         )}
+      </div>
       </main>
 
       <Footer />

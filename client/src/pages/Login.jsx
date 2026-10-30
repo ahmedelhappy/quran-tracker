@@ -50,7 +50,7 @@ const Login = () => {
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
 
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('auth.welcomeBack')}</h2>
+              <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('auth.welcomeBack')}</h1>
               <p className="text-[#404944] dark:text-gray-400">{t('auth.signIn')}</p>
             </div>
 

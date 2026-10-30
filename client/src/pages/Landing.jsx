@@ -37,7 +37,7 @@ const LandingNavbar = ({ activeSection }) => {
     { href: '#faq', id: 'faq', label: t('landing.navbar.faq') },
   ];
   return (
-    <nav className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40">
+    <nav aria-label={t('nav.mainLabel')} className="bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo size="md" />
         <div className="hidden md:flex items-center gap-6 text-sm font-medium text-[#4A4A4A] dark:text-gray-400">
@@ -121,6 +121,9 @@ const Landing = () => {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900">
       <LandingNavbar activeSection={activeSection} />
 
+      {/* Everything between the bar and the footer is the page's content: one
+          main landmark for the skip link and screen readers to land on. */}
+      <main>
       {/* ── HERO ─────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-20">
         <div className="grid lg:grid-cols-2 gap-14 items-center">
@@ -432,15 +435,18 @@ const Landing = () => {
               <div key={i} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden dark:bg-gray-700/30">
                 <button
                   className="w-full px-5 py-4 flex items-center justify-between text-start gap-4"
+                  aria-expanded={openFaq === i}
+                  aria-controls={openFaq === i ? `faq-answer-${i}` : undefined}
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                 >
                   <span className="font-medium text-[#1A1A1A] dark:text-gray-200 text-sm">{q}</span>
                   <FiChevronDown
+                    aria-hidden="true"
                     className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${openFaq === i ? 'rotate-180' : ''}`}
                   />
                 </button>
                 {openFaq === i && (
-                  <div className="px-5 pb-4">
+                  <div id={`faq-answer-${i}`} className="px-5 pb-4">
                     <p className="text-sm text-[#4A4A4A] dark:text-gray-400 leading-relaxed">{a}</p>
                   </div>
                 )}
@@ -449,6 +455,7 @@ const Landing = () => {
           </div>
         </div>
       </section>
+      </main>
 
       {/* ── FOOTER ───────────────────────────────────────── */}
       <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">

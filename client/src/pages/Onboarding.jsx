@@ -316,7 +316,7 @@ export default function Onboarding() {
       <div className="fixed top-4 start-4 z-10">
         <LanguageToggle variant="icon" />
       </div>
-      <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
+      <main className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
         <div className="text-center space-y-4">
           <div className="flex justify-center mb-2">
@@ -330,10 +330,10 @@ export default function Onboarding() {
             onClick={() => setStep(2)}
             className="w-full bg-[#003527] text-white py-3.5 rounded-lg font-medium hover:bg-[#064e3b] transition-colors mt-4 flex items-center justify-center gap-2"
           >
-            {t('onboarding.letsBegin')} <span className="inline-block rtl:rotate-180">→</span>
+            {t('onboarding.letsBegin')} <span className="inline-block rtl:rotate-180" aria-hidden="true">→</span>
           </button>
         </div>
-      </div>
+      </main>
     </div>
   );
 

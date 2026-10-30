@@ -394,6 +394,9 @@ export default function Progress() {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
+      {/* The title bar is part of the page's content, so it sits inside the
+          one main landmark with the rest (the skip link lands on its heading). */}
+      <main className="flex-1 flex flex-col">
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
@@ -402,7 +405,7 @@ export default function Progress() {
         </div>
       </div>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
+      <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
         {/* Load error — what happened, with Retry. With nothing loaded yet the
             page below is not drawn: it showed 0.0% and "604 pages remaining",
@@ -924,6 +927,7 @@ export default function Progress() {
         )}
         </>)}
 
+      </div>
       </main>
 
       <Footer />

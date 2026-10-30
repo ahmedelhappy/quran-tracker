@@ -763,7 +763,7 @@ export default function Dashboard() {
               <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center shrink-0 text-2xl">🌟</div>
               <div className="flex-1">
                 <p className="text-amber-400 text-[10px] font-bold uppercase tracking-widest mb-1">{t('dashboard.hafizBadge')}</p>
-                <h3 className="text-white text-xl md:text-2xl font-bold mb-2">{t('dashboard.hafizCongrats')}</h3>
+                <h2 className="text-white text-xl md:text-2xl font-bold mb-2">{t('dashboard.hafizCongrats')}</h2>
                 <p className="text-white/60 text-sm leading-relaxed max-w-xl">{t('dashboard.hafizMessage')}</p>
                 <div className="flex gap-3 mt-4 flex-wrap">
                   {[
@@ -791,9 +791,10 @@ export default function Dashboard() {
               </svg>
             </div>
             <div>
-              <h2 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
+              {/* The page's one h1: the greeting is what this page is called. */}
+              <h1 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
                 {t('dashboard.greeting', { name: user?.name?.split(' ')[0] })}
-              </h2>
+              </h1>
               <p className="text-[#404944] dark:text-gray-400">{t('dashboard.subtitle')}</p>
             </div>
             {(() => {
@@ -1037,7 +1038,7 @@ export default function Dashboard() {
               <div className="flex flex-col gap-4">
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-10 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center">
                   <p className="text-4xl mb-3">🎉</p>
-                  <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('dashboard.allDone')}</h3>
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('dashboard.allDone')}</h2>
                   <p className="text-[#404944] dark:text-gray-400">{t('dashboard.comeBack')}</p>
                 </div>
 
@@ -1060,7 +1061,7 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.memorizeMore')}</h4>
+                            <h3 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.memorizeMore')}</h3>
                             <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.upcomingPages')}</span>
                           </div>
                           <div className="space-y-2">
@@ -1076,7 +1077,7 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.reviewMore')}</h4>
+                            <h3 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.reviewMore')}</h3>
                             <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.additionalPages')}</span>
                           </div>
                           <div className="space-y-2">
@@ -1105,7 +1106,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2" data-tour="new-mem">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
+                      <h2 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h2>
                       <InfoHint text={t('hints.newMem')} label={t('dashboard.newMem')} />
                     </div>
                     {!isPaused && newPending.length > 0 && (
@@ -1181,7 +1182,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2" data-tour="review">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h4>
+                      <h2 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h2>
                       <InfoHint text={reviewHeadingHintText} label={t('dashboard.review')} />
                       <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: allReviewPages.length })}</span>
                     </div>

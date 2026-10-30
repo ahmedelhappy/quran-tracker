@@ -4995,6 +4995,9 @@ export default function Library() {
           docks its side bars, so neither is floating in a gutter. Only the reading
           column between them gets padding and a measure. */}
       <main className="grow w-full pt-20 pb-6">
+        {/* No visible title (see above), but the page still needs one for a
+            screen reader's heading list and the skip link to land on. */}
+        <h1 className="sr-only">{t('nav.library')}</h1>
         {/* The two panel handles: small chevron tabs flush to the viewport edges,
             the way an IDE hangs a panel handle. The sidebar's sits on the START
             edge it lives on, the tafsir's on the END edge its panel opens from, so
