@@ -1083,6 +1083,7 @@
     "timeout": "The assistant took too long to answer. Please try again.",
     "send": "Send",
     "toggleLabel": "Toggle Islamic Assistant",
+    "typing": "The assistant is writing a reply…",
     "suggestions": {
       "plan": "What should I do today?",
       "review": "How does the review schedule work?",
