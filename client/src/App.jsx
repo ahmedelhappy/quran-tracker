@@ -15,6 +15,7 @@ import Chatbot from './components/Chatbot';
 import ErrorBoundary from './components/ErrorBoundary';
 import { RegionFallback } from './components/ErrorNotice';
 import { usePageTitle } from './hooks/usePageTitle';
+import SkipLink from './components/SkipLink';
 
 // Pages are lazy-loaded so each route ships its own chunk — this keeps heavy,
 // route-specific dependencies (Recharts on /progress, driver.js tours on
@@ -164,6 +165,7 @@ function App() {
       {/* Above the router: the one timer outlives every route change. */}
       <TimerProvider>
         <Router>
+          <SkipLink />
           <ScrollToTop />
           <PageTitle />
           <AccountScope>
