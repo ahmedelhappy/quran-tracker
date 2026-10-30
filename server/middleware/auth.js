@@ -16,6 +16,7 @@ const protect = async (req, res, next) => {
   if (!token) {
     return res.status(401).json({
       success: false,
+      code: 'NOT_AUTHORIZED',
       message: 'Not authorized, no token provided'
     });
   }
@@ -30,6 +31,7 @@ const protect = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
+        code: 'NOT_AUTHORIZED',
         message: 'User not found'
       });
     }
@@ -42,6 +44,7 @@ const protect = async (req, res, next) => {
       if (decoded.iat < changedAtSec) {
         return res.status(401).json({
           success: false,
+          code: 'SESSION_EXPIRED',
           message: 'Session expired, please log in again'
         });
       }
@@ -57,6 +60,7 @@ const protect = async (req, res, next) => {
     if (JWT_ERRORS.has(error.name)) {
       return res.status(401).json({
         success: false,
+        code: 'NOT_AUTHORIZED',
         message: 'Not authorized, token invalid'
       });
     }

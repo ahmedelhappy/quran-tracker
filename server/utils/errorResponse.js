@@ -22,7 +22,7 @@
 // failed for value …"); name only the field instead.
 const castMessage = (err) => (err.path ? `Invalid value for ${err.path}` : 'Invalid value');
 
-// { status, message } for an error the client caused, or null for a server fault.
+// { status, code, message } for an error the client caused, or null for a server fault.
 const classifyError = (error) => {
   if (!error) return null;
   if (error.name === 'ValidationError' && error.errors) {
@@ -30,14 +30,15 @@ const classifyError = (error) => {
     const message = !first
       ? 'Invalid request'
       : first.name === 'CastError' ? castMessage(first) : first.message;
-    return { status: 400, message };
+    return { status: 400, code: 'INVALID_REQUEST', message };
   }
-  if (error.name === 'CastError') return { status: 400, message: castMessage(error) };
+  if (error.name === 'CastError') return { status: 400, code: 'INVALID_REQUEST', message: castMessage(error) };
   const multiDocWrite = error.name === 'MongoBulkWriteError' || Array.isArray(error.writeErrors);
   if (error.code === 11000 && !multiDocWrite) {
     const field = Object.keys(error.keyValue || error.keyPattern || {})[0];
     return {
       status: 409,
+      code: field === 'email' ? 'EMAIL_TAKEN' : 'DUPLICATE',
       message: field === 'email' ? 'An account with this email already exists' : 'This item already exists',
     };
   }
@@ -46,9 +47,9 @@ const classifyError = (error) => {
 
 const serverError = (res, message, error) => {
   const known = classifyError(error);
-  if (known) return res.status(known.status).json({ success: false, message: known.message });
+  if (known) return res.status(known.status).json({ success: false, code: known.code, message: known.message });
 
-  const body = { success: false, message };
+  const body = { success: false, code: 'SERVER_ERROR', message };
   if (process.env.NODE_ENV !== 'production' && error && error.message) {
     body.error = error.message;
   }

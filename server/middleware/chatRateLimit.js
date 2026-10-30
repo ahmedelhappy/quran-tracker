@@ -12,6 +12,7 @@ const chatLimiter = rateLimit({
   handler: (req, res) => {
     res.status(429).json({
       success: false,
+      code: 'CHAT_RATE_LIMIT',
       message: "You're sending messages too fast. Please wait a moment and try again.",
     });
   },

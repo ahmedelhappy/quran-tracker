@@ -194,6 +194,7 @@ const createAnnotation = async (req, res) => {
     if (count >= MAX_ANNOTATIONS) {
       return res.status(400).json({
         success: false,
+        code: 'ANNOTATION_LIMIT',
         message: `You've reached the ${MAX_ANNOTATIONS}-annotation limit. Remove some to add more.`,
       });
     }
@@ -212,12 +213,12 @@ const updateAnnotation = async (req, res) => {
   try {
     const userId = req.user._id;
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ success: false, message: 'Annotation not found' });
+      return res.status(404).json({ success: false, code: 'ANNOTATION_NOT_FOUND', message: 'Annotation not found' });
     }
 
     const annotation = await Annotation.findOne({ _id: req.params.id, userId });
     if (!annotation) {
-      return res.status(404).json({ success: false, message: 'Annotation not found' });
+      return res.status(404).json({ success: false, code: 'ANNOTATION_NOT_FOUND', message: 'Annotation not found' });
     }
 
     if (annotation.kind === 'note') {
@@ -226,7 +227,7 @@ const updateAnnotation = async (req, res) => {
       }
       const text = typeof req.body.text === 'string' ? req.body.text.trim() : '';
       if (!text) return res.status(400).json({ success: false, message: 'A note must have text' });
-      if (text.length > 2000) return res.status(400).json({ success: false, message: 'Note cannot exceed 2000 characters' });
+      if (text.length > 2000) return res.status(400).json({ success: false, code: 'NOTE_TOO_LONG', message: 'Note cannot exceed 2000 characters' });
       annotation.text = text;
     } else if (annotation.kind === 'highlight') {
       if (!COLORS.includes(req.body.color)) {
@@ -238,7 +239,7 @@ const updateAnnotation = async (req, res) => {
       if (req.body.text !== undefined) {
         const text = typeof req.body.text === 'string' ? req.body.text.trim() : '';
         if (!text) return res.status(400).json({ success: false, message: 'A text note must have text' });
-        if (text.length > MAX_TEXT_LEN) return res.status(400).json({ success: false, message: `Text note cannot exceed ${MAX_TEXT_LEN} characters` });
+        if (text.length > MAX_TEXT_LEN) return res.status(400).json({ success: false, code: 'NOTE_TOO_LONG', message: `Text note cannot exceed ${MAX_TEXT_LEN} characters` });
         annotation.text = text;
       }
       if (req.body.color !== undefined) {
@@ -274,12 +275,12 @@ const deleteAnnotation = async (req, res) => {
   try {
     const userId = req.user._id;
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ success: false, message: 'Annotation not found' });
+      return res.status(404).json({ success: false, code: 'ANNOTATION_NOT_FOUND', message: 'Annotation not found' });
     }
     // Scope to the owner so one user can never delete another's.
     const annotation = await Annotation.findOneAndDelete({ _id: req.params.id, userId });
     if (!annotation) {
-      return res.status(404).json({ success: false, message: 'Annotation not found' });
+      return res.status(404).json({ success: false, code: 'ANNOTATION_NOT_FOUND', message: 'Annotation not found' });
     }
     res.status(200).json({ success: true, message: 'Annotation removed' });
   } catch (error) {
@@ -374,6 +375,7 @@ const upsertDrawing = async (req, res) => {
     if (bytes > MAX_DRAW_BYTES) {
       return res.status(400).json({
         success: false,
+        code: 'DRAWING_TOO_LARGE',
         message: `This page's drawing is too large (${Math.round(bytes / 1024)}KB, max ${MAX_DRAW_BYTES / 1024}KB). Erase some strokes.`,
       });
     }
@@ -386,6 +388,7 @@ const upsertDrawing = async (req, res) => {
       if (count >= MAX_ANNOTATIONS) {
         return res.status(400).json({
           success: false,
+          code: 'ANNOTATION_LIMIT',
           message: `You've reached the ${MAX_ANNOTATIONS}-annotation limit. Remove some to add more.`,
         });
       }
@@ -585,6 +588,7 @@ const batchAnnotations = async (req, res) => {
       if (count - removed + created > MAX_ANNOTATIONS) {
         return res.status(400).json({
           success: false,
+          code: 'ANNOTATION_LIMIT',
           message: `You've reached the ${MAX_ANNOTATIONS}-annotation limit. Remove some to add more.`,
         });
       }

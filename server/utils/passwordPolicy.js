@@ -10,14 +10,15 @@
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_BYTES = 72;
 
-// A message describing what is wrong with the password, or null when it is fine.
-// Length counts code points, so an emoji is one character, not two.
+// What is wrong with the password — { code, message }, the code for the client
+// to translate — or null when it is fine. Length counts code points, so an emoji
+// is one character, not two.
 const newPasswordProblem = (password) => {
   if (typeof password !== 'string' || [...password].length < PASSWORD_MIN_LENGTH) {
-    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    return { code: 'PASSWORD_TOO_SHORT', message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` };
   }
   if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
-    return 'Password is too long (at most 72 bytes: 72 Latin letters, fewer in Arabic or with emoji)';
+    return { code: 'PASSWORD_TOO_LONG', message: 'Password is too long (at most 72 bytes: 72 Latin letters, fewer in Arabic or with emoji)' };
   }
   return null;
 };

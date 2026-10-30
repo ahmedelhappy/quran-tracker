@@ -356,7 +356,7 @@ describe('POST /api/chat — history hygiene and limits', () => {
     groqImpl = async () => { throw Object.assign(new Error('503 over capacity'), { status: 503 }); };
     const res = await quietly(() => chat(user, [{ role: 'user', content: 'hi' }]));
     assert.equal(res.status, 502);
-    assert.deepEqual(res.body, { success: false, message: 'AI service unavailable' });
+    assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'AI service unavailable' });
   });
 
   test('a reply cut off before any answer is a 502, not an empty bubble', async () => {

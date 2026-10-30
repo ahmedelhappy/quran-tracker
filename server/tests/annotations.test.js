@@ -854,7 +854,7 @@ describe('Annotations API', () => {
         Annotation.collection.deleteMany = realDeleteMany;
       }
       assert.equal(res.status, 500);
-      assert.deepEqual(res.body, { success: false, message: 'Error saving annotations' });
+      assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'Error saving annotations' });
     });
   });
 

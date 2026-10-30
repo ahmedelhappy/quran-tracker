@@ -9,7 +9,7 @@ const passThrough = (req, res, next) => next();
 
 // Shared 429 handler factory — mirrors chatLimiter's JSON error shape.
 const tooMany = (message) => (req, res) => {
-  res.status(429).json({ success: false, message });
+  res.status(429).json({ success: false, code: 'RATE_LIMITED', message });
 };
 
 // Strict limiter for the unauthenticated auth endpoints (login/register), where

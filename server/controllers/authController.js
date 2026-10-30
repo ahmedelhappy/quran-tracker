@@ -40,12 +40,12 @@ exports.register = async (req, res) => {
     // backstop for every other write path.
     const email = normalizeEmail(req.body.email);
     if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid email' });
+      return res.status(400).json({ success: false, code: 'INVALID_EMAIL', message: 'Please provide a valid email' });
     }
 
     const passwordProblem = newPasswordProblem(password);
     if (passwordProblem) {
-      return res.status(400).json({ success: false, message: passwordProblem });
+      return res.status(400).json({ success: false, ...passwordProblem });
     }
 
     // Check if user already exists. A conflict, not a malformed request — and the
@@ -54,6 +54,7 @@ exports.register = async (req, res) => {
     if (userExists) {
       return res.status(409).json({
         success: false,
+        code: 'EMAIL_TAKEN',
         message: 'User already exists with this email'
       });
     }
@@ -100,6 +101,7 @@ exports.login = async (req, res) => {
     if (!email || !password || email.length > EMAIL_MAX_LENGTH) {
       return res.status(400).json({
         success: false,
+        code: 'CREDENTIALS_REQUIRED',
         message: 'Please provide email and password'
       });
     }
@@ -134,6 +136,7 @@ exports.login = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
+        code: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password'
       });
     }
@@ -229,12 +232,14 @@ exports.updateProfile = async (req, res) => {
       if (!name || name.trim().length === 0) {
         return res.status(400).json({
           success: false,
+          code: 'NAME_REQUIRED',
           message: 'Name cannot be empty'
         });
       }
       if (name.length > 50) {
         return res.status(400).json({
           success: false,
+          code: 'NAME_TOO_LONG',
           message: 'Name cannot exceed 50 characters'
         });
       }
@@ -246,6 +251,7 @@ exports.updateProfile = async (req, res) => {
       if (isNaN(pages) || pages < 0.5 || pages > 10) {
         return res.status(400).json({
           success: false,
+          code: 'INVALID_DAILY_GOAL',
           message: 'Daily pages must be between 0.5 and 10'
         });
       }
@@ -264,6 +270,7 @@ exports.updateProfile = async (req, res) => {
       if (!['en', 'ar'].includes(language)) {
         return res.status(400).json({
           success: false,
+          code: 'INVALID_LANGUAGE',
           message: 'language must be "en" or "ar"'
         });
       }
@@ -285,7 +292,7 @@ exports.updateProfile = async (req, res) => {
       } else {
         // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
         const n = toPageNumber(v);
-        if (n === null) return res.status(400).json({ success: false, message: `cycleReviewStartPage ${PAGE_RULE}` });
+        if (n === null) return res.status(400).json({ success: false, code: 'INVALID_PAGE', message: `cycleReviewStartPage ${PAGE_RULE}` });
         updateData.cycleReviewStartPage = n;
       }
     }
@@ -299,7 +306,7 @@ exports.updateProfile = async (req, res) => {
       } else {
         const trimmed = String(dn).trim();
         if (trimmed.length < 3 || trimmed.length > 30) {
-          return res.status(400).json({ success: false, message: 'Display name must be 3 to 30 characters' });
+          return res.status(400).json({ success: false, code: 'DISPLAY_NAME_LENGTH', message: 'Display name must be 3 to 30 characters' });
         }
         updateData.displayName = trimmed;
       }
@@ -313,7 +320,7 @@ exports.updateProfile = async (req, res) => {
           ? updateData.displayName
           : (await User.findById(userId).select('displayName'))?.displayName;
         if (!effectiveName) {
-          return res.status(400).json({ success: false, message: 'A display name is required to join the leaderboard' });
+          return res.status(400).json({ success: false, code: 'DISPLAY_NAME_REQUIRED', message: 'A display name is required to join the leaderboard' });
         }
       }
       updateData.leaderboardOptIn = optIn;
@@ -399,22 +406,22 @@ exports.changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Both current and new password are required' });
+      return res.status(400).json({ success: false, code: 'PASSWORD_FIELDS_REQUIRED', message: 'Both current and new password are required' });
     }
     // Only the NEW password meets the current rules; the current one is whatever
     // the account was created with, possibly under the old 6-character minimum.
     const passwordProblem = newPasswordProblem(newPassword);
     if (passwordProblem) {
-      return res.status(400).json({ success: false, message: passwordProblem });
+      return res.status(400).json({ success: false, ...passwordProblem });
     }
     if (newPassword === currentPassword) {
-      return res.status(400).json({ success: false, message: 'New password must be different from current password' });
+      return res.status(400).json({ success: false, code: 'PASSWORD_UNCHANGED', message: 'New password must be different from current password' });
     }
 
     const user = await User.findById(userId).select('+password');
     const isMatch = await user.matchPassword(currentPassword);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      return res.status(400).json({ success: false, code: 'WRONG_PASSWORD', message: 'Current password is incorrect' });
     }
 
     user.password = newPassword;

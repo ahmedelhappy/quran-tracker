@@ -22,12 +22,12 @@ const addBookmark = async (req, res) => {
   try {
     const pageNumber = Number(req.body.pageNumber);
     if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
-      return res.status(400).json({ success: false, message: 'pageNumber must be an integer between 1 and 604' });
+      return res.status(400).json({ success: false, code: 'INVALID_PAGE', message: 'pageNumber must be an integer between 1 and 604' });
     }
 
     const label = typeof req.body.label === 'string' ? req.body.label.trim() : '';
     if (label.length > 50) {
-      return res.status(400).json({ success: false, message: 'Label cannot exceed 50 characters' });
+      return res.status(400).json({ success: false, code: 'BOOKMARK_LABEL_TOO_LONG', message: 'Label cannot exceed 50 characters' });
     }
 
     // A page may hold several bookmarks with different names. An unnamed one
@@ -35,7 +35,7 @@ const addBookmark = async (req, res) => {
     if (!label) {
       const unnamed = await Bookmark.findOne({ userId: req.user._id, pageNumber, label: '' });
       if (unnamed) {
-        return res.status(409).json({ success: false, message: `Page ${pageNumber} already has a bookmark without a name` });
+        return res.status(409).json({ success: false, code: 'BOOKMARK_UNNAMED_EXISTS', message: `Page ${pageNumber} already has a bookmark without a name` });
       }
     }
 
@@ -44,7 +44,7 @@ const addBookmark = async (req, res) => {
       const dupLabel = await Bookmark.findOne({ userId: req.user._id, label })
         .collation({ locale: 'en', strength: 2 });
       if (dupLabel) {
-        return res.status(409).json({ success: false, message: 'You already have a bookmark with this name' });
+        return res.status(409).json({ success: false, code: 'BOOKMARK_NAME_TAKEN', message: 'You already have a bookmark with this name' });
       }
     }
 
@@ -52,6 +52,7 @@ const addBookmark = async (req, res) => {
     if (count >= MAX_BOOKMARKS) {
       return res.status(400).json({
         success: false,
+        code: 'BOOKMARK_LIMIT',
         message: `You've reached the ${MAX_BOOKMARKS}-bookmark limit. Remove one to add another.`,
       });
     }
@@ -62,7 +63,7 @@ const addBookmark = async (req, res) => {
     // Race-safety net: the one-unnamed-per-page index catches a concurrent
     // duplicate the pre-check above missed.
     if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'This page already has a bookmark without a name' });
+      return res.status(409).json({ success: false, code: 'BOOKMARK_UNNAMED_EXISTS', message: 'This page already has a bookmark without a name' });
     }
     console.error('AddBookmark error:', error);
     serverError(res, 'Error adding bookmark', error);
@@ -81,11 +82,11 @@ const updateBookmark = async (req, res) => {
   try {
     // Unknown and foreign ids look the same (404), so ids can't be probed.
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ success: false, message: 'Bookmark not found' });
+      return res.status(404).json({ success: false, code: 'BOOKMARK_NOT_FOUND', message: 'Bookmark not found' });
     }
     const bookmark = await Bookmark.findOne({ _id: req.params.id, userId: req.user._id });
     if (!bookmark) {
-      return res.status(404).json({ success: false, message: 'Bookmark not found' });
+      return res.status(404).json({ success: false, code: 'BOOKMARK_NOT_FOUND', message: 'Bookmark not found' });
     }
 
     const updates = {};
@@ -94,7 +95,7 @@ const updateBookmark = async (req, res) => {
     if (req.body.pageNumber !== undefined) {
       pageNumber = Number(req.body.pageNumber);
       if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 604) {
-        return res.status(400).json({ success: false, message: 'pageNumber must be an integer between 1 and 604' });
+        return res.status(400).json({ success: false, code: 'INVALID_PAGE', message: 'pageNumber must be an integer between 1 and 604' });
       }
       if (pageNumber !== bookmark.pageNumber) updates.pageNumber = pageNumber;
     }
@@ -103,7 +104,7 @@ const updateBookmark = async (req, res) => {
     if (req.body.label !== undefined) {
       label = req.body.label.trim();
       if (label.length > 50) {
-        return res.status(400).json({ success: false, message: 'Label cannot exceed 50 characters' });
+        return res.status(400).json({ success: false, code: 'BOOKMARK_LABEL_TOO_LONG', message: 'Label cannot exceed 50 characters' });
       }
       if (label !== bookmark.label) updates.label = label;
     }
@@ -116,6 +117,7 @@ const updateBookmark = async (req, res) => {
       if (occupant && req.body.replace !== true && req.body.replace !== 'true') {
         return res.status(409).json({
           success: false,
+          code: 'BOOKMARK_UNNAMED_EXISTS',
           message: `Page ${pageNumber} already has a bookmark without a name`,
           conflict: { _id: occupant._id, pageNumber: occupant.pageNumber, label: occupant.label },
         });
@@ -128,7 +130,7 @@ const updateBookmark = async (req, res) => {
       const dupLabel = await Bookmark.findOne({ userId: req.user._id, label: updates.label, _id: { $ne: bookmark._id } })
         .collation({ locale: 'en', strength: 2 });
       if (dupLabel) {
-        return res.status(409).json({ success: false, message: 'You already have a bookmark with this name' });
+        return res.status(409).json({ success: false, code: 'BOOKMARK_NAME_TAKEN', message: 'You already have a bookmark with this name' });
       }
     }
 
@@ -159,7 +161,7 @@ const updateBookmark = async (req, res) => {
   } catch (error) {
     // A concurrent add/move left an unnamed bookmark there between the check and the write.
     if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'This page already has a bookmark without a name' });
+      return res.status(409).json({ success: false, code: 'BOOKMARK_UNNAMED_EXISTS', message: 'This page already has a bookmark without a name' });
     }
     console.error('UpdateBookmark error:', error);
     serverError(res, 'Error updating bookmark', error);
@@ -170,12 +172,12 @@ const updateBookmark = async (req, res) => {
 const deleteBookmark = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(404).json({ success: false, message: 'Bookmark not found' });
+      return res.status(404).json({ success: false, code: 'BOOKMARK_NOT_FOUND', message: 'Bookmark not found' });
     }
     // Scope the lookup to the owner so one user can never delete another's.
     const bookmark = await Bookmark.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
     if (!bookmark) {
-      return res.status(404).json({ success: false, message: 'Bookmark not found' });
+      return res.status(404).json({ success: false, code: 'BOOKMARK_NOT_FOUND', message: 'Bookmark not found' });
     }
     res.status(200).json({ success: true, message: 'Bookmark removed' });
   } catch (error) {

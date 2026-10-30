@@ -15,10 +15,10 @@ const jsonErrorHandler = (err, req, res, next) => {
 
   // body-parser (express.json) tags its errors with a `type`.
   if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ success: false, message: 'Malformed JSON in request body' });
+    return res.status(400).json({ success: false, code: 'MALFORMED_JSON', message: 'Malformed JSON in request body' });
   }
   if (err.type === 'entity.too.large') {
-    return res.status(413).json({ success: false, message: 'Request body is too large' });
+    return res.status(413).json({ success: false, code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' });
   }
   // Any other client error the parser raised (unsupported charset or encoding, an
   // aborted upload…) keeps its status, with a generic message: http-errors marks
@@ -30,10 +30,10 @@ const jsonErrorHandler = (err, req, res, next) => {
 
   // A model validation or duplicate-key error that escaped a controller.
   const known = classifyError(err);
-  if (known) return res.status(known.status).json({ success: false, message: known.message });
+  if (known) return res.status(known.status).json({ success: false, code: known.code, message: known.message });
 
   console.error('Unhandled error:', err);
-  const body = { success: false, message: 'Server error' };
+  const body = { success: false, code: 'SERVER_ERROR', message: 'Server error' };
   // Never a stack; the raw message only outside production, as in serverError.
   if (process.env.NODE_ENV !== 'production' && err && err.message) body.error = err.message;
   return res.status(500).json(body);

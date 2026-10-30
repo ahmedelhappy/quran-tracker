@@ -22,7 +22,7 @@ describe('serverError — status mapping', () => {
     const err = await new User({ email: 'a@example.com', password: 'secret123' }).validate().catch((e) => e);
     const res = serverError(fakeRes(), 'Error saving', err);
     assert.equal(res.statusCode, 400);
-    assert.deepEqual(res.body, { success: false, message: 'Please provide your name' });
+    assert.deepEqual(res.body, { success: false, code: 'INVALID_REQUEST', message: 'Please provide your name' });
   });
 
   test('a cast failure inside a ValidationError names the field, not the value', async () => {
@@ -62,7 +62,7 @@ describe('serverError — status mapping', () => {
       ]) {
         const res = serverError(fakeRes(), 'Error saving progress', err);
         assert.equal(res.statusCode, 500);
-        assert.deepEqual(res.body, { success: false, message: 'Error saving progress' });
+        assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'Error saving progress' });
       }
     } finally {
       process.env.NODE_ENV = prev;
@@ -80,7 +80,7 @@ describe('serverError — status mapping', () => {
       process.env.NODE_ENV = 'production';
       const prod = serverError(fakeRes(), 'Error saving', new Error('socket hang up'));
       assert.equal(prod.statusCode, 500);
-      assert.deepEqual(prod.body, { success: false, message: 'Error saving' });
+      assert.deepEqual(prod.body, { success: false, code: 'SERVER_ERROR', message: 'Error saving' });
     } finally {
       process.env.NODE_ENV = prev;
     }
