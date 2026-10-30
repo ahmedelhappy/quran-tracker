@@ -3,6 +3,7 @@
 import { PAGE_FIRST_AYAH } from '../data/pageAyahStarts';
 import { SURAH_BY_NUMBER } from '../data/surahPages';
 import { verseOfOrd } from './verseIndex';
+import { intlLocale } from './intlLocale';
 import { recentKeyOf } from '../services/recentPages';
 
 // The surah a page opens with — what a reader recognises it by.
@@ -28,7 +29,7 @@ export const formatAgo = (at, now, { t, fmtNum, isArabic }) => {
   if (unit !== 'date') return t(`library.recent.ago.${unit}`, { count: n, n: fmtNum(n) });
   const date = new Date(at);
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return new Intl.DateTimeFormat(isArabic ? 'ar-u-nu-arab' : 'en', {
+  return new Intl.DateTimeFormat(intlLocale(isArabic), {
     day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }),
   }).format(date);
 };

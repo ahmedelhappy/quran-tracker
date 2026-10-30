@@ -21,6 +21,7 @@ import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSura
 import { getDailyVerse } from '../services/dailyVerse';
 import { round1 } from '../utils/formatNumber';
 import { storage } from '../utils/safeStorage';
+import { intlLocale } from '../utils/intlLocale';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -47,8 +48,7 @@ const dayOfYear = () => {
 
 const formatDate = (iso, lang = 'en') => {
   const d = new Date(iso + 'T00:00:00Z');
-  const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
-  return d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return d.toLocaleDateString(intlLocale(lang === 'ar'), { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
 // ── Circular Juz progress ring ───────────────────────────
@@ -799,7 +799,7 @@ export default function Dashboard() {
             {(() => {
               const streak = stats?.currentStreak ?? user?.currentStreak ?? 0;
               const lastActive = user?.lastActiveDate
-                ? new Date(user.lastActiveDate).toLocaleDateString()
+                ? new Date(user.lastActiveDate).toLocaleDateString(intlLocale(i18n.language === 'ar'))
                 : null;
               if (streak === 0) {
                 return (

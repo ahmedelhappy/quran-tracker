@@ -14,6 +14,7 @@ import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
 import { surahOrdRange, coverageFromProgress } from '../utils/unitRanges';
 import { round1 } from '../utils/formatNumber';
+import { intlLocale } from '../utils/intlLocale';
 import { reportLoadFailure } from '../utils/reportError';
 
 // recharts is most of this page's code; the chart arrives after the page (M-09).
@@ -304,7 +305,7 @@ export default function Progress() {
   const projectedDate = estimate?.estimatedDays
     ? new Date(Date.now() + estimate.estimatedDays * 86400000)
     : null;
-  const dateLocale = isArabic ? 'ar-u-ca-gregory-nu-arab' : 'en-US';
+  const dateLocale = intlLocale(isArabic);
 
   // Per-surah progress counts VERSES, not pages: a surah's first and last pages
   // usually hold a neighbour's verses too, so "every page touched" called a
@@ -351,7 +352,7 @@ export default function Progress() {
       cumulative += byDate[d];
       const dt = new Date(d + 'T00:00:00Z');
       return {
-        label: dt.toLocaleDateString(i18n.language === 'ar' ? 'ar-SA' : 'en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+        label: dt.toLocaleDateString(intlLocale(i18n.language === 'ar'), { month: 'short', day: 'numeric', timeZone: 'UTC' }),
         pages: cumulative,
       };
     });
@@ -469,7 +470,7 @@ export default function Progress() {
                   </div>
                 ) : (
                   <>
-                    <ContributionGraph weeks={weeks} locale={isArabic ? 'ar-SA' : 'en-US'} />
+                    <ContributionGraph weeks={weeks} locale={intlLocale(isArabic)} />
                     <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                       <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
                         <span>{t('progress.less')}</span>
