@@ -147,6 +147,48 @@ describe('useDialog (M-12)', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('turning modal while open (a resize across a breakpoint) inerts the page without moving focus', () => {
+    function Sheet({ modal }) {
+      const { dialogProps } = useDialog({ open: true, onClose: () => {}, modal });
+      return (
+        <>
+          <main data-testid="page"><button>Page</button></main>
+          <div {...dialogProps} aria-label="Sheet"><button>A</button><button>B</button></div>
+        </>
+      );
+    }
+    const { rerender } = render(<Sheet modal={false} />);
+    const b = screen.getByRole('button', { name: 'B' });
+    b.focus();
+    rerender(<Sheet modal />);
+    expect(screen.getByTestId('page').hasAttribute('inert')).toBe(true);
+    expect(document.activeElement).toBe(b);
+    rerender(<Sheet modal={false} />);
+    expect(screen.getByTestId('page').hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(b);
+  });
+
+  it('falls back to fallbackFocus() when the opener is gone', () => {
+    function Popover() {
+      const [open, setOpen] = useState(false);
+      const anchor = useRef(null);
+      const { dialogProps } = useDialog({ open, onClose: () => setOpen(false), fallbackFocus: () => anchor.current });
+      return (
+        <>
+          <button ref={anchor}>Verse</button>
+          {!open && <button onClick={() => setOpen(true)}>Tafsir</button>}
+          {open && <div {...dialogProps} aria-label="Panel"><button>Inside</button></div>}
+        </>
+      );
+    }
+    render(<Popover />);
+    const opener = screen.getByRole('button', { name: 'Tafsir' });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Inside' }), { key: 'Escape' });
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Verse' }));
+  });
+
   it('does not take focus back when the reader moved it elsewhere', () => {
     function Panel() {
       const [open, setOpen] = useState(true);

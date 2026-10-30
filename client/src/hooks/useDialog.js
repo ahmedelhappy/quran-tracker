@@ -86,6 +86,9 @@ export function useDialog({
   // that had it on open — e.g. a launcher that is unmounted while its panel is
   // up. A function, read at close time, after that element is back.
   returnFocus,
+  // Where focus goes on close when the opener is gone (a popover button that
+  // folded away meanwhile). Also a function read at close time.
+  fallbackFocus,
   onKeyDown,
 }) {
   const ref = useRef(null);
@@ -93,8 +96,20 @@ export function useDialog({
   // Read through a ref so a parent passing a fresh arrow each render doesn't
   // re-run the open/close effect (which would steal focus back every render).
   const live = useRef({});
-  useEffect(() => { live.current = { onClose, returnFocus, initialFocusRef, onKeyDown }; });
+  useEffect(() => { live.current = { onClose, returnFocus, fallbackFocus, initialFocusRef, onKeyDown }; });
 
+  // Only a modal puts the rest of the page to sleep. Held in a ref so the
+  // close path below can wake the page BEFORE handing focus back: an inert
+  // opener cannot take focus.
+  const releaseInert = useRef(null);
+  const setInert = useCallback((on) => {
+    if (on && !releaseInert.current && ref.current) releaseInert.current = inertOutside(ref.current);
+    if (!on && releaseInert.current) { releaseInert.current(); releaseInert.current = null; }
+  }, []);
+
+  // Focus in on open, back out on close. Keyed on `open` alone: a panel that
+  // turns modal or not while it stays open (a sheet on a phone, a column on a
+  // wide screen, across a resize) keeps the reader's place.
   useEffect(() => {
     if (!open) return undefined;
     const el = ref.current;
@@ -106,19 +121,25 @@ export function useDialog({
     // An element of the dialog that took focus by itself (autoFocus) keeps it.
     // preventScroll: a sheet that slides in shouldn't yank the page under it.
     if (!el.contains(document.activeElement)) target.focus({ preventScroll: true });
-    const release = modal ? inertOutside(el) : null;
     return () => {
-      release?.();
+      setInert(false);
       // The dialog is gone (or going): focus fell to <body>, or is still on a
       // node inside it. Hand it back — unless the reader has already put it
       // somewhere else themselves (clicked into the page beside a panel).
       const active = document.activeElement;
       const lost = !active || active === document.body || el.contains(active) || !active.isConnected;
       if (!lost) return;
-      const back = live.current.returnFocus?.() ?? opener;
+      const back = live.current.returnFocus?.()
+        ?? (opener?.isConnected && opener !== document.body ? opener : live.current.fallbackFocus?.());
       if (back?.isConnected) back.focus({ preventScroll: true });
     };
-  }, [open, modal]);
+  }, [open, setInert]);
+
+  // After the focus effect, so the opener was read before anything went inert;
+  // re-run when a panel turns modal or not while it stays open.
+  useEffect(() => { if (open) setInert(modal); }, [open, modal, setInert]);
+  // And never left behind by an unmount that skipped the close.
+  useEffect(() => () => setInert(false), [setInert]);
 
   const handleKeyDown = useCallback((e) => {
     live.current.onKeyDown?.(e);
