@@ -4381,7 +4381,7 @@ export default function Library() {
             lastTafsirVerseRef.current = { ...found, page };
             bumpSpanVerse();
           }
-        }).catch((err) => reportLoadFailure('Library: the span verse text', err));
+        }).catch((err) => reportLoadFailure(err, 'the span verse text'));
       }
     }
     setNotePanel(null);
