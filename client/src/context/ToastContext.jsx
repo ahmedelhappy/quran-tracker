@@ -71,7 +71,9 @@ export const ToastProvider = ({ children }) => {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div role="status" aria-live="polite" className="fixed bottom-6 end-6 z-[100] flex flex-col gap-2 pointer-events-none">
+      {/* data-dialog-keep: a modal's inert sweep (useDialog) skips this region,
+          so a toast raised while a dialog is up is still announced and clickable. */}
+      <div role="status" aria-live="polite" data-dialog-keep className="fixed bottom-6 end-6 z-[100] flex flex-col gap-2 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className="pointer-events-auto">
             <ToastItem {...t} onDismiss={dismiss} />

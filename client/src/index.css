@@ -46,6 +46,9 @@ html.dark { color-scheme: dark; }
   border-radius: 0;
 }
 .dark :where(.mushaf-word):focus-visible { outline-color: #34d399; }
+/* A dialog takes focus itself when it has nothing better to focus (useDialog):
+   that is a place to start from, not a control, so it gets no ring. */
+:where([role="dialog"], [role="alertdialog"])[tabindex="-1"]:focus { outline: none; }
 
 body {
   font-family: 'Inter', sans-serif;
