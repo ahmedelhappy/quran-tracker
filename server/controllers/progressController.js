@@ -570,9 +570,20 @@ exports.completeOnboarding = async (req, res) => {
       }
     }
 
+    // The account was deleted while this request ran. deleteAccount removes the
+    // progress first and the account last, so rows this request wrote after the
+    // first step outlive the account: every row under this id is an orphan now.
+    // Remove them and answer as the auth check does for a deleted account.
+    const accountGone = async () => {
+      await UserProgress.deleteMany({ userId })
+        .catch((err) => console.error('Onboarding: could not remove the rows of a deleted account', { userId: String(userId), err }));
+      return res.status(401).json({ success: false, code: 'NOT_AUTHORIZED', message: 'User not found' });
+    };
+
     // 3. Last, in one atomic single-document update: goal, plan and the flag.
+    let updated;
     try {
-      await User.updateOne({ _id: userId }, {
+      updated = await User.updateOne({ _id: userId }, {
         $set: {
           ...plan.update,
           dailyNewPages: dailyGoal,
@@ -591,10 +602,12 @@ exports.completeOnboarding = async (req, res) => {
       if (bulkOps.length) {
         const now = await User.findById(userId, { onboardingComplete: 1 }).lean()
           .catch((readError) => { leftBehind('could not re-read the account after a failed update', { writeError, readError }); });
+        if (now === null) return accountGone();
         if (now && !now.onboardingComplete) await undoProgress(writeError);
       }
       throw writeError;
     }
+    if (updated.matchedCount === 0) return accountGone();
 
     leaderboardCache.clear();
 

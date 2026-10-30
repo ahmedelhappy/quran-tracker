@@ -12,6 +12,7 @@ const app = require('../app');
 const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const clock = require('../utils/clock');
+const { deleteUserData } = require('../utils/userData');
 
 const NOW = '2026-03-04T10:00:00.000Z';
 const YESTERDAY = '2026-03-03T00:00:00.000Z';
@@ -205,6 +206,32 @@ describe('Onboarding in one request, all or nothing (L-18)', () => {
     assert.equal((await onboard(user, SELECTION)).status, 500);
     assert.equal((await reload(user)).onboardingComplete, true);
     assert.deepEqual(await rows(user), SAVED, 'an onboarded account is not left without its pages');
+  });
+
+  test('an account deleted while it onboards gets no 200 and leaves no rows behind', async () => {
+    const user = await createUser({ onboardingComplete: false });
+    // The account is deleted (progress first, then the account) just before
+    // this request's rows go in, so they land on an account that is gone.
+    const realBulkWrite = UserProgress.bulkWrite.bind(UserProgress);
+    mock.method(UserProgress, 'bulkWrite', async (ops, options) => {
+      await deleteUserData(user._id);
+      return realBulkWrite(ops, options);
+    }, { times: 1 });
+    const res = await onboard(user, SELECTION);
+    assert.equal(res.status, 401);
+    assert.equal(res.body.code, 'NOT_AUTHORIZED');
+    assert.equal(await UserProgress.countDocuments({ userId: user._id }), 0, 'no orphan rows');
+  });
+
+  test('an account deleted as its update fails leaves no rows behind either', async () => {
+    const user = await createUser({ onboardingComplete: false });
+    mock.method(User, 'updateOne', async () => {
+      await deleteUserData(user._id);
+      throw new Error('write concern timeout (simulated)');
+    }, { times: 1 });
+    const res = await onboard(user, SELECTION);
+    assert.equal(res.status, 401);
+    assert.equal(await UserProgress.countDocuments({ userId: user._id }), 0);
   });
 
   test('sending it twice (a response lost after the server finished) changes nothing more', async () => {
