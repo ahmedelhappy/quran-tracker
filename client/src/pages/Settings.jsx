@@ -22,6 +22,7 @@ import {
 import { useDragSelect } from '../hooks/useDragSelect';
 import { newPasswordProblem } from '../utils/passwordRules';
 import { reportLoadFailure } from '../utils/reportError';
+import { apiErrorMessage } from '../utils/apiError';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -646,7 +647,7 @@ function ChangePasswordCard() {
       showToast(t(signedOut ? 'settings.password.successSignIn' : 'settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {
-      showToast(error.response?.data?.message ?? t('settings.password.failed'), 'error');
+      showToast(apiErrorMessage(error, t, 'settings.password.failed'), 'error');
     } finally {
       setPwLoading(false);
     }
@@ -720,7 +721,7 @@ function CommunityCard() {
       updateUser(res.data.data);
       showToast(t('settings.community.saved'), 'success');
     } catch (error) {
-      showToast(error.response?.data?.message ?? t('settings.community.failed'), 'error');
+      showToast(apiErrorMessage(error, t, 'settings.community.failed'), 'error');
       if (rollback) rollback();
     } finally {
       setSaving(false);

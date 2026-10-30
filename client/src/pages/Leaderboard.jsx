@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { apiErrorMessage } from '../utils/apiError';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -89,7 +90,7 @@ export default function Leaderboard() {
       showToast(t('leaderboard.joined'), 'success');
       load();
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
     } finally {
       setJoining(false);
     }

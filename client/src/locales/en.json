@@ -1247,5 +1247,32 @@
     "juz_other": "{{count}} Juz",
     "surahs_one": "{{count}} Surah",
     "surahs_other": "{{count}} Surahs"
+  },
+  "errors": {
+    "INVALID_CREDENTIALS": "Invalid email or password",
+    "CREDENTIALS_REQUIRED": "Enter your email and password",
+    "INVALID_EMAIL": "Please enter a valid email address",
+    "EMAIL_TAKEN": "An account with this email already exists",
+    "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
+    "PASSWORD_TOO_LONG": "Password is too long",
+    "PASSWORD_FIELDS_REQUIRED": "Enter your current and new password",
+    "PASSWORD_UNCHANGED": "The new password must be different from the current one",
+    "WRONG_PASSWORD": "Current password is incorrect",
+    "NAME_REQUIRED": "Name cannot be empty",
+    "NAME_TOO_LONG": "Name cannot be longer than 50 characters",
+    "DISPLAY_NAME_LENGTH": "Display name must be 3 to 30 characters",
+    "DISPLAY_NAME_REQUIRED": "A display name is required to join the leaderboard",
+    "BOOKMARK_LABEL_TOO_LONG": "A bookmark name can be at most 50 characters",
+    "BOOKMARK_NAME_TAKEN": "You already have a bookmark with this name",
+    "BOOKMARK_UNNAMED_EXISTS": "This page already has a bookmark without a name",
+    "BOOKMARK_LIMIT": "You've reached the bookmark limit. Remove one to add another.",
+    "BOOKMARK_NOT_FOUND": "That bookmark no longer exists",
+    "ANNOTATION_LIMIT": "You've reached the annotation limit. Remove some to add more.",
+    "ANNOTATION_NOT_FOUND": "That note no longer exists",
+    "NOTE_TOO_LONG": "This note is too long",
+    "DRAWING_TOO_LARGE": "This page's drawing is too large. Erase some strokes.",
+    "RATE_LIMITED": "Too many requests. Please slow down and try again shortly.",
+    "SESSION_EXPIRED": "Your session has expired. Please sign in again.",
+    "NETWORK": "Couldn't reach the server. Check your connection and try again."
   }
 }

@@ -68,6 +68,7 @@ import { storage } from '../utils/safeStorage';
 import { reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
 import { clampPage, pageFromInput, adjacentAnnotatedPage } from '../utils/readerNav';
+import { apiErrorMessage } from '../utils/apiError';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
 // the word index it searches loads after that (services/quranSearch.js).
@@ -2769,7 +2770,7 @@ export default function Library() {
       showToast(t('library.markVerses.added'), 'success');
       refreshMemorizedPages();
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
     } finally {
       setMarkingVerses(false);
       setMarkRangeStart(null);
@@ -3077,7 +3078,7 @@ export default function Library() {
       showToast(message, 'success', step ? { action: historyToastAction(step, 'undo'), duration: UNDO_TOAST_MS } : undefined);
       return true;
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
       return false;
     } finally {
       annoBusyRef.current = false;
@@ -3364,7 +3365,7 @@ export default function Library() {
       // Once per run of failures, not on every retry.
       drawFailingRef.current = true;
       const e = failed[0].error;
-      showToast(e.response?.data?.message || t('library.draw.saveFailed'), 'error');
+      showToast(apiErrorMessage(e, t, 'library.draw.saveFailed'), 'error');
     }
     // A 4xx (the drawing too large, say) fails the same way until the reader
     // changes it, and their next stroke saves again; anything else is retried.
@@ -3674,7 +3675,7 @@ export default function Library() {
       await annotationsAPI.create({ pageNumber: page, kind: 'text', x, y, text, color });
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const updateText = useCallback(async (page, id, patch) => {
     noteRead();
@@ -3682,14 +3683,14 @@ export default function Library() {
       await annotationsAPI.update(id, patch);
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const deleteText = useCallback(async (page, id) => {
     try {
       await annotationsAPI.remove(id);
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t]);
 
   // Flush + exit if the active drawing page scrolls out of view (bookmark / juz
@@ -3909,7 +3910,7 @@ export default function Library() {
       // 409: an unnamed bookmark already sits on this page, or the name is taken.
       const msg = e.response?.status === 409
         ? (label ? t('library.bookmarks.duplicateName') : t('library.bookmarks.unnamedTaken', { n: fmtNum(bookmarkTargetPage) }))
-        : e.response?.data?.message || t('common.error');
+        : apiErrorMessage(e, t);
       showToast(msg, 'error');
     } finally {
       setSavingBookmark(false);

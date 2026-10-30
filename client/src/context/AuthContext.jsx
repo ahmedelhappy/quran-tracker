@@ -4,13 +4,15 @@ import { AuthContext } from '../hooks/useAuth';
 import i18n, { switchLanguage } from '../i18n';
 import { storage, TOKEN_KEY, clearUserScopedStorage } from '../utils/safeStorage';
 import { clearRecentPages } from '../services/recentPages';
+import { apiErrorMessage } from '../utils/apiError';
 
 // The context object and its useAuth() hook live in hooks/useAuth.js, so that
 // this file exports only a component.
 
-// The server's auth messages are English. Its two 429s are the ones a person
-// can act on, so they are shown in the reader's language instead: the account's
-// failed-login lock (code LOGIN_LOCKED) and the per-device attempt limit.
+// The server's auth messages are English, so none of them is shown: its error
+// code is, in the reader's language (apiErrorMessage). The two 429s keep their
+// own sentences: the account's failed-login lock (code LOGIN_LOCKED) and the
+// per-device attempt limit.
 const tooManyMessage = (err) => {
   if (err.response?.status !== 429) return null;
   return i18n.t(err.response.data?.code === 'LOGIN_LOCKED' ? 'auth.loginLocked' : 'auth.tooManyAttempts');
@@ -163,7 +165,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (err) {
-      const message = tooManyMessage(err) || err.response?.data?.message || 'Registration failed';
+      const message = tooManyMessage(err) || apiErrorMessage(err, i18n.t.bind(i18n), 'auth.registrationFailed');
       setError(message);
       return { success: false, message };
     }
@@ -184,7 +186,7 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (err) {
-      const message = tooManyMessage(err) || err.response?.data?.message || 'Login failed';
+      const message = tooManyMessage(err) || apiErrorMessage(err, i18n.t.bind(i18n), 'common.error');
       setError(message);
       return { success: false, message };
     }
