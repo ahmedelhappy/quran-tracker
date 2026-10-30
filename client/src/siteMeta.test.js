@@ -24,6 +24,14 @@ describe('resolveSiteUrl', () => {
     expect(() => resolveSiteUrl({ VITE_SITE_URL: 'https://quran.example.com/app' })).toThrow(/origin only/);
     expect(() => resolveSiteUrl({ VITE_SITE_URL: 'https://quran.example.com ' })).toThrow(/spaces/);
   });
+
+  it('names the variable it read in that refusal', () => {
+    expect(() => resolveSiteUrl({ VITE_SITE_URL: 'quran.example.com' })).toThrow(/^VITE_SITE_URL is not a URL: "quran\.example\.com"/);
+    // Vercel's value gets "https://" put in front; a path in it is still wrong,
+    // and the message must not blame a VITE_SITE_URL nobody set.
+    expect(() => resolveSiteUrl({ VERCEL_PROJECT_PRODUCTION_URL: 'quran.example.com/app' }))
+      .toThrow(/^VERCEL_PROJECT_PRODUCTION_URL must be an origin only.*: "quran\.example\.com\/app"\. Set VITE_SITE_URL/);
+  });
 });
 
 describe('the files built from it', () => {

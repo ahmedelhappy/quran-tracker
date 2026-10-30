@@ -23,11 +23,14 @@ import { loadEnv } from 'vite'
 export const PUBLIC_ROUTES = ['/', '/about', '/library']
 
 export const resolveSiteUrl = (env) => {
+  // The error names the variable that was actually read: a bad Vercel value
+  // reported as VITE_SITE_URL sent people looking for a setting they never made.
+  const name = env.VITE_SITE_URL ? 'VITE_SITE_URL' : 'VERCEL_PROJECT_PRODUCTION_URL'
   const raw = env.VITE_SITE_URL
     || (env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '')
   if (!raw) return null
   const fail = (why) => {
-    throw new Error(`VITE_SITE_URL ${why}: ${JSON.stringify(raw)}. Set it to the site's origin, e.g. VITE_SITE_URL=https://quran.example.com`)
+    throw new Error(`${name} ${why}: ${JSON.stringify(env[name])}. Set VITE_SITE_URL to the site's origin, e.g. VITE_SITE_URL=https://quran.example.com`)
   }
   if (raw !== raw.trim()) fail('has spaces or a line break around it')
   let url
