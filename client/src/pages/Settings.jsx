@@ -477,6 +477,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
             <div>
               <input
                 type="text"
+                aria-label={t('onboarding.surahSearchPlaceholder')}
                 placeholder={t('onboarding.surahSearchPlaceholder')}
                 value={surahSearch}
                 onChange={e => setSurahSearch(e.target.value)}
@@ -539,10 +540,16 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                   <div key={i} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
+                        aria-label={t('settings.rangeStart')}
+                        aria-invalid={!!rangeErrors[i]?.start}
+                        aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `settings-range-error-${i}` : undefined}
                         placeholder={t('settings.rangeStart')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
                       <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
+                        aria-label={t('settings.rangeEnd')}
+                        aria-invalid={!!rangeErrors[i]?.end}
+                        aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `settings-range-error-${i}` : undefined}
                         placeholder={t('settings.rangeEnd')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <Tooltip label={t('tooltips.removeRange')}>
@@ -576,7 +583,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                       </div>
                     )}
                     {(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i && (
-                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
+                      <p id={`settings-range-error-${i}`} className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                     )}
                   </div>
                 ))}
@@ -633,16 +640,29 @@ function ChangePasswordCard() {
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
+  // A problem the form can see for itself is said next to the field it is
+  // about (aria-invalid + aria-describedby) and that field takes focus, so a
+  // screen-reader user hears what to fix where they fix it; the toast stays,
+  // as the summary everyone else sees (M-12).
+  const [pwError, setPwError] = useState(null); // { field, key } | null
+  const fail = (field, key) => {
+    setPwError({ field, key });
+    document.getElementById(`settings-pw-${field}`)?.focus();
+    showToast(t(key), 'error');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setPwError(null);
     const { current, newPw, confirm } = pwForm;
-    if (!current || !newPw || !confirm) return showToast(t('settings.password.allRequired'), 'error');
+    if (!current || !newPw || !confirm) {
+      return fail(!current ? 'current' : !newPw ? 'newPw' : 'confirm', 'settings.password.allRequired');
+    }
     const pwProblem = newPasswordProblem(newPw);
-    if (pwProblem === 'tooShort') return showToast(t('settings.password.tooShort'), 'error');
-    if (pwProblem === 'tooLong') return showToast(t('settings.password.tooLong'), 'error');
-    if (newPw !== confirm) return showToast(t('settings.password.mismatch'), 'error');
-    if (newPw === current) return showToast(t('settings.password.mustDiffer'), 'error');
+    if (pwProblem === 'tooShort') return fail('newPw', 'settings.password.tooShort');
+    if (pwProblem === 'tooLong') return fail('newPw', 'settings.password.tooLong');
+    if (newPw !== confirm) return fail('confirm', 'settings.password.mismatch');
+    if (newPw === current) return fail('newPw', 'settings.password.mustDiffer');
 
     setPwLoading(true);
     try {
@@ -674,14 +694,18 @@ function ChangePasswordCard() {
       <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
         {fields.map(({ key, label }) => (
           <div key={key}>
-            <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor={`settings-pw-${key}`} className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
               {label}
             </label>
             <div className="relative">
               <input
+                id={`settings-pw-${key}`}
                 type={pwShow[key] ? 'text' : 'password'}
+                autoComplete={key === 'current' ? 'current-password' : 'new-password'}
+                aria-invalid={pwError?.field === key}
+                aria-describedby={pwError?.field === key ? `settings-pw-${key}-error` : undefined}
                 value={pwForm[key]}
-                onChange={e => setPwForm(prev => ({ ...prev, [key]: e.target.value }))}
+                onChange={e => { setPwForm(prev => ({ ...prev, [key]: e.target.value })); if (pwError?.field === key) setPwError(null); }}
                 className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pe-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
               />
               <Tooltip label={pwShow[key] ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute inset-y-0 end-0">
@@ -690,10 +714,13 @@ function ChangePasswordCard() {
                   onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
                   className="h-full px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
                 >
-                  {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  {pwShow[key] ? <FiEyeOff className="w-4 h-4" aria-hidden="true" /> : <FiEye className="w-4 h-4" aria-hidden="true" />}
                 </button>
               </Tooltip>
             </div>
+            {pwError?.field === key && (
+              <p id={`settings-pw-${key}-error`} className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1">{t(pwError.key)}</p>
+            )}
           </div>
         ))}
         <button
@@ -719,6 +746,13 @@ function CommunityCard() {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [optIn, setOptIn] = useState(!!user?.leaderboardOptIn);
   const [saving, setSaving] = useState(false);
+  // A name the card refuses is said under the field, which takes focus (M-12).
+  const [nameError, setNameError] = useState(null); // locale key | null
+  const refuseName = (key) => {
+    setNameError(key);
+    document.getElementById('settings-public-name')?.focus();
+    showToast(t(key), 'error');
+  };
 
   const persist = async (payload, rollback) => {
     setSaving(true);
@@ -737,7 +771,7 @@ function CommunityCard() {
   const toggleOptIn = async () => {
     const next = !optIn;
     if (next && displayName.trim().length < 3) {
-      showToast(t('settings.community.nameRequired'), 'error');
+      refuseName('settings.community.nameRequired');
       return;
     }
     setOptIn(next); // optimistic
@@ -750,7 +784,7 @@ function CommunityCard() {
   const saveName = async () => {
     const trimmed = displayName.trim();
     if (trimmed.length > 0 && trimmed.length < 3) {
-      showToast(t('settings.community.nameTooShort'), 'error');
+      refuseName('settings.community.nameTooShort');
       return;
     }
     await persist({ displayName: trimmed || null });
@@ -765,14 +799,17 @@ function CommunityCard() {
       <p className="text-sm text-[#404944] dark:text-gray-400 mb-5">{t('settings.community.desc')}</p>
 
       <div className="mb-5 max-w-sm">
-        <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+        <label htmlFor="settings-public-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
           {t('settings.community.displayName')}
         </label>
         <div className="flex gap-2">
           <input
+            id="settings-public-name"
             type="text"
+            aria-invalid={!!nameError}
+            aria-describedby={nameError ? 'settings-public-name-error settings-public-name-hint' : 'settings-public-name-hint'}
             value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
+            onChange={e => { setDisplayName(e.target.value); setNameError(null); }}
             maxLength={30}
             placeholder={t('settings.community.displayNamePlaceholder')}
             className="flex-1 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
@@ -786,18 +823,23 @@ function CommunityCard() {
             <FiSave className="w-4 h-4" /> {t('settings.community.save')}
           </button>
         </div>
-        <p className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
+        {nameError && (
+          <p id="settings-public-name-error" className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1.5">{t(nameError)}</p>
+        )}
+        <p id="settings-public-name-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
       </div>
 
       <div className="flex items-center justify-between gap-4 pt-4 border-t border-[#dce2f3] dark:border-gray-700">
         <div>
-          <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
-          <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
+          <p id="settings-optin-label" className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
+          <p id="settings-optin-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={optIn}
+          aria-labelledby="settings-optin-label"
+          aria-describedby="settings-optin-hint"
           onClick={toggleOptIn}
           disabled={saving}
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${optIn ? 'bg-[#1B4332]' : 'bg-gray-300 dark:bg-gray-600'}`}
@@ -1154,10 +1196,13 @@ export default function Settings() {
 
           {/* Sidebar */}
           <div className="hidden lg:block lg:col-span-3">
-            <nav className="flex flex-col gap-2 sticky top-[120px]">
+            {/* Named, so it isn't a second unnamed navigation next to the
+                navbar's; the section on screen is the current one (M-12). */}
+            <nav aria-label={t('settings.title')} className="flex flex-col gap-2 sticky top-[120px]">
               {sidebarItems.map(({ id, label, icon }) => (
                 <button
                   key={id}
+                  aria-current={activeSection === id ? 'true' : undefined}
                   onClick={() => setActiveSection(id)}
                   className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left rtl:text-right transition-colors ${
                     activeSection === id
@@ -1172,10 +1217,11 @@ export default function Settings() {
           </div>
 
           {/* Mobile tab row */}
-          <div className="lg:hidden flex gap-1 bg-[#f0f3ff] dark:bg-gray-800 p-1 rounded-xl border border-[#dce2f3] dark:border-gray-700">
+          <nav aria-label={t('settings.title')} className="lg:hidden flex gap-1 bg-[#f0f3ff] dark:bg-gray-800 p-1 rounded-xl border border-[#dce2f3] dark:border-gray-700">
             {sidebarItems.map(({ id, label }) => (
               <button
                 key={id}
+                aria-current={activeSection === id ? 'true' : undefined}
                 onClick={() => setActiveSection(id)}
                 className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
                   activeSection === id
@@ -1186,7 +1232,7 @@ export default function Settings() {
                 {label}
               </button>
             ))}
-          </div>
+          </nav>
 
           {/* Content */}
           <div className="col-span-1 lg:col-span-9 flex flex-col gap-8">
@@ -1212,10 +1258,11 @@ export default function Settings() {
                   </div>
 
                   <div className="mb-6">
-                    <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label htmlFor="settings-display-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
                       {t('settings.displayName')}
                     </label>
                     <input
+                      id="settings-display-name"
                       type="text"
                       value={profileName}
                       onChange={e => setProfileName(e.target.value)}
@@ -1225,16 +1272,18 @@ export default function Settings() {
                   </div>
 
                   <div className="mb-6">
-                    <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label htmlFor="settings-email" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
                       {t('auth.email')}
                     </label>
                     <input
+                      id="settings-email"
                       type="email"
                       value={user?.email ?? ''}
                       readOnly
+                      aria-describedby="settings-email-hint"
                       className="w-full max-w-sm border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] dark:bg-gray-700/50 text-[#707974] dark:text-gray-500 cursor-not-allowed"
                     />
-                    <p className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
+                    <p id="settings-email-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
                   </div>
 
                   {/* Language row */}
@@ -1374,6 +1423,7 @@ export default function Settings() {
                         <span className="text-sm">{t('settings.customPages')}</span>
                         <input
                           ref={customPagesInputRef}
+                          aria-label={t('settings.customPages')}
                           type="number" min="0.5" max="10"
                           value={dailyMode === 'custom' ? customInputText : ''}
                           placeholder="—"
@@ -1602,10 +1652,11 @@ export default function Settings() {
                   {reviewMode === 'fixed' && (
                     <div className="flex items-center justify-between gap-4 p-4 mb-6 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
-                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
+                        <p id="settings-cycle-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
+                        <p id="settings-cycle-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
                       </div>
                       <input type="number" min="0" max="40" value={cycleReviewValue}
+                        aria-labelledby="settings-cycle-review-label" aria-describedby="settings-cycle-review-hint"
                         onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n); }}
                         className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                     </div>
@@ -1695,10 +1746,11 @@ export default function Settings() {
                     </div>
                     <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
-                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
+                        <p id="settings-recent-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
+                        <p id="settings-recent-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
                       </div>
                       <input type="number" min="0" max="20" value={recentReviewValue}
+                        aria-labelledby="settings-recent-review-label" aria-describedby="settings-recent-review-hint"
                         onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
                         className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                     </div>
@@ -1817,6 +1869,7 @@ export default function Settings() {
                   {cycleStartMode === 'page' && (
                     <div className="flex flex-wrap items-center gap-3">
                       <input type="number" min="1" max="604" value={cycleStartInput}
+                        aria-label={t('settings.cycleStartPageHint')}
                         onChange={e => setCycleStartInput(e.target.value)} placeholder="1–604"
                         className="w-28 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                       <button
