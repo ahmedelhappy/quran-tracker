@@ -7,6 +7,7 @@ import { parseJumps, arabicTokens } from '../utils/quranSearchQuery';
 import { verseOfOrd, pageOfOrd, ordOf } from '../utils/verseIndex';
 import { SURAH_BY_NUMBER } from '../data/surahPages';
 import { useRecentRows } from '../hooks/useRecentPages';
+import { useDialog } from '../hooks/useDialog';
 
 const DEBOUNCE_MS = 120;
 const PAGE_SIZE = 30;          // verse rows shown before "show more"
@@ -40,6 +41,10 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
   const listId = useId();
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  // Tab stays inside the box, the reader behind it is inert, Escape closes it
+  // (M-12). Focus going back is the Library's job — to the occurrence bar when
+  // one comes up — and the hook's own return to the opener is the floor under it.
+  const { dialogProps } = useDialog({ open, onClose, initialFocusRef: inputRef });
   const [engineState, setEngineState] = useState({ status: 'idle', engine: null });
   const [retryKey, setRetryKey] = useState(0);
   const [debounced, setDebounced] = useState(query);
@@ -152,10 +157,8 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
     onPickOccurrence({ query: debounced.trim(), occurrences: result.occurrences, index: item.row.first });
   };
 
+  // Escape, Tab and keeping keys from the reader's shortcuts are useDialog's.
   const onKeyDown = (e) => {
-    // Nothing typed here may reach the reader's own shortcuts (arrows turn pages).
-    e.stopPropagation();
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
     if (!typed) { onRecentKey(e); return; }
     if (!items.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((activeIndex + 1) % items.length); }
@@ -244,11 +247,12 @@ export default function VerseSearch({ open, query, onQueryChange, onClose, onPic
   const keepFocus = (e) => e.preventDefault();
 
   return (
-    <div className="fixed inset-0 z-60 flex justify-center items-start p-3 sm:p-4 sm:pt-[9vh]" onKeyDown={onKeyDown} data-keeps-selection>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+    <div className="fixed inset-0 z-60 flex justify-center items-start p-3 sm:p-4 sm:pt-[9vh]" data-keeps-selection>
+      <div data-dialog-keep className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
       <div
-        role="dialog"
-        aria-modal="true"
+        {...dialogProps}
+        onKeyDown={(e) => { onKeyDown(e); dialogProps.onKeyDown(e); }}
+        aria-labelledby={undefined}
         aria-label={t('library.search.dialogLabel')}
         className="relative z-10 w-full max-w-160 max-h-[calc(100dvh-1.5rem)] sm:max-h-[78vh] flex flex-col bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden"
       >
