@@ -2242,6 +2242,10 @@ export default function Library() {
   useEffect(() => {
     const onKey = (e) => {
       if (tourActiveRef.current) return;
+      // A modal dialog owns the keyboard. Keys pressed inside one never get here
+      // (useDialog stops them); this catches the rest — focus lost to <body>
+      // while it is up — so no page turns or tool picks behind it (M-12).
+      if (document.querySelector('[aria-modal="true"]')) return;
       const el = e.target;
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
