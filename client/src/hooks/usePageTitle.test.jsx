@@ -5,7 +5,7 @@ import i18n from 'i18next';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
 import en from '../locales/en.json';
 import ar from '../locales/ar.json';
-import { usePageTitle, PAGE_TITLE_KEYS } from './usePageTitle';
+import { usePageTitle, PAGE_TITLE_KEYS, syncCanonical } from './usePageTitle';
 import { setTitlePrefix } from '../utils/documentTitle';
 
 const inst = i18n.createInstance();
@@ -47,6 +47,17 @@ describe('usePageTitle (L-09)', () => {
     expect(document.title).toBe('Quran Library · Quran Tracker');
     await act(() => inst.changeLanguage('ar'));
     expect(document.title).toBe('مكتبة القرآن · Quran Tracker');
+  });
+
+  it('links public routes to their canonical address and drops it elsewhere', () => {
+    syncCanonical('/library', 'https://quran.example.com');
+    expect(document.head.querySelector('link[rel="canonical"]').href).toBe('https://quran.example.com/library');
+    syncCanonical('/about', 'https://quran.example.com');
+    expect(document.head.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
+    syncCanonical('/settings', 'https://quran.example.com');
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+    syncCanonical('/library', '');   // a build with no origin
+    expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
   });
 
   it('keeps the timer readout in front of it across navigation', () => {

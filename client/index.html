@@ -16,14 +16,14 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
 
-    <!-- How a shared link looks. Absolute URLs, because most scrapers will not
-         resolve a relative one; change the origin here if the site moves. -->
+    <!-- How a shared link looks. The URLs must be absolute (most scrapers will
+         not resolve a relative one), so the build writes them from the site's
+         origin, VITE_SITE_URL (siteMeta.js), at the marker below. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Quran Tracker" />
     <meta property="og:title" content="Quran Tracker — memorize the Quran, page by page" />
     <meta property="og:description" content="A daily plan for your Hifz: new pages, spaced review of what you already know, and the exact Madinah mushaf to read, listen to and study." />
-    <meta property="og:url" content="https://quran-tracker-gilt.vercel.app/" />
-    <meta property="og:image" content="https://quran-tracker-gilt.vercel.app/og-image.png" />
+    <!-- site-meta: share-card URLs -->
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Quran Tracker — memorize the Quran, page by page" />
@@ -32,7 +32,6 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Quran Tracker — memorize the Quran, page by page" />
     <meta name="twitter:description" content="A daily plan for your Hifz: new pages, spaced review of what you already know, and the exact Madinah mushaf to read, listen to and study." />
-    <meta name="twitter:image" content="https://quran-tracker-gilt.vercel.app/og-image.png" />
   </head>
   <body>
     <div id="root"></div>
