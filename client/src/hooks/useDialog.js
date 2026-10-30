@@ -9,8 +9,9 @@ import { useCallback, useEffect, useId, useRef } from 'react';
 //   - Tab and Shift+Tab wrap inside a modal dialog;
 //   - Escape closes it — unless something inside it already used that Escape
 //     (a combobox clearing itself calls preventDefault);
-//   - keys pressed inside it never reach the page's own shortcuts (the Library
-//     turns pages on the arrow keys, which must not happen behind a dialog);
+//   - keys pressed inside a modal never reach the page's own shortcuts (the
+//     Library turns pages on the arrow keys, which must not happen behind a
+//     dialog);
 //   - a modal dialog makes everything else `inert` while it is open, so neither
 //     Tab nor a screen reader's virtual cursor can wander behind it;
 //   - focus goes back to whatever opened it when it closes.
@@ -143,8 +144,11 @@ export function useDialog({
 
   const handleKeyDown = useCallback((e) => {
     live.current.onKeyDown?.(e);
-    // Keys typed inside the dialog belong to it.
-    e.stopPropagation();
+    // Keys typed inside a modal belong to it. A panel beside the page leaves
+    // the page its keys (the arrows still turn the mushaf from the tafsir
+    // column) — all but Escape, which is spent here and must not also run the
+    // page's own Escape ladder.
+    if (modal || e.key === 'Escape') e.stopPropagation();
     if (e.key === 'Escape') {
       if (e.defaultPrevented) return;
       e.preventDefault();

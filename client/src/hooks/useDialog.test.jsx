@@ -143,7 +143,17 @@ describe('useDialog (M-12)', () => {
     const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     last.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(false);
-    fireEvent.keyDown(last, { key: 'Escape' });
+    // The page keeps its keys beside a panel — all but the Escape it spends.
+    const pageKeys = vi.fn();
+    window.addEventListener('keydown', pageKeys);
+    try {
+      fireEvent.keyDown(last, { key: 'ArrowLeft' });
+      expect(pageKeys).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(last, { key: 'Escape' });
+      expect(pageKeys).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('keydown', pageKeys);
+    }
     expect(document.activeElement).toBe(trigger);
   });
 
