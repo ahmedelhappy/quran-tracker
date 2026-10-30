@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useIdleHide } from '../hooks/useIdleHide';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +29,27 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const avatarButtonRef = useRef(null);
+  const menuButtonRef = useRef(null);
+  const avatarMenuId = useId();
+  const drawerId = useId();
+
+  // Escape folds an open menu and puts focus back on its button (M-12); the
+  // key is spent here, so it doesn't also run a page's own Escape ladder. A
+  // menu also folds when keyboard focus leaves it (Tab past its last item),
+  // the way a click outside folds it.
+  const onMenuKeyDown = (e) => {
+    if (e.key !== 'Escape' || !(avatarOpen || mobileOpen)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const button = avatarOpen ? avatarButtonRef.current : menuButtonRef.current;
+    setAvatarOpen(false);
+    setMobileOpen(false);
+    button?.focus();
+  };
+  const foldWhenFocusLeaves = (close) => (e) => {
+    if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) close();
+  };
 
   // `autoHide` is opt-in per page — the reader turns it on to give the mushaf the
   // window, everywhere else the bar stays put. It never hides while one of its own
@@ -100,6 +121,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
     <header
       data-testid="navbar"
       data-hidden={idleHidden ? 'true' : 'false'}
+      onKeyDown={onMenuKeyDown}
       className={`bg-white dark:bg-gray-900 fixed top-0 w-full z-50 border-b border-emerald-100/20 dark:border-gray-700/30 sacred-shadow navbar-idle ${
         idleHidden ? 'is-idle-hidden' : ''
       }`}
@@ -110,7 +132,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
         <div className="flex items-center gap-8">
           <Logo size="md" />
           {/* Desktop nav */}
-          <nav className="hidden md:flex gap-6">
+          <nav aria-label={t('nav.mainLabel')} className="hidden md:flex gap-6">
             {NAV_LINKS.map((link) =>
               link.disabled ? (
                 <span key={link.labelKey} title={t('nav.comingSoon')} className="text-emerald-800/40 dark:text-gray-500 font-medium cursor-not-allowed select-none text-sm">
@@ -120,6 +142,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
                 <Link
                   key={link.to}
                   to={link.to}
+                  aria-current={isActive(link.to) ? 'page' : undefined}
                   className={`text-sm font-medium pb-1 transition-colors duration-200 ${
                     isActive(link.to)
                       ? 'text-[#064e3b] dark:text-emerald-400 font-semibold border-b-2 border-amber-500'
@@ -155,9 +178,12 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
           </Tooltip>
 
           {/* Avatar with dropdown */}
-          <div className="relative">
+          <div className="relative" onBlur={foldWhenFocusLeaves(() => setAvatarOpen(false))}>
             <Tooltip label={t('tooltips.account')}>
               <button
+                ref={avatarButtonRef}
+                aria-expanded={avatarOpen}
+                aria-controls={avatarOpen ? avatarMenuId : undefined}
                 onClick={() => setAvatarOpen(!avatarOpen)}
                 className="w-8 h-8 rounded-full bg-[#064e3b] text-white flex items-center justify-center text-sm font-bold border-2 border-amber-500 hover:opacity-90 transition-opacity"
               >
@@ -167,20 +193,22 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
             {avatarOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setAvatarOpen(false)} />
-                <div className="absolute end-0 top-10 z-40 bg-white dark:bg-gray-800 rounded-lg sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-48 py-1 overflow-hidden">
+                <div id={avatarMenuId} className="absolute end-0 top-10 z-40 bg-white dark:bg-gray-800 rounded-lg sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-48 py-1 overflow-hidden">
                   <Link
-                    to="/settings"
+                    to="/settings?tab=profile"
                     onClick={() => setAvatarOpen(false)}
                     className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiUser className="w-4 h-4" /> {t('settings.profile')}
+                    <FiUser className="w-4 h-4" aria-hidden="true" /> {t('settings.profile')}
                   </Link>
+                  {/* The plan settings, as the gear opens them — not a second
+                      copy of the Profile link. */}
                   <Link
-                    to="/settings"
+                    to="/settings?tab=memorization"
                     onClick={() => setAvatarOpen(false)}
                     className="px-4 py-2 text-[#404944] dark:text-gray-300 hover:bg-[#dce2f3]/50 dark:hover:bg-gray-700 hover:text-[#003527] dark:hover:text-gray-100 transition-colors flex items-center gap-3 text-sm"
                   >
-                    <FiSettings className="w-4 h-4" /> {t('nav.settings')}
+                    <FiSettings className="w-4 h-4" aria-hidden="true" /> {t('nav.settings')}
                   </Link>
                   <hr className="my-1 border-[#dce2f3]/50 dark:border-gray-700" />
                   <button
@@ -198,6 +226,9 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
         {/* Mobile hamburger */}
         <Tooltip label={mobileOpen ? t('tooltips.closeMenu') : t('tooltips.openMenu')} className="md:hidden">
           <button
+            ref={menuButtonRef}
+            aria-expanded={mobileOpen}
+            aria-controls={mobileOpen ? drawerId : undefined}
             className="text-[#064e3b] dark:text-gray-400 hover:text-amber-600"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
@@ -208,7 +239,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden bg-white dark:bg-gray-900 border-t border-[#dce2f3]/50 dark:border-gray-700/50 px-6 py-4 flex flex-col gap-1">
+        <nav id={drawerId} aria-label={t('nav.mainLabel')} className="md:hidden bg-white dark:bg-gray-900 border-t border-[#dce2f3]/50 dark:border-gray-700/50 px-6 py-4 flex flex-col gap-1">
           {NAV_LINKS.map((link) =>
             link.disabled ? (
               <span key={link.labelKey} className="px-4 py-2.5 text-sm text-emerald-800/40 dark:text-gray-500 flex items-center gap-2">
@@ -219,6 +250,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
               <Link
                 key={link.to}
                 to={link.to}
+                aria-current={isActive(link.to) ? 'page' : undefined}
                 onClick={() => setMobileOpen(false)}
                 className={`px-4 py-2.5 text-sm font-medium rounded-lg flex items-center gap-2 ${
                   isActive(link.to)
@@ -256,7 +288,7 @@ const Navbar = ({ autoHide = false, holdOpen = false }) => {
               <FiLogOut className="w-4 h-4" /> {t('nav.logout')}
             </button>
           </div>
-        </div>
+        </nav>
       )}
     </header>
   );
