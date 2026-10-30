@@ -9,6 +9,7 @@ import { switchLanguage } from '../i18n';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
+import { useDialog } from '../hooks/useDialog';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
@@ -105,6 +106,11 @@ function validateRanges(pageRanges) {
 
 // ── Edit Progress Modal ──────────────────────────────────
 function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
+  // A modal dialog for the keyboard and screen readers too (M-12): focus lands
+  // on the dialog itself (so its title is read first, and the next Tab is its
+  // close button), Tab stays inside, Escape closes, the settings page behind is
+  // inert, and focus returns to "Edit progress".
+  const { dialogProps, titleId } = useDialog({ open: isOpen, onClose });
   // Single source of truth: the selection as VERSE ranges (global ayah numbers).
   //
   // It used to be a set of whole page numbers, which is fine for Juz / Surah /
@@ -303,13 +309,13 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div data-dialog-keep className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div {...dialogProps} className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
           <Tooltip label={t('tooltips.close')}>
             <button onClick={onClose} className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
-              <FiX className="w-5 h-5" />
+              <FiX className="w-5 h-5" aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
