@@ -2283,6 +2283,17 @@ export default function Library() {
       // (useDialog stops them); this catches the rest — focus lost to <body>
       // while it is up — so no page turns or tool picks behind it (M-12).
       if (document.querySelector('[aria-modal="true"]')) return;
+      // Folding the verse actions while focus is in them would drop it to
+      // <body>: it goes back to the verse they belong to (M-12).
+      const foldVerseActions = () => {
+        const refocus = popoverRef.current?.contains(document.activeElement);
+        setPopoverHidden(true);
+        if (refocus) {
+          requestAnimationFrame(() => document
+            .querySelector(`.mushaf-word[role="button"][data-verse-key="${selectedVerseKey}"]`)
+            ?.focus({ preventScroll: true }));
+        }
+      };
       const el = e.target;
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
@@ -2327,7 +2338,7 @@ export default function Library() {
           if (drawMenuOpen) setDrawMenuOpen(false);
           // Actions opened by a right-click while annotating fold away before the
           // mode itself is left — the same top-layer-first peel-back.
-          else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
+          else if (selectedVerseKey != null && !popoverHidden) foldVerseActions();
           else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
           else exitDrawRef.current?.();
           return;
@@ -2366,7 +2377,7 @@ export default function Library() {
           else if (tafsirOpen) setTafsirOpen(false);
           else if (readTextNote) setReadTextNote(null);
           else if (notePanel) setNotePanel(null);
-          else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
+          else if (selectedVerseKey != null && !popoverHidden) foldVerseActions();
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
           // A span's actions fold first and the span stays, like a verse's.
           else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
@@ -2377,7 +2388,7 @@ export default function Library() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind, popoverRef]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -2877,6 +2888,19 @@ export default function Library() {
     setSelectedVerseKey(verseKey);
   }, [markVersesMode, noteRead]);
   useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
+
+  // The keyboard's secondary gesture (M-12): Enter on the selected verse. The
+  // actions are placed beside the verse, as a right-click places them beside
+  // the pointer, and focus moves into them, so the next Tab reaches Play,
+  // Tafsir, Highlight, Note. Escape folds them and puts focus back on the verse
+  // (see the key handler). The Menu key / Shift+F10 still go the right-click way.
+  const focusActionsRef = useRef(false);
+  const showVerseActionsFromKey = useCallback((verseKey, el) => {
+    const r = el.getBoundingClientRect();
+    lastPointerRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    focusActionsRef.current = true;
+    showVerseActions(verseKey);
+  }, [showVerseActions]);
 
   // ── Right-click while annotating ──
   // In annotate mode the ink layer covers the words, so a plain click draws and
@@ -4469,6 +4493,13 @@ export default function Library() {
     setTafsirOpen(true);
   };
 
+  // Actions opened from the keyboard take focus once they are on screen.
+  useEffect(() => {
+    if (!focusActionsRef.current || !(selectedVerse || spanPopoverShown) || !popoverRef.current) return;
+    focusActionsRef.current = false;
+    popoverRef.current.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+  }, [selectedVerse, spanPopoverShown, popoverHidden, popoverPlaceTick, popoverRef]);
+
   // Place the popover near the clicked word: below the pointer when it's in the
   // top half of the viewport, above it in the bottom half; centred on x; clamped
   // to the viewport with a small offset (standard selection-toolbar flip/shift).
@@ -4825,6 +4856,8 @@ export default function Library() {
                     inRange={inRange}
                     verseLabel={verseAriaLabel}
                     onVerseContextMenu={markVersesMode ? null : showVerseActions}
+                    onVerseActionsKey={markVersesMode ? null : showVerseActionsFromKey}
+                    verseActionsHint={t('library.verseActionsKeyHint')}
                     searchHitFor={searchHitFor}
                   />
                 </Flip>
@@ -5838,6 +5871,8 @@ export default function Library() {
             {((selectedVerse && !popoverHidden) || spanPopoverShown) && (
               <div
                 ref={popoverRef}
+                role="group"
+                aria-labelledby="verse-actions-ref"
                 style={popoverDragStyle}
                 className="fixed left-0 top-0 z-40 bg-white dark:bg-gray-800 rounded-3xl border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex flex-wrap items-center justify-center gap-2 select-none max-w-[calc(100vw-1.5rem)]"
               >
@@ -5846,6 +5881,9 @@ export default function Library() {
                     {...popoverDragHandlers}
                     onPointerDown={(e) => { setHandleDragging(true); popoverDragHandlers.onPointerDown(e); }}
                     aria-label={t('tooltips.dragHandle')}
+                    // A pointer-only nicety (the actions already place
+                    // themselves); not a control a screen reader can use.
+                    aria-hidden="true"
                     className="flex items-center justify-center w-6 h-8 rounded-full text-[#b0b6bd] dark:text-gray-500 hover:text-[#707974] dark:hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none"
                   >
                     <FiMove className="w-3.5 h-3.5" />
@@ -5853,7 +5891,7 @@ export default function Library() {
                 </Tooltip>
                 {/* What the actions act on: one verse, or the whole span — named
                     and counted, so a span can't be mistaken for its first verse. */}
-                <span data-testid="popover-verse-ref" className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
+                <span id="verse-actions-ref" data-testid="popover-verse-ref" className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
                   {selectedVerse
                     ? verseRef(selectedVerse)
                     : t('library.span.label', { range: spanRangeLabel, verses: spanVersesLabel(rangeSelection.endOrd - rangeSelection.startOrd + 1) })}
