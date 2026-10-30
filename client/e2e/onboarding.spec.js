@@ -18,8 +18,12 @@ test('register, pick Juz 30 in onboarding, and see today\'s tasks', async ({ pag
   await expect(page).toHaveURL(/\/onboarding$/)
   await page.getByRole('button', { name: "Let's Begin" }).click()
 
-  // The Juz grid is the default tab; its tiles are labelled 1…30.
-  await page.getByRole('button', { name: '30', exact: true }).click()
+  // The Juz grid is the default tab; its tiles show 1…30 and are named
+  // "Juz 1"…"Juz 30", and say whether they are picked.
+  const juz30 = page.getByRole('button', { name: 'Juz 30', exact: true })
+  await expect(juz30).toHaveAttribute('aria-pressed', 'false')
+  await juz30.click()
+  await expect(juz30).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('1 Juz selected')).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Generate My Plan' }).click()
@@ -51,7 +55,7 @@ test('a failed onboarding save says why, and sending it again finishes', async (
   await signIn(page, account)
   await page.goto('/onboarding')
   await page.getByRole('button', { name: "Let's Begin" }).click()
-  await page.getByRole('button', { name: '30', exact: true }).click()
+  await page.getByRole('button', { name: 'Juz 30', exact: true }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByRole('button', { name: 'Generate My Plan' }).click()
 
