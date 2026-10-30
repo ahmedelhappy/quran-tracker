@@ -22,3 +22,5 @@ Thumbs.db
 
 # Claude Code — track CLAUDE.md and shared .claude config; keep machine-local settings out
 .claude/settings.local.json
+# Personal notes kept out of the repo
+docs/private/
