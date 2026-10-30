@@ -454,6 +454,8 @@ const restoreProgress = async (userId, pages, before) => {
 // standalone mongod, which refuses transactions, and a second code path for
 // them would be the untested one. The ordered write above needs neither.
 exports.completeOnboarding = async (req, res) => {
+  // Set when a failure may have left part of the selection behind (below).
+  let partial = false;
   try {
     const userId = req.user._id;
     const { dailyNewPages } = req.body;
@@ -545,16 +547,25 @@ exports.completeOnboarding = async (req, res) => {
       });
     }
 
+    // Put step 2's rows back after a later failure. Should even that fail, the
+    // account may keep part of this selection while it is not onboarded: log
+    // everything needed to repair it by hand, and answer ONBOARDING_PARTIAL, not
+    // a plain error, so the client does not promise that nothing was saved.
+    const leftBehind = (why, errors) => {
+      partial = true;
+      console.error(`Onboarding: ${why}; the account may keep part of the selection`,
+        { userId: String(userId), touched, ...errors });
+    };
+    const undoProgress = (writeError) => restoreProgress(userId, touched, before)
+      .catch((restoreError) => leftBehind('could not put the progress rows back', { writeError, restoreError }));
+
     if (bulkOps.length) {
       try {
         await UserProgress.bulkWrite(bulkOps, { ordered: true });
       } catch (writeError) {
         // Some rows may have gone in before the failure: put them back, so the
         // account is exactly as it was and onboarding can simply be sent again.
-        // Should even that fail, every row left over is one this request was
-        // writing, holding the value a retry writes again.
-        await restoreProgress(userId, touched, before)
-          .catch((err) => console.error('Onboarding: restoring progress after a failed write failed', err));
+        await undoProgress(writeError);
         throw writeError;
       }
     }
@@ -579,11 +590,8 @@ exports.completeOnboarding = async (req, res) => {
       // what this request was saving.
       if (bulkOps.length) {
         const now = await User.findById(userId, { onboardingComplete: 1 }).lean()
-          .catch((err) => { console.error('Onboarding: re-reading the account after a failed update failed', err); return undefined; });
-        if (now && !now.onboardingComplete) {
-          await restoreProgress(userId, touched, before)
-            .catch((err) => console.error('Onboarding: restoring progress after a failed account update failed', err));
-        }
+          .catch((readError) => { leftBehind('could not re-read the account after a failed update', { writeError, readError }); });
+        if (now && !now.onboardingComplete) await undoProgress(writeError);
       }
       throw writeError;
     }
@@ -600,6 +608,13 @@ exports.completeOnboarding = async (req, res) => {
     });
   } catch (error) {
     console.error('Onboarding error:', error);
+    if (partial) {
+      return res.status(500).json({
+        success: false,
+        code: 'ONBOARDING_PARTIAL',
+        message: 'Onboarding failed part-way, and some of the pages may already be saved',
+      });
+    }
     serverError(res, 'Error completing onboarding', error);
   }
 };

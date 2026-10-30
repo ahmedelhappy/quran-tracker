@@ -1273,6 +1273,7 @@
     "ANNOTATION_NOT_FOUND": "That note no longer exists",
     "NOTE_TOO_LONG": "This note is too long",
     "DRAWING_TOO_LARGE": "This page's drawing is too large. Erase some strokes.",
+    "ONBOARDING_PARTIAL": "Saving stopped part-way, so some of your pages may already be marked memorized. Send the same selection again to finish, or correct the pages later in Settings.",
     "RATE_LIMITED": "Too many requests. Please slow down and try again shortly.",
     "SESSION_EXPIRED": "Your session has expired. Please sign in again.",
     "NETWORK": "Couldn't reach the server. Check your connection and try again."

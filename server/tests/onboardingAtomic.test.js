@@ -135,6 +135,35 @@ describe('Onboarding in one request, all or nothing (L-18)', () => {
     assert.equal((await reload(user)).onboardingComplete, true);
   });
 
+  test('when even putting the rows back fails, it says so and logs what to repair', async () => {
+    const user = await createUser({ onboardingComplete: false });
+    const realBulkWrite = UserProgress.bulkWrite.bind(UserProgress);
+    let calls = 0;
+    mock.method(UserProgress, 'bulkWrite', async (ops, options) => {
+      calls += 1;
+      if (calls === 1) {
+        await realBulkWrite(ops.slice(0, 2), options);
+        throw Object.assign(new Error('connection reset (simulated)'), { name: 'MongoNetworkError' });
+      }
+      throw new Error('still down (simulated)'); // the restore
+    });
+    // An account page the write changes, so the restore has a row to put back.
+    await UserProgress.create({ userId: user._id, pageNumber: 3, status: 'memorized', reviewCount: 5 });
+    const logged = [];
+    mock.method(console, 'error', (...args) => { logged.push(args); });
+
+    const res = await onboard(user, SELECTION);
+    assert.equal(res.status, 500);
+    assert.equal(res.body.code, 'ONBOARDING_PARTIAL', 'not a plain error that promises nothing was saved');
+    const [, details] = logged.find(([msg]) => /could not put the progress rows back/.test(msg)) ?? [];
+    assert.ok(details, 'the failed restore is logged');
+    assert.equal(details.userId, String(user._id));
+    assert.deepEqual(details.touched, [1, 3, 2]);
+    assert.match(details.writeError.message, /connection reset/);
+    assert.match(details.restoreError.message, /still down/);
+    assert.equal((await reload(user)).onboardingComplete, false);
+  });
+
   test('if the final account update fails, the flag stays off and a retry finishes the job', async () => {
     const user = await createUser({ onboardingComplete: false });
     mock.method(User, 'updateOne', async () => { throw new Error('write concern timeout (simulated)'); }, { times: 1 });
