@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
@@ -26,8 +27,10 @@ const Register = () => {
   // (M-12).
   const [error, setError] = useState(null); // { field: 'password' | 'confirm' | 'form', message } | null
   const set = (key) => (e) => { setForm(f => ({ ...f, [key]: e.target.value })); setError(null); };
+  // Rendered before the focus moves (flushSync), so the field is already
+  // invalid and described by its error when a screen reader lands on it.
   const fail = (field, message) => {
-    setError({ field, message });
+    flushSync(() => setError({ field, message }));
     if (field !== 'form') document.getElementById(field === 'confirm' ? 'confirmPassword' : 'password')?.focus();
     showToast(message, 'error');
   };

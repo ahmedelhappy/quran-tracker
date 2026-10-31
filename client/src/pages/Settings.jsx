@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
@@ -639,7 +640,8 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 }
 
 // ── Change Password Card ─────────────────────────────────
-function ChangePasswordCard() {
+// Exported for its tests (Settings.test.jsx).
+export function ChangePasswordCard() {
   const { showToast } = useToast();
   const { t } = useTranslation();
   const { changePassword } = useAuth();
@@ -651,8 +653,10 @@ function ChangePasswordCard() {
   // screen-reader user hears what to fix where they fix it; the toast stays,
   // as the summary everyone else sees (M-12).
   const [pwError, setPwError] = useState(null); // { field, key } | null
+  // Rendered before the focus moves (flushSync), so the field already carries
+  // aria-invalid and its error when a screen reader lands on it.
   const fail = (field, key) => {
-    setPwError({ field, key });
+    flushSync(() => setPwError({ field, key }));
     document.getElementById(`settings-pw-${field}`)?.focus();
     showToast(t(key), 'error');
   };
@@ -780,7 +784,8 @@ function SingleKeyShortcutsRow() {
 // Self-contained (its own state + immediate save) so it doesn't touch the
 // profile section's dirty/Save-bar machinery — mirrors ChangePasswordCard and
 // the pause-memorization toggle.
-function CommunityCard() {
+// Exported for its tests (Settings.test.jsx).
+export function CommunityCard() {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation();
@@ -790,7 +795,7 @@ function CommunityCard() {
   // A name the card refuses is said under the field, which takes focus (M-12).
   const [nameError, setNameError] = useState(null); // locale key | null
   const refuseName = (key) => {
-    setNameError(key);
+    flushSync(() => setNameError(key)); // rendered before the focus moves, as above
     document.getElementById('settings-public-name')?.focus();
     showToast(t(key), 'error');
   };
