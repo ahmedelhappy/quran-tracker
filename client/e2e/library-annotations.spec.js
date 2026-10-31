@@ -57,6 +57,8 @@ test('Escape keeps an unsaved note, from the note and from the page', async ({ p
   await page.getByRole('button', { name: 'Add a note' }).click()
   const note = page.getByPlaceholder('Write a note for this verse…')
   await expect(note).toBeFocused()
+  // Named by its heading, one level under the page's h1 (axe heading-order).
+  await expect(page.getByRole('dialog', { name: 'Add a note' }).getByRole('heading', { level: 2, name: 'Add a note' })).toBeVisible()
   await page.keyboard.type('Not saved yet')
   const hint = page.getByRole('dialog').getByRole('status')
 

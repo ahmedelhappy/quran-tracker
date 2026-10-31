@@ -6560,9 +6560,9 @@ export default function Library() {
                 <div className="px-5 lg:pe-[25px] py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" aria-hidden="true" />
-                    <h3 id={tafsirDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                    <h2 id={tafsirDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                       {t(tafsirEd.kind === 'irab' ? 'library.irabTitle' : 'library.tafsirTitle')}
-                    </h3>
+                    </h2>
                     <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
                   </div>
                   {/* Prev/next move the SELECTION, so the mushaf's highlight travels
@@ -6724,9 +6724,9 @@ export default function Library() {
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
                 <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
-                <h3 id={noteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <h2 id={noteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {notePanel.id ? t('library.annotations.editNote') : t('library.annotations.addNote')}
-                </h3>
+                </h2>
               </div>
               <Tooltip label={t('tooltips.close')}>
                 <button
@@ -6807,9 +6807,9 @@ export default function Library() {
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
                 <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} aria-hidden="true" />
-                <h3 id={textNoteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <h2 id={textNoteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {t('library.draw.noteTitle')}
-                </h3>
+                </h2>
               </div>
               <Tooltip label={t('tooltips.close')}>
                 <button
