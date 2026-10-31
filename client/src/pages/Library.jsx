@@ -6252,13 +6252,28 @@ export default function Library() {
               </Tooltip>
 
               {/* Repeat for memorization (verse ×N / range loop) */}
-              <div className="relative" ref={repeatMenuRef}>
+              {/* Escape folds the panel from anywhere inside it and puts focus
+                  back on its button, without running the reader's own Escape
+                  ladder too (M-12). */}
+              <div
+                className="relative"
+                ref={repeatMenuRef}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape' || !repeatOpen) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setRepeatOpen(false);
+                  repeatMenuRef.current?.querySelector('button')?.focus();
+                }}
+              >
                 <Tooltip label={t('library.audio.repeat')}>
                   <button
                     type="button"
                     onClick={() => setRepeatOpen(o => !o)}
                     aria-label={t('library.audio.repeat')}
                     aria-pressed={repeatMode !== 'off'}
+                    aria-expanded={repeatOpen}
+                    aria-controls={repeatOpen ? 'repeat-panel' : undefined}
                     className={`relative w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
                       repeatMode !== 'off'
                         ? 'bg-[#004f35] text-white border-[#004f35]'
@@ -6269,7 +6284,7 @@ export default function Library() {
                   </button>
                 </Tooltip>
                 {repeatOpen && (
-                  <div className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
+                  <div id="repeat-panel" className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
                     <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
                       {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
                         <button
@@ -6281,6 +6296,7 @@ export default function Library() {
                             // Range is on; leaving Range drops it.
                             setRangeSelection(m === 'range' ? { startOrd: rangeStartOrd, endOrd: rangeEndOrd } : null);
                           }}
+                          aria-pressed={repeatMode === m}
                           className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
                             repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
                           }`}
