@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { ChangePasswordCard, CommunityCard } from './Settings';
+import { authAPI } from '../services/api';
 
 const showToast = vi.fn();
 const auth = { user: { displayName: '', leaderboardOptIn: false }, updateUser: vi.fn(), changePassword: vi.fn() };
@@ -46,5 +47,63 @@ describe('Settings fields say their error before they take focus (M-12)', () => 
     fireEvent.click(name.parentElement.querySelector('button'));
     expect(document.activeElement).toBe(name);
     expect(seen).toEqual([{ invalid: 'true', description: 'settings.community.nameTooShort | settings.community.displayNameHint' }]);
+  });
+});
+
+// A refusal the server sends is said where it applies too, not only in a toast.
+const refusal = (code) => Object.assign(new Error(code), { isAxiosError: true, response: { status: 400, data: { code } } });
+const offline = () => Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} });
+
+describe('Settings says the server\'s refusals next to the field (M-12)', () => {
+  afterEach(cleanup);
+
+  const fillPassword = (current) => {
+    const values = { current, newPw: 'brand-new-pass', confirm: 'brand-new-pass' };
+    for (const [key, value] of Object.entries(values)) {
+      fireEvent.change(document.getElementById(`settings-pw-${key}`), { target: { value } });
+    }
+    fireEvent.submit(document.getElementById('settings-pw-current').closest('form'));
+  };
+
+  it('change password: a wrong current password is said on that field, which takes focus', async () => {
+    auth.changePassword = vi.fn().mockRejectedValue(refusal('WRONG_PASSWORD'));
+    render(<ChangePasswordCard />);
+    fillPassword('not-my-password');
+    const current = document.getElementById('settings-pw-current');
+    await vi.waitFor(() => expect(current.getAttribute('aria-invalid')).toBe('true'));
+    expect(document.getElementById(current.getAttribute('aria-describedby')).textContent).toBe('errors.WRONG_PASSWORD');
+    expect(document.activeElement).toBe(current);
+    expect(showToast).toHaveBeenLastCalledWith('errors.WRONG_PASSWORD', 'error');
+  });
+
+  it('change password: a failure about no field is said under the button, with every field left valid', async () => {
+    auth.changePassword = vi.fn().mockRejectedValue(offline());
+    render(<ChangePasswordCard />);
+    fillPassword('my-password-1');
+    await vi.waitFor(() => expect(screen.getByText('errors.NETWORK')).toBeTruthy());
+    for (const key of ['current', 'newPw', 'confirm']) {
+      expect(document.getElementById(`settings-pw-${key}`).getAttribute('aria-invalid')).toBe('false');
+    }
+  });
+
+  it('community: a display name the server refuses is said under the field', async () => {
+    authAPI.updateProfile.mockRejectedValueOnce(refusal('DISPLAY_NAME_LENGTH'));
+    render(<CommunityCard />);
+    const name = document.getElementById('settings-public-name');
+    fireEvent.change(name, { target: { value: 'Abdullah' } });
+    fireEvent.click(name.parentElement.querySelector('button'));
+    await vi.waitFor(() => expect(name.getAttribute('aria-invalid')).toBe('true'));
+    expect(screen.getByText('errors.DISPLAY_NAME_LENGTH')).toBeTruthy();
+    expect(document.activeElement).toBe(name);
+  });
+
+  it('community: a network failure stays a toast and marks no field', async () => {
+    authAPI.updateProfile.mockRejectedValueOnce(offline());
+    render(<CommunityCard />);
+    const name = document.getElementById('settings-public-name');
+    fireEvent.change(name, { target: { value: 'Abdullah' } });
+    fireEvent.click(name.parentElement.querySelector('button'));
+    await vi.waitFor(() => expect(showToast).toHaveBeenLastCalledWith('errors.NETWORK', 'error'));
+    expect(name.getAttribute('aria-invalid')).toBe('false');
   });
 });

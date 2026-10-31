@@ -640,6 +640,16 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 }
 
 // ── Change Password Card ─────────────────────────────────
+// The field each of the server's password refusals is about (server/
+// controllers/authController.js changePassword, utils/passwordPolicy.js).
+const PW_ERROR_FIELD = {
+  PASSWORD_FIELDS_REQUIRED: 'current',
+  WRONG_PASSWORD: 'current',
+  PASSWORD_TOO_SHORT: 'newPw',
+  PASSWORD_TOO_LONG: 'newPw',
+  PASSWORD_UNCHANGED: 'newPw',
+};
+
 // Exported for its tests (Settings.test.jsx).
 export function ChangePasswordCard() {
   const { showToast } = useToast();
@@ -648,17 +658,19 @@ export function ChangePasswordCard() {
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
-  // A problem the form can see for itself is said next to the field it is
-  // about (aria-invalid + aria-describedby) and that field takes focus, so a
-  // screen-reader user hears what to fix where they fix it; the toast stays,
-  // as the summary everyone else sees (M-12).
-  const [pwError, setPwError] = useState(null); // { field, key } | null
+  // A problem is said next to the field it is about (aria-invalid +
+  // aria-describedby) and that field takes focus, so a screen-reader user
+  // hears what to fix where they fix it; the toast stays, as the summary
+  // everyone else sees (M-12). That goes for the server's refusals too — a
+  // wrong current password is the common one; one that is about no field (the
+  // network) is said under the button instead, and focus stays put.
+  const [pwError, setPwError] = useState(null); // { field, message } | null
   // Rendered before the focus moves (flushSync), so the field already carries
   // aria-invalid and its error when a screen reader lands on it.
-  const fail = (field, key) => {
-    flushSync(() => setPwError({ field, key }));
-    document.getElementById(`settings-pw-${field}`)?.focus();
-    showToast(t(key), 'error');
+  const fail = (field, message) => {
+    flushSync(() => setPwError({ field, message }));
+    if (field !== 'form') document.getElementById(`settings-pw-${field}`)?.focus();
+    showToast(message, 'error');
   };
 
   const handleSubmit = async (e) => {
@@ -666,13 +678,13 @@ export function ChangePasswordCard() {
     setPwError(null);
     const { current, newPw, confirm } = pwForm;
     if (!current || !newPw || !confirm) {
-      return fail(!current ? 'current' : !newPw ? 'newPw' : 'confirm', 'settings.password.allRequired');
+      return fail(!current ? 'current' : !newPw ? 'newPw' : 'confirm', t('settings.password.allRequired'));
     }
     const pwProblem = newPasswordProblem(newPw);
-    if (pwProblem === 'tooShort') return fail('newPw', 'settings.password.tooShort');
-    if (pwProblem === 'tooLong') return fail('newPw', 'settings.password.tooLong');
-    if (newPw !== confirm) return fail('confirm', 'settings.password.mismatch');
-    if (newPw === current) return fail('newPw', 'settings.password.mustDiffer');
+    if (pwProblem === 'tooShort') return fail('newPw', t('settings.password.tooShort'));
+    if (pwProblem === 'tooLong') return fail('newPw', t('settings.password.tooLong'));
+    if (newPw !== confirm) return fail('confirm', t('settings.password.mismatch'));
+    if (newPw === current) return fail('newPw', t('settings.password.mustDiffer'));
 
     setPwLoading(true);
     try {
@@ -683,7 +695,7 @@ export function ChangePasswordCard() {
       showToast(t(signedOut ? 'settings.password.successSignIn' : 'settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {
-      showToast(apiErrorMessage(error, t, 'settings.password.failed'), 'error');
+      fail(PW_ERROR_FIELD[error?.response?.data?.code] ?? 'form', apiErrorMessage(error, t, 'settings.password.failed'));
     } finally {
       setPwLoading(false);
     }
@@ -729,7 +741,7 @@ export function ChangePasswordCard() {
               </Tooltip>
             </div>
             {pwError?.field === key && (
-              <p id={`settings-pw-${key}-error`} className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1">{t(pwError.key)}</p>
+              <p id={`settings-pw-${key}-error`} className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1">{pwError.message}</p>
             )}
           </div>
         ))}
@@ -740,6 +752,9 @@ export function ChangePasswordCard() {
         >
           {pwLoading ? t('settings.password.saving') : <><FiSave className="w-4 h-4" /> {t('settings.password.update')}</>}
         </button>
+        {pwError?.field === 'form' && (
+          <p className="text-xs text-[#ba1a1a] dark:text-red-400">{pwError.message}</p>
+        )}
       </form>
     </div>
   );
@@ -792,12 +807,14 @@ export function CommunityCard() {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [optIn, setOptIn] = useState(!!user?.leaderboardOptIn);
   const [saving, setSaving] = useState(false);
-  // A name the card refuses is said under the field, which takes focus (M-12).
-  const [nameError, setNameError] = useState(null); // locale key | null
-  const refuseName = (key) => {
-    flushSync(() => setNameError(key)); // rendered before the focus moves, as above
+  // A name the card — or the server — refuses is said under the field, which
+  // takes focus (M-12). Any other failure (the network) is about no field: the
+  // toast says it.
+  const [nameError, setNameError] = useState(null); // message | null
+  const refuseName = (message) => {
+    flushSync(() => setNameError(message)); // rendered before the focus moves, as above
     document.getElementById('settings-public-name')?.focus();
-    showToast(t(key), 'error');
+    showToast(message, 'error');
   };
 
   const persist = async (payload, rollback) => {
@@ -807,7 +824,9 @@ export function CommunityCard() {
       updateUser(res.data.data);
       showToast(t('settings.community.saved'), 'success');
     } catch (error) {
-      showToast(apiErrorMessage(error, t, 'settings.community.failed'), 'error');
+      const message = apiErrorMessage(error, t, 'settings.community.failed');
+      if (/^DISPLAY_NAME_/.test(error?.response?.data?.code ?? '')) refuseName(message);
+      else showToast(message, 'error');
       if (rollback) rollback();
     } finally {
       setSaving(false);
@@ -817,7 +836,7 @@ export function CommunityCard() {
   const toggleOptIn = async () => {
     const next = !optIn;
     if (next && displayName.trim().length < 3) {
-      refuseName('settings.community.nameRequired');
+      refuseName(t('settings.community.nameRequired'));
       return;
     }
     setOptIn(next); // optimistic
@@ -830,7 +849,7 @@ export function CommunityCard() {
   const saveName = async () => {
     const trimmed = displayName.trim();
     if (trimmed.length > 0 && trimmed.length < 3) {
-      refuseName('settings.community.nameTooShort');
+      refuseName(t('settings.community.nameTooShort'));
       return;
     }
     await persist({ displayName: trimmed || null });
@@ -870,7 +889,7 @@ export function CommunityCard() {
           </button>
         </div>
         {nameError && (
-          <p id="settings-public-name-error" className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1.5">{t(nameError)}</p>
+          <p id="settings-public-name-error" className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1.5">{nameError}</p>
         )}
         <p id="settings-public-name-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
       </div>
