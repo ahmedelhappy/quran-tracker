@@ -107,7 +107,8 @@ function validateRanges(pageRanges) {
 }
 
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
+// Exported for its tests (Settings.test.jsx).
+export function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
   // A modal dialog for the keyboard and screen readers too (M-12): focus lands
   // on the dialog itself (so its title is read first, and the next Tab is its
   // close button), Tab stays inside, Escape closes, the settings page behind is
@@ -248,6 +249,9 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
   };
 
   const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
+  // A row's error line gives way to its delete confirm, and its fields point
+  // at the line only while it is there (M-12: a describedby to a missing id).
+  const rangeErrorShown = (i) => !!(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i;
   const selectedCount = selectedPages.size;
   const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
   const fullSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
@@ -549,14 +553,14 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                       <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
                         aria-label={t('settings.rangeStart')}
                         aria-invalid={!!rangeErrors[i]?.start}
-                        aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `settings-range-error-${i}` : undefined}
+                        aria-describedby={rangeErrorShown(i) ? `settings-range-error-${i}` : undefined}
                         placeholder={t('settings.rangeStart')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
                       <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
                         aria-label={t('settings.rangeEnd')}
                         aria-invalid={!!rangeErrors[i]?.end}
-                        aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `settings-range-error-${i}` : undefined}
+                        aria-describedby={rangeErrorShown(i) ? `settings-range-error-${i}` : undefined}
                         placeholder={t('settings.rangeEnd')}
                         className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
                       <Tooltip label={t('tooltips.removeRange')}>
@@ -589,7 +593,7 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
                         </div>
                       </div>
                     )}
-                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i && (
+                    {rangeErrorShown(i) && (
                       <p id={`settings-range-error-${i}`} className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
                     )}
                   </div>

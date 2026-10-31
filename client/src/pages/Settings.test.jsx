@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { ChangePasswordCard, CommunityCard } from './Settings';
+import { ChangePasswordCard, CommunityCard, EditProgressModal } from './Settings';
 import { authAPI } from '../services/api';
 
 const showToast = vi.fn();
@@ -105,5 +105,27 @@ describe('Settings says the server\'s refusals next to the field (M-12)', () => 
     fireEvent.click(name.parentElement.querySelector('button'));
     await vi.waitFor(() => expect(showToast).toHaveBeenLastCalledWith('errors.NETWORK', 'error'));
     expect(name.getAttribute('aria-invalid')).toBe('false');
+  });
+});
+
+describe('Settings progress editor ranges (M-12)', () => {
+  afterEach(cleanup);
+
+  it('a range field points at its error only while that error is on screen', () => {
+    render(
+      <EditProgressModal isOpen onClose={() => {}} onSave={() => {}} onRetryLoad={() => {}}
+        progressLoad="ready" memorizedPageNums={[]} partialPages={[]} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'onboarding.byRange' }));
+    const start = screen.getByRole('spinbutton', { name: 'settings.rangeStart' });
+    fireEvent.change(start, { target: { value: '700' } });
+    const described = () => start.getAttribute('aria-describedby');
+    expect(described()).toBe('settings-range-error-0');
+    expect(document.getElementById(described())).not.toBeNull();
+    // Asking to delete the row swaps its error line for the confirm.
+    fireEvent.click(start.parentElement.querySelector('button'));
+    expect(screen.getByText('settings.rangeDeleteConfirmBtn')).toBeTruthy();
+    expect(document.getElementById('settings-range-error-0')).toBeNull();
+    expect(described()).toBeNull();
   });
 });
