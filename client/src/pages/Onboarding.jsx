@@ -753,17 +753,19 @@ export default function Onboarding() {
   );
 
   // ── GENERATING PLAN — Loading screen ─────────────────
+  // A page of its own while it shows, so it gets what every page has: the
+  // main landmark the skip link points at, and an h1 (M-12).
   if (generatingPlan) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex items-center justify-center p-6">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-8">
+      <main id="main-content" className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-8">
         <div className="relative w-20 h-20 flex-shrink-0">
           <div className="absolute inset-0 rounded-full border-4 border-[#dce2f3] dark:border-gray-700" />
           <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#2D6A4F] animate-spin" />
         </div>
         <div>
-          <h2 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-4">
+          <h1 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-4">
             {t('onboarding.buildingPlan')}
-          </h2>
+          </h1>
           <div className="flex items-center justify-center gap-2">
             {[0, 0.2, 0.4].map((delay) => (
               <span
@@ -774,7 +776,7 @@ export default function Onboarding() {
             ))}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 
@@ -784,12 +786,12 @@ export default function Onboarding() {
       <OnboardingHeader step={3} />
       <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center mb-4">
-          <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h2>
+          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h1>
           <p className="text-[#404944] dark:text-gray-400">{t('onboarding.customizeDesc')}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h2>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.reviewIntensityDesc')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
@@ -852,7 +854,7 @@ export default function Onboarding() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.restDays')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.restDays')}</h2>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.restDaysDesc')}</p>
           <div className="flex flex-wrap gap-4">
             {DAY_LABEL_KEYS.map((labelKey, i) => (
@@ -936,7 +938,7 @@ export default function Onboarding() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-6 sacred-shadow">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-4">{t('onboarding.tipsTitle')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-4">{t('onboarding.tipsTitle')}</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             {[
               { icon: '🌅', titleKey: 'onboarding.tip1Title', descKey: 'onboarding.tip1Desc' },

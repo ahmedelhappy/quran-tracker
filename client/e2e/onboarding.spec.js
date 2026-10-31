@@ -26,7 +26,15 @@ test('register, pick Juz 30 in onboarding, and see today\'s tasks', async ({ pag
   await expect(juz30).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('1 Juz selected')).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
+  // Every screen of it is a page of its own: one main landmark (the skip link's
+  // target) holding one h1 (M-12) — the plan step, the "building" screen
+  // between it and the last step, and the last step.
+  const pageTitle = (name) => page.locator('main#main-content').getByRole('heading', { level: 1, name })
+  await expect(pageTitle('Customize Your Experience')).toBeVisible()
   await page.getByRole('button', { name: 'Generate My Plan' }).click()
+  await expect(pageTitle('Building your personalized plan...')).toBeVisible()
+  await expect(pageTitle(/Your Plan is Ready!/)).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
   await page.getByRole('button', { name: 'Start My Journey' }).click()
 
   await expect(page).toHaveURL(/\/dashboard$/)
