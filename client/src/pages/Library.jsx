@@ -5205,6 +5205,7 @@ export default function Library() {
                 onKeyDown={handlePageInputKey}
                 onBlur={handlePageInputBlur}
                 className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                aria-label={t('library.gotoPagePlaceholder')}
                 placeholder={t('library.gotoPagePlaceholder')}
               />
 
@@ -5216,19 +5217,21 @@ export default function Library() {
               <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
                 <button
                   onClick={() => setViewMode('single')}
+                  aria-pressed={view === 'single'}
                   className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
                     view === 'single' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                   }`}
                 >
-                  <FiFile className="w-3.5 h-3.5" /> {t('library.view.single')}
+                  <FiFile className="w-3.5 h-3.5" aria-hidden="true" /> {t('library.view.single')}
                 </button>
                 <button
                   onClick={() => setViewMode('double')}
+                  aria-pressed={view === 'double'}
                   className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
                     view === 'double' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                   }`}
                 >
-                  <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
+                  <FiColumns className="w-3.5 h-3.5" aria-hidden="true" /> {t('library.view.double')}
                 </button>
               </div>
             </div>
@@ -5308,6 +5311,7 @@ export default function Library() {
                   onChange={e => setBookmarkLabel(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
                   maxLength={50}
+                  aria-label={t('library.bookmarks.labelPlaceholder')}
                   placeholder={t('library.bookmarks.labelPlaceholder')}
                   className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
                 />
@@ -5456,10 +5460,11 @@ export default function Library() {
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setMethodOpen(o => !o)}
+                aria-expanded={methodOpen}
                 className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
               >
                 {t('library.method.title')}
-                <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
+                <FiChevronDown aria-hidden="true" className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
               </button>
               {methodOpen && (
                 <>
