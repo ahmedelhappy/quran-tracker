@@ -79,3 +79,31 @@ test('Escape keeps an unsaved note, from the note and from the page', async ({ p
   await page.keyboard.press('Escape')
   await expect(note).toHaveCount(0)
 })
+
+// M-12: closing the sheet over an unsaved note on purpose — its close button,
+// or a tap on the backdrop on a phone — discards it, but one Undo brings the
+// typing back.
+test('closing an unsaved note keeps it one Undo away', async ({ page, request }, testInfo) => {
+  const account = await createAccount(request, { label: 'note-undo', onboard: { dailyNewPages: 1 } })
+  await signIn(page, account)
+  await page.goto('/library?page=50')
+
+  const ayah2 = verse(page, '3:2')
+  await expect(ayah2).toBeVisible()
+  await ayah2.click({ button: 'right' })
+  await page.getByRole('button', { name: 'Add a note' }).click()
+  const note = page.getByPlaceholder('Write a note for this verse…')
+  await note.fill('Typed, then closed')
+
+  if (testInfo.project.name === 'mobile') {
+    // The backdrop above the bottom sheet, below the navbar.
+    await page.mouse.click(200, 120)
+  } else {
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+  }
+  await expect(note).toHaveCount(0)
+  await expect(page.getByText('Unsaved note discarded')).toBeVisible()
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(note).toHaveValue('Typed, then closed')
+  await expect(note).toBeFocused()
+})

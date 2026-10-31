@@ -804,6 +804,8 @@
       "noteSaved": "Note saved",
       "noteDeleted": "Note removed",
       "unsavedHint": "Unsaved note — Save it, or Close to discard it.",
+      "draftDiscarded": "Unsaved note discarded",
+      "draftRestore": "Undo",
       "noteIndicator": "This verse has a note — open it",
       "save": "Save",
       "delete": "Delete",

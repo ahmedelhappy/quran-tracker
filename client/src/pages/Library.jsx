@@ -3206,18 +3206,52 @@ export default function Library() {
       t(existing ? 'library.annotations.hardRemoved' : 'library.annotations.hardAdded'));
   }, [findAnn, applyVerseAction, t, refuseUnknownPage]);
 
+  // Close the note sheet. Over typing that exists nowhere else — the close
+  // button, a backdrop tap on a phone, the tafsir or another verse's note
+  // opened in its place — the draft is kept one Undo away instead of being
+  // lost without a word (M-12). Escape never gets here with a draft: it is
+  // refused (holdNote). Leaving the Library still drops it.
+  const closeNoteRef = useRef(null);
+  const closeNote = useCallback(() => {
+    if (notePanel && noteDirtyRef.current) {
+      const panel = notePanel;
+      const draft = noteDraft;
+      showToast(t('library.annotations.draftDiscarded'), 'info', {
+        action: {
+          label: t('library.annotations.draftRestore'),
+          onClick: () => {
+            // Whatever is open by then gets the same treatment.
+            closeNoteRef.current?.();
+            setTafsirOpen(false);
+            setNotePanel(panel);
+            setNoteDraft(draft);
+            setNoteHint(false);
+          },
+        },
+      });
+    }
+    setNotePanel(null);
+  }, [notePanel, noteDraft, showToast, t]);
+  closeNoteRef.current = closeNote;
+
   // Open the note editor for a verse (prefilled if a note already exists). Closes
   // the tafsir sheet so the two side panels never stack.
   const openNote = useCallback((page, verseKey) => {
     if (refuseUnknownPage(page)) return;
+    // Already open on this verse: keep what is typed there.
+    if (notePanel?.pageNumber === page && notePanel.verseKey === verseKey) {
+      noteTextareaRef.current?.focus({ preventScroll: true });
+      return;
+    }
     const existing = findAnn(page, (a) => a.kind === 'note' && a.verseKey === verseKey);
+    closeNote();
     setTafsirOpen(false);
     // `saved`: the text as stored, so a page turn can tell an untouched sheet
     // (safe to close) from one holding typing that exists nowhere else.
     setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null, saved: existing?.text ?? '' });
     setNoteDraft(existing?.text ?? '');
     setNoteHint(false);
-  }, [findAnn, refuseUnknownPage]);
+  }, [findAnn, refuseUnknownPage, notePanel, closeNote]);
 
   // Saving and removing a note are undoable like the rest: the reply carries the
   // note's previous text, so an undo can put exactly that text back.
@@ -4443,7 +4477,7 @@ export default function Library() {
   // The popover's tafsir icon — unchanged in effect: read THIS verse. Selecting
   // it is what points the panel at it.
   const openTafsir = (verseKey) => {
-    setNotePanel(null); // don't stack the two side panels
+    closeNote(); // don't stack the two side panels
     if (verseKey) setSelectedVerseKey(verseKey);
     setTafsirOpen(true);
   };
@@ -4491,7 +4525,7 @@ export default function Library() {
         }).catch((err) => reportLoadFailure(err, 'the span verse text'));
       }
     }
-    setNotePanel(null);
+    closeNote();
     setTafsirVerseKey(verseKey);
     setTafsirOpen(true);
   };
@@ -4531,7 +4565,7 @@ export default function Library() {
       if (first) { setPopoverHidden(true); setSelectedVerseKey(first.verseKey); }
       setRangeSelection(null);
     }
-    setNotePanel(null);
+    closeNote();
     setTafsirOpen(true);
   };
 
@@ -6682,7 +6716,7 @@ export default function Library() {
           <div
             data-dialog-keep
             className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-            onClick={() => setNotePanel(null)}
+            onClick={closeNote}
           />
           <div {...noteDialog.dialogProps} className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
@@ -6696,7 +6730,7 @@ export default function Library() {
               </div>
               <Tooltip label={t('tooltips.close')}>
                 <button
-                  onClick={() => setNotePanel(null)}
+                  onClick={closeNote}
                   aria-label={t('tooltips.close')}
                   className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
