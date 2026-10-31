@@ -4401,13 +4401,24 @@ export default function Library() {
   }, [tafsirWidth, clampTafsirWidth, commitTafsirWidth]);
 
   // Same job from the keyboard, for anyone not using a pointer.
+  // The arrow moves the handle the way it points, as the pointer drag does: the
+  // panel is on the right in English (left widens it) and on the left in Arabic
+  // (right widens it). A key the handle uses is spent here — it used to reach
+  // the reader's own handler too and turn the page as well (M-12).
   const onTafsirResizeKey = useCallback((e) => {
     const step = e.shiftKey ? 64 : 16;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); commitTafsirWidth(tafsirWidth + step); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); commitTafsirWidth(tafsirWidth - step); }
-    else if (e.key === 'Home') { e.preventDefault(); commitTafsirWidth(TAFSIR_MIN_W); }
-    else if (e.key === 'End') { e.preventDefault(); commitTafsirWidth(TAFSIR_MAX_W); }
-  }, [tafsirWidth, commitTafsirWidth]);
+    const widen = isArabic ? 'ArrowRight' : 'ArrowLeft';
+    const narrow = isArabic ? 'ArrowLeft' : 'ArrowRight';
+    let width = null;
+    if (e.key === widen) width = tafsirWidth + step;
+    else if (e.key === narrow) width = tafsirWidth - step;
+    else if (e.key === 'Home') width = TAFSIR_MIN_W;
+    else if (e.key === 'End') width = TAFSIR_MAX_W;
+    if (width == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    commitTafsirWidth(width);
+  }, [tafsirWidth, commitTafsirWidth, isArabic]);
 
   // The commentary as real paragraphs. Every line break in the source starts a new
   // one — for a book like Aysar those are its labelled definitions, one per line —
