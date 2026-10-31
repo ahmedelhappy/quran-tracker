@@ -746,8 +746,15 @@ function ChangePasswordCard() {
 // reader reads it on every keypress, so it applies at once.
 function SingleKeyShortcutsRow() {
   const { t } = useTranslation();
+  const { showToast } = useToast();
   const [on, setOn] = useState(singleKeyShortcutsOn);
-  const flip = () => { setSingleKeyShortcuts(!on); setOn(!on); };
+  // With storage blocked the choice still holds in this tab (shortcutKeys.js),
+  // but not past it — which the reader is told, rather than finding the
+  // shortcuts back on in the next tab.
+  const flip = () => {
+    if (!setSingleKeyShortcuts(!on)) showToast(t('settings.singleKeysTabOnly'), 'info');
+    setOn(!on);
+  };
   return (
     <div className="flex items-center justify-between gap-4 mt-6 pt-6 border-t border-[#dce2f3] dark:border-gray-700">
       <div className="min-w-0">

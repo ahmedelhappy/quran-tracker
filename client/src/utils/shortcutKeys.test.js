@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { isShortcutKey, shortcutValue, singleKeyShortcutsOn, setSingleKeyShortcuts, SINGLE_KEY_SHORTCUTS_KEY } from './shortcutKeys';
 
 // The shape of a KeyboardEvent the helpers read.
@@ -85,6 +85,31 @@ describe('turning single-key shortcuts off (WCAG 2.1.4, M-12)', () => {
     expect(singleKeyShortcutsOn()).toBe(false);
     setSingleKeyShortcuts(true);
     expect(localStorage.getItem(SINGLE_KEY_SHORTCUTS_KEY)).toBeNull();
+    expect(singleKeyShortcutsOn()).toBe(true);
+  });
+
+  it('says whether it stored the choice, and honours it in this tab when storage refuses it', () => {
+    localStorage.removeItem(SINGLE_KEY_SHORTCUTS_KEY);
+    expect(setSingleKeyShortcuts(false)).toBe(true);
+    setSingleKeyShortcuts(true);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    expect(setSingleKeyShortcuts(false)).toBe(false);
+    expect(localStorage.getItem(SINGLE_KEY_SHORTCUTS_KEY)).toBeNull();
+    // Nothing was stored, yet the switch said off: the shortcuts must be off.
+    expect(singleKeyShortcutsOn()).toBe(false);
+    expect(setSingleKeyShortcuts(true)).toBe(true);
+    expect(singleKeyShortcutsOn()).toBe(true);
+  });
+
+  it('lets a choice stored from another tab replace this tab\'s own', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });
+    setSingleKeyShortcuts(false);
+    expect(singleKeyShortcutsOn()).toBe(false);
+    vi.restoreAllMocks();
+    localStorage.removeItem(SINGLE_KEY_SHORTCUTS_KEY);
+    window.dispatchEvent(new StorageEvent('storage', { key: SINGLE_KEY_SHORTCUTS_KEY }));
     expect(singleKeyShortcutsOn()).toBe(true);
   });
 });

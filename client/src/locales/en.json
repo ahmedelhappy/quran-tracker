@@ -354,6 +354,7 @@
     "autoTheme": "Auto",
     "singleKeys": "Single-key shortcuts",
     "singleKeysDesc": "One-key shortcuts in the Quran reader: / to search, S for the sidebar, P, H, E, T and 1-4 for the annotation tools. Turn them off if you use speech input or press keys by accident. The arrows, Escape and Ctrl shortcuts always work.",
+    "singleKeysTabOnly": "Saved for this tab only — this browser isn't keeping site data, so it resets in a new tab.",
     "unsavedChanges": "You have unsaved changes.",
     "resetModal_title": "Reset All Progress?",
     "resetModal_message_one": "This will permanently delete all your memorized pages, review history, streak count ({{count}} day), and last activity date. This cannot be undone.",

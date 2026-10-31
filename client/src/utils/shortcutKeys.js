@@ -73,7 +73,22 @@ export const shortcutValue = (e, map) => {
 // Escape, F3 and the Ctrl shortcuts (Ctrl+K, Ctrl+Z) keep working either way.
 // A setting of this DEVICE, like the theme: kept on sign-out (safeStorage.js).
 export const SINGLE_KEY_SHORTCUTS_KEY = 'singleKeyShortcuts';
-export const singleKeyShortcutsOn = () => storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
-export const setSingleKeyShortcuts = (on) => (on
-  ? storage.remove(SINGLE_KEY_SHORTCUTS_KEY)
-  : storage.set(SINGLE_KEY_SHORTCUTS_KEY, 'off'));
+// What the switch was last set to in this tab. It wins over storage: with
+// storage blocked (or full) the write is lost, the read falls back to "on",
+// and the shortcuts kept firing while the switch said "off".
+let override = null;
+export const singleKeyShortcutsOn = () => override ?? storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
+// true when the choice was stored for this device; false when it holds for
+// this tab only.
+export const setSingleKeyShortcuts = (on) => {
+  override = !!on;
+  if (!on) return storage.set(SINGLE_KEY_SHORTCUTS_KEY, 'off');
+  storage.remove(SINGLE_KEY_SHORTCUTS_KEY);
+  return storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
+};
+// A change stored from another tab is the newer choice: this tab's own goes.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === SINGLE_KEY_SHORTCUTS_KEY || e.key === null) override = null;
+  });
+}
