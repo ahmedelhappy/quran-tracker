@@ -19,6 +19,14 @@ input[type=number] { -moz-appearance: textfield; }
 
 html { scroll-behavior: smooth; }
 
+/* The navbar is fixed over the top 4-4.5rem of every page. Without this, a
+   control that Tab scrolls UP to is brought only to the window's top edge —
+   under the bar (a Library verse on the first line, in Arabic, where the tab
+   order runs down the sidebar first). The browser leaves this much room
+   whenever it scrolls something into view: focus, scrollIntoView, #anchors
+   (M-12, WCAG 2.4.11 Focus Not Obscured). */
+html { scroll-padding-top: 5rem; }
+
 /* Tell the browser the page is dark, so what it draws ITSELF — the native face of
    a <select>, the scrollbars — is dark too. Without it WebKit painted its own light
    select surface under the light dark-mode text, leaving blank white boxes. */
