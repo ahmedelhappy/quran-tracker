@@ -518,6 +518,10 @@ export default function Library() {
   const [notePanel, setNotePanel] = useState(null); // { pageNumber, verseKey, id? } | null
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  // Set when an Escape was refused because the sheet holds unsaved typing: the
+  // sheet then says why, instead of the key just doing nothing (M-12).
+  const [noteHint, setNoteHint] = useState(false);
+  const noteTextareaRef = useRef(null);
   // A free-form text note opened for READING (its icon was tapped outside draw
   // mode). Read-only sheet; editing happens in draw mode. { text, color } | null
   const [readTextNote, setReadTextNote] = useState(null);
@@ -929,15 +933,20 @@ export default function Library() {
     modal: isPhone,
     fallbackFocus: () => verseAnchorFor(selectedVerseKey),
   });
+  // Escape with typing that exists nowhere else would throw it away — from
+  // inside the sheet or, beside the page on a wide screen, from the page. It is
+  // refused either way: focus goes back to the note and the sheet says what to
+  // do (Save, or Close, which keeps the draft one Undo away).
+  const holdNote = useCallback(() => {
+    setNoteHint(true);
+    noteTextareaRef.current?.focus({ preventScroll: true });
+  }, []);
   const noteDialog = useDialog({
     open: notePanel != null,
     onClose: () => setNotePanel(null),
     modal: isPhone,
     fallbackFocus: () => verseAnchorFor(notePanel?.verseKey),
-    // Escape with typing that exists nowhere else would throw it away; the
-    // close button (one Tab away) still does, deliberately. Nothing else
-    // changes: the global Escape ladder never ran inside the textarea.
-    onKeyDown: (e) => { if (e.key === 'Escape' && noteDirtyRef.current) e.preventDefault(); },
+    onKeyDown: (e) => { if (e.key === 'Escape' && noteDirtyRef.current) { e.preventDefault(); holdNote(); } },
   });
   // Has a backdrop at every width: always modal.
   const textNoteDialog = useDialog({ open: readTextNote != null, onClose: () => setReadTextNote(null) });
@@ -2396,7 +2405,7 @@ export default function Library() {
           if (find) endFind();
           else if (tafsirOpen) setTafsirOpen(false);
           else if (readTextNote) setReadTextNote(null);
-          else if (notePanel) setNotePanel(null);
+          else if (notePanel) { if (noteDirtyRef.current) holdNote(); else setNotePanel(null); }
           else if (selectedVerseKey != null && !popoverHidden) foldVerseActions();
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
           // A span's actions fold first and the span stays, like a verse's.
@@ -2408,7 +2417,7 @@ export default function Library() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind, popoverRef]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, holdNote, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind, popoverRef]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -3207,6 +3216,7 @@ export default function Library() {
     // (safe to close) from one holding typing that exists nowhere else.
     setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null, saved: existing?.text ?? '' });
     setNoteDraft(existing?.text ?? '');
+    setNoteHint(false);
   }, [findAnn, refuseUnknownPage]);
 
   // Saving and removing a note are undoable like the rest: the reply carries the
@@ -3339,7 +3349,8 @@ export default function Library() {
   // is anchored to its verse, not to the view, so saving it still lands on the
   // right verse after the turn.
   const noteDirtyRef = useRef(false);
-  noteDirtyRef.current = notePanel != null && noteDraft.trim() !== (notePanel.saved ?? '').trim();
+  const noteDirty = notePanel != null && noteDraft.trim() !== (notePanel.saved ?? '').trim();
+  noteDirtyRef.current = noteDirty;
   useEffect(() => { if (!noteDirtyRef.current) setNotePanel(null); }, [currentPage]);
 
   // ── Drawing (annotate mode) ────────────────────────────────────────
@@ -6703,17 +6714,24 @@ export default function Library() {
                   </p>
                 );
               })()}
-              <textarea
-                data-autofocus
-                aria-label={t('library.annotations.noteLabel')}
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                maxLength={2000}
-                rows={8}
-                dir="auto"
-                placeholder={t('library.annotations.notePlaceholder')}
-                className="w-full rounded-xl border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 resize-none"
-              />
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  ref={noteTextareaRef}
+                  data-autofocus
+                  aria-label={t('library.annotations.noteLabel')}
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  maxLength={2000}
+                  rows={8}
+                  dir="auto"
+                  placeholder={t('library.annotations.notePlaceholder')}
+                  className="w-full rounded-xl border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 resize-none"
+                />
+                {/* Always in the DOM, so the hint is announced when it appears. */}
+                <p role="status" className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  {noteHint && noteDirty ? t('library.annotations.unsavedHint') : ''}
+                </p>
+              </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(noteDraft.length)} / {fmtNum(2000)}</span>
                 <div className="flex items-center gap-2">

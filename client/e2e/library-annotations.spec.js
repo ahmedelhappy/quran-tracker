@@ -41,3 +41,41 @@ test('a highlight and a note persist across a reload and stay private', async ({
   await expect(bobPage.locator('.is-hl-yellow')).toHaveCount(0)
   await expect(bobPage.getByRole('button', { name: 'This verse has a note — open it' })).toHaveCount(0)
 })
+
+// M-12: on a wide screen the note sheet sits beside the page, so Escape can be
+// pressed from the page as well as from the note. Neither may throw away typing
+// that exists nowhere else; the sheet says why and gives the note focus back.
+test('Escape keeps an unsaved note, from the note and from the page', async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'a phone shows the sheet as a modal: the page cannot take focus')
+  const account = await createAccount(request, { label: 'note-escape', onboard: { dailyNewPages: 1 } })
+  await signIn(page, account)
+  await page.goto('/library?page=50')
+
+  const ayah2 = verse(page, '3:2')
+  await expect(ayah2).toBeVisible()
+  await ayah2.click({ button: 'right' })
+  await page.getByRole('button', { name: 'Add a note' }).click()
+  const note = page.getByPlaceholder('Write a note for this verse…')
+  await expect(note).toBeFocused()
+  await page.keyboard.type('Not saved yet')
+  const hint = page.getByRole('dialog').getByRole('status')
+
+  await page.keyboard.press('Escape')
+  await expect(note).toHaveValue('Not saved yet')
+  await expect(hint).toHaveText('Unsaved note — Save it, or Close to discard it.')
+
+  // Focus out on the page (a blank strip of it), then Escape from there.
+  await page.mouse.click(8, 400)
+  await expect(note).not.toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(note).toHaveValue('Not saved yet')
+  await expect(note).toBeFocused()
+
+  // Once the note is saved there is nothing to lose, and Escape closes it.
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Note saved')).toBeVisible()
+  await page.getByRole('button', { name: 'This verse has a note — open it' }).click()
+  await expect(note).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(note).toHaveCount(0)
+})
