@@ -1,6 +1,6 @@
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
-import { rememberTourTarget, tidyTourTarget, releaseTourTarget } from './tourAria';
+import { rememberTourTarget, tidyTourTarget, releaseTourTarget, tidyTourPopover } from './tourAria';
 
 /**
  * Contextual guidance for the Library reader, built on the same driver.js setup
@@ -87,6 +87,7 @@ const makeDriver = ({ t, steps, single = false, onDone }) => {
     onHighlightStarted: (el) => { rememberTourTarget(el); centerTarget(el); },
     onHighlighted: (el, _step, { driver }) => { tidyTourTarget(el); refreshPopover(driver); },
     onDeselected: (el) => releaseTourTarget(el),
+    onPopoverRender: (popover) => tidyTourPopover(popover),
     onDestroyed: () => { onDone?.(); },
   });
   tour.drive();

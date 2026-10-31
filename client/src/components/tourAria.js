@@ -45,3 +45,12 @@ export const releaseTourTarget = (el) => {
   saved.delete(el);
   if (own) setTimeout(() => restore(el, own), 0);
 };
+
+// driver.js builds its popover with a <header> (the title row) and a <footer>
+// (the buttons). Inside a plain div those are the PAGE's banner and contentinfo
+// landmarks to a screen reader — a second navbar and footer for as long as a
+// tour runs (axe: landmark-no-duplicate-banner/-contentinfo). They are only rows
+// of the popover, which is already a labelled dialog. onPopoverRender.
+export const tidyTourPopover = (popover) => {
+  popover?.wrapper?.querySelectorAll('header, footer').forEach((el) => el.setAttribute('role', 'none'));
+};

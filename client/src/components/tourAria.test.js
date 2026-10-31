@@ -40,3 +40,14 @@ describe('tour target attributes (M-12)', () => {
     expect(el.getAttribute('aria-controls')).toBe('menu');
   });
 });
+
+describe('tour popover landmarks (M-12)', () => {
+  it("the popover's header and footer are not page landmarks", async () => {
+    const { tidyTourPopover } = await import('./tourAria');
+    document.body.innerHTML = '<div id="p" role="dialog"><header>Title</header><footer><button>Next</button></footer></div>';
+    tidyTourPopover({ wrapper: document.getElementById('p') });
+    expect(document.querySelector('header').getAttribute('role')).toBe('none');
+    expect(document.querySelector('footer').getAttribute('role')).toBe('none');
+    document.body.innerHTML = '';
+  });
+});

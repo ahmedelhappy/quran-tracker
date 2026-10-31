@@ -1,6 +1,6 @@
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
-import { rememberTourTarget, tidyTourTarget, releaseTourTarget } from './tourAria';
+import { rememberTourTarget, tidyTourTarget, releaseTourTarget, tidyTourPopover } from './tourAria';
 
 // A target that exists AND is laid out (has box geometry). `display:none` elements
 // still match querySelector but report no client rects — e.g. the desktop-only
@@ -105,6 +105,7 @@ export function startDashboardTour({ t, onDone } = {}) {
     onHighlightStarted: (el) => { rememberTourTarget(el); centerTarget(el); },
     onHighlighted: (el, _step, { driver }) => { tidyTourTarget(el); refreshPopover(driver); },
     onDeselected: (el) => releaseTourTarget(el),
+    onPopoverRender: (popover) => tidyTourPopover(popover),
     onDestroyed: () => { onDone?.(); },
   });
 
