@@ -52,20 +52,36 @@ const inertCount = new Map();
 // alone (and so never woken by us), as are `data-dialog-keep` ones — the
 // backdrop that closes the dialog on a click, and the toast region, whose
 // messages must still be announced and clickable while a modal is up.
+//
+// A sibling that only CONTAINS a kept element is not put to sleep whole: the
+// sweep goes down into it and inerts everything there but the path to that
+// element. A dialog portaled to <body> (the how-to-memorize guide) has all of
+// #root as a sibling, toast region included, and inerting #root silenced every
+// toast and made its Undo unclickable for as long as the guide was open.
+const SKIP_TAGS = ['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'];
 export const inertOutside = (el) => {
   const mine = [];
-  for (let node = el; node && node.parentElement && node !== document.body; node = node.parentElement) {
-    for (const sib of node.parentElement.children) {
-      if (sib === node || sib.hasAttribute('data-dialog-keep')) continue;
-      if (['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'].includes(sib.tagName)) continue;
-      const count = inertCount.get(sib) ?? 0;
-      if (count === 0) {
-        if (sib.hasAttribute('inert')) continue;
-        sib.setAttribute('inert', '');
-      }
-      inertCount.set(sib, count + 1);
-      mine.push(sib);
+  const sleep = (sib) => {
+    const count = inertCount.get(sib) ?? 0;
+    if (count === 0) {
+      if (sib.hasAttribute('inert')) return;
+      sib.setAttribute('inert', '');
     }
+    inertCount.set(sib, count + 1);
+    mine.push(sib);
+  };
+  const sweep = (parent, skip) => {
+    for (const sib of parent.children) {
+      if (sib === skip || sib.hasAttribute('data-dialog-keep')) continue;
+      if (SKIP_TAGS.includes(sib.tagName)) continue;
+      // Already asleep for another reason: nothing inside it can be kept awake.
+      if (sib.hasAttribute('inert') && !inertCount.has(sib)) continue;
+      if (sib.querySelector('[data-dialog-keep]')) sweep(sib, null);
+      else sleep(sib);
+    }
+  };
+  for (let node = el; node && node.parentElement && node !== document.body; node = node.parentElement) {
+    sweep(node.parentElement, node);
   }
   return () => {
     for (const sib of mine) {

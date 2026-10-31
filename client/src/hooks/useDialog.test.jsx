@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import { useDialog, inertOutside } from './useDialog';
 
@@ -233,6 +234,44 @@ describe('inertOutside (M-12)', () => {
     expect(page.hasAttribute('inert')).toBe(true);
     releaseSheet();
     expect(page.hasAttribute('inert')).toBe(false);
+  });
+
+  it('keeps a toast region awake inside #root when the dialog is portaled to <body>', () => {
+    // The shape the how-to-memorize guide makes: the app (and its toast region)
+    // in #root, the dialog in a portal that is #root's sibling.
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+    function App() {
+      const [open, setOpen] = useState(false);
+      const { dialogProps, titleId } = useDialog({ open, onClose: () => setOpen(false) });
+      return (
+        <>
+          <main data-testid="page"><button onClick={() => setOpen(true)}>Open guide</button></main>
+          <div data-testid="toasts" role="status" data-dialog-keep><button>Undo</button></div>
+          {open && createPortal(
+            <div data-testid="layer">
+              <div data-testid="backdrop" data-dialog-keep onClick={() => setOpen(false)} />
+              <div {...dialogProps}><h2 id={titleId}>Guide</h2><button>Got it</button></div>
+            </div>,
+            document.body,
+          )}
+        </>
+      );
+    }
+    const { unmount } = render(<App />, { container: root });
+    const trigger = screen.getByRole('button', { name: 'Open guide' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(root.hasAttribute('inert')).toBe(false);
+    expect(screen.getByTestId('page').hasAttribute('inert')).toBe(true);
+    const toasts = screen.getByTestId('toasts');
+    expect(toasts.closest('[inert]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Got it' }), { key: 'Escape' });
+    expect(screen.getByTestId('page').hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+    unmount();
   });
 
   it('never wakes an element that was inert before it', () => {
