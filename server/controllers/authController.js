@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { EMAIL_MAX_LENGTH, EMAIL_PATTERN } = User;
+const { EMAIL_MAX_LENGTH, EMAIL_PATTERN, normalizeEmail } = User;
 const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
 const { serverError } = require('../utils/errorResponse');
@@ -10,6 +10,11 @@ const { deleteUserData } = require('../utils/userData');
 const chatBudget = require('../utils/chatBudget');
 const { PAGE_RULE, toPageNumber } = require('../utils/pageNumbers');
 const { parsePlanSettings } = require('../utils/planSettings');
+const mailer = require('../utils/mailer');
+const {
+  RESET_TOKEN_PATTERN, RESET_TOKEN_TTL_MS, RESET_TOKEN_TTL_MINUTES,
+  hashResetToken, newResetToken, passwordResetConfig, resetLink,
+} = require('../utils/passwordReset');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -17,11 +22,6 @@ const generateToken = (id) => {
     expiresIn: '30d'
   });
 };
-
-// Emails are stored trimmed and lower-cased (see the User model), so every lookup
-// must compare the same form. Non-strings never get here — the route's type gate
-// rejects them — but an absent field arrives as undefined.
-const normalizeEmail = (raw) => (typeof raw === 'string' ? raw.trim().toLowerCase() : '');
 
 // The validate middleware already turns 'true' / 'false' into real booleans;
 // this keeps the controller right on its own too. Boolean('false') is true.
@@ -465,5 +465,149 @@ exports.deleteAccount = async (req, res) => {
   } catch (error) {
     console.error('DeleteAccount error:', error);
     serverError(res, 'Error deleting account', error);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Password reset (H-06) — built, tested, and OFF until an email provider is
+// configured (utils/passwordReset.js decides; requireResetEnabled below guards
+// both endpoints).
+// ---------------------------------------------------------------------------
+
+// @desc    What the client needs to know before sign-in: today only whether
+//          "Forgot password?" should be offered
+// @route   GET /api/auth/config
+// @access  Public
+exports.authConfig = (req, res) => {
+  // Cacheable for a few minutes: it changes only with a redeploy.
+  res.set('Cache-Control', 'public, max-age=300');
+  res.status(200).json({ success: true, data: { passwordReset: passwordResetConfig().enabled } });
+};
+
+// Both reset endpoints answer as if they did not exist while reset is off —
+// before any limiter counts the request or the body is looked at.
+exports.requireResetEnabled = (req, res, next) => {
+  if (passwordResetConfig().enabled) return next();
+  return res.status(404).json({ success: false, code: 'RESET_DISABLED', message: 'Password reset is not available' });
+};
+
+// The one answer to every well-formed request, sent before any email goes out.
+const FORGOT_ANSWER = {
+  success: true,
+  message: 'If an account exists for that address, we have sent it a link to reset the password.',
+};
+
+// @desc    Email a password-reset link
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = async (req, res) => {
+  try {
+    // A malformed address is refused for what it is — that depends only on the
+    // input, so it says nothing about which accounts exist.
+    const email = normalizeEmail(req.body.email);
+    if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ success: false, code: 'INVALID_EMAIL', message: 'Please provide a valid email' });
+    }
+
+    // Nothing in the answer may depend on whether the address has an account:
+    // not the body, not the status, not the time it takes. So the same work is
+    // done either way — a token is made and hashed, and ONE conditional write
+    // is sent, which stores the hash on the account if there is one and matches
+    // nothing if there is not — and the reply goes out before any email does.
+    // A new request overwrites the stored hash, so only the latest link works.
+    const { token, hash } = newResetToken();
+    const config = passwordResetConfig();
+    const user = await User.findOneAndUpdate(
+      { email },
+      { $set: { passwordResetTokenHash: hash, passwordResetExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS) } },
+      { new: true, projection: { email: 1, language: 1 } },
+    );
+
+    res.status(200).json(FORGOT_ANSWER);
+
+    // Delivery runs after the reply, so a slow (or failing) transport cannot
+    // show up in the response time or status of a real address. A failure is
+    // logged without the token, the link or the address; the person can ask
+    // again.
+    if (user) {
+      setImmediate(() => {
+        mailer.sendPasswordReset({
+          to: user.email,
+          link: resetLink(config.origin, token),
+          language: user.language,
+          minutes: RESET_TOKEN_TTL_MINUTES,
+        }).catch((error) => console.error('Password reset email failed to send:', error?.message ?? error));
+      });
+    }
+  } catch (error) {
+    console.error('ForgotPassword error:', error);
+    serverError(res, 'Server error', error);
+  }
+};
+
+const RESET_TOKEN_INVALID = {
+  success: false,
+  code: 'RESET_TOKEN_INVALID',
+  message: 'This reset link is invalid or has expired. Please ask for a new one.',
+};
+
+// @desc    Set a new password with a reset token
+// @route   POST /api/auth/reset-password
+// @access  Public
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    // One answer for a token that is malformed, unknown, used or expired, so
+    // the reply never says which. Malformed ones are refused without a query.
+    if (typeof token !== 'string' || !RESET_TOKEN_PATTERN.test(token)) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+    // The policy first: a password it refuses must not use up the link.
+    const passwordProblem = newPasswordProblem(password);
+    if (passwordProblem) {
+      return res.status(400).json({ success: false, ...passwordProblem });
+    }
+
+    // The token is matched by its SHA-256 in an index lookup. No comparison of
+    // the secret itself happens in this process, so there is nothing to make
+    // constant-time: the database compares hashes, and timing that could at
+    // best reveal a prefix of a HASH, which cannot be turned back into a token.
+    const hash = hashResetToken(token);
+    const pending = () => ({ passwordResetTokenHash: hash, passwordResetExpires: { $gt: new Date() } });
+
+    // A cheap check before bcrypt, so made-up tokens cost one indexed read.
+    if (!(await User.exists(pending()))) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+
+    // Consuming the token and setting the password are ONE atomic update,
+    // conditional on the token still being there and unexpired. Two requests
+    // with the same link can both pass the check above, but only one of them
+    // matches here; the other finds the token gone and gets the same refusal.
+    // passwordChangedAt revokes every session issued before now, exactly as a
+    // password change does.
+    const passwordHash = await User.hashPassword(password);
+    const user = await User.findOneAndUpdate(
+      pending(),
+      {
+        $set: { password: passwordHash, passwordChangedAt: User.passwordChangedStamp() },
+        $unset: { passwordResetTokenHash: 1, passwordResetExpires: 1 },
+      },
+      { new: true, projection: { email: 1 } },
+    );
+    if (!user) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+
+    // The person has just shown they read this address's mail, so a sign-in
+    // lock on it (perhaps someone else's guessing) is lifted: they can sign in
+    // with the new password at once.
+    loginThrottle.reset(user.email);
+
+    res.status(200).json({ success: true, message: 'Your password has been reset. Please sign in.' });
+  } catch (error) {
+    console.error('ResetPassword error:', error);
+    serverError(res, 'Server error', error);
   }
 };

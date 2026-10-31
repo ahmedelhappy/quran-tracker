@@ -35,6 +35,11 @@ const PUBLIC_ROUTES = [
   'GET /health',
   'POST /api/auth/register',
   'POST /api/auth/login',
+  'GET /api/auth/config',
+  // Password reset (H-06): public by nature, and a 404 RESET_DISABLED until
+  // it is configured on.
+  'POST /api/auth/forgot-password',
+  'POST /api/auth/reset-password',
 ];
 
 const joinPath = (prefix, path) => (prefix + (path === '/' && prefix ? '' : path)) || '/';
@@ -150,7 +155,8 @@ describe('401 sweep over every registered route', () => {
       const [method, path] = key.split(' ');
       const res = await send({ method, path });
       assert.notEqual(res.status, 401, key);
-      assert.notEqual(res.status, 404, key);
+      // A switched-off feature answers 404 on purpose; a missing route never may.
+      if (res.body?.code !== 'RESET_DISABLED') assert.notEqual(res.status, 404, key);
     }
   });
 });
