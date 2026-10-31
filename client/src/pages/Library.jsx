@@ -2283,6 +2283,15 @@ export default function Library() {
       // (useDialog stops them); this catches the rest — focus lost to <body>
       // while it is up — so no page turns or tool picks behind it (M-12).
       if (document.querySelector('[aria-modal="true"]')) return;
+      // Scrolls a zoomed page sideways by part of its window; false when the
+      // page isn't zoomed or is already against that edge.
+      const panZoomed = (dir) => {
+        const s = scrollerRef.current;
+        if (!s || s.scrollWidth <= s.clientWidth + 1) return false;
+        const before = s.scrollLeft;
+        s.scrollBy({ left: dir * s.clientWidth * 0.4, behavior: 'instant' });
+        return Math.abs(s.scrollLeft - before) > 1;
+      };
       // Folding the verse actions while focus is in them would drop it to
       // <body>: it goes back to the verse they belong to (M-12).
       const foldVerseActions = () => {
@@ -2365,10 +2374,17 @@ export default function Library() {
         }
       }
       switch (e.key) {
+        // On a zoomed page the arrows pan along the line first and turn only
+        // once the page is against that edge — what a swipe does (M-12: a line
+        // at 2-3x is wider than the window, and the keyboard had no way to
+        // reach its far end). Still forward = leftward: ArrowLeft pans left,
+        // then turns to the next page. Unzoomed, nothing changes.
         case 'ArrowLeft':
+          e.preventDefault(); if (!panZoomed(-1)) goNext(); break;
+        case 'ArrowRight':
+          e.preventDefault(); if (!panZoomed(1)) goPrev(); break;
         case 'PageDown':
           e.preventDefault(); goNext(); break;
-        case 'ArrowRight':
         case 'PageUp':
           e.preventDefault(); goPrev(); break;
         case 'Escape':
