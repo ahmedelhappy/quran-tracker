@@ -27,6 +27,8 @@
 //     stay navigation keys (two of them turn the page).
 //
 // USE THIS FOR EVERY LETTER OR DIGIT SHORTCUT. See docs/CODE_GUIDE.md.
+import { storage } from './safeStorage';
+
 const DIGIT_ZEROS = [0x30, 0x660, 0x6f0]; // '0', Arabic-Indic '٠', Eastern Arabic-Indic '۰'
 
 // '0'..'9' for a single digit character in any of those scripts, else null.
@@ -62,3 +64,16 @@ export const shortcutValue = (e, map) => {
   }
   return null;
 };
+
+// ── Turning the single-key shortcuts off (WCAG 2.1.4, M-12) ─────────────────
+// The reader's letter, digit and '/' shortcuts fire on one keypress with no
+// modifier, wherever focus is outside a field — so speech input ("press S…")
+// or a stray key can open search, hide the sidebar or start annotating. A
+// reader can switch them off (Settings → Appearance); arrows, PageUp/PageDown,
+// Escape, F3 and the Ctrl shortcuts (Ctrl+K, Ctrl+Z) keep working either way.
+// A setting of this DEVICE, like the theme: kept on sign-out (safeStorage.js).
+export const SINGLE_KEY_SHORTCUTS_KEY = 'singleKeyShortcuts';
+export const singleKeyShortcutsOn = () => storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
+export const setSingleKeyShortcuts = (on) => (on
+  ? storage.remove(SINGLE_KEY_SHORTCUTS_KEY)
+  : storage.set(SINGLE_KEY_SHORTCUTS_KEY, 'off'));

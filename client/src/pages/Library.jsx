@@ -63,7 +63,7 @@ import {
 import { useDraggable } from '../hooks/useDraggable';
 import { useDialog } from '../hooks/useDialog';
 import { useMushafZoom } from '../hooks/useMushafZoom';
-import { isShortcutKey } from '../utils/shortcutKeys';
+import { isShortcutKey, singleKeyShortcutsOn } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
 import { reportLoadFailure } from '../utils/reportError';
@@ -2319,7 +2319,11 @@ export default function Library() {
       // Search, in and out of annotate mode: "/" or Ctrl+K opens the box (never
       // while typing — that returned above), and F3 / Shift+F3 step through the
       // hits while the occurrence bar is up (the browser's own find is kept off them).
-      if ((!mod && !e.altKey && isShortcutKey(e, '/')) || (mod && !e.altKey && !e.shiftKey && isShortcutKey(e, 'k'))) {
+      // The letter, digit and '/' shortcuts below are the ones a reader can turn
+      // off (WCAG 2.1.4, utils/shortcutKeys.js); read on every press, so the
+      // Settings switch applies at once, in this tab and the next.
+      const singleKeys = !mod && !e.altKey && singleKeyShortcutsOn();
+      if ((singleKeys && isShortcutKey(e, '/')) || (mod && !e.altKey && !e.shiftKey && isShortcutKey(e, 'k'))) {
         e.preventDefault();
         openSearch();
         return;
@@ -2356,7 +2360,7 @@ export default function Library() {
         // once away stops annotating — the same ladder as its button. Never with
         // Ctrl / Alt / Meta held (Ctrl+1..4 switches browser tabs), and a held
         // key's auto-repeat is swallowed so holding it can't run the ladder.
-        if (!mod && !e.altKey) {
+        if (singleKeys) {
           const tool = toolForKey(e);
           if (tool) { e.preventDefault(); if (!e.repeat) selectToolRef.current?.(tool); }
         }
@@ -2364,7 +2368,7 @@ export default function Library() {
       }
       // Annotate mode is OFF: a tool's key turns it on AND picks that tool, so
       // reaching for the pen is one keystroke rather than two.
-      if (drawPage == null && !mod && !e.altKey) {
+      if (drawPage == null && singleKeys) {
         const tool = toolForKey(e);
         if (tool) { e.preventDefault(); if (!e.repeat) startDrawRef.current?.(tool); return; }
         // 'S' shows/hides the sidebar. 'F' does the same — it used to toggle focus

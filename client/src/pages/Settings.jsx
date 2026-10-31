@@ -24,6 +24,7 @@ import { useDragSelect } from '../hooks/useDragSelect';
 import { newPasswordProblem } from '../utils/passwordRules';
 import { reportLoadFailure } from '../utils/reportError';
 import { apiErrorMessage } from '../utils/apiError';
+import { singleKeyShortcutsOn, setSingleKeyShortcuts } from '../utils/shortcutKeys';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -736,6 +737,34 @@ function ChangePasswordCard() {
           {pwLoading ? t('settings.password.saving') : <><FiSave className="w-4 h-4" /> {t('settings.password.update')}</>}
         </button>
       </form>
+    </div>
+  );
+}
+
+// ── Single-key shortcuts (WCAG 2.1.4) ────────────────────
+// A setting of this device, saved the moment it is flipped (no Save bar): the
+// reader reads it on every keypress, so it applies at once.
+function SingleKeyShortcutsRow() {
+  const { t } = useTranslation();
+  const [on, setOn] = useState(singleKeyShortcutsOn);
+  const flip = () => { setSingleKeyShortcuts(!on); setOn(!on); };
+  return (
+    <div className="flex items-center justify-between gap-4 mt-6 pt-6 border-t border-[#dce2f3] dark:border-gray-700">
+      <div className="min-w-0">
+        <p id="settings-single-keys-label" className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.singleKeys')}</p>
+        <p id="settings-single-keys-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.singleKeysDesc')}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby="settings-single-keys-label"
+        aria-describedby="settings-single-keys-hint"
+        onClick={flip}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-[#1B4332]' : 'bg-gray-300 dark:bg-gray-600'}`}
+      >
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'ltr:translate-x-6 rtl:-translate-x-6' : 'ltr:translate-x-1 rtl:-translate-x-1'}`} />
+      </button>
     </div>
   );
 }
@@ -1954,6 +1983,8 @@ export default function Settings() {
                     </button>
                   </div>
                 </div>
+
+                <SingleKeyShortcutsRow />
               </section>
             )}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isShortcutKey, shortcutValue } from './shortcutKeys';
+import { isShortcutKey, shortcutValue, singleKeyShortcutsOn, setSingleKeyShortcuts, SINGLE_KEY_SHORTCUTS_KEY } from './shortcutKeys';
 
 // The shape of a KeyboardEvent the helpers read.
 const ev = (code, key, shiftKey = false) => ({ code, key, shiftKey });
@@ -73,5 +73,18 @@ describe('shortcutValue', () => {
   it('returns null when nothing matches', () => {
     expect(shortcutValue(ev('KeyZ', 'z'), MAP)).toBeNull();
     expect(shortcutValue(ev('ArrowLeft', 'ArrowLeft'), MAP)).toBeNull();
+  });
+});
+
+describe('turning single-key shortcuts off (WCAG 2.1.4, M-12)', () => {
+  it('is on until the reader turns it off, and stays a device setting', () => {
+    localStorage.removeItem(SINGLE_KEY_SHORTCUTS_KEY);
+    expect(singleKeyShortcutsOn()).toBe(true);
+    setSingleKeyShortcuts(false);
+    expect(localStorage.getItem(SINGLE_KEY_SHORTCUTS_KEY)).toBe('off');
+    expect(singleKeyShortcutsOn()).toBe(false);
+    setSingleKeyShortcuts(true);
+    expect(localStorage.getItem(SINGLE_KEY_SHORTCUTS_KEY)).toBeNull();
+    expect(singleKeyShortcutsOn()).toBe(true);
   });
 });
