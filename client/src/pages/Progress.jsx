@@ -102,8 +102,25 @@ function ContributionGraph({ weeks, locale }) {
     return labels;
   }, [weeks, locale]);
 
+  // What the grid says, in words (M-12): its cells are colour and a hover
+  // title, which a screen reader can't reach. The grid is one image named by
+  // this sentence: the span, the pages done in it and on how many days.
+  const summary = useMemo(() => {
+    const cells = weeks.flat().filter(Boolean);
+    if (!cells.length) return '';
+    const fmt = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const pages = cells.reduce((n, c) => n + c.count, 0);
+    const days = cells.filter((c) => c.count > 0).length;
+    return t('progress.heatmapSummary', {
+      from: fmt(cells[0].date),
+      to: fmt(cells[cells.length - 1].date),
+      pages: t('progress.pagesCount', { count: pages }),
+      days: t('progress.activeDays', { count: days }),
+    });
+  }, [weeks, locale, t]);
+
   return (
-    <div dir="ltr" className="overflow-x-auto pb-1">
+    <div dir="ltr" className="overflow-x-auto pb-1" role="img" aria-label={summary}>
       <div className="inline-flex flex-col gap-[3px]">
         {/* Month labels */}
         <div className="flex gap-[3px] ps-7">
@@ -656,6 +673,24 @@ export default function Progress() {
                                     </div>
                                   );
                                 })}
+                                {!editMode && (
+                                  // The tiles above are colour and a hover title; this is
+                                  // what they add up to, for a screen reader (M-12).
+                                  <span className="sr-only">
+                                    {(() => {
+                                      let memorized = 0;
+                                      let partly = 0;
+                                      for (let page = start; page <= end; page++) {
+                                        if (!activeSet.has(page)) continue;
+                                        const f = partialMap.get(page);
+                                        if (f != null && f < 1) partly++; else memorized++;
+                                      }
+                                      return t('progress.pageGridSummary', {
+                                        from: start, to: end, memorized, partly, notYet: total - memorized - partly,
+                                      });
+                                    })()}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           );

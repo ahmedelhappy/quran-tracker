@@ -12,7 +12,21 @@ export default function MemorizationChart({ data }) {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  // The line is a picture; the same numbers as a table, visually hidden, are
+  // what a screen reader reads instead (M-12).
   return (
+    <>
+    <table className="sr-only">
+      <caption>{t('progress.chartTableCaption')}</caption>
+      <thead>
+        <tr><th scope="col">{t('progress.chartTableDate')}</th><th scope="col">{t('progress.memorized')}</th></tr>
+      </thead>
+      <tbody>
+        {data.map((d, i) => (
+          <tr key={i}><td>{d.label}</td><td>{t('progress.pagesCount', { count: d.pages })}</td></tr>
+        ))}
+      </tbody>
+    </table>
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#374151' : '#F0F0F0'} />
@@ -26,5 +40,6 @@ export default function MemorizationChart({ data }) {
         <Line type="monotone" dataKey="pages" stroke={isDark ? '#6EE7B7' : '#1B4332'} strokeWidth={2.5} dot={{ fill: isDark ? '#6EE7B7' : '#1B4332', r: 3 }} activeDot={{ r: 5, fill: isDark ? '#A7F3D0' : '#1B4332' }} />
       </LineChart>
     </ResponsiveContainer>
+    </>
   );
 }
