@@ -50,7 +50,10 @@ html.dark { color-scheme: dark; }
    verse, not the one glyph, and never round it — the band already shapes it. */
 :where(.mushaf-word):focus-visible {
   outline: 2px solid #004f35;
-  outline-offset: 1px;
+  /* Drawn INSIDE the word's box: each printed line clips its overflow (the
+     fixed 15-slot grid), which cut an outside ring down to a sliver at its
+     two ends (M-12). */
+  outline-offset: -2px;
   border-radius: 0;
 }
 .dark :where(.mushaf-word):focus-visible { outline-color: #34d399; }
