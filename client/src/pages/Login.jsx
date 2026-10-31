@@ -49,7 +49,7 @@ const Login = () => {
       <div className="absolute top-4 end-4 z-20">
         <LanguageToggle variant="icon" />
       </div>
-      <main className="flex-grow flex items-center justify-center p-6">
+      <main id="main-content" className="flex-grow flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="flex justify-center mb-6">
             <Logo size="lg" />

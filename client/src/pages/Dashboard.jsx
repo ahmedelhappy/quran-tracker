@@ -713,7 +713,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#FFFDF5] dark:bg-gray-900 sacred-pattern flex flex-col">
       <Navbar />
 
-      <main className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
+      <main id="main-content" className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
 
         {/* First cycle complete banner */}
         {data?.firstCycleComplete && !cycleBannerDismissed && (

@@ -1191,7 +1191,7 @@ export default function Settings() {
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <Navbar />
 
-      <main className={`flex-grow pt-[100px] ${isDirty ? 'pb-36' : 'pb-24'} px-6 max-w-[1280px] w-full mx-auto`}>
+      <main id="main-content" className={`flex-grow pt-[100px] ${isDirty ? 'pb-36' : 'pb-24'} px-6 max-w-[1280px] w-full mx-auto`}>
         <div className="mb-12">
           <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('settings.title')}</h1>
           <p className="text-lg text-[#404944] dark:text-gray-400">{t('settings.subtitle')}</p>

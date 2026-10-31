@@ -396,7 +396,7 @@ export default function Progress() {
 
       {/* The title bar is part of the page's content, so it sits inside the
           one main landmark with the rest (the skip link lands on its heading). */}
-      <main className="flex-1 flex flex-col">
+      <main id="main-content" className="flex-1 flex flex-col">
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">

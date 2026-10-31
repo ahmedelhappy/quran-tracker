@@ -63,7 +63,7 @@ const Register = () => {
         <LanguageToggle variant="icon" />
       </div>
 
-      <main className="flex-grow flex items-center justify-center p-6 relative z-10 py-12">
+      <main id="main-content" className="flex-grow flex items-center justify-center p-6 relative z-10 py-12">
         <div className="w-full max-w-[440px] bg-white dark:bg-gray-800 rounded-[24px] sacred-shadow p-8 md:p-10 border border-[#bfc9c3]/20 dark:border-gray-700 relative overflow-hidden">
           {/* Top gradient accent */}
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#064e3b] via-[#fe932c] to-[#064e3b] opacity-90" />

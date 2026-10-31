@@ -316,7 +316,7 @@ export default function Onboarding() {
       <div className="fixed top-4 start-4 z-10">
         <LanguageToggle variant="icon" />
       </div>
-      <main className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
+      <main id="main-content" className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
         <div className="text-center space-y-4">
           <div className="flex justify-center mb-2">
@@ -341,7 +341,7 @@ export default function Onboarding() {
   if (step === 2) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 flex flex-col">
       <OnboardingHeader step={2} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-10">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-10">
 
         <section className="flex flex-col gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl sacred-shadow border border-[#f0f3ff] dark:border-gray-700">
           <div>
@@ -782,7 +782,7 @@ export default function Onboarding() {
   if (step === 3) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <OnboardingHeader step={3} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center mb-4">
           <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h2>
           <p className="text-[#404944] dark:text-gray-400">{t('onboarding.customizeDesc')}</p>
@@ -897,7 +897,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <OnboardingHeader step={4} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center">
           <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-700/40 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">⭐</span>

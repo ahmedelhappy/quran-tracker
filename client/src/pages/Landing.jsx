@@ -123,7 +123,7 @@ const Landing = () => {
 
       {/* Everything between the bar and the footer is the page's content: one
           main landmark for the skip link and screen readers to land on. */}
-      <main>
+      <main id="main-content">
       {/* ── HERO ─────────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-20">
         <div className="grid lg:grid-cols-2 gap-14 items-center">
