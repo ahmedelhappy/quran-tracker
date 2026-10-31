@@ -72,7 +72,8 @@ test('a failed onboarding save says why, and sending it again finishes', async (
   // used to sit over it, both at the bottom end, so it had to be closed first.
   // Now the button is clicked again with the toast still up.
   const start = page.getByRole('button', { name: 'Start My Journey' })
-  const toastBox = await page.getByRole('status').locator('> div').first().boundingBox()
+  // A failure's toast sits in the toasts' assertive (role="alert") region.
+  const toastBox = await page.getByRole('alert').locator('> div').first().boundingBox()
   const startBox = await start.boundingBox()
   const overlaps = toastBox.x < startBox.x + startBox.width && startBox.x < toastBox.x + toastBox.width &&
     toastBox.y < startBox.y + startBox.height && startBox.y < toastBox.y + toastBox.height
