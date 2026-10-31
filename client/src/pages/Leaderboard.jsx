@@ -110,7 +110,7 @@ export default function Leaderboard() {
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-1 flex items-center gap-2">
-            <FiAward className="w-7 h-7" /> {t('leaderboard.title')}
+            <FiAward className="w-7 h-7" aria-hidden="true" /> {t('leaderboard.title')}
           </h1>
           <p className="text-green-300 dark:text-gray-400 text-sm">{t('leaderboard.subtitle')}</p>
         </div>
@@ -155,6 +155,7 @@ export default function Leaderboard() {
             <button
               key={tab.key}
               onClick={() => setPeriod(tab.key)}
+              aria-pressed={period === tab.key}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 period === tab.key
                   ? 'bg-white dark:bg-gray-700 text-[#1B4332] dark:text-emerald-400 shadow-sm'

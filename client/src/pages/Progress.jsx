@@ -440,6 +440,7 @@ export default function Progress() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
+              aria-pressed={activeTab === tab.key}
               className={`pb-3 text-sm font-semibold transition-colors ${
                 activeTab === tab.key
                   ? 'border-b-2 border-[#004f35] dark:border-emerald-400 text-[#003527] dark:text-emerald-400'

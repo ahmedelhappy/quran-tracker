@@ -933,26 +933,30 @@ export default function Dashboard() {
         {/* ── Tasks Section with Tabs ───────────────────────── */}
         <section className="flex flex-col gap-4">
           {/* Tab bar */}
-          <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
+          {/* Toggle buttons that say which view is showing (M-12) — not ARIA
+              tabs, whose arrow-key pattern these never had. */}
+          <div role="group" aria-label={t('dashboard.viewLabel')} className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
             <button
               onClick={() => setActiveTab('today')}
+              aria-pressed={activeTab === 'today'}
               className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'today'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiCalendar className="w-4 h-4" />{t('dashboard.today')}
+              <FiCalendar className="w-4 h-4" aria-hidden="true" />{t('dashboard.today')}
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
+              aria-pressed={activeTab === 'week'}
               className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'week'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiList className="w-4 h-4" />{t('dashboard.thisWeek')}
+              <FiList className="w-4 h-4" aria-hidden="true" />{t('dashboard.thisWeek')}
             </button>
             <button
               onClick={() => setHowToOpen(true)}
@@ -1046,10 +1050,11 @@ export default function Dashboard() {
                 <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
                   <button
                     onClick={() => { setShowWantMore(!showWantMore); if (!showWantMore) loadExtraPages(); }}
+                    aria-expanded={showWantMore}
                     className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-lg">✨</span>
+                      <span className="text-lg" aria-hidden="true">✨</span>
                       <span className="text-base font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.wantMore')}</span>
                     </div>
                     {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
@@ -1268,13 +1273,14 @@ export default function Dashboard() {
           <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
             <button
               onClick={() => setTipOpen(!tipOpen)}
+              aria-expanded={tipOpen}
               className="w-full p-4 flex justify-between items-center bg-[#b0f0d6]/5 dark:bg-emerald-900/10 hover:bg-[#b0f0d6]/10 dark:hover:bg-emerald-900/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <FiZap className="w-5 h-5 text-[#fe932c]" />
+                <FiZap className="w-5 h-5 text-[#fe932c]" aria-hidden="true" />
                 <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.tipTitle')}</span>
               </div>
-              <span className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
+              <span aria-hidden="true" className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
             </button>
             {tipOpen && (
               <div className="p-4 border-t border-[#dce2f3] dark:border-gray-700 text-[#404944] dark:text-gray-300 leading-relaxed bg-white dark:bg-gray-800">
