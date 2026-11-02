@@ -46,6 +46,9 @@ const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const { buildProgressSummary } = require('../controllers/progressController');
 const { PAGE_BY_NUMBER } = require('../utils/segments');
+// The SDK's real error classes (only its entry point is faked above), so the
+// log tests throw exactly what production sees.
+const GroqErrors = require('groq-sdk/error');
 
 const GUIDE = fs.readFileSync(path.join(__dirname, '..', 'chat', 'appGuide.md'), 'utf8');
 
@@ -425,28 +428,70 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'AI service unavailable' });
   });
 
-  test('an upstream error that quotes the chat back is logged by status and code only (H-05)', async () => {
-    const user = await createUser();
-    const words = 'my private words 7f3a';
-    // The shape groq-sdk gives a 400: the message is built from Groq's body,
-    // and a failed generation carries the model's output, which can repeat
-    // what the user wrote.
-    groqImpl = async () => {
-      throw Object.assign(new Error(`400 Failed to generate: ${words}`), {
-        name: 'BadRequestError',
-        status: 400,
-        error: { error: { message: `Failed to generate: ${words}`, type: 'invalid_request_error', code: 'tool_use_failed', failed_generation: words } },
-      });
-    };
+  // Everything console.error printed while `fn` ran, one string.
+  async function errorLog(fn) {
     const logged = [];
     const original = console.error;
     console.error = (...args) => logged.push(args.map(String).join(' '));
     let res;
-    try { res = await chat(user, [{ role: 'user', content: words }]); } finally { console.error = original; }
+    try { res = await fn(); } finally { console.error = original; }
+    return { res, log: logged.join('\n') };
+  }
+
+  test('an upstream error that quotes the chat back is logged by status, code and safe headers only (H-05)', async () => {
+    const user = await createUser();
+    const words = 'my private words 7f3a';
+    // The error groq-sdk itself throws for a 400 (its real class, which never
+    // sets `name`): the message is built from Groq's body, and a failed
+    // generation carries the model's output, which can repeat what the user wrote.
+    groqImpl = async () => {
+      throw new GroqErrors.BadRequestError(
+        400,
+        { error: { message: `Failed to generate: ${words}`, type: 'invalid_request_error', code: 'tool_use_failed', failed_generation: words } },
+        undefined,
+        new Headers({
+          'x-request-id': 'req_1',
+          'retry-after': '7',
+          'x-ratelimit-remaining-requests': '99',
+          'x-ratelimit-remaining-tokens': '5000',
+          'x-echo': words,
+        }),
+      );
+    };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: words }]));
     assert.equal(res.status, 502);
-    const log = logged.join('\n');
     assert.ok(!log.includes('7f3a'), log);
     assert.ok(log.includes('BadRequestError 400 tool_use_failed/invalid_request_error'), log);
+    for (const pair of ['x-request-id=req_1', 'retry-after=7', 'x-ratelimit-remaining-requests=99', 'x-ratelimit-remaining-tokens=5000']) {
+      assert.ok(log.includes(pair), `${pair} in ${log}`);
+    }
+  });
+
+  test('a connection error is logged with its cause chain (H-05)', async () => {
+    const user = await createUser();
+    // What groq-sdk throws when fetch itself fails: no status, the reason two
+    // causes down.
+    groqImpl = async () => {
+      const refused = Object.assign(new Error('connect ECONNREFUSED 1.2.3.4:443'), { code: 'ECONNREFUSED' });
+      throw new GroqErrors.APIConnectionError({ cause: new TypeError('fetch failed', { cause: refused }) });
+    };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: 'my private words 7f3a' }]));
+    assert.equal(res.status, 502);
+    assert.ok(!log.includes('7f3a'), log);
+    assert.match(log, /APIConnectionError: Connection error\./);
+    assert.match(log, /caused by TypeError: fetch failed/);
+    assert.match(log, /caused by Error ECONNREFUSED: connect ECONNREFUSED 1\.2\.3\.4:443/);
+  });
+
+  test('a response that fails to parse is logged by class and stack frames, not its quoting message (H-05)', async () => {
+    const user = await createUser();
+    // Short enough that V8 quotes all of it back in the message.
+    groqImpl = async () => { JSON.parse('x 7f3a'); };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: 'hi' }]));
+    assert.equal(res.status, 502);
+    assert.ok(!log.includes('7f3a'), log);
+    assert.match(log, /SyntaxError/);
+    assert.match(log, /\n\s+at /, 'the frames still say where it failed');
   });
 
   test('a reply cut off before any answer is a 502, not an empty bubble', async () => {

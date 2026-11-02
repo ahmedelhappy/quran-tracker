@@ -152,16 +152,49 @@ const CONVERSATION_ROLES = new Set(['user', 'assistant']);
 // What an upstream failure leaves in the server log. Groq's error body is its
 // own text and can quote the request back — a failed generation carries the
 // model's output, which repeats the user's words — so an HTTP error is logged by
-// its status and Groq's error code/type only, never the body or the message
-// built from it. An error with no status was raised on this side (a dropped
-// connection, a bug here); its message names the cause and holds no chat text.
+// its status, Groq's error code/type and a few headers that hold only ids and
+// counters, never the body or the message built from it. An error with no
+// status was raised on this side (a dropped connection, a bug here); its message
+// and those of its causes name a network or code failure and hold no chat text —
+// except a SyntaxError, whose message can quote the response it failed to parse.
+//
+// groq-sdk never sets `name` on its errors (every one reads "Error"), so the
+// class name is what tells a RateLimitError from a BadRequestError.
+const LOGGED_GROQ_HEADERS = [
+  'x-request-id', 'retry-after', 'x-ratelimit-remaining-requests', 'x-ratelimit-remaining-tokens',
+];
+const errorName = (e) => e?.constructor?.name || e?.name || 'Error';
+// The "    at …" lines of a stack, without the message line(s) above them.
+const stackFrames = (e) => (typeof e?.stack === 'string'
+  ? e.stack.split('\n').filter((line) => /^\s+at /.test(line)).join('\n')
+  : '');
+const describeLocalError = (e) => {
+  const name = errorName(e);
+  if (e instanceof SyntaxError) return name;
+  const code = typeof e?.code === 'string' || typeof e?.code === 'number' ? ` ${e.code}` : '';
+  return `${name}${code}: ${e?.message ?? String(e)}`;
+};
 const describeGroqError = (error) => {
   if (error?.status) {
     const body = error.error?.error ?? error.error;
     const code = [body?.code, body?.type].filter((v) => typeof v === 'string').join('/');
-    return `${error.name || 'Error'} ${error.status}${code ? ` ${code}` : ''}`;
+    const headers = error.headers;
+    const read = (key) => (typeof headers?.get === 'function' ? headers.get(key) : headers?.[key]);
+    const picked = headers
+      ? LOGGED_GROQ_HEADERS.map((key) => [key, read(key)]).filter(([, v]) => v != null && v !== '')
+      : [];
+    const headerText = picked.map(([key, v]) => `${key}=${v}`).join(' ');
+    return `${errorName(error)} ${error.status}${code ? ` ${code}` : ''}${headerText ? ` ${headerText}` : ''}`;
   }
-  return error?.stack || `${error?.name || 'Error'}: ${error?.message ?? String(error)}`;
+  const lines = [describeLocalError(error)];
+  // A connection error wraps the real reason (fetch failed → ECONNRESET …).
+  let cause = error?.cause;
+  for (let depth = 0; cause && depth < 3; depth++, cause = cause.cause) {
+    lines.push(`  caused by ${describeLocalError(cause)}`);
+  }
+  const frames = stackFrames(error);
+  if (frames) lines.push(frames);
+  return lines.join('\n');
 };
 
 // Logged once, not on every message, when chat is off for want of a key.
