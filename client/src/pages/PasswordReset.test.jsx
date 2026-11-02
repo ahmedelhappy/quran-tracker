@@ -202,6 +202,27 @@ describe('ResetPassword (H-06)', () => {
     expect(auth.logout).not.toHaveBeenCalled();
   });
 
+  it('still works when the browser refuses to rewrite the URL, and reports it', async () => {
+    window.history.replaceState({ idx: 0 }, '', `/reset-password#token=${TOKEN}`);
+    const refusal = new DOMException('Attempt to use history.replaceState() more than 100 times per 10 seconds', 'SecurityError');
+    const spy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => { throw refusal; });
+    try {
+      const ResetPassword = await load('ResetPassword');
+      renderAt('/reset-password', <ResetPassword />);
+      expect(document.getElementById('password')).toBeTruthy();
+      expect(report.reportError).toHaveBeenCalledTimes(1);
+      const [err, context] = report.reportError.mock.calls[0];
+      expect(err).toBe(refusal);
+      expect(JSON.stringify(context)).not.toContain(TOKEN);
+    } finally {
+      spy.mockRestore();
+    }
+    api.resetPassword.mockResolvedValue({ data: { success: true } });
+    fill('a-new-password1');
+    await screen.findByText('login page');
+    expect(api.resetPassword).toHaveBeenCalledWith(TOKEN, 'a-new-password1');
+  });
+
   it('signs this device out too when someone was signed in', async () => {
     auth.isAuthenticated = true;
     await openLink();

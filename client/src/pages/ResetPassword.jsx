@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { useHeadMeta } from '../hooks/useHeadMeta';
 import { apiErrorMessage } from '../utils/apiError';
+import { reportError } from '../utils/reportError';
 import { newPasswordProblem } from '../utils/passwordRules';
 import AuthCard, { authLinkCls } from '../components/AuthCard';
 import Tooltip from '../components/Tooltip';
@@ -30,8 +31,15 @@ const ResetPassword = () => {
 
   const [token] = useState(() => readResetToken(window.location.hash));
   useEffect(() => {
-    if (window.location.hash) {
+    if (!window.location.hash) return;
+    // A browser may refuse (Safari throttles replaceState, a sandboxed frame
+    // forbids it). The token is already read, so the page works on; the throw
+    // must not reach an error boundary and take the form away with it. The
+    // report carries no URL: the one still in the address bar has the token.
+    try {
       window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    } catch (err) {
+      reportError(err, { source: 'reset-password: clearing the token from the URL' });
     }
   }, []);
 
