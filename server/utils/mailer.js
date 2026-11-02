@@ -54,7 +54,9 @@ const resolveTransport = (env = process.env) => {
   const name = raw || 'none';
   const transport = Object.hasOwn(TRANSPORTS, name) ? TRANSPORTS[name] : null;
   if (!transport) {
-    return { name: 'none', transport: TRANSPORTS.none, problem: `EMAIL_TRANSPORT "${name}" is not a known transport (known: ${Object.keys(TRANSPORTS).join(', ')})` };
+    // Only its length: a value that is no transport name may be a provider key
+    // pasted into the wrong variable, and this sentence goes to the log.
+    return { name: 'none', transport: TRANSPORTS.none, problem: `EMAIL_TRANSPORT is not a known transport (it is set to a value of ${name.length} characters; known: ${Object.keys(TRANSPORTS).join(', ')})` };
   }
   if (transport.devOnly && isProduction(env)) {
     return { name: 'none', transport: TRANSPORTS.none, problem: `EMAIL_TRANSPORT "${name}" is for development only and is ignored in production` };

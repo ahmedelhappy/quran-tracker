@@ -23,6 +23,16 @@ describe('email transports (H-06)', () => {
     assert.equal(mailer.TRANSPORTS.none.delivers, false);
   });
 
+  test('an unknown EMAIL_TRANSPORT is described by its length, never echoed (it may be a pasted key)', () => {
+    const pasted = 're_live_9f8e7d6c5b4a3f2e1d0c';
+    const { name, problem } = mailer.resolveTransport({ EMAIL_TRANSPORT: pasted });
+    assert.equal(name, 'none');
+    assert.ok(!problem.includes(pasted), problem);
+    assert.ok(!problem.toLowerCase().includes('re_live'), 'not even a prefix');
+    assert.match(problem, new RegExp(`${pasted.length} characters`));
+    assert.match(problem, /known: none, console/);
+  });
+
   test('the console transport prints the link in development and NEVER in production', async () => {
     const saved = process.env.NODE_ENV;
     const printed = [];
