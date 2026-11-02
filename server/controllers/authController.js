@@ -530,8 +530,8 @@ exports.forgotPassword = async (req, res) => {
 
     // Delivery runs after the reply, so a slow (or failing) transport cannot
     // show up in the response time or status of a real address. A failure is
-    // logged without the token, the link or the address; the person can ask
-    // again.
+    // logged without the token, the link or the address — the account id and
+    // the transport are enough to follow it up; the person can ask again.
     if (user) {
       setImmediate(() => {
         mailer.sendPasswordReset({
@@ -539,7 +539,10 @@ exports.forgotPassword = async (req, res) => {
           link: resetLink(config.origin, token),
           language: user.language,
           minutes: RESET_TOKEN_TTL_MINUTES,
-        }).catch((error) => console.error('Password reset email failed to send:', error?.message ?? error));
+        }).catch((error) => console.error(
+          `Password reset email failed to send (user ${user._id}, transport ${config.transport}):`,
+          error?.message ?? error,
+        ));
       });
     }
   } catch (error) {

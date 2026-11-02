@@ -216,18 +216,24 @@ describe('password reset (H-06)', () => {
       assert.ok(performance.now() - t0 < 2000, 'answered without waiting for delivery');
     });
 
-    test('a failing transport is logged without the link and the reply is unchanged', async () => {
+    test('a failing transport is logged with the account id and transport, never the link or address, and the reply is unchanged', async () => {
       mock.restoreAll();
       const logged = [];
-      mock.method(console, 'error', (...args) => logged.push(args.join(' ')));
+      mock.method(console, 'error', (...args) => logged.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')));
       let link;
       mock.method(mailer, 'sendPasswordReset', async (m) => { link = m.link; throw new Error('provider down'); });
-      await createUser({ email: 'reset@example.com' });
+      const user = await createUser({ email: 'reset@example.com' });
       const res = await forgot('reset@example.com');
       assert.equal(res.status, 200);
       for (let i = 0; i < 50 && !logged.length; i++) await new Promise((r) => setTimeout(r, 5));
-      assert.match(logged.join('\n'), /failed to send: provider down/);
-      assert.ok(!logged.join('\n').includes(tokenOf({ link })), 'the token is never logged');
+      const log = logged.join('\n');
+      assert.match(log, /failed to send/);
+      assert.match(log, /provider down/);
+      assert.ok(log.includes(String(user._id)), 'names the account, so the failure can be followed up');
+      assert.match(log, /transport console/);
+      assert.ok(!log.includes(tokenOf({ link })), 'the token is never logged');
+      assert.ok(!log.includes(link), 'nor the link');
+      assert.ok(!log.includes('reset@example.com'), 'nor the address');
     });
 
     test('a malformed address is a 400 for what it is, account or not', async () => {
