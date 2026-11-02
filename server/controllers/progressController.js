@@ -386,6 +386,8 @@ const buildProgressSummary = async (user) => {
   // summary goes to Groq, an outside service (H-05).
   return {
     dailyNewPages: user.dailyNewPages || 1,
+    reviewIntensity: user.reviewIntensity || 'standard',
+    language: user.language === 'ar' ? 'ar' : 'en',
     isOffDay,
     isHafiz,
     pauseNewMemorization: !!user.pauseNewMemorization,

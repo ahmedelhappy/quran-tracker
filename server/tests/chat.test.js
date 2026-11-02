@@ -247,6 +247,8 @@ describe('POST /api/chat — no personal data reaches Groq', () => {
     const system = groqCalls[0].messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
     assert.ok(system.includes('Total memorized: 3 of 604 pages'), system);
     assert.ok(system.includes('Current streak: 4 day(s)'), system);
+    assert.ok(system.includes('Review intensity: strong'), system);
+    assert.ok(system.includes('App language: Arabic'), system);
     assert.ok(system.includes('as "you" without a name'), 'the model is told to address the user generically');
   });
 });

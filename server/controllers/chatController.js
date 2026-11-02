@@ -57,6 +57,11 @@ const buildUserContextMessage = (summary) => {
   const lines = [
     "THE USER'S CURRENT DATA (authoritative and live, as of today):",
     `- Daily new-page goal: ${summary.dailyNewPages} page(s) per day`,
+    // The setting that sizes the daily review ("why so many reviews?"), and the
+    // app's language, which settles the reply language when a message is
+    // neither clearly Arabic nor English.
+    `- Review intensity: ${summary.reviewIntensity} (light, standard or strong)`,
+    `- App language: ${summary.language === 'ar' ? 'Arabic' : 'English'}`,
     `- Total memorized: ${summary.totalMemorized} of ${summary.totalPages} pages (${summary.percentage}%)`,
     `- Pages left to memorize: ${summary.pagesLeft}`,
     `- Current streak: ${summary.currentStreak} day(s)`,
