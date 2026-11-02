@@ -149,6 +149,21 @@ const chatLimits = () => ({
 // { role, content }, never spread from the request).
 const CONVERSATION_ROLES = new Set(['user', 'assistant']);
 
+// What an upstream failure leaves in the server log. Groq's error body is its
+// own text and can quote the request back — a failed generation carries the
+// model's output, which repeats the user's words — so an HTTP error is logged by
+// its status and Groq's error code/type only, never the body or the message
+// built from it. An error with no status was raised on this side (a dropped
+// connection, a bug here); its message names the cause and holds no chat text.
+const describeGroqError = (error) => {
+  if (error?.status) {
+    const body = error.error?.error ?? error.error;
+    const code = [body?.code, body?.type].filter((v) => typeof v === 'string').join('/');
+    return `${error.name || 'Error'} ${error.status}${code ? ` ${code}` : ''}`;
+  }
+  return error?.stack || `${error?.name || 'Error'}: ${error?.message ?? String(error)}`;
+};
+
 // Logged once, not on every message, when chat is off for want of a key.
 let warnedNoKey = false;
 
@@ -279,7 +294,7 @@ exports.sendMessage = async (req, res) => {
       console.error(`Groq API timed out after ${timeoutMs} ms`);
       return res.status(504).json({ success: false, message: 'The AI service took too long to answer' });
     }
-    console.error('Groq API error:', error);
+    console.error('Groq API error:', describeGroqError(error));
     return res.status(502).json({ success: false, message: 'AI service unavailable' });
   } finally {
     clearTimeout(timer);

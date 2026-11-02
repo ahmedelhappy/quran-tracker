@@ -425,6 +425,30 @@ describe('POST /api/chat — history hygiene and limits', () => {
     assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'AI service unavailable' });
   });
 
+  test('an upstream error that quotes the chat back is logged by status and code only (H-05)', async () => {
+    const user = await createUser();
+    const words = 'my private words 7f3a';
+    // The shape groq-sdk gives a 400: the message is built from Groq's body,
+    // and a failed generation carries the model's output, which can repeat
+    // what the user wrote.
+    groqImpl = async () => {
+      throw Object.assign(new Error(`400 Failed to generate: ${words}`), {
+        name: 'BadRequestError',
+        status: 400,
+        error: { error: { message: `Failed to generate: ${words}`, type: 'invalid_request_error', code: 'tool_use_failed', failed_generation: words } },
+      });
+    };
+    const logged = [];
+    const original = console.error;
+    console.error = (...args) => logged.push(args.map(String).join(' '));
+    let res;
+    try { res = await chat(user, [{ role: 'user', content: words }]); } finally { console.error = original; }
+    assert.equal(res.status, 502);
+    const log = logged.join('\n');
+    assert.ok(!log.includes('7f3a'), log);
+    assert.ok(log.includes('BadRequestError 400 tool_use_failed/invalid_request_error'), log);
+  });
+
   test('a reply cut off before any answer is a 502, not an empty bubble', async () => {
     const user = await createUser();
     groqImpl = async () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }] });
