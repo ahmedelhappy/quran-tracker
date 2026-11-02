@@ -3,7 +3,6 @@ const path = require('path');
 const Groq = require('groq-sdk');
 const { buildProgressSummary } = require('./progressController');
 const { tryConsume } = require('../utils/chatBudget');
-const clock = require('../utils/clock');
 
 // The app's own guide (server/chat/appGuide.md), read once when the server boots.
 // It is what lets the assistant answer "how do I…?" about THIS app — the pages, the
@@ -26,6 +25,7 @@ const SYSTEM_MESSAGE = {
     '- Quran memorization technique, and questions about the Quran, its surahs and ayahs, tafsir, or hadith related to the Quran — answer from your own knowledge, accurately and humbly.',
     '- Anything else: decline politely in one sentence and offer to help with the Quran or the app instead.',
     "Reply in the language of the user's latest message (Arabic to Arabic, English to English). The guide names buttons in English; when replying in Arabic, describe a control by what it does instead of quoting its English label.",
+    "You are not given the user's name or any other personal detail, and no answer needs one: speak to the user directly as \"you\" without a name, and never ask for their name, email, phone number or other personal details.",
     'Keep replies concise (under 150 words), warm and encouraging. Write plain text: short numbered steps are fine, but no headings, tables or other markdown except links.',
     'When a page of the app would help, link to it with a path from the guide\'s list, written as a markdown link such as [open page 291](/library?page=291). Use only those paths. Never include external links or web addresses.',
     '',
@@ -48,11 +48,14 @@ const listPages = (nums, max = 30) => (nums.length > max
 // Renders the user's live progress snapshot into a system message the model treats
 // as authoritative. Used to answer "what should I memorize today?", "how many pages
 // are left?", "what's my streak?" from real data instead of guessing.
+//
+// Everything here goes to Groq, so it carries the plan and nothing about the
+// person (H-05): no name — the model used to greet people by it, which no answer
+// needs — and no calendar dates. "Today" is all the model has to know; the
+// server has already worked out what today holds.
 const buildUserContextMessage = (summary) => {
-  const todayUTC = clock.now().toISOString().split('T')[0];
   const lines = [
-    `THE USER'S CURRENT DATA (authoritative and live, as of ${todayUTC} UTC):`,
-    `- Name: ${summary.name}`,
+    "THE USER'S CURRENT DATA (authoritative and live, as of today):",
     `- Daily new-page goal: ${summary.dailyNewPages} page(s) per day`,
     `- Total memorized: ${summary.totalMemorized} of ${summary.totalPages} pages (${summary.percentage}%)`,
     `- Pages left to memorize: ${summary.pagesLeft}`,

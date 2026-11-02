@@ -7,12 +7,14 @@
 const groqPath = require.resolve('groq-sdk');
 const groqCalls = [];
 const groqRequestOptions = [];
+const groqClientOptions = [];
 // A test can script the model's behaviour (hang, fail, cut off) by setting this;
 // null means the default canned reply.
 let groqImpl = null;
 class FakeGroq {
   constructor(options) {
     this.options = options;
+    groqClientOptions.push(options);
     this.chat = {
       completions: {
         create: async (params, requestOptions) => {
@@ -163,7 +165,7 @@ describe('POST /api/chat — the system prompt', () => {
     const p4 = PAGE_BY_NUMBER.get(4).verseKeys;
     const firstHalf = `${p4[0]}–${p4[Math.ceil(p4.length / 2) - 1]}`;
     assert.ok(system.includes("THE USER'S CURRENT DATA"));
-    assert.ok(system.includes('- Name: Maryam'));
+    assert.ok(!system.includes('Maryam'), 'the name stays out of the prompt (H-05)');
     assert.ok(system.includes('Total memorized: 3 of 604 pages'));
     assert.ok(system.includes(`page 4 — verses ${firstHalf} (first half)`), system);
     // Guardrails travel with it.
@@ -184,6 +186,68 @@ describe('POST /api/chat — the system prompt', () => {
     const res = await request(app).post('/api/chat').send({ messages: [{ role: 'user', content: 'hi' }] });
     assert.equal(res.status, 401);
     assert.equal(groqCalls.length, 0);
+  });
+});
+
+// H-05: what leaves for Groq is the plan, never the person. The whole outgoing
+// call — request body, request options and the client's constructor options —
+// is serialised and searched for every identifier the account holds.
+describe('POST /api/chat — no personal data reaches Groq', () => {
+  before(connect);
+  after(disconnect);
+  beforeEach(async () => {
+    await clearDatabase();
+    await seedMetadata(30);
+    groqCalls.length = 0;
+    groqRequestOptions.length = 0;
+    groqImpl = null;
+  });
+
+  test("the payload carries the plan but not the name, email, id, display name or dates", async () => {
+    const user = await createUser({
+      name: 'Zubaydah Qx7Tracer',
+      email: 'zq7.tracer+h05@example.com',
+      displayName: 'QxDisplayTracer',
+      leaderboardOptIn: true,
+      dailyNewPages: 1,
+      reviewIntensity: 'strong',
+      language: 'ar',
+      currentStreak: 4,
+      lastActiveDate: daysAgo(1),
+      planStartDate: daysAgo(3),
+    });
+    for (const p of [1, 2, 3]) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(9) });
+    }
+
+    groqClientOptions.length = 0;
+    const res = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`)
+      .send({ messages: [{ role: 'user', content: 'Greet me and tell me my plan for today.' }] });
+    assert.equal(res.status, 200);
+    assert.equal(groqCalls.length, 1);
+
+    // The client's own options count too: anything identifying passed to the
+    // constructor (a `user` tag, default headers) would leave with the call.
+    const outgoing = JSON.stringify({ body: groqCalls[0], options: groqRequestOptions[0], client: groqClientOptions });
+    const forbidden = [
+      'Zubaydah', 'Qx7Tracer', 'zq7.tracer', 'example.com', 'QxDisplayTracer',
+      String(user._id),
+      // Dates of activity, in any form the server would print them.
+      ...[0, 1, 3, 9, 20].map((n) => daysAgo(n).toISOString().slice(0, 10)),
+    ];
+    for (const needle of forbidden) {
+      assert.ok(!outgoing.includes(needle), `"${needle}" must not reach Groq`);
+    }
+    // Only the model call's own fields: no `user` tag or metadata riding along.
+    assert.deepEqual(Object.keys(groqCalls[0]).sort(), ['max_completion_tokens', 'messages', 'model']);
+
+    // …and what it does need is still there.
+    const system = groqCalls[0].messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+    assert.ok(system.includes('Total memorized: 3 of 604 pages'), system);
+    assert.ok(system.includes('Current streak: 4 day(s)'), system);
+    assert.ok(system.includes('as "you" without a name'), 'the model is told to address the user generically');
   });
 });
 

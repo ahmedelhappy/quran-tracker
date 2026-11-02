@@ -381,8 +381,10 @@ const buildProgressSummary = async (user) => {
   const reviewPageNumbers = isOffDay ? [] : plan.reviewPages.map((p) => p.pageNumber);
   const recentReviewPageNumbers = isOffDay ? [] : plan.cappedRecentPages.map((p) => p.pageNumber);
 
+  // Only what the assistant needs to answer about the plan. Nothing that names
+  // the person (name, email, id, display name) and no dates of activity: this
+  // summary goes to Groq, an outside service (H-05).
   return {
-    name: user.name,
     dailyNewPages: user.dailyNewPages || 1,
     isOffDay,
     isHafiz,
