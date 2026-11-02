@@ -21,7 +21,7 @@ const mailer = require('../utils/mailer');
 const { loginThrottle } = require('../utils/loginThrottle');
 const { buildPasswordResetLimiters } = require('../middleware/rateLimiters');
 const {
-  RESET_TOKEN_TTL_MS, hashResetToken, passwordResetConfig, describePasswordReset, resetLink,
+  RESET_TOKEN_TTL_MS, hashResetToken, passwordResetConfig, describePasswordReset, logPasswordReset, resetLink,
 } = require('../utils/passwordReset');
 
 const ORIGIN = 'https://app.example.com';
@@ -141,7 +141,43 @@ describe('password reset (H-06)', () => {
       assert.doesNotThrow(() => describePasswordReset(passwordResetConfig({})));
       // …and server.js prints it at start-up, outside anything that can exit.
       const serverJs = require('fs').readFileSync(require('path').join(__dirname, '..', 'server.js'), 'utf8');
-      assert.match(serverJs, /console\.log\(`🔑 \$\{describePasswordReset\(\)\}`\)/);
+      assert.match(serverJs, /^logPasswordReset\(\);$/m);
+    });
+
+    test('switched on but off anyway is an error that says so; a deliberate off is an ordinary line', () => {
+      const printed = { log: [], error: [] };
+      const log = { log: (line) => printed.log.push(line), error: (line) => printed.error.push(line) };
+      const cases = [
+        ['an unknown transport', { NODE_ENV: 'development', PASSWORD_RESET_ENABLED: 'true', EMAIL_TRANSPORT: 'smtp-typo' }, /not a known transport/],
+        ['console in production', { NODE_ENV: 'production', PASSWORD_RESET_ENABLED: 'true', EMAIL_TRANSPORT: 'console', CLIENT_URL: ORIGIN }, /development only/],
+        ['a bad CLIENT_URL', { NODE_ENV: 'development', PASSWORD_RESET_ENABLED: 'true', EMAIL_TRANSPORT: 'console', CLIENT_URL: 'not a url' }, /CLIENT_URL is not a URL/],
+      ];
+      for (const [label, env, reason] of cases) {
+        printed.log.length = 0;
+        printed.error.length = 0;
+        const config = passwordResetConfig(env);
+        assert.equal(config.switchedOn, true, label);
+        assert.equal(config.enabled, false, label);
+        logPasswordReset(config, log);
+        assert.deepEqual(printed.log, [], label);
+        assert.equal(printed.error.length, 1, label);
+        assert.match(printed.error[0], /PASSWORD_RESET_ENABLED is true but password reset is OFF because: /, label);
+        assert.match(printed.error[0], reason, label);
+      }
+
+      for (const env of [{}, { PASSWORD_RESET_ENABLED: 'false', EMAIL_TRANSPORT: 'console' }]) {
+        printed.log.length = 0;
+        printed.error.length = 0;
+        const config = passwordResetConfig(env);
+        assert.equal(config.switchedOn, false);
+        logPasswordReset(config, log);
+        assert.deepEqual(printed.error, []);
+        assert.match(printed.log[0], /^🔑 Password reset: OFF \(PASSWORD_RESET_ENABLED is not "true"/);
+      }
+
+      printed.log.length = 0;
+      logPasswordReset(passwordResetConfig({ NODE_ENV: 'development', PASSWORD_RESET_ENABLED: 'true', EMAIL_TRANSPORT: 'console' }), log);
+      assert.deepEqual(printed.log, ['🔑 Password reset: ON (email transport: console)']);
     });
 
     test('the link carries the token in its fragment, on the reset page of the origin', () => {

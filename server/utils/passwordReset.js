@@ -68,14 +68,27 @@ const passwordResetConfig = (env = process.env) => {
   if (!impl.delivers) problems.push(`email transport "${transport}" delivers nothing`);
   const { origin, problem: originProblem } = clientOrigin(env);
   if (originProblem) problems.push(originProblem);
-  return { enabled: problems.length === 0, transport, origin, problems };
+  return { enabled: problems.length === 0, switchedOn, transport, origin, problems };
 };
 
 // The one startup line. Names the transport and the reasons, never a value
-// that could be a secret (no keys, no CLIENT_URL).
-const describePasswordReset = (config = passwordResetConfig()) => (config.enabled
-  ? `Password reset: ON (email transport: ${config.transport})`
-  : `Password reset: OFF (${config.problems.join('; ')})`);
+// that could be a secret (no keys, no CLIENT_URL). Off by the owner's choice
+// and off despite the switch read differently: the second is a deploy that
+// meant to offer reset and does not, so it says so in a sentence of its own.
+const describePasswordReset = (config = passwordResetConfig()) => {
+  if (config.enabled) return `Password reset: ON (email transport: ${config.transport})`;
+  if (config.switchedOn) return `PASSWORD_RESET_ENABLED is true but password reset is OFF because: ${config.problems.join('; ')}`;
+  return `Password reset: OFF (${config.problems.join('; ')})`;
+};
+
+// Prints that line at startup. A deliberate off is routine (console.log); a
+// switch that is on but cannot take effect is a misconfiguration, so it goes
+// to console.error, where a host's error filter or alert will catch it.
+const logPasswordReset = (config = passwordResetConfig(), log = console) => {
+  const line = `🔑 ${describePasswordReset(config)}`;
+  if (config.switchedOn && !config.enabled) log.error(line);
+  else log.log(line);
+};
 
 // The token rides in the URL FRAGMENT, which browsers never send anywhere: not
 // to the static host (so it is in no access log), and not in a Referer header.
@@ -90,5 +103,6 @@ module.exports = {
   newResetToken,
   passwordResetConfig,
   describePasswordReset,
+  logPasswordReset,
   resetLink,
 };

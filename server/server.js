@@ -4,7 +4,7 @@ require('dotenv').config();
 const app = require('./app');
 const Bookmark = require('./models/Bookmark');
 const { handleShutdownSignals } = require('./utils/shutdown');
-const { describePasswordReset } = require('./utils/passwordReset');
+const { logPasswordReset } = require('./utils/passwordReset');
 
 // Fail fast on missing critical configuration rather than booting a broken server
 // that only errors on the first request (or, worse, signs tokens with an
@@ -22,8 +22,9 @@ if (missing.length) {
 const PORT = process.env.PORT || 5000;
 
 // Whether password reset is on, and if not why (H-06). Never fatal: a missing
-// setting only keeps the feature off. The line names no secret or origin.
-console.log(`🔑 ${describePasswordReset()}`);
+// setting only keeps the feature off. The line names no secret or origin, and
+// is an error when the switch is on but the feature is not.
+logPasswordReset();
 
 // Connect to MongoDB first, then start listening — so the server never accepts
 // traffic before the database is ready.
