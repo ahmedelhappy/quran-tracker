@@ -18,7 +18,12 @@ import Tooltip from '../components/Tooltip';
 // the API, not any Referer. It is read once, here, and then wiped from the
 // address bar and from this history entry, so it does not linger in history,
 // a bookmark, or a screenshot of the URL.
-const TOKEN_IN_HASH = /(?:^#|&)token=([A-Za-z0-9_-]+)/;
+//
+// The token has the server's exact shape (RESET_TOKEN_PATTERN in
+// server/utils/passwordReset.js): 43 base64url characters, ending the
+// parameter. A link cut short by a mail client is then "invalid" at once,
+// instead of after the reader has typed a new password twice.
+const TOKEN_IN_HASH = /(?:^#|&)token=([A-Za-z0-9_-]{43})(?:&|$)/;
 const readResetToken = (hash) => hash.match(TOKEN_IN_HASH)?.[1] ?? null;
 
 const ResetPassword = () => {

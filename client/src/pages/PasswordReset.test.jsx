@@ -279,4 +279,22 @@ describe('ResetPassword (H-06)', () => {
     expect(screen.getByText('auth.reset.invalid')).toBeTruthy();
     expect(document.getElementById('password')).toBeNull();
   });
+
+  it('a cut-short or padded token is not a token: a new link is offered without asking the server', async () => {
+    for (const hash of [`#token=${TOKEN.slice(0, 42)}`, `#token=${TOKEN.slice(0, 20)}`, `#token=${TOKEN}x`, `#token=${TOKEN}%20`]) {
+      await openLink(hash);
+      expect(screen.getByText('auth.reset.invalid'), hash).toBeTruthy();
+      expect(document.getElementById('password'), hash).toBeNull();
+      cleanup();
+    }
+    expect(api.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('takes the whole 43-character token, also with other fragment parameters around it', async () => {
+    await openLink(`#utm=mail&token=${TOKEN}&x=1`);
+    api.resetPassword.mockResolvedValue({ data: { success: true } });
+    fill('a-new-password1');
+    await screen.findByText('login page');
+    expect(api.resetPassword).toHaveBeenCalledWith(TOKEN, 'a-new-password1');
+  });
 });
