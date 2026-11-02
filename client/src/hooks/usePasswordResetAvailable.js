@@ -16,7 +16,15 @@ let pending = null;
 
 const check = () => {
   pending ??= authAPI.getConfig()
-    .then((res) => { known = res.data?.data?.passwordReset === true; return known; })
+    .then((res) => {
+      // Only a real yes or no counts. Any other 200 — index.html served back
+      // because VITE_API_URL points at the static host, say — is a broken
+      // check, not "off", and must not be kept for the visit as one.
+      const value = res.data?.data?.passwordReset;
+      if (typeof value !== 'boolean') throw new Error('The auth config reply has no passwordReset flag');
+      known = value;
+      return known;
+    })
     .catch((err) => { reportLoadFailure(err, 'the auth config'); throw err; })
     .finally(() => { pending = null; });
   return pending;

@@ -86,6 +86,23 @@ describe('Login: "Forgot password?" (H-06)', () => {
     expect(report.reportLoadFailure).toHaveBeenCalledTimes(1);
   });
 
+  it('treats a reply with no yes-or-no answer (the SPA page, from a wrong API URL) as a failed check, not as "off"', async () => {
+    api.getConfig.mockResolvedValueOnce({ status: 200, data: '<!doctype html><html></html>' });
+    const Login = await load('Login');
+    const first = renderAt('/login-form', <Login />);
+    await waitFor(() => expect(report.reportLoadFailure).toHaveBeenCalledTimes(1));
+    const [err, what] = report.reportLoadFailure.mock.calls[0];
+    expect(err).toBeInstanceOf(Error);
+    expect(what).toBe('the auth config');
+    expect(screen.queryByText('auth.forgotPasswordLink')).toBeNull();
+    first.unmount();
+
+    // Not kept as "off": the next screen asks again and gets the real answer.
+    api.getConfig.mockResolvedValueOnce({ data: { data: { passwordReset: true } } });
+    renderAt('/login-form', <Login />);
+    expect(await screen.findByText('auth.forgotPasswordLink')).toBeTruthy();
+  });
+
   it('is shown when reset is on, and points at the request page', async () => {
     api.getConfig.mockResolvedValue({ data: { data: { passwordReset: true } } });
     const Login = await load('Login');
