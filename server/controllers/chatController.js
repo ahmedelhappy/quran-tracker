@@ -105,6 +105,12 @@ const buildUserContextMessage = (summary) => {
   return { role: 'system', content: lines.join('\n') };
 };
 
+// Sent in place of the user's data when it could not be loaded.
+const USER_DATA_UNAVAILABLE_MESSAGE = {
+  role: 'system',
+  content: "THE USER'S CURRENT DATA is unavailable right now: it could not be loaded. If the user asks about their progress, plan, streak or what to do today, say you cannot see their progress at the moment and suggest they check the Dashboard or try again shortly. Never guess or invent numbers or pages.",
+};
+
 // Caps the size of any single message to bound token cost sent to the model.
 const MAX_MESSAGE_LENGTH = 2000;
 
@@ -284,13 +290,16 @@ exports.sendMessage = async (req, res) => {
 
     // Append the user's live progress as an authoritative context block. If the
     // lookup fails for any reason, fall back to the plain assistant — a data
-    // error must never break chat.
+    // error must never break chat. SYSTEM_MESSAGE promises the user's data
+    // follows it, so the fallback says it is missing: told nothing, the model
+    // would answer "what's my streak?" with an invented number.
     const systemMessages = [SYSTEM_MESSAGE];
     try {
       const summary = await buildProgressSummary(req.user);
       systemMessages.push(buildUserContextMessage(summary));
     } catch (summaryError) {
       console.error('Chat progress-context error (continuing without it):', summaryError);
+      systemMessages.push(USER_DATA_UNAVAILABLE_MESSAGE);
     }
 
     timer = setTimeout(() => deadline.abort(), timeoutMs);

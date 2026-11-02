@@ -420,6 +420,23 @@ describe('POST /api/chat — history hygiene and limits', () => {
     }
   });
 
+  test('a failed progress lookup still answers, and tells the model the data is missing (H-05)', async () => {
+    const user = await createUser();
+    const originalFind = UserProgress.find;
+    UserProgress.find = () => { throw new Error('database down'); };
+    let res;
+    try {
+      res = await quietly(() => chat(user, [{ role: 'user', content: "what's my streak?" }]));
+    } finally {
+      UserProgress.find = originalFind;
+    }
+    assert.equal(res.status, 200, 'a data error never breaks chat');
+    const system = groqCalls[0].messages.filter((m) => m.role === 'system');
+    assert.equal(system.length, 2, 'the guide, then a note in place of the data');
+    assert.match(system[1].content, /unavailable right now/);
+    assert.ok(!system[1].content.includes('Current streak'), 'no half-built summary');
+  });
+
   test('an upstream failure is a 502 JSON', async () => {
     const user = await createUser();
     groqImpl = async () => { throw Object.assign(new Error('503 over capacity'), { status: 503 }); };
