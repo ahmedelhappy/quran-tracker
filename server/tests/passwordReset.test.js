@@ -443,6 +443,67 @@ describe('password reset (H-06)', () => {
       assert.equal((await login('reset@example.com', 'changedpass1')).status, 200);
     });
   });
+
+  describe('the per-address limit on the real route', () => {
+    // routes/authRoutes.js as it is, but loaded with the limiters it builds
+    // outside test (they are pass-throughs under NODE_ENV=test). The module
+    // cache is put back afterwards, so the rest of the suite keeps its own.
+    const realAuthRouter = () => {
+      const ids = ['../middleware/rateLimiters', '../routes/authRoutes'].map((m) => require.resolve(m));
+      const cached = ids.map((id) => require.cache[id]);
+      const nodeEnv = process.env.NODE_ENV;
+      try {
+        for (const id of ids) delete require.cache[id];
+        process.env.NODE_ENV = 'development';
+        return require('../routes/authRoutes');
+      } finally {
+        process.env.NODE_ENV = nodeEnv;
+        ids.forEach((id, i) => { if (cached[i]) require.cache[id] = cached[i]; else delete require.cache[id]; });
+      }
+    };
+    // Everything a client sees of a reply except the Date header; the two
+    // countdowns (RateLimit-Reset, Retry-After) may tick over between the two
+    // runs, by one second, so they are compared apart.
+    const visible = (res) => {
+      const { date, 'ratelimit-reset': reset, 'retry-after': retryAfter, ...headers } = res.headers;
+      return { status: res.status, body: res.body, headers, seconds: [Number(reset), Number(retryAfter ?? 0)] };
+    };
+
+    test('the 429 is the same for a registered and an unregistered address, so a limit reveals nothing', async () => {
+      await createUser({ email: 'registered@example.com' });
+      const a = express();
+      a.set('trust proxy', 1); // one hop: each request's X-Forwarded-For is its IP
+      a.use(express.json());
+      a.use('/api/auth', realAuthRouter());
+
+      // Each request from its own IP, so only the per-address limit can bite.
+      const runs = [];
+      for (const [n, email] of ['registered@example.com', 'unknown@example.com'].entries()) {
+        const replies = [];
+        for (let i = 0; i < 4; i++) {
+          replies.push(visible(await request(a).post('/api/auth/forgot-password')
+            .set('X-Forwarded-For', `10.2.${n}.${i}`).send({ email })));
+        }
+        runs.push(replies);
+      }
+      const [registered, unknown] = runs;
+      assert.deepEqual(registered.map((r) => r.status), [200, 200, 200, 429]);
+      assert.equal(registered[3].body.code, 'RATE_LIMITED');
+      assert.ok(registered[3].seconds[1] > 0, 'the 429 says when to retry');
+      for (let i = 0; i < 4; i++) {
+        const { seconds: s1, ...one } = registered[i];
+        const { seconds: s2, ...other } = unknown[i];
+        assert.deepEqual(other, one, `reply ${i + 1}: status, body and headers`);
+        s1.forEach((v, k) => assert.ok(Math.abs(v - s2[k]) <= 1, `reply ${i + 1}: countdown ${v} vs ${s2[k]}`));
+      }
+
+      // The route really did look the account up: only the registered address
+      // was mailed, once per allowed request.
+      await delivered(3);
+      await new Promise((r) => setTimeout(r, 20));
+      assert.deepEqual(sent.map((m) => m.to), Array(3).fill('registered@example.com'));
+    });
+  });
 });
 
 describe('password reset rate limits (H-06)', () => {
@@ -482,19 +543,6 @@ describe('password reset rate limits (H-06)', () => {
     assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
     const limited = await request(a).post('/forgot').set(from('10.1.1.1')).send({ email: 'x@example.com' });
     assert.equal(limited.body.code, 'RATE_LIMITED');
-  });
-
-  test('the 429 is the same for every address, so a limit reveals nothing', async () => {
-    const a = limitedApp();
-    const last = {};
-    for (const email of ['registered@example.com', 'unknown@example.com']) {
-      for (let i = 0; i < 4; i++) {
-        last[email] = await request(a).post('/forgot').set(from(`10.2.${email.length}.${i}`)).send({ email });
-      }
-    }
-    assert.equal(last['registered@example.com'].status, 429);
-    assert.equal(last['unknown@example.com'].status, 429);
-    assert.deepEqual(last['registered@example.com'].body, last['unknown@example.com'].body);
   });
 
   test('reset attempts are capped at 10 per IP per 15 minutes', async () => {
