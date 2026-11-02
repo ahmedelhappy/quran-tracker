@@ -8,7 +8,9 @@
 // E2E_API_PORT (default 5140) serves the app. E2E_ADMIN_PORT (default 5141) is
 // a test-only window on the same database, bound to 127.0.0.1: GET
 // /counts/:userId returns how many documents each model still holds for a user,
-// which is how the account-deletion flow proves nothing was left behind.
+// which is how the account-deletion flow proves nothing was left behind; GET
+// /reset-link?email=… returns the last password-reset link "emailed" to that
+// address (see the capture below).
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -21,6 +23,7 @@ const serverRequire = createRequire(path.join(SERVER_DIR, 'package.json'));
 
 const API_PORT = Number(process.env.E2E_API_PORT || 5140);
 const ADMIN_PORT = Number(process.env.E2E_ADMIN_PORT || 5141);
+const WEB_PORT = Number(process.env.E2E_WEB_PORT || 5142);
 
 // Set before app.js is required: it reads them at load time. NODE_ENV=test turns
 // off the IP rate limiters (the flows register and sign in many times from one
@@ -32,6 +35,13 @@ process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
 delete process.env.MONGODB_URI;
 delete process.env.GROQ_API_KEY;
 delete process.env.CLIENT_URL;
+// Password reset on, as it would be with a provider configured (H-06). The
+// console transport is what makes it count as "delivering" outside
+// production; the capture below takes its place, so nothing is printed. The
+// emailed link points at the preview build the flows drive.
+process.env.PASSWORD_RESET_ENABLED = 'true';
+process.env.EMAIL_TRANSPORT = 'console';
+process.env.CLIENT_URL = `http://localhost:${WEB_PORT}`;
 
 const main = async () => {
   const { MongoMemoryServer } = serverRequire('mongodb-memory-server');
@@ -57,6 +67,13 @@ const main = async () => {
   await QuranMetadata.insertMany(buildQuranPages());
 
   const app = require(path.join(SERVER_DIR, 'app'));
+
+  // A capture transport that exists only here: the controller sends through
+  // mailer.sendPasswordReset (always via the module object), so replacing it
+  // keeps every link this stack "emails", by address, for the admin port.
+  const mailer = require(path.join(SERVER_DIR, 'utils/mailer'));
+  const resetLinks = new Map();
+  mailer.sendPasswordReset = async ({ to, link }) => { resetLinks.set(to, link); };
   const server = app.listen(API_PORT, '127.0.0.1');
 
   // Which paths of a model point at a user, read from the schema (`ref: 'User'`,
@@ -94,6 +111,11 @@ const main = async () => {
       }
     }
     res.json(counts);
+  });
+  admin.get('/reset-link', (req, res) => {
+    const link = resetLinks.get(String(req.query.email ?? '').toLowerCase());
+    if (!link) return res.status(404).json({ error: 'no reset link was sent to that address' });
+    res.json({ link });
   });
   const adminServer = admin.listen(ADMIN_PORT, '127.0.0.1');
 
