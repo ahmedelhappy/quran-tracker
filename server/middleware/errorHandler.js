@@ -1,4 +1,4 @@
-const { classifyError } = require('../utils/errorResponse');
+const { classifyError, logError } = require('../utils/errorResponse');
 
 // The app's last word on any error that reaches Express itself rather than a
 // controller's own catch block — above all the JSON body parser's, which runs
@@ -32,7 +32,7 @@ const jsonErrorHandler = (err, req, res, next) => {
   const known = classifyError(err);
   if (known) return res.status(known.status).json({ success: false, code: known.code, message: known.message });
 
-  console.error('Unhandled error:', err);
+  logError('Unhandled error:', err);
   const body = { success: false, code: 'SERVER_ERROR', message: 'Server error' };
   // Never a stack; the raw message only outside production, as in serverError.
   if (process.env.NODE_ENV !== 'production' && err && err.message) body.error = err.message;

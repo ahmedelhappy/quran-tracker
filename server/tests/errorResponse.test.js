@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
 const User = require('../models/User');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 
 // The smallest stand-in for an Express response that records what was sent.
 const fakeRes = () => {
@@ -84,5 +84,51 @@ describe('serverError — status mapping', () => {
     } finally {
       process.env.NODE_ENV = prev;
     }
+  });
+});
+
+describe('logError — what a caught error leaves in the log (H-05)', () => {
+  const capture = (label, error) => {
+    const logged = [];
+    const original = console.error;
+    console.error = (...args) => logged.push(args);
+    try { logError(label, error); } finally { console.error = original; }
+    return logged;
+  };
+
+  test('a duplicate key is logged by class, code and frames, never the colliding value', () => {
+    const single = Object.assign(
+      new mongoose.mongo.MongoServerError({ message: 'E11000 duplicate key error collection: test.users index: email_1 dup key: { email: "a@example.com" }' }),
+      { code: 11000, keyValue: { email: 'a@example.com' } },
+    );
+    const bulk = Object.assign(new Error('E11000 dup key: { email: "b@example.com" }'),
+      { writeErrors: [{ code: 11000, keyValue: { email: 'b@example.com' } }] });
+    for (const error of [single, bulk]) {
+      const logged = capture('Save error:', error);
+      assert.equal(logged.length, 1);
+      assert.ok(logged[0].every((part) => typeof part === 'string'), 'nothing is printed as an object');
+      const text = logged[0].join(' ');
+      assert.ok(!text.includes('@example.com'), text);
+      assert.match(text, /^Save error: \w+ 11000/);
+      assert.match(text, /\n\s+at /, 'the frames say where it happened');
+    }
+  });
+
+  test('a validation or cast error names the fields, never the refused value', () => {
+    // A real ValidationError: logged whole, each field's `value` (here a
+    // too-long name) would print with it.
+    const invalid = new User({ name: `${'N'.repeat(48)}7f3a__`, email: 'a@example.com', password: 'secret123' }).validateSync();
+    const cast = new mongoose.Error.CastError('Number', 'x7f3a', 'dailyNewPages');
+    for (const [error, field] of [[invalid, 'name'], [cast, 'dailyNewPages']]) {
+      const text = capture('Save error:', error)[0].join(' ');
+      assert.ok(!text.includes('7f3a'), text);
+      assert.ok(text.includes(`invalid value (${field})`), text);
+    }
+  });
+
+  test('any other error is logged whole', () => {
+    const error = new Error('socket hang up');
+    const logged = capture('Save error:', error);
+    assert.deepEqual(logged, [['Save error:', error]]);
   });
 });

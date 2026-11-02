@@ -1,6 +1,6 @@
 const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 const { pageFraction } = require('../utils/segments');
 const { realPageMatch } = require('../utils/pageNumbers');
 const { effectiveStreak } = require('../utils/streak');
@@ -121,7 +121,7 @@ exports.getLeaderboard = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetLeaderboard error:', error);
+    logError('GetLeaderboard error:', error);
     serverError(res, 'Error building leaderboard', error);
   }
 };

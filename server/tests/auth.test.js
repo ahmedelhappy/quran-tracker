@@ -70,6 +70,35 @@ describe('Auth API', () => {
     assert.equal(login.status, 200);
   });
 
+  test('a sign-up that races past the email check is a 409 that keeps the email out of the log (H-05)', async () => {
+    await User.init(); // the unique email index must exist for the race to collide
+    await createUser({ email: 'race.7f3a@example.com' });
+    // Both sign-ups passed the findOne check; the second meets the unique index.
+    const originalFindOne = User.findOne;
+    User.findOne = function raced(...args) {
+      const query = originalFindOne.apply(this, args);
+      query.exec = async () => null;
+      return query;
+    };
+    const logged = [];
+    const originalError = console.error;
+    console.error = (...args) => logged.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a) + String(a?.stack))).join(' '));
+    let res;
+    try {
+      res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email: 'race.7f3a@example.com', password: 'secret123' });
+    } finally {
+      User.findOne = originalFindOne;
+      console.error = originalError;
+    }
+    assert.equal(res.status, 409);
+    assert.equal(res.body.code, 'EMAIL_TAKEN');
+    const log = logged.join('\n');
+    assert.ok(log.includes('Register error:') && log.includes('11000'), log);
+    assert.ok(!log.includes('7f3a'), log);
+  });
+
   test('a missing field is 400 and a taken email is 409 — never 500', async () => {
     const originalError = console.error;
     console.error = () => {};

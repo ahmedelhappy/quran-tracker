@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const Annotation = require('../models/Annotation');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
 const { PAGE_BY_NUMBER } = require('../utils/segments');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 
 // A generous per-user ceiling so the collection can't be abused into unbounded
 // growth. A hard cap surfaced as a 400 with a clear message.
@@ -92,7 +92,7 @@ const getAnnotations = async (req, res) => {
 
     return res.status(400).json({ success: false, message: 'Provide a page or kind query parameter' });
   } catch (error) {
-    console.error('GetAnnotations error:', error);
+    logError('GetAnnotations error:', error);
     serverError(res, 'Error fetching annotations', error);
   }
 };
@@ -202,7 +202,7 @@ const createAnnotation = async (req, res) => {
     const annotation = await Annotation.create({ userId, ...doc });
     res.status(201).json({ success: true, data: annotation });
   } catch (error) {
-    console.error('CreateAnnotation error:', error);
+    logError('CreateAnnotation error:', error);
     serverError(res, 'Error creating annotation', error);
   }
 };
@@ -265,7 +265,7 @@ const updateAnnotation = async (req, res) => {
     await annotation.save();
     res.status(200).json({ success: true, data: annotation });
   } catch (error) {
-    console.error('UpdateAnnotation error:', error);
+    logError('UpdateAnnotation error:', error);
     serverError(res, 'Error updating annotation', error);
   }
 };
@@ -284,7 +284,7 @@ const deleteAnnotation = async (req, res) => {
     }
     res.status(200).json({ success: true, message: 'Annotation removed' });
   } catch (error) {
-    console.error('DeleteAnnotation error:', error);
+    logError('DeleteAnnotation error:', error);
     serverError(res, 'Error removing annotation', error);
   }
 };
@@ -421,7 +421,7 @@ const upsertDrawing = async (req, res) => {
     if (!doc) return changed();
     res.status(200).json({ success: true, data: doc });
   } catch (error) {
-    console.error('UpsertDrawing error:', error);
+    logError('UpsertDrawing error:', error);
     serverError(res, 'Error saving drawing', error);
   }
 };
@@ -604,8 +604,8 @@ const batchAnnotations = async (req, res) => {
         } catch (restoreError) {
           // Never let serverError read this as a client mistake (a 400 or 409):
           // the data may now be half-written, which is entirely ours.
-          console.error('BatchAnnotations write failed:', writeError);
-          console.error('BatchAnnotations rollback failed:', restoreError);
+          logError('BatchAnnotations write failed:', writeError);
+          logError('BatchAnnotations rollback failed:', restoreError);
           return res.status(500).json({ success: false, message: 'Error saving annotations' });
         }
         throw writeError;
@@ -614,7 +614,7 @@ const batchAnnotations = async (req, res) => {
 
     res.status(200).json({ success: true, data: { results } });
   } catch (error) {
-    console.error('BatchAnnotations error:', error);
+    logError('BatchAnnotations error:', error);
     serverError(res, 'Error saving annotations', error);
   }
 };
@@ -637,7 +637,7 @@ const getVerseAnnotations = async (req, res) => {
     ).sort({ pageNumber: 1, createdAt: 1 });
     res.status(200).json({ success: true, data: annotations });
   } catch (error) {
-    console.error('GetVerseAnnotations error:', error);
+    logError('GetVerseAnnotations error:', error);
     serverError(res, 'Error fetching annotations', error);
   }
 };
@@ -674,7 +674,7 @@ const getSummary = async (req, res) => {
 
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('GetAnnotationSummary error:', error);
+    logError('GetAnnotationSummary error:', error);
     serverError(res, 'Error fetching annotation summary', error);
   }
 };

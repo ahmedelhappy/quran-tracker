@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Todo = require('../models/Todo');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 
 // A personal list, not a project tracker: a ceiling keeps it a list (and the
 // renumbering below cheap) and stops one account from filling the collection.
@@ -48,7 +48,7 @@ const getTodos = async (req, res) => {
   try {
     res.status(200).json({ success: true, data: await listFor(req.user._id) });
   } catch (error) {
-    console.error('GetTodos error:', error);
+    logError('GetTodos error:', error);
     serverError(res, 'Error fetching your to-do list', error);
   }
 };
@@ -66,7 +66,7 @@ const createTodo = async (req, res) => {
     const todo = await Todo.create({ userId, text, order: last ? last.order + 1 : 0 });
     res.status(201).json({ success: true, data: todo });
   } catch (error) {
-    console.error('CreateTodo error:', error);
+    logError('CreateTodo error:', error);
     serverError(res, 'Error adding the item', error);
   }
 };
@@ -96,7 +96,7 @@ const updateTodo = async (req, res) => {
     if (!todo) return notFound(res);
     res.status(200).json({ success: true, data: todo });
   } catch (error) {
-    console.error('UpdateTodo error:', error);
+    logError('UpdateTodo error:', error);
     serverError(res, 'Error updating the item', error);
   }
 };
@@ -110,7 +110,7 @@ const deleteTodo = async (req, res) => {
     if (!todo) return notFound(res);
     res.status(200).json({ success: true, data: { _id: todo._id } });
   } catch (error) {
-    console.error('DeleteTodo error:', error);
+    logError('DeleteTodo error:', error);
     serverError(res, 'Error removing the item', error);
   }
 };
@@ -142,7 +142,7 @@ const reorderTodos = async (req, res) => {
     const ordered = await renumber(userId, ids.map((id) => byId.get(id)));
     res.status(200).json({ success: true, data: ordered });
   } catch (error) {
-    console.error('ReorderTodos error:', error);
+    logError('ReorderTodos error:', error);
     serverError(res, 'Error reordering your list', error);
   }
 };
@@ -163,7 +163,7 @@ const clearCompleted = async (req, res) => {
     if (removed.length) await Todo.deleteMany({ userId, _id: { $in: removed.map((r) => r._id) } });
     res.status(200).json({ success: true, data: kept, removed });
   } catch (error) {
-    console.error('ClearCompleted error:', error);
+    logError('ClearCompleted error:', error);
     serverError(res, 'Error clearing completed items', error);
   }
 };
@@ -208,7 +208,7 @@ const restoreTodos = async (req, res) => {
 
     res.status(201).json({ success: true, data: list, created });
   } catch (error) {
-    console.error('RestoreTodos error:', error);
+    logError('RestoreTodos error:', error);
     serverError(res, 'Error restoring the items', error);
   }
 };

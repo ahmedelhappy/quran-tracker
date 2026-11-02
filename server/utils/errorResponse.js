@@ -15,7 +15,7 @@
 //     production, so developers can debug locally while production clients get a
 //     generic message and never see stack or driver internals.
 //
-// The real error is still logged server-side by the caller via console.error
+// The real error is still logged server-side by the caller via logError (below)
 // before this runs. Returns the res object so callers can `return serverError(...)`.
 
 // A CastError's own message echoes the rejected value back ("Cast to Number
@@ -56,4 +56,33 @@ const serverError = (res, message, error) => {
   return res.status(500).json(body);
 };
 
-module.exports = { serverError, classifyError };
+// What a caught error leaves in the host's logs (H-05). Some errors quote the
+// value that was refused: a duplicate key in its message ("dup key: { email: … }")
+// and in keyValue — for the users collection, an email address — and a
+// ValidationError or CastError in each field's `value` (a too-long name, say).
+// Those are logged by class, code, the fields involved and the stack frames,
+// which still say which write failed and where, but never the values. Every
+// other error is a fault of ours and is logged whole, as before.
+const isDuplicateKey = (error) => error?.code === 11000
+  || (Array.isArray(error?.writeErrors) && error.writeErrors.some((w) => w?.code === 11000))
+  || /\bE11000\b/.test(String(error?.message ?? ''));
+const QUOTES_VALUES = new Set(['ValidationError', 'CastError']);
+
+const logError = (label, error) => {
+  const duplicate = isDuplicateKey(error);
+  if (!duplicate && !QUOTES_VALUES.has(error?.name)) {
+    console.error(label, error);
+    return;
+  }
+  const name = error.constructor?.name || error.name || 'Error';
+  const fields = duplicate
+    ? Object.keys(error.keyPattern || error.keyValue || {})
+    : error.errors ? Object.keys(error.errors) : [error.path].filter(Boolean);
+  const what = duplicate ? `${error.code ?? 11000} duplicate key` : 'invalid value';
+  const frames = typeof error.stack === 'string'
+    ? error.stack.split('\n').filter((line) => /^\s+at /.test(line)).join('\n')
+    : '';
+  console.error(label, `${name} ${what}${fields.length ? ` (${fields.join(', ')})` : ''}; value not logged${frames ? `\n${frames}` : ''}`);
+};
+
+module.exports = { serverError, classifyError, logError };

@@ -2,7 +2,7 @@ const User = require('../models/User');
 const { EMAIL_MAX_LENGTH, EMAIL_PATTERN, normalizeEmail } = User;
 const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
 const { newPasswordProblem } = require('../utils/passwordPolicy');
 const { loginThrottle } = require('../utils/loginThrottle');
@@ -86,7 +86,7 @@ exports.register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Register error:', error);
+    logError('Register error:', error);
     serverError(res, 'Server error during registration', error);
   }
 };
@@ -176,7 +176,7 @@ exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    logError('Login error:', error);
     serverError(res, 'Server error during login', error);
   }
 };
@@ -215,7 +215,7 @@ exports.getMe = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('GetMe error:', error);
+    logError('GetMe error:', error);
     serverError(res, 'Server error', error);
   }
 };
@@ -395,7 +395,7 @@ exports.updateProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('UpdateProfile error:', error);
+    logError('UpdateProfile error:', error);
     serverError(res, 'Error updating profile', error);
   }
 };
@@ -439,7 +439,7 @@ exports.changePassword = async (req, res) => {
       data: { token: generateToken(user._id) },
     });
   } catch (error) {
-    console.error('ChangePassword error:', error);
+    logError('ChangePassword error:', error);
     serverError(res, 'Error changing password', error);
   }
 };
@@ -466,7 +466,7 @@ exports.deleteAccount = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
-    console.error('DeleteAccount error:', error);
+    logError('DeleteAccount error:', error);
     serverError(res, 'Error deleting account', error);
   }
 };
@@ -546,7 +546,7 @@ exports.forgotPassword = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('ForgotPassword error:', error);
+    logError('ForgotPassword error:', error);
     serverError(res, 'Server error', error);
   }
 };
@@ -613,7 +613,7 @@ exports.resetPassword = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Your password has been reset. Please sign in.' });
   } catch (error) {
-    console.error('ResetPassword error:', error);
+    logError('ResetPassword error:', error);
     serverError(res, 'Server error', error);
   }
 };

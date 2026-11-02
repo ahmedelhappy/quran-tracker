@@ -1,7 +1,7 @@
 const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 const { PAGE_RULE, MAX_PAGE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
 const { parsePlanSettings } = require('../utils/planSettings');
 const { isStreakContinued } = require('../utils/streak');
@@ -624,7 +624,7 @@ exports.completeOnboarding = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Onboarding error:', error);
+    logError('Onboarding error:', error);
     if (partial) {
       return res.status(500).json({
         success: false,
@@ -807,7 +807,7 @@ exports.getTodayTasks = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetTodayTasks error:', error);
+    logError('GetTodayTasks error:', error);
     serverError(res, "Error fetching today's tasks", error);
   }
 };
@@ -858,7 +858,7 @@ exports.checkIn = async (req, res) => {
 
     res.status(200).json({ success: true, data: { ticked, currentStreak: user.currentStreak || 0 } });
   } catch (error) {
-    console.error('CheckIn error:', error);
+    logError('CheckIn error:', error);
     serverError(res, 'Error checking in', error);
   }
 };
@@ -1025,7 +1025,7 @@ exports.markPageComplete = async (req, res) => {
       data: { pageNumber, type, newStreak },
     });
   } catch (error) {
-    console.error('MarkPageComplete error:', error);
+    logError('MarkPageComplete error:', error);
     serverError(res, 'Error marking page complete', error);
   }
 };
@@ -1164,7 +1164,7 @@ exports.unmarkPageComplete = async (req, res) => {
       data: { currentStreak },
     });
   } catch (error) {
-    console.error('UnmarkPageComplete error:', error);
+    logError('UnmarkPageComplete error:', error);
     serverError(res, 'Error undoing completion', error);
   }
 };
@@ -1207,7 +1207,7 @@ exports.getEstimate = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetEstimate error:', error);
+    logError('GetEstimate error:', error);
     serverError(res, 'Error calculating estimate', error);
   }
 };
@@ -1392,7 +1392,7 @@ exports.getWeekPlan = async (req, res) => {
 
     res.status(200).json({ success: true, data: enrichedPlan });
   } catch (error) {
-    console.error('GetWeekPlan error:', error);
+    logError('GetWeekPlan error:', error);
     serverError(res, 'Error fetching week plan', error);
   }
 };
@@ -1441,7 +1441,7 @@ exports.getAllProgress = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetAllProgress error:', error);
+    logError('GetAllProgress error:', error);
     serverError(res, 'Error fetching progress', error);
   }
 };
@@ -1536,7 +1536,7 @@ exports.updateMemorized = async (req, res) => {
       data: { memorizedCount: newPageSet.size, removed: wouldRemove },
     });
   } catch (error) {
-    console.error('UpdateMemorized error:', error);
+    logError('UpdateMemorized error:', error);
     serverError(res, 'Error updating memorized pages', error);
   }
 };
@@ -1599,7 +1599,7 @@ exports.changeMemorized = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('ChangeMemorized error:', error);
+    logError('ChangeMemorized error:', error);
     serverError(res, 'Error updating memorized pages', error);
   }
 };
@@ -1624,7 +1624,7 @@ exports.resetProgress = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Progress reset successfully' });
   } catch (error) {
-    console.error('ResetProgress error:', error);
+    logError('ResetProgress error:', error);
     serverError(res, 'Error resetting progress', error);
   }
 };
@@ -1706,7 +1706,7 @@ exports.getJuzProgress = async (req, res) => {
 
     res.status(200).json({ success: true, data: juzProgress });
   } catch (error) {
-    console.error('GetJuzProgress error:', error);
+    logError('GetJuzProgress error:', error);
     serverError(res, 'Error fetching Juz progress', error);
   }
 };
@@ -1819,7 +1819,7 @@ exports.updateUnits = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('UpdateUnits error:', error);
+    logError('UpdateUnits error:', error);
     serverError(res, 'Error updating memorization units', error);
   }
 };

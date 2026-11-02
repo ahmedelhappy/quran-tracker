@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Bookmark = require('../models/Bookmark');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 
 // A generous ceiling so the list stays manageable (and can't be abused).
 const MAX_BOOKMARKS = 100;
@@ -12,7 +12,7 @@ const getBookmarks = async (req, res) => {
     const bookmarks = await Bookmark.find({ userId: req.user._id }).sort({ pageNumber: 1, label: 1 });
     res.status(200).json({ success: true, data: bookmarks });
   } catch (error) {
-    console.error('GetBookmarks error:', error);
+    logError('GetBookmarks error:', error);
     serverError(res, 'Error fetching bookmarks', error);
   }
 };
@@ -65,7 +65,7 @@ const addBookmark = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, code: 'BOOKMARK_UNNAMED_EXISTS', message: 'This page already has a bookmark without a name' });
     }
-    console.error('AddBookmark error:', error);
+    logError('AddBookmark error:', error);
     serverError(res, 'Error adding bookmark', error);
   }
 };
@@ -163,7 +163,7 @@ const updateBookmark = async (req, res) => {
     if (error.code === 11000) {
       return res.status(409).json({ success: false, code: 'BOOKMARK_UNNAMED_EXISTS', message: 'This page already has a bookmark without a name' });
     }
-    console.error('UpdateBookmark error:', error);
+    logError('UpdateBookmark error:', error);
     serverError(res, 'Error updating bookmark', error);
   }
 };
@@ -181,7 +181,7 @@ const deleteBookmark = async (req, res) => {
     }
     res.status(200).json({ success: true, message: 'Bookmark removed' });
   } catch (error) {
-    console.error('DeleteBookmark error:', error);
+    logError('DeleteBookmark error:', error);
     serverError(res, 'Error removing bookmark', error);
   }
 };
