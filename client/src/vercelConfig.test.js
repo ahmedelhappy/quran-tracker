@@ -84,3 +84,21 @@ describe('vercel.json routing and caching (L-12)', () => {
     for (const p of ['/', '/dashboard']) expect(headersFor(p)['Cache-Control']).toBe('no-cache');
   });
 });
+
+describe('vercel.json on the password pages (H-06)', () => {
+  // Last in the list, so its Referrer-Policy is the one that wins over the
+  // site-wide value (headersFor reads them in order, as Vercel applies them).
+  it('sends no referrer and keeps them out of search indexes, without dropping the security headers', () => {
+    for (const p of ['/forgot-password', '/reset-password']) {
+      const h = headersFor(p);
+      expect(h['Referrer-Policy']).toBe('no-referrer');
+      expect(h['X-Robots-Tag']).toBe('noindex');
+      expect(h['X-Frame-Options']).toBe('DENY');
+      expect(h['Content-Security-Policy-Report-Only']).toBe(csp);
+      expect(rewritten(p)).toBe(true);
+    }
+    expect(vercel.headers.at(-1).source).toBe('/(forgot-password|reset-password)');
+    expect(headersFor('/login')['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
+    expect(headersFor('/login')['X-Robots-Tag']).toBeUndefined();
+  });
+});
