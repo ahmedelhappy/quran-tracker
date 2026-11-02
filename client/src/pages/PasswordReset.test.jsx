@@ -13,10 +13,12 @@ const api = vi.hoisted(() => ({
 }));
 const auth = vi.hoisted(() => ({ isAuthenticated: false, logout: vi.fn(), login: vi.fn() }));
 const showToast = vi.hoisted(() => vi.fn());
+const report = vi.hoisted(() => ({ reportLoadFailure: vi.fn(), reportError: vi.fn() }));
 
 vi.mock('../services/api', () => ({ authAPI: api }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => auth }));
 vi.mock('../hooks/useToast', () => ({ useToast: () => ({ showToast }) }));
+vi.mock('../utils/reportError', () => report);
 // Translation keys stand in for the text; an interpolated email is appended.
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key, opts) => (opts?.email ? `${key}[${opts.email}]` : key) }),
@@ -50,7 +52,7 @@ const renderAt = (path, element, extra = null) => render(
 
 beforeEach(() => {
   vi.resetModules();
-  for (const fn of [...Object.values(api), auth.logout, showToast]) fn.mockReset();
+  for (const fn of [...Object.values(api), ...Object.values(report), auth.logout, showToast]) fn.mockReset();
   auth.isAuthenticated = false;
 });
 afterEach(() => {
@@ -68,13 +70,20 @@ describe('Login: "Forgot password?" (H-06)', () => {
     expect(screen.queryByText('auth.forgotPasswordLink')).toBeNull();
   });
 
-  it('is hidden when the check fails', async () => {
-    api.getConfig.mockRejectedValue(axiosError(503, 'SERVER_ERROR'));
+  it('is hidden when the check fails, which is reported and not kept: the next screen asks again', async () => {
+    const failure = axiosError(503, 'SERVER_ERROR');
+    api.getConfig.mockRejectedValueOnce(failure);
     const Login = await load('Login');
-    renderAt('/login-form', <Login />);
-    await waitFor(() => expect(api.getConfig).toHaveBeenCalled());
-    await Promise.resolve();
+    const first = renderAt('/login-form', <Login />);
+    await waitFor(() => expect(report.reportLoadFailure).toHaveBeenCalledWith(failure, 'the auth config'));
     expect(screen.queryByText('auth.forgotPasswordLink')).toBeNull();
+    first.unmount();
+
+    api.getConfig.mockResolvedValueOnce({ data: { data: { passwordReset: true } } });
+    renderAt('/login-form', <Login />);
+    expect(await screen.findByText('auth.forgotPasswordLink')).toBeTruthy();
+    expect(api.getConfig).toHaveBeenCalledTimes(2);
+    expect(report.reportLoadFailure).toHaveBeenCalledTimes(1);
   });
 
   it('is shown when reset is on, and points at the request page', async () => {
