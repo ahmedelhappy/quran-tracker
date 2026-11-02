@@ -36,7 +36,7 @@ address, not the visitor's.
 | 1 | **Vercel** | Hosts the web client (HTML, JS, CSS, the self-hosted fonts, the verse-search index) | Every visitor's IP, User-Agent, requested URL, request headers (Vercel's own request logs) | Browser | `client/vercel.json:1-16` (rewrites, headers, CSP); fonts in `client/public/fonts/`; index fetched from `/data/search-index.json` (`client/src/services/quranSearch.js:26`) |
 | 2 | **Render** | Hosts the API (`quran-tracker-api.onrender.com`) | Every API request: IP, User-Agent, method + path, the JWT, request bodies (account data, progress, notes, chat messages) in transit. App logs: method, path, status, time, size (`morgan('dev')`, no IP, no body) | Browser | `render.yaml:5-16`; CSP `connect-src` `client/vercel.json:16`; `server/app.js:23` |
 | 3 | **MongoDB Atlas** | Database for all account data | Everything in "What is stored" below | API | `server/server.js:33` (`MONGODB_URI`; Atlas per `CLAUDE.md` → Environment) |
-| 4 | **Groq** (US) | Answers the in-app assistant | The fixed system prompt + app guide; the plan summary; the conversation (see below). Not the name, email, account id, display name, IP or any date | API | `server/controllers/chatController.js:56` (context), `:250` (client), `:264` (call); `server/package.json:29` |
+| 4 | **Groq** (US) | Answers the in-app assistant | The fixed system prompt + app guide; the plan summary; the conversation (see below). Not the name, email, account id, display name, IP or any date | API | `server/controllers/chatController.js:56` (context), `:289` (client), `:306` (call); `server/package.json:29` |
 | 5 | **api.quran.com** (Quran Foundation, v4) | Mushaf page data (word glyph codes, lines, verse text) | Visitor IP, User-Agent, origin; which page is opened | Browser | `client/src/services/mushafApi.js:20`, `:247` |
 | 6 | **api.alquran.cloud** (Islamic Network) | Daily verse; tafsir al-Muyassar / al-Jalalayn per page; page text | Visitor IP, User-Agent, origin; which page/verse | Browser | `client/src/services/quranApi.js:5`, `:256`; `client/src/services/dailyVerse.js:19`, `:88` |
 | 7 | **cdn.islamic.network** (Islamic Network) | Per-ayah recitation audio (and HEAD warm-ups) | Visitor IP, User-Agent, origin; which reciter and ayah | Browser (`<audio>` + fetch) | `client/src/services/quranApi.js:6`, `:163`, `:178` |
@@ -127,10 +127,21 @@ the leaderboard cache (display names, 5 min).
 - **Owner notes (not code):** Atlas backups/snapshots keep deleted data until they
   expire (retention depends on the Atlas tier and settings); Render and Vercel keep
   request logs for their own retention periods; Groq keeps inference data per its
-  policy (up to 30 days for abuse monitoring unless Zero Data Retention is on). Server
-  error logs can contain a user id on rare failure paths (e.g.
-  `server/controllers/progressController.js:579`), never chat content (phase 10 removed
-  the one place that could log Groq's echo of a conversation).
+  policy (up to 30 days for abuse monitoring unless Zero Data Retention is on).
+- **Server error logs** (Render keeps them): a caught error is logged whole, message
+  and stack, so on rare failure paths it can carry a user id or page numbers (e.g.
+  the onboarding repair logs, `server/controllers/progressController.js:560` and
+  `:583`, which log the user id on purpose so the account can be fixed by hand).
+  Errors that quote a refused value are the exception: a duplicate key (a sign-up
+  racing past the email check carries the email in its message and `keyValue`), a
+  ValidationError or a CastError are logged by class, code, field names and stack
+  frames only (`logError`, `server/utils/errorResponse.js:59-86`, used by every
+  controller catch block and `server/middleware/errorHandler.js:35`). Chat content is
+  never logged: a Groq failure is logged by error class, HTTP status, Groq's error
+  code/type and the request-id, retry-after and remaining-rate-limit headers, or for a
+  connection failure by its cause chain (`describeGroqError`,
+  `server/controllers/chatController.js:158-204`). Neither covers what Render and
+  Vercel record about each request themselves (row 2 above).
 
 ### User rights — what exists today
 
