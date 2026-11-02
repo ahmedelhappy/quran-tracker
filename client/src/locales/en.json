@@ -63,7 +63,31 @@
     "namePlaceholder": "Enter your full name",
     "emailPlaceholder": "you@example.com",
     "passwordPlaceholder": "Create a strong password",
-    "confirmPlaceholder": "Repeat your password"
+    "confirmPlaceholder": "Repeat your password",
+    "forgotPasswordLink": "Forgot password?",
+    "backToLogin": "Back to sign in",
+    "forgot": {
+      "title": "Forgot your password?",
+      "subtitle": "Enter the email you signed up with and we'll send you a link to choose a new password.",
+      "submit": "Send reset link",
+      "sending": "Sending...",
+      "sentTitle": "Check your email",
+      "sent": "If an account exists for {{email}}, we've sent it a link to reset the password. The link works once, for 30 minutes. If nothing arrives in a few minutes, check your spam folder.",
+      "tryAgain": "Use a different email",
+      "unavailable": "Password reset isn't available right now."
+    },
+    "reset": {
+      "title": "Choose a new password",
+      "subtitle": "Choosing a new password signs you out on every device.",
+      "newPassword": "New Password",
+      "hint": "At least 8 characters.",
+      "submit": "Set new password",
+      "saving": "Saving...",
+      "done": "Your password has been reset. Sign in with your new password.",
+      "invalidTitle": "This link can't be used",
+      "invalid": "The reset link is invalid, has expired, or was already used. Ask for a new one.",
+      "requestNew": "Ask for a new link"
+    }
   },
   "dashboard": {
     "greeting": "Assalamu Alaikum, {{name}}",
@@ -1297,7 +1321,9 @@
     "RATE_LIMITED": "Too many requests. Please slow down and try again shortly.",
     "SESSION_EXPIRED": "Your session has expired. Please sign in again.",
     "TIMEOUT": "The server is taking too long to answer. Please try again in a moment.",
-    "NETWORK": "Couldn't reach the server. Check your connection and try again."
+    "NETWORK": "Couldn't reach the server. Check your connection and try again.",
+    "RESET_TOKEN_INVALID": "This reset link is invalid or has expired. Ask for a new one.",
+    "RESET_DISABLED": "Password reset isn't available right now."
   },
   "titles": {
     "app": "Quran Tracker",
@@ -1310,6 +1336,8 @@
     "onboarding": "Set up your plan",
     "progress": "My Progress",
     "settings": "Settings",
-    "leaderboard": "Leaderboard"
+    "leaderboard": "Leaderboard",
+    "forgotPassword": "Forgot password",
+    "resetPassword": "Reset password"
   }
 }

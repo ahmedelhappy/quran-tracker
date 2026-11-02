@@ -142,6 +142,12 @@ export const authAPI = {
   updateProfile: (data) => API.put('/auth/profile', data),
   changePassword: (data) => API.put('/auth/password', data),
   deleteAccount: () => API.delete('/auth/account'),
+  // Password reset (H-06). `getConfig` says whether the server offers it at
+  // all; until an email provider is set up it does not, and both calls below
+  // answer 404 RESET_DISABLED.
+  getConfig: () => API.get('/auth/config'),
+  forgotPassword: (email) => API.post('/auth/forgot-password', { email }),
+  resetPassword: (token, password) => API.post('/auth/reset-password', { token, password }),
 };
 
 // The streak check-in for a rest day or a day with nothing left to do. Nothing

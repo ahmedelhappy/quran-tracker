@@ -12,6 +12,8 @@ export const PAGE_TITLE_KEYS = {
   '/library': 'titles.library',
   '/login': 'titles.login',
   '/register': 'titles.register',
+  '/forgot-password': 'titles.forgotPassword',
+  '/reset-password': 'titles.resetPassword',
   '/dashboard': 'titles.dashboard',
   '/onboarding': 'titles.onboarding',
   '/progress': 'titles.progress',

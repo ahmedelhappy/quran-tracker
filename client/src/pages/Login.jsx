@@ -9,6 +9,7 @@ import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
 import Tooltip from '../components/Tooltip';
 import { safeReturnTo } from '../utils/returnTo';
+import { usePasswordResetAvailable } from '../hooks/usePasswordResetAvailable';
 
 const Login = () => {
   const { login } = useAuth();
@@ -26,6 +27,9 @@ const Login = () => {
   // tied to both fields (aria-invalid + aria-describedby), so it is still
   // there for a screen reader after the toast has gone (M-12).
   const [error, setError] = useState(null);
+  // "Forgot password?" only once the server says reset is on (H-06): until an
+  // email provider is configured it is off, and the link would lead nowhere.
+  const resetAvailable = usePasswordResetAvailable();
   const edit = (key) => (e) => { setForm(f => ({ ...f, [key]: e.target.value })); setError(null); };
 
   const handleSubmit = async (e) => {
@@ -94,6 +98,14 @@ const Login = () => {
                     </button>
                   </Tooltip>
                 </div>
+                {resetAvailable === true && (
+                  <div className="flex justify-end mt-1.5">
+                    <Link to="/forgot-password" state={{ email: form.email }}
+                      className="text-xs font-medium text-[#064e3b] dark:text-emerald-400 hover:text-[#004f35] dark:hover:text-emerald-300 underline underline-offset-4 transition-colors">
+                      {t('auth.forgotPasswordLink')}
+                    </Link>
+                  </div>
+                )}
               </div>
 
               {error && (
