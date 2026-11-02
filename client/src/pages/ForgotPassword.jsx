@@ -67,9 +67,13 @@ const ForgotPassword = () => {
   if (sentTo !== null) {
     return (
       <AuthCard title={t('auth.forgot.sentTitle')} titleRef={titleRef}>
-        <p role="status" className="text-center text-[#404944] dark:text-gray-300">
-          {t('auth.forgot.sent', { email: sentTo })}
-        </p>
+        {/* The address on a line of its own, left to right: inside the Arabic
+            sentence the bidi algorithm and line wrapping pulled it apart
+            ("ar-123@…" broke after "ar-" and showed as "-ar"). */}
+        <div role="status" className="text-center text-[#404944] dark:text-gray-300">
+          <p dir="ltr" className="font-medium text-[#151c27] dark:text-gray-100 break-all mb-2">{sentTo}</p>
+          <p>{t('auth.forgot.sent')}</p>
+        </div>
         <p className="mt-6 text-center">
           <button type="button" onClick={() => setSentTo(null)} className={authLinkCls}>
             {t('auth.forgot.tryAgain')}

@@ -72,7 +72,7 @@
       "submit": "Send reset link",
       "sending": "Sending...",
       "sentTitle": "Check your email",
-      "sent": "If an account exists for {{email}}, we've sent it a link to reset the password. The link works once, for 30 minutes. If nothing arrives in a few minutes, check your spam folder.",
+      "sent": "If an account exists for this address, we've sent it a link to reset the password. The link works once, for 30 minutes. If nothing arrives in a few minutes, check your spam folder.",
       "tryAgain": "Use a different email",
       "unavailable": "Password reset isn't available right now."
     },

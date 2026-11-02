@@ -17,7 +17,7 @@ test('a forgotten password is reset from the emailed link, and only the new one 
   await expect(page.getByLabel('Email Address')).toHaveValue(account.email)
   await page.getByRole('button', { name: 'Send reset link' }).click()
   const confirmation = page.getByRole('main').getByRole('status')
-  await expect(confirmation).toHaveText(`If an account exists for ${account.email}, we've sent it a link to reset the password. The link works once, for 30 minutes. If nothing arrives in a few minutes, check your spam folder.`)
+  await expect(confirmation).toHaveText(`${account.email}If an account exists for this address, we've sent it a link to reset the password. The link works once, for 30 minutes. If nothing arrives in a few minutes, check your spam folder.`)
   const known = await confirmation.textContent()
 
   // An address with no account gets the very same answer.

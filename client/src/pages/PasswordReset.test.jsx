@@ -103,7 +103,9 @@ describe('ForgotPassword (H-06)', () => {
 
     submit(' known@example.com ');
     const first = await screen.findByRole('status');
-    expect(first.textContent).toBe('auth.forgot.sent[known@example.com]');
+    // The address on its own left-to-right line, then the one sentence.
+    expect(first.textContent).toBe('known@example.comauth.forgot.sent');
+    expect(screen.getByText('known@example.com').getAttribute('dir')).toBe('ltr');
     expect(document.activeElement.textContent).toBe('auth.forgot.sentTitle');
     expect(api.forgotPassword).toHaveBeenCalledWith('known@example.com');
 
