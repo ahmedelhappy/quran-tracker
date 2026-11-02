@@ -86,8 +86,9 @@ The assistant is optional. Nothing is sent to Groq unless you write a message.
 name, password, IP address, or the dates of your activity.
 
 Please do not type personal details (or anyone else's) into the chat: whatever you
-write is sent to Groq as written. Chat conversations are not stored on our server;
-they disappear when you close or reload the chat.
+write is sent to Groq as written. Chat conversations are not stored on our server.
+They live only in the open browser tab: closing the chat panel just hides it, and the
+conversation is cleared when you reload or close the page, sign out, or switch accounts.
 
 Groq processes the request in the United States. Under its terms, Groq does not use
 this data to train models. [CHOOSE ONE: "We have enabled Groq's Zero Data Retention,
