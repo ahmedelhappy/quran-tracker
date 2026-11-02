@@ -42,12 +42,15 @@ const protect = async (req, res, next) => {
     // session opened a moment before the change is refused, and the one handed
     // out right after it is not. Tokens from before `iatMs` existed only have
     // the whole-second `iat`; for them the change's own second is given the
-    // benefit of the doubt, as before, until they expire (30 days).
+    // benefit of the doubt, as before, until they expire (30 days). A token
+    // with neither carries no proof it is newer than the change, so it is
+    // refused: written as "not provably fresh", since `undefined < n` is false
+    // and the plain comparison would have let it through.
     if (req.user.passwordChangedAt) {
       const changedAtMs = req.user.passwordChangedAt.getTime();
       const stale = Number.isFinite(decoded.iatMs)
         ? decoded.iatMs < changedAtMs
-        : decoded.iat < Math.floor(changedAtMs / 1000);
+        : !(decoded.iat >= Math.floor(changedAtMs / 1000));
       if (stale) {
         return res.status(401).json({
           success: false,

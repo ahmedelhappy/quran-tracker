@@ -306,6 +306,18 @@ describe('Auth API', () => {
     assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${secondBefore}`)).status, 401);
   });
 
+  test('after a password change, a token with no issue time at all is refused', async () => {
+    const user = await createUser({ email: 'notime@example.com', password: 'secret123' });
+    const timeless = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { noTimestamp: true });
+    assert.equal(jwt.decode(timeless).iat, undefined);
+    // Before any change there is nothing to compare it with.
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${timeless}`)).status, 200);
+    await User.updateOne({ _id: user._id }, { $set: { passwordChangedAt: new Date() } });
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${timeless}`);
+    assert.equal(res.status, 401);
+    assert.equal(res.body.code, 'SESSION_EXPIRED');
+  });
+
   test('a refused password change issues no token', async () => {
     const user = await createUser({ email: 'wrong@example.com', password: 'secret123' });
     const res = await request(app)
