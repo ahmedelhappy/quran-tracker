@@ -36,12 +36,19 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // Reject tokens minted before the user last changed their password, so a
-    // password change invalidates every session issued beforehand. `iat` is in
-    // seconds; passwordChangedAt is already back-dated a second when set.
+    // Reject tokens minted before the user last changed (or reset) their
+    // password, so either one ends every session issued beforehand. Tokens
+    // carry their issue time to the millisecond (`iatMs`), compared exactly: a
+    // session opened a moment before the change is refused, and the one handed
+    // out right after it is not. Tokens from before `iatMs` existed only have
+    // the whole-second `iat`; for them the change's own second is given the
+    // benefit of the doubt, as before, until they expire (30 days).
     if (req.user.passwordChangedAt) {
-      const changedAtSec = Math.floor(req.user.passwordChangedAt.getTime() / 1000);
-      if (decoded.iat < changedAtSec) {
+      const changedAtMs = req.user.passwordChangedAt.getTime();
+      const stale = Number.isFinite(decoded.iatMs)
+        ? decoded.iatMs < changedAtMs
+        : decoded.iat < Math.floor(changedAtMs / 1000);
+      if (stale) {
         return res.status(401).json({
           success: false,
           code: 'SESSION_EXPIRED',

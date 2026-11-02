@@ -275,6 +275,37 @@ describe('Auth API', () => {
     }
   });
 
+  // H-06 harness finding: with whole-second `iat` and a stamp back-dated a
+  // second, a session opened in the ~2 s before the change survived it.
+  test('a session opened moments before a password change ends with it; the fresh token and later ones work', async () => {
+    await createUser({ email: 'quick@example.com', password: 'secret123' });
+    const signIn = async (password) => (await request(app).post('/api/auth/login').send({ email: 'quick@example.com', password })).body.data.token;
+    const thisTab = await signIn('secret123');
+    const otherDevice = await signIn('secret123'); // same second, other device
+    const change = await request(app).put('/api/auth/password').set('Authorization', `Bearer ${thisTab}`)
+      .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
+    assert.equal(change.status, 200);
+    for (const [label, token, status] of [
+      ['the other device', otherDevice, 401],
+      ['this tab\'s old token', thisTab, 401],
+      ['the fresh token', change.body.data.token, 200],
+      ['a sign-in after the change', await signIn('newpass123'), 200],
+    ]) {
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      assert.equal(res.status, status, label);
+    }
+  });
+
+  test('tokens without a millisecond time still follow the whole-second rule', async () => {
+    const user = await createUser({ email: 'legacy@example.com', password: 'secret123' });
+    const now = Math.floor(Date.now() / 1000);
+    await User.updateOne({ _id: user._id }, { $set: { passwordChangedAt: new Date(now * 1000 + 500) } });
+    const sameSecond = jwt.sign({ id: user._id, iat: now }, process.env.JWT_SECRET);
+    const secondBefore = jwt.sign({ id: user._id, iat: now - 1 }, process.env.JWT_SECRET);
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${sameSecond}`)).status, 200);
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${secondBefore}`)).status, 401);
+  });
+
   test('a refused password change issues no token', async () => {
     const user = await createUser({ email: 'wrong@example.com', password: 'secret123' });
     const res = await request(app)

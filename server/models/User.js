@@ -159,10 +159,12 @@ userSchema.index({ passwordResetTokenHash: 1 }, { sparse: true });
 // a reset, which writes the hash in one atomic update instead of a save.
 const BCRYPT_ROUNDS = 10;
 userSchema.statics.hashPassword = (plain) => bcrypt.hash(plain, BCRYPT_ROUNDS);
-// The passwordChangedAt to record for a change happening now. Back-dated by one
-// second because a JWT's `iat` is only second-precision; without the buffer the
-// token issued right after the change could look fractionally older than it.
-userSchema.statics.passwordChangedStamp = () => new Date(Date.now() - 1000);
+// The passwordChangedAt to record for a change happening now. Exact: tokens
+// carry a millisecond issue time, and the one a password change hands back is
+// signed after this stamp, so it is never older than it. (It used to be
+// back-dated a second, which let every session opened in the ~2 s before a
+// change or reset survive it.)
+userSchema.statics.passwordChangedStamp = () => new Date();
 
 // Hash password before saving
 userSchema.pre("save", async function () {

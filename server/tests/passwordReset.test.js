@@ -295,6 +295,22 @@ describe('password reset (H-06)', () => {
       assert.equal(raw.passwordResetExpires, undefined);
     });
 
+    test('a session opened a moment before the reset ends too, and one opened after it works', async () => {
+      // Real sign-ins, so the tokens are the server's own, in the same second
+      // as the reset (the harness found these surviving when the check only
+      // had whole seconds and a back-dated stamp).
+      await createUser({ email: 'reset@example.com', password: 'oldpassword1' });
+      const token = await requestToken('reset@example.com');
+      const justBefore = (await login('reset@example.com', 'oldpassword1')).body.data.token;
+      assert.ok(jwt.decode(justBefore).iatMs, 'issued with a millisecond time');
+      assert.equal((await reset(token, 'brandnewpass1')).status, 200);
+      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${justBefore}`);
+      assert.equal(me.status, 401);
+      assert.equal(me.body.code, 'SESSION_EXPIRED');
+      const after = (await login('reset@example.com', 'brandnewpass1')).body.data.token;
+      assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${after}`)).status, 200);
+    });
+
     test('two resets racing with one link: exactly one wins, and its password is the one that works', async () => {
       await createUser({ email: 'reset@example.com' });
       const token = await requestToken('reset@example.com');

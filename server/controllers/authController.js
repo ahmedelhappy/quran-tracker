@@ -16,9 +16,12 @@ const {
   hashResetToken, newResetToken, passwordResetConfig, resetLink,
 } = require('../utils/passwordReset');
 
-// Generate JWT Token
+// Generate JWT Token. `iatMs` is when it was issued, to the millisecond: the
+// standard `iat` is whole seconds, too coarse to tell a session opened just
+// before a password change or reset from one opened just after it (see
+// middleware/auth.js).
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  return jwt.sign({ id, iatMs: Date.now() }, process.env.JWT_SECRET, {
     expiresIn: '30d'
   });
 };
@@ -428,7 +431,7 @@ exports.changePassword = async (req, res) => {
     await user.save();
 
     // The save stamped passwordChangedAt, which revokes every token minted before
-    // it — including the one this request came in with. Hand back a fresh one so
+    // it — including the one this request came in with, however recent. Hand back a fresh one so
     // THIS session carries on; every other device still has to sign in again.
     res.status(200).json({
       success: true,
