@@ -236,7 +236,9 @@ export default function MemorizedUnitPicker({
                   onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
                   onClick={() => ds.handleClick(juz, toggleJuz)}
                   aria-pressed={pressed(s)}
-                  aria-label={t('common.juzN', { n: juz })}
+                  // The editor's tile reads its number and percentage; Onboarding's
+                  // shows just the number, so it is named in full.
+                  aria-label={editor ? undefined : t('common.juzN', { n: juz })}
                   className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${tileClass(s)}`}
                 >
                   <span>{juz}</span>
@@ -276,7 +278,9 @@ export default function MemorizedUnitPicker({
                   onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
                   onClick={() => ds.handleClick(hizb, toggleHizb)}
                   aria-pressed={pressed(s)}
-                  aria-label={t('common.hizbN', { n: hizb })}
+                  // The editor's tile reads its number and percentage; Onboarding's
+                  // shows just the number, so it is named in full.
+                  aria-label={editor ? undefined : t('common.hizbN', { n: hizb })}
                   className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${tileClass(s)}`}
                 >
                   <span>{hizb}</span>
