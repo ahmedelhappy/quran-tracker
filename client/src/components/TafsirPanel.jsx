@@ -7,7 +7,7 @@ import {
   fetchPageTafsir, fetchEditionAyahTafsir, findTafsirRun, toArabicDigits, TAFSIR_EDITIONS,
 } from '../services/quranApi';
 import { ayahCount, ordOfKey, TOTAL_AYAHS } from '../utils/verseIndex';
-import { reportLoadFailure } from '../utils/reportError';
+import { reportError, reportLoadFailure } from '../utils/reportError';
 import { TAFSIR_MIN_W, TAFSIR_MAX_W, TAFSIR_DEFAULT_W, clampTafsirWidth } from './tafsirWidth';
 
 // The ayah's plain Uthmani text (basmala excluded), used for the legible
@@ -108,7 +108,10 @@ export default function TafsirPanel({
         if (ed.source !== 'ayah') return;
         findTafsirRun(ed.slug, verse.surahNumber, verse.ayahNumber, ayahCount(verse.surahNumber), loaded)
           .then(found => { if (!cancelled && found.to > found.from) setRun(found); })
-          .catch(() => { /* the label is a nicety — never fail the read over it */ });
+          // The label is a nicety — never fail the read over it. findTafsirRun
+          // already treats a failed probe as "not the same text", so whatever
+          // reaches here is a bug in it: reported, not shown.
+          .catch((err) => reportError(err, { source: 'load', what: 'the tafsir run label' }));
       })
       .catch((err) => { reportLoadFailure(err, `tafsir for ${verse.verseKey}`); if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
