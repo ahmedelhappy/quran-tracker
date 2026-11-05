@@ -639,14 +639,6 @@ export default function Dashboard() {
     return Math.round((today - last) / 86400000) > 1;
   })();
 
-  // Split review pages into recent and cycle
-  const recentPages = data?.recentReviewPages ?? [];
-  const cycleReviewPages = data?.reviewPages ?? [];
-  const allReviewPages = [
-    ...recentPages.map(p => ({ ...p, isRecent: true })),
-    ...cycleReviewPages.map(p => ({ ...p, isRecent: false })),
-  ];
-
   // Daily review breakdown — the stable per-day targets (cycle pages + recently
   // memorized pages), not the live list lengths, so the stat card and its hint
   // show the everyday review load and don't count down to zero as pages are done.
@@ -673,24 +665,12 @@ export default function Dashboard() {
     ? `${t('hints.review')} ${t('hints.reviewToday', { breakdown: reviewBreakdown })}`
     : t('hints.review');
 
-  const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(taskKey('new', p.pageNumber, p.segment)));
-  const revPending = allReviewPages.filter(p => !completedKeys.has(taskKey('review', p.pageNumber)));
-
-  const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
-    (completedKeys.size > 0 || data.stats?.todayComplete);
-
   const REVIEW_LIMIT = 5;
-  const hasMoreReview = allReviewPages.length > REVIEW_LIMIT;
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
 
   const isHafiz = (stats?.totalMemorized ?? 0) >= 604;
   const isPaused = !isHafiz && (user?.pauseNewMemorization === true);
-
-  // Each new task carries its half on a half-page plan; the server refuses a
-  // bare completion of a page it serves as a half (SEGMENT_REQUIRED).
-  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new', p.segment));
-  const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
 
   const handleFirstCycleResume = async () => {
     try {
@@ -977,7 +957,25 @@ export default function Dashboard() {
               tasks are a function, so a throw in their JSX happens inside the
               boundary (see ErrorBoundary). */}
           <ErrorBoundary name="dashboard tasks" onReset={reloadTasks} fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
-          {() => (<>
+          {() => {
+          // The day's task lists are worked out HERE, inside the boundary, not in
+          // the page's own render: a plan whose lists are not what they should be
+          // then crashes this region, with its Retry, instead of the whole app.
+          // Split review pages into recent and cycle.
+          const allReviewPages = [
+            ...(data?.recentReviewPages ?? []).map(p => ({ ...p, isRecent: true })),
+            ...(data?.reviewPages ?? []).map(p => ({ ...p, isRecent: false })),
+          ];
+          const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(taskKey('new', p.pageNumber, p.segment)));
+          const revPending = allReviewPages.filter(p => !completedKeys.has(taskKey('review', p.pageNumber)));
+          const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
+            (completedKeys.size > 0 || data.stats?.todayComplete);
+          const hasMoreReview = allReviewPages.length > REVIEW_LIMIT;
+          // Each new task carries its half on a half-page plan; the server refuses a
+          // bare completion of a page it serves as a half (SEGMENT_REQUIRED).
+          const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new', p.segment));
+          const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
+          return (<>
           {activeTab === 'today' && (
             loading ? (
               /* The skeleton stands in for the REAL shape — two columns, a heading
@@ -1263,7 +1261,8 @@ export default function Dashboard() {
               )}
             </div>
           )}
-          </>)}
+          </>);
+          }}
           </ErrorBoundary>
           </div>
         </section>
