@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiPlus, FiX } from 'react-icons/fi';
 import Tooltip from './Tooltip';
@@ -80,6 +80,12 @@ export default function MemorizedUnitPicker({
     setRangeErrorsState(next);
     onRangeErrorsChange?.(next.some(e => e.start || e.end));
   };
+  // The range rows die with the picker (Onboarding's Back, the editor closing),
+  // so their errors must not outlive it: a parent that kept "has errors" would
+  // block its Continue or Save with nothing on screen to say why.
+  const reportRef = useRef(onRangeErrorsChange);
+  useEffect(() => { reportRef.current = onRangeErrorsChange; }, [onRangeErrorsChange]);
+  useEffect(() => () => reportRef.current?.(false), []);
 
   const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
   const origPages = original?.pages;
