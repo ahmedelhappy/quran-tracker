@@ -5,47 +5,17 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { progressAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiError';
-import { FiPlus, FiX } from 'react-icons/fi';
 import Logo from '../components/Logo';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
+import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { SURAH_PAGES } from '../data/surahPages';
-import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { JUZ_RANGES } from '../data/juzRanges';
 import {
-  hizbOrdRange, rubOrdRange, surahOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
-  coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges, pressedOf,
+  surahOrdRange, coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
 } from '../utils/unitRanges';
-import { useDragSelect } from '../hooks/useDragSelect';
-
-function toPageRanges(sortedPages) {
-  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
-  const pages = [...sortedPages].sort((a, b) => a - b);
-  const ranges = [];
-  let start = pages[0], prev = pages[0];
-  for (let i = 1; i < pages.length; i++) {
-    if (pages[i] !== prev + 1) {
-      ranges.push({ start: String(start), end: String(prev) });
-      start = pages[i];
-    }
-    prev = pages[i];
-  }
-  ranges.push({ start: String(start), end: String(prev) });
-  return ranges;
-}
-
-const JUZ_RANGES = [
-  {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
-  {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
-  {juz:7,start:122,end:141},{juz:8,start:142,end:161},{juz:9,start:162,end:181},
-  {juz:10,start:182,end:201},{juz:11,start:202,end:221},{juz:12,start:222,end:241},
-  {juz:13,start:242,end:261},{juz:14,start:262,end:281},{juz:15,start:282,end:301},
-  {juz:16,start:302,end:321},{juz:17,start:322,end:341},{juz:18,start:342,end:361},
-  {juz:19,start:362,end:381},{juz:20,start:382,end:401},{juz:21,start:402,end:421},
-  {juz:22,start:422,end:441},{juz:23,start:442,end:461},{juz:24,start:462,end:481},
-  {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
-  {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
-];
+import { countIn } from '../utils/pageRanges';
 
 const DAY_LABEL_KEYS = ['onboarding.dayName0','onboarding.dayName1','onboarding.dayName2','onboarding.dayName3','onboarding.dayName4','onboarding.dayName5','onboarding.dayName6'];
 
@@ -74,43 +44,6 @@ function formatEstimate(days) {
   }
   const years = parseFloat((days / 365).toFixed(1));
   return { value: years, unitKey: 'onboarding.timeYears' };
-}
-
-// Expand the range rows into the set of pages they cover.
-function rangesToPages(pageRanges) {
-  const pages = new Set();
-  pageRanges.forEach(({ start, end }) => {
-    const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
-      for (let p = s; p <= e; p++) pages.add(p);
-  });
-  return pages;
-}
-
-// Is every page in [start, end] present in the selected set?
-function isCovered(selected, start, end) {
-  for (let p = start; p <= end; p++) if (!selected.has(p)) return false;
-  return true;
-}
-
-function validateRanges(pageRanges) {
-  const errors = pageRanges.map(() => ({}));
-  const parsed = pageRanges.map(r => ({ start: parseInt(r.start, 10), end: parseInt(r.end, 10) }));
-  parsed.forEach((r, i) => {
-    if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
-      errors[i].start = 'common.validationRange';
-    if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
-      errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
-      errors[i].end = 'common.validationEndGreater';
-    parsed.forEach((other, j) => {
-      if (i === j) return;
-      if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
-          r.start < other.end && r.end > other.start)
-        errors[i].start = 'common.validationNoOverlap';
-    });
-  });
-  return errors;
 }
 
 const OnboardingHeader = ({ step }) => {
@@ -152,14 +85,8 @@ export default function Onboarding() {
   // honest unit, and the page-shaped tabs read a derived view of them.
   const [coverage, setCoverage] = useState([]);
   const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
-  const setSelectedPages = (next) => {
-    const pages = typeof next === 'function' ? next(fullyCoveredPages(coverage)) : next;
-    setCoverage(mergeOrdRanges([...pages].map(pageOrdRange)));
-  };
-  const [selectionMode, setSelectionMode] = useState('juz');
-  const [surahSearch, setSurahSearch] = useState('');
-  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
-  const [rangeErrors, setRangeErrors] = useState([{}]);
+  // The Range tab's rows are the picker's own; it says when they stop being valid.
+  const [hasRangeErrors, setHasRangeErrors] = useState(false);
   const [dailyPages, setDailyPages] = useState(1);
   // 'fromStart' | 'fromEnd' | 'custom' — custom anchors new memorization at a
   // Juz/Surah start page; the selection id keeps only the clicked card highlighted
@@ -175,10 +102,8 @@ export default function Onboarding() {
   const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const selectedCount = selectedPages.size;
-  const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
+  const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === end - start + 1).length;
   const selectedSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
-  const selectedHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
-  const selectedRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
 
   // Client-side estimate
   const activeDays = 7 - offDays.length;
@@ -187,79 +112,11 @@ export default function Onboarding() {
   const estimatedDays = effectiveDaily > 0 ? Math.ceil(remaining / effectiveDaily) : null;
   const estimateDisplay = formatEstimate(estimatedDays);
 
-  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
-  const toggleRange = (start, end) => setSelectedPages(prev => {
-    const next = new Set(prev);
-    const covered = isCovered(next, start, end);
-    for (let p = start; p <= end; p++) { if (covered) next.delete(p); else next.add(p); }
-    return next;
-  });
-
-  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  // Surah, Hizb and quarter-Hizb are verse-exact: they add and remove the unit's
-  // own verse span, which is what stops a selection bleeding into the unit next
-  // door over the page the two share — and what lets a surah's last verses, on
-  // the page the next surah opens, be selected at all (M-13). Same span the
-  // server compiles for /progress/units.
-  const toggleUnitRange = (range) => {
-    if (!range) return;
-    if (coverageOf(coverage, range) === 'full') setCoverage((c) => subtractOrdRanges(c, [range]));
-    else setCoverage((c) => mergeOrdRanges([...c, range]));
-  };
-  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
-  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
-  const toggleSurah = (n) => toggleUnitRange(surahOrdRange(n));
-  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
-
-  const filteredSurahs = SURAH_PAGES.filter(s => {
-    if (!surahSearch.trim()) return true;
-    const q = surahSearch.trim().toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.arabic.includes(surahSearch.trim()) ||
-      String(s.number).includes(q)
-    );
-  });
-
-  const allJuzSelected = selectedJuzCount === JUZ_RANGES.length;
-  const selectAll = () => setSelectedPages(allJuzSelected ? new Set() : new Set(Array.from({ length: 604 }, (_, i) => i + 1)));
-
   const toggleOffDay = (d) =>
     setOffDays(prev => {
       if (!prev.includes(d) && prev.length === 6) return prev;
       return prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d];
     });
-
-  // Tabs are views over one canonical set, so switching only re-renders. The Range
-  // tab keeps editable text rows, so we regenerate them from the set when entering it.
-  const handleTabSwitch = (newMode) => {
-    if (newMode === selectionMode) return;
-    if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
-      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
-      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
-    }
-    setSelectionMode(newMode);
-  };
-
-  const addRange = () => {
-    setPageRanges(r => [...r, { start: '', end: '' }]);
-    setRangeErrors(e => [...e, {}]);
-  };
-  const removeRange = (i) => {
-    const updated = pageRanges.filter((_, idx) => idx !== i);
-    setPageRanges(updated);
-    setRangeErrors(e => e.filter((_, idx) => idx !== i));
-    setSelectedPages(rangesToPages(updated));
-  };
-  const updateRange = (i, key, val) => {
-    const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
-    setPageRanges(updated);
-    setRangeErrors(validateRanges(updated));
-    setSelectedPages(rangesToPages(updated));
-  };
-
-  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -359,221 +216,12 @@ export default function Onboarding() {
             <p className="pt-1 text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.tabGuideCombine')}</p>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-[#404944] dark:text-gray-400 flex items-center gap-1">
-              {t('onboarding.selectMode')}
-              <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
-            </p>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
-                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
-                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
-                { mode: 'surah', labelKey: 'onboarding.bySurah' },
-                { mode: 'range', labelKey: 'onboarding.byRange' },
-              ].map(({ mode, labelKey }) => (
-                <button
-                  key={mode}
-                  onClick={() => handleTabSwitch(mode)}
-                  aria-pressed={selectionMode === mode}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectionMode === mode
-                      ? 'bg-[#003527] text-white border-[#003527]'
-                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                  }`}
-                >
-                  {t(labelKey)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectionMode === 'juz' && (
-            <div>
-              <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                {JUZ_RANGES.map(({ juz, start, end }) => (
-                  <button
-                    key={juz}
-                    data-tile-id={juz}
-                    onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
-                    onClick={() => ds.handleClick(juz, toggleJuz)}
-                    aria-pressed={isCovered(selectedPages, start, end)}
-                    aria-label={t('common.juzN', { n: juz })}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                      isCovered(selectedPages, start, end)
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    {juz}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                {selectedJuzCount > 0 && (
-                  <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuzCount })}</p>
-                )}
-                <button onClick={selectAll} className="ms-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
-                  {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectionMode === 'hizb' && (
-            <div>
-              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-                {HIZB_RANGES.map(({ hizb }) => (
-                  <button
-                    key={hizb}
-                    data-tile-id={hizb}
-                    onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
-                    onClick={() => ds.handleClick(hizb, toggleHizb)}
-                    aria-pressed={pressedOf(coverageOf(coverage, hizbOrdRange(hizb)))}
-                    aria-label={t('common.hizbN', { n: hizb })}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                      coverageOf(coverage, hizbOrdRange(hizb)) === 'full'
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : coverageOf(coverage, hizbOrdRange(hizb)) === 'partial'
-                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    {hizb}
-                  </button>
-                ))}
-              </div>
-              {selectedHizbCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.hizbSelected', { count: selectedHizbCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'rub' && (
-            <div>
-              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
-                {RUB_RANGES.map(({ rub, hizb, quarter }) => (
-                  <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
-                    <button
-                      data-tile-id={rub}
-                      onPointerDown={(e) => ds.start(e, rub, toggleRub)}
-                      onClick={() => ds.handleClick(rub, toggleRub)}
-                      aria-pressed={pressedOf(coverageOf(coverage, rubOrdRange(rub)))}
-                      className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                        coverageOf(coverage, rubOrdRange(rub)) === 'full'
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : coverageOf(coverage, rubOrdRange(rub)) === 'partial'
-                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                      }`}
-                    >
-                      {hizb}.{quarter}
-                    </button>
-                  </Tooltip>
-                ))}
-              </div>
-              {selectedRubCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.quarterHizbSelected', { count: selectedRubCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'surah' && (
-            <div>
-              <input
-                type="text"
-                aria-label={t('onboarding.surahSearchPlaceholder')}
-                placeholder={t('onboarding.surahSearchPlaceholder')}
-                value={surahSearch}
-                onChange={e => setSurahSearch(e.target.value)}
-                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
-              />
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                {filteredSurahs.map(s => {
-                  const surahState = coverageOf(coverage, surahOrdRange(s.number));
-                  const surahSelected = surahState === 'full';
-                  return (
-                  <button
-                    key={s.number}
-                    data-tile-id={s.number}
-                    onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
-                    onClick={() => ds.handleClick(s.number, toggleSurah)}
-                    aria-pressed={pressedOf(surahState)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors touch-pan-y select-none ${
-                      surahSelected
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : surahState === 'partial'
-                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    <span className="text-xs font-medium leading-tight">
-                      {s.number}. {isArabic ? s.arabic : s.name}
-                    </span>
-                    <span className={`text-[10px] mt-0.5 leading-tight ${surahSelected ? 'text-white/70' : surahState === 'partial' ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
-                      {isArabic ? s.name : s.arabic}
-                    </span>
-                  </button>
-                  );
-                })}
-              </div>
-              {selectedSurahCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'range' && (
-            <div>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-                {t('onboarding.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('onboarding.optional')}</span>
-              </p>
-              <div className="space-y-2">
-                {pageRanges.map((r, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <input
-                          type="number" min="1" max="604" value={r.start}
-                          onChange={e => updateRange(i, 'start', e.target.value)}
-                          aria-label={t('onboarding.rangeStart')}
-                          aria-invalid={!!rangeErrors[i]?.start}
-                          aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `onboarding-range-error-${i}` : undefined}
-                          placeholder={t('onboarding.rangeStart')}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                        />
-                      </div>
-                      <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('onboarding.to')}</span>
-                      <div className="flex-1 relative">
-                        <input
-                          type="number" min="1" max="604" value={r.end}
-                          onChange={e => updateRange(i, 'end', e.target.value)}
-                          aria-label={t('onboarding.rangeEnd')}
-                          aria-invalid={!!rangeErrors[i]?.end}
-                          aria-describedby={rangeErrors[i]?.start || rangeErrors[i]?.end ? `onboarding-range-error-${i}` : undefined}
-                          placeholder={t('onboarding.rangeEnd')}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                        />
-                      </div>
-                      {pageRanges.length > 1 && (
-                        <Tooltip label={t('tooltips.removeRange')} className="flex-shrink-0">
-                          <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a]">
-                            <FiX className="w-4 h-4" />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                      <p id={`onboarding-range-error-${i}`} className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                    )}
-                  </div>
-                ))}
-                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                  <FiPlus className="w-3 h-3" /> {t('onboarding.addRange')}
-                </button>
-              </div>
-            </div>
-          )}
+          <MemorizedUnitPicker
+            variant="onboarding"
+            coverage={coverage}
+            setCoverage={setCoverage}
+            onRangeErrorsChange={setHasRangeErrors}
+          />
 
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">

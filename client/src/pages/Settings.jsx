@@ -17,11 +17,11 @@ import InfoHint from '../components/InfoHint';
 import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { JUZ_RANGES } from '../data/juzRanges';
 import {
-  hizbOrdRange, rubOrdRange, surahOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
-  coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
+  mergeOrdRanges, subtractOrdRanges, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
-import { useDragSelect } from '../hooks/useDragSelect';
+import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { newPasswordProblem } from '../utils/passwordRules';
 import { reportLoadFailure } from '../utils/reportError';
 import { apiErrorMessage } from '../utils/apiError';
@@ -46,66 +46,6 @@ const DAILY_OPTIONS = [0.5, 1, 2, 5];
 // as the input's default so it shows the number actually in effect on any preset.
 const autoRecentPages = (dailyNewPages) => Math.max(3, Math.min(Math.ceil((dailyNewPages || 1) * 3), 6));
 
-const JUZ_RANGES = [
-  {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
-  {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
-  {juz:7,start:122,end:141},{juz:8,start:142,end:161},{juz:9,start:162,end:181},
-  {juz:10,start:182,end:201},{juz:11,start:202,end:221},{juz:12,start:222,end:241},
-  {juz:13,start:242,end:261},{juz:14,start:262,end:281},{juz:15,start:282,end:301},
-  {juz:16,start:302,end:321},{juz:17,start:322,end:341},{juz:18,start:342,end:361},
-  {juz:19,start:362,end:381},{juz:20,start:382,end:401},{juz:21,start:402,end:421},
-  {juz:22,start:422,end:441},{juz:23,start:442,end:461},{juz:24,start:462,end:481},
-  {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
-  {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
-];
-
-function toPageRanges(sortedPages) {
-  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
-  const pages = [...sortedPages].sort((a, b) => a - b);
-  const ranges = [];
-  let start = pages[0], prev = pages[0];
-  for (let i = 1; i < pages.length; i++) {
-    if (pages[i] !== prev + 1) {
-      ranges.push({ start: String(start), end: String(prev) });
-      start = pages[i];
-    }
-    prev = pages[i];
-  }
-  ranges.push({ start: String(start), end: String(prev) });
-  return ranges;
-}
-
-// Expand the editable range rows into the set of pages they cover.
-function rangesToPages(pageRanges) {
-  const pages = new Set();
-  pageRanges.forEach(({ start, end }) => {
-    const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
-      for (let p = s; p <= e; p++) pages.add(p);
-  });
-  return pages;
-}
-
-function validateRanges(pageRanges) {
-  const errors = pageRanges.map(() => ({}));
-  const parsed = pageRanges.map(r => ({ start: parseInt(r.start, 10), end: parseInt(r.end, 10) }));
-  parsed.forEach((r, i) => {
-    if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
-      errors[i].start = 'common.validationRange';
-    if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
-      errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
-      errors[i].end = 'common.validationEndGreater';
-    parsed.forEach((other, j) => {
-      if (i === j) return;
-      if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
-          r.start < other.end && r.end > other.start)
-        errors[i].start = 'common.validationNoOverlap';
-    });
-  });
-  return errors;
-}
-
 // ── Edit Progress Modal ──────────────────────────────────
 // Exported for its tests (Settings.test.jsx).
 export function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
@@ -126,138 +66,34 @@ export function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progre
   // them (`selectedPages` = the pages every verse of which is covered).
   const [coverage, setCoverage] = useState([]);
   const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
-  const addCoverage = (range) => { if (range) setCoverage((c) => mergeOrdRanges([...c, range])); };
-  const cutCoverage = (range) => { if (range) setCoverage((c) => subtractOrdRanges(c, [range])); };
-  const setSelectedPages = (next) => {
-    // The page-shaped tabs still think in pages; translate back onto the model.
-    // They only see WHOLE pages, so they only replace whole pages: the sub-page
-    // coverage they cannot show (a half page, a hizb's mid-page end) is carried
-    // over. Rebuilding from pages alone dropped it, and the save then removed
-    // those verses — toggling Juz 1 deleted a half-memorized page 22.
-    const prevFull = fullyCoveredPages(coverage);
-    const pages = typeof next === 'function' ? next(prevFull) : next;
-    const subPage = subtractOrdRanges(coverage, [...prevFull].map(pageOrdRange));
-    setCoverage(mergeOrdRanges([...subPage, ...[...pages].map(pageOrdRange)]));
-  };
-  const [selectionMode, setSelectionMode] = useState('juz');
-  const [surahSearch, setSurahSearch] = useState('');
-  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
-  const [rangeErrors, setRangeErrors] = useState([{}]);
-  const [pendingDeleteIdx, setPendingDeleteIdx] = useState(null);
+  // The picker's own state (tab, search, range rows) starts over with a new key:
+  // on every opening and on Restore. It says when its range rows stop being valid.
+  const [pickerKey, setPickerKey] = useState(0);
+  const [hasRangeErrors, setHasRangeErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
-  const { t, i18n } = useTranslation();
-  const isArabic = i18n.language === 'ar';
+  const { t } = useTranslation();
 
-  // Pages memorized when the modal opened — lets us flag (in red) anything the user removes.
-  const origSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
-  const origCoverage = useMemo(() => coverageFromProgress(memorizedPageNums, partialPages), [memorizedPageNums, partialPages]);
-  const countIn = (set, start, end) => { let c = 0; for (let p = start; p <= end; p++) if (set.has(p)) c++; return c; };
-  // Percentage of a unit's VERSES that are covered, for the tile badge.
-  const verseCoveragePct = (merged, range) => {
-    if (!range) return 0;
-    let covered = 0;
-    for (const m of merged) {
-      if (m.to < range.from) continue;
-      if (m.from > range.to) break;
-      covered += Math.min(m.to, range.to) - Math.max(m.from, range.from) + 1;
-    }
-    return Math.round((covered / (range.to - range.from + 1)) * 100);
+  // What was memorized when the modal opened — lets the picker flag (in red)
+  // anything the user removes.
+  const original = useMemo(() => ({
+    pages: new Set(memorizedPageNums),
+    coverage: coverageFromProgress(memorizedPageNums, partialPages),
+  }), [memorizedPageNums, partialPages]);
+  const restoreOriginal = () => {
+    setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
+    setPickerKey((k) => k + 1);
+    setHasRangeErrors(false);
   };
-
   useEffect(() => {
     if (isOpen) {
       setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
-      setSelectionMode('juz');
-      setSurahSearch('');
-      const initRanges = toPageRanges(memorizedPageNums);
-      setPageRanges(initRanges);
-      setRangeErrors(initRanges.map(() => ({})));
-      setPendingDeleteIdx(null);
+      setPickerKey((k) => k + 1);
+      setHasRangeErrors(false);
     }
   }, [isOpen, memorizedPageNums, partialPages]);
 
-  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
-  const toggleRange = (start, end) => setSelectedPages(prev => {
-    const next = new Set(prev);
-    const full = countIn(next, start, end) === (end - start + 1);
-    for (let p = start; p <= end; p++) { if (full) next.delete(p); else next.add(p); }
-    return next;
-  });
-  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  // Surah, Hizb and quarter-Hizb are verse-exact: their boundaries fall
-  // mid-page, so they add and remove the unit's own verse span rather than whole
-  // pages. That is what stops a selection bleeding into the unit next door, lets
-  // a surah's last verses on the next surah's first page be selected (M-13), and
-  // it is the same span the server compiles for PUT /api/progress/units.
-  const toggleUnitRange = (range) => {
-    if (!range) return;
-    if (coverageOf(coverage, range) === 'full') cutCoverage(range);
-    else addCoverage(range);
-  };
-  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
-  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
-  const toggleSurah = (n) => toggleUnitRange(surahOrdRange(n));
-  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
-
-  const filteredSurahs = SURAH_PAGES.filter(s => {
-    if (!surahSearch.trim()) return true;
-    const q = surahSearch.trim().toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.arabic.includes(surahSearch.trim()) ||
-      String(s.number).includes(q)
-    );
-  });
-
-  const addRange = () => { setPageRanges(r => [...r, { start: '', end: '' }]); setRangeErrors(e => [...e, {}]); };
-  const removeRange = (i) => {
-    const updated = pageRanges.filter((_, idx) => idx !== i);
-    setPageRanges(updated);
-    setRangeErrors(e => e.filter((_, idx) => idx !== i));
-    setSelectedPages(rangesToPages(updated));
-  };
-  const updateRange = (i, key, val) => {
-    const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
-    setPageRanges(updated);
-    setRangeErrors(validateRanges(updated));
-    setSelectedPages(rangesToPages(updated));
-  };
-
-  // Tabs are views over one canonical set, so switching only re-renders. The Range
-  // tab keeps editable text rows, so we regenerate them from the set when entering it.
-  const handleTabSwitch = (newMode) => {
-    if (newMode === selectionMode) return;
-    if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
-      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
-      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
-      setPendingDeleteIdx(null);
-    }
-    setSurahSearch('');
-    setSelectionMode(newMode);
-  };
-
-  const restoreOriginal = () => {
-    setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
-    setSelectionMode('juz');
-    setSurahSearch('');
-    const initRanges = toPageRanges(memorizedPageNums);
-    setPageRanges(initRanges);
-    setRangeErrors(initRanges.map(() => ({})));
-    setPendingDeleteIdx(null);
-  };
-
-  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
-  // A row's error line gives way to its delete confirm, and its fields point
-  // at the line only while it is there (M-12: a describedby to a missing id).
-  const rangeErrorShown = (i) => !!(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i;
   const selectedCount = selectedPages.size;
-  const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
-  const fullSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
-  const fullHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
-  const fullRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
-
   const handleSave = async () => {
     setSaving(true);
     let landed = false; // whether any request of this save went through
@@ -327,283 +163,22 @@ export function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progre
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              {[
-                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
-                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
-                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
-                { mode: 'surah', labelKey: 'onboarding.bySurah' },
-                { mode: 'range', labelKey: 'onboarding.byRange' },
-              ].map(({ mode, labelKey }) => (
-                <button
-                  key={mode}
-                  onClick={() => handleTabSwitch(mode)}
-                  aria-pressed={selectionMode === mode}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectionMode === mode
-                      ? 'bg-[#003527] text-white border-[#003527]'
-                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                  }`}
-                >
-                  {t(labelKey)}
-                </button>
-              ))}
+          <MemorizedUnitPicker
+            key={pickerKey}
+            variant="editor"
+            coverage={coverage}
+            setCoverage={setCoverage}
+            original={original}
+            onRangeErrorsChange={setHasRangeErrors}
+            tabsExtra={(
               <button
                 onClick={restoreOriginal}
                 className="ms-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
                 {t('settings.restore')}
               </button>
-            </div>
-          </div>
-
-          {selectionMode === 'juz' && (
-            <div>
-              <div className="grid grid-cols-5 gap-2">
-                {JUZ_RANGES.map(({ juz, start, end }) => {
-                  const size = end - start + 1;
-                  const sel = countIn(selectedPages, start, end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
-                  const pct = Math.round((sel / size) * 100);
-                  return (
-                    <button
-                      key={juz}
-                      data-tile-id={juz}
-                      onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
-                      onClick={() => ds.handleClick(juz, toggleJuz)}
-                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      <span>{juz}</span>
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullJuzCount > 0 ? t('settings.juzSelected', { count: fullJuzCount }) : t('settings.noJuzSelected')}
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
-            </div>
-          )}
-
-          {selectionMode === 'hizb' && (
-            <div>
-              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-                {HIZB_RANGES.map(({ hizb, start, end }) => {
-                  const range = hizbOrdRange(hizb);
-                  const state = coverageOf(coverage, range);
-                  const isFull = state === 'full';
-                  const isPartial = state === 'partial';
-                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
-                  const pct = verseCoveragePct(coverage, range);
-                  return (
-                    <button
-                      key={hizb}
-                      data-tile-id={hizb}
-                      onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
-                      onClick={() => ds.handleClick(hizb, toggleHizb)}
-                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      <span>{hizb}</span>
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullHizbCount > 0 ? t('onboarding.hizbSelected', { count: fullHizbCount }) : t('settings.noJuzSelected')}
-              </p>
-            </div>
-          )}
-
-          {selectionMode === 'rub' && (
-            <div>
-              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
-                {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => {
-                  const state = coverageOf(coverage, rubOrdRange(rub));
-                  const isFull = state === 'full';
-                  const isPartial = state === 'partial';
-                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
-                  return (
-                    <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
-                      <button
-                        data-tile-id={rub}
-                        onPointerDown={(e) => ds.start(e, rub, toggleRub)}
-                        onClick={() => ds.handleClick(rub, toggleRub)}
-                        aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
-                        className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border touch-pan-y select-none ${
-                          isFull
-                            ? 'bg-[#003527] text-white border-[#003527]'
-                            : isRemoved
-                              ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                              : isPartial
-                                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                                : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                        }`}
-                      >
-                        {hizb}.{quarter}
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullRubCount > 0 ? t('onboarding.quarterHizbSelected', { count: fullRubCount }) : t('settings.noJuzSelected')}
-              </p>
-            </div>
-          )}
-
-          {selectionMode === 'surah' && (
-            <div>
-              <input
-                type="text"
-                aria-label={t('onboarding.surahSearchPlaceholder')}
-                placeholder={t('onboarding.surahSearchPlaceholder')}
-                value={surahSearch}
-                onChange={e => setSurahSearch(e.target.value)}
-                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
-              />
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {filteredSurahs.map(s => {
-                  const range = surahOrdRange(s.number);
-                  const state = coverageOf(coverage, range);
-                  const isFull = state === 'full';
-                  const isPartial = state === 'partial';
-                  // Against the verses held when the editor opened: a surah's
-                  // first and last pages are shared, so "a page of it was
-                  // memorized" would flag a surah none of whose verses were.
-                  const isRemoved = state === 'none' && coverageOf(origCoverage, range) !== 'none';
-                  const pct = verseCoveragePct(coverage, range);
-                  return (
-                    <button
-                      key={s.number}
-                      data-tile-id={s.number}
-                      onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
-                      onClick={() => ds.handleClick(s.number, toggleSurah)}
-                      aria-pressed={isFull ? true : isPartial ? 'mixed' : false}
-                      className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="absolute top-1 end-1 text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                      <span className="text-xs font-medium leading-tight line-clamp-2 w-full">
-                        {s.number}. {isArabic ? s.arabic : s.name}
-                      </span>
-                      <span className={`text-[10px] mt-0.5 leading-tight line-clamp-1 w-full ${isFull ? 'text-white/70' : isRemoved ? 'text-red-600/70 dark:text-red-300/70' : isPartial ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
-                        {isArabic ? s.name : s.arabic}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {fullSurahCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: fullSurahCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'range' && (
-            <div>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.rangeTabTitle')}</p>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mb-3">{t('settings.rangeTabHint')}</p>
-              <div className="space-y-2">
-                {pageRanges.map((r, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
-                        aria-label={t('settings.rangeStart')}
-                        aria-invalid={!!rangeErrors[i]?.start}
-                        aria-describedby={rangeErrorShown(i) ? `settings-range-error-${i}` : undefined}
-                        placeholder={t('settings.rangeStart')}
-                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
-                      <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
-                        aria-label={t('settings.rangeEnd')}
-                        aria-invalid={!!rangeErrors[i]?.end}
-                        aria-describedby={rangeErrorShown(i) ? `settings-range-error-${i}` : undefined}
-                        placeholder={t('settings.rangeEnd')}
-                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <Tooltip label={t('tooltips.removeRange')}>
-                        <button
-                          onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
-                          className={`shrink-0 transition-colors ${pendingDeleteIdx === i ? 'text-[#ba1a1a]' : 'text-[#bfc9c3] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400'}`}
-                        >
-                          <FiX className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                    {pendingDeleteIdx === i && (
-                      <div className="flex items-center justify-between gap-3 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-lg">
-                        <p className="text-xs text-red-700 dark:text-red-300">
-                          {t('settings.rangeDeleteConfirm', { start: r.start || '?', end: r.end || '?' })}
-                        </p>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <button onClick={() => setPendingDeleteIdx(null)} className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
-                            {t('settings.cancel')}
-                          </button>
-                          <button
-                            onClick={() => {
-                              removeRange(i);
-                              setPendingDeleteIdx(null);
-                            }}
-                            className="text-xs font-semibold text-[#ba1a1a] hover:text-red-800 dark:hover:text-red-300 transition-colors"
-                          >
-                            {t('settings.rangeDeleteConfirmBtn')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {rangeErrorShown(i) && (
-                      <p id={`settings-range-error-${i}`} className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                    )}
-                  </div>
-                ))}
-                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                  <FiPlus className="w-3 h-3" /> {t('settings.addRange')}
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          />
 
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
