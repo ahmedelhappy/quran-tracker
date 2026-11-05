@@ -29,6 +29,8 @@ import ReaderTools from '../components/ReaderTools';
 import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
 import TodoList, { TodoSummary } from '../components/TodoList';
 import SearchFindBar from '../components/SearchFindBar';
+import TafsirPanel from '../components/TafsirPanel';
+import { readSavedTafsirWidth } from '../components/tafsirWidth';
 import RecentPagesRow from '../components/RecentPagesRow';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
 import { progressAPI, bookmarksAPI, annotationsAPI, getSessionToken } from '../services/api';
@@ -39,9 +41,6 @@ import { useRecentPageTracker } from '../hooks/useRecentPageTracker';
 import { removeRecentPage, clearRecentPages, restoreRecentPages } from '../services/recentPages';
 import { loginPathFor } from '../utils/returnTo';
 import {
-  fetchPageTafsir,
-  fetchEditionAyahTafsir,
-  findTafsirRun,
   getAyahAudioUrl,
   getFallbackAyahAudioUrl,
   ayahWarmMethod,
@@ -215,11 +214,6 @@ const mergeInk = (base, mine, theirs) => {
   const drawnHere = mine.filter((s) => !baseKeys.has(strokeKey(s)) && !keptKeys.has(strokeKey(s)));
   return [...kept, ...drawnHere];
 };
-
-// The ayah's plain Uthmani text (basmala excluded), used for the legible
-// tafsir-panel preview. Taken verse-level from the API — word-level text is no
-// longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
-const verseText = (verse) => verse.textUthmani ?? '';
 
 // One repeat count, under its own words. The nested counts are only usable if it
 // is obvious which is which, so each gets a full-width label of its own rather
@@ -765,23 +759,10 @@ export default function Library() {
     const saved = storage.get('tafsirEdition');
     return TAFSIR_EDITIONS.some(e => e.id === saved) ? saved : TAFSIR_EDITIONS[0].id;
   });
-  // How wide the docked tafsir panel is, in px, remembered across visits. Only
-  // meaningful from lg up, where the panel is a column of the layout; below that
-  // it is a full-width sheet / fixed overlay and this is ignored.
-  const TAFSIR_MIN_W = 300;
-  const TAFSIR_MAX_W = 720;
-  const [tafsirWidth, setTafsirWidth] = useState(() => {
-    const saved = Number(storage.get('tafsirPanelWidth'));
-    return saved >= TAFSIR_MIN_W && saved <= TAFSIR_MAX_W ? saved : 400;
-  });
-  const [tafsirResizing, setTafsirResizing] = useState(false);
-  const [tafsirText, setTafsirText] = useState('');
-  // { from, to } when the edition returned one block for a run of verses rather
-  // than for this verse alone — see findTafsirRun. null when it is per-ayah.
-  const [tafsirRun, setTafsirRun] = useState(null);
-  const [tafsirLoading, setTafsirLoading] = useState(false);
-  const [tafsirError, setTafsirError] = useState(false);
-  const [tafsirReloadKey, setTafsirReloadKey] = useState(0);
+  // How wide the docked tafsir panel is, in px, remembered across visits (see
+  // components/tafsirWidth.js). The panel itself owns a resize in progress.
+  const [tafsirWidth, setTafsirWidth] = useState(readSavedTafsirWidth);
+  const tafsirTabRef = useRef(null);   // the edge tab that rides the panel's edge
 
   // Verse action popover — placed near the selection each time, then draggable via
   // the grip (current instance only, so no persisted position).
@@ -4191,8 +4172,6 @@ export default function Library() {
 
   // The chosen edition — one of them is grammatical analysis (إعراب) rather than
   // commentary, which only changes what the panel calls itself.
-  const tafsirEd = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
-
   const showSidebar = sidebarOpen;
 
   useEffect(() => {
@@ -4375,114 +4354,20 @@ export default function Library() {
     ?? (lastTafsirVerseRef.current?.verseKey === panelVerseKey ? lastTafsirVerseRef.current : null);
   useEffect(() => { if (onPageTafsirVerse) lastTafsirVerseRef.current = onPageTafsirVerse; }, [onPageTafsirVerse]);
 
-  useEffect(() => {
-    if (!tafsirOpen || !tafsirVerse) return;
-    let cancelled = false;
-    const ed = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
-    setTafsirLoading(true);
-    setTafsirError(false);
-    setTafsirText('');
-    setTafsirRun(null);
-    const load = ed.source === 'page'
-      ? fetchPageTafsir(tafsirVerse.page, ed.edition).then(list =>
-          list.find(a => a.number === tafsirVerse.id)?.text ?? '')
-      : fetchEditionAyahTafsir(ed, tafsirVerse.surahNumber, tafsirVerse.ayahNumber);
-    load
-      .then(text => {
-        if (cancelled) return;
-        setTafsirText(text);
-        // Only the spa5k editions still hand back one block for a whole passage —
-        // the hefz ones are per-ayah, and the page ones always were. Work out how
-        // far a block reaches only AFTER the text is on screen, so the banner
-        // never costs the reader any waiting.
-        if (ed.source !== 'ayah') return;
-        findTafsirRun(ed.slug, tafsirVerse.surahNumber, tafsirVerse.ayahNumber, ayahCount(tafsirVerse.surahNumber), text)
-          .then(run => { if (!cancelled && run.to > run.from) setTafsirRun(run); })
-          .catch(() => { /* the label is a nicety — never fail the read over it */ });
-      })
-      .catch((err) => { reportLoadFailure(err, `tafsir for ${tafsirVerse.verseKey}`); if (!cancelled) setTafsirError(true); })
-      .finally(() => { if (!cancelled) setTafsirLoading(false); });
-    return () => { cancelled = true; };
-  }, [tafsirOpen, tafsirVerse, tafsirEdition, tafsirReloadKey]);
-
-  // Retry after the tafsir panel crashed (M-14): the commentary is read again,
-  // and what crashed is cleared now so the panel redraws as loading, not as it was.
-  const reloadTafsir = () => {
-    setTafsirText('');
-    setTafsirRun(null);
-    setTafsirLoading(true);
-    setTafsirReloadKey((k) => k + 1);
-  };
-
-  // Drag the panel's inner edge to resize it. The handle always sits on the
-  // panel's INLINE-START edge — the side facing the mushaf in both writing
-  // directions — so dragging toward the mushaf widens the panel in LTR and
-  // dragging away from it does in RTL; `dir` decides which way that is. Capped so
-  // the reader can never squeeze the mushaf out or lose the panel.
-  const clampTafsirWidth = useCallback(
-    (w) => Math.round(Math.min(Math.max(w, TAFSIR_MIN_W), Math.min(TAFSIR_MAX_W, window.innerWidth * 0.55))),
-    []
-  );
+  // The docked panel's width: a resize is the panel's own business while it
+  // runs (it re-renders only the panel), and lands here once, on release. The
+  // edge tab beside it follows the drag directly, without a render.
   const commitTafsirWidth = useCallback((w) => {
-    const next = clampTafsirWidth(w);
-    setTafsirWidth(next);
-    storage.set('tafsirPanelWidth', String(next));
-  }, [clampTafsirWidth]);
-
-  const startTafsirResize = useCallback((e) => {
-    if (e.button != null && e.button !== 0) return;
-    e.preventDefault();          // never start a text selection or a page-turn swipe
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = tafsirWidth;
-    const rtl = document.documentElement.getAttribute('dir') === 'rtl';
-    setTafsirResizing(true);
-    const onMove = (ev) => {
-      // Inline-start edge: in LTR the panel grows as the pointer moves LEFT.
-      const delta = rtl ? ev.clientX - startX : startX - ev.clientX;
-      setTafsirWidth(clampTafsirWidth(startW + delta));
-    };
-    const onUp = (ev) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      setTafsirResizing(false);
-      const delta = rtl ? ev.clientX - startX : startX - ev.clientX;
-      commitTafsirWidth(startW + delta);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  }, [tafsirWidth, clampTafsirWidth, commitTafsirWidth]);
-
-  // Same job from the keyboard, for anyone not using a pointer.
-  // The arrow moves the handle the way it points, as the pointer drag does: the
-  // panel is on the right in English (left widens it) and on the left in Arabic
-  // (right widens it). A key the handle uses is spent here — it used to reach
-  // the reader's own handler too and turn the page as well (M-12).
-  const onTafsirResizeKey = useCallback((e) => {
-    const step = e.shiftKey ? 64 : 16;
-    const widen = isArabic ? 'ArrowRight' : 'ArrowLeft';
-    const narrow = isArabic ? 'ArrowLeft' : 'ArrowRight';
-    let width = null;
-    if (e.key === widen) width = tafsirWidth + step;
-    else if (e.key === narrow) width = tafsirWidth - step;
-    else if (e.key === 'Home') width = TAFSIR_MIN_W;
-    else if (e.key === 'End') width = TAFSIR_MAX_W;
-    if (width == null) return;
-    e.preventDefault();
-    e.stopPropagation();
-    commitTafsirWidth(width);
-  }, [tafsirWidth, commitTafsirWidth, isArabic]);
-
-  // The commentary as real paragraphs. Every line break in the source starts a new
-  // one — for a book like Aysar those are its labelled definitions, one per line —
-  // and the styles give them modest spacing instead of the full blank line a
-  // pre-wrapped block used to produce.
-  const tafsirParagraphs = useMemo(
-    () => tafsirText.split(/\n+/).map((para) => para.trim()).filter(Boolean),
-    [tafsirText]
-  );
+    setTafsirWidth(w);
+    storage.set('tafsirPanelWidth', String(w));
+    // Where React is about to put it anyway; set here too, so a release at the
+    // width the drag started from (no prop change, no DOM write) is not left at
+    // the last previewed one.
+    if (tafsirTabRef.current) tafsirTabRef.current.style.insetInlineEnd = `${w}px`;
+  }, []);
+  const previewTafsirWidth = useCallback((w) => {
+    if (tafsirTabRef.current) tafsirTabRef.current.style.insetInlineEnd = `${w}px`;
+  }, []);
 
   // The popover's tafsir icon — unchanged in effect: read THIS verse. Selecting
   // it is what points the panel at it.
@@ -4739,16 +4624,6 @@ export default function Library() {
 
   const selectCls =
     'w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500';
-
-  // Shown while the tafsir text loads, and while the panel waits on the page a
-  // cross-page step has just turned to.
-  const tafsirSkeleton = (
-    <div className="flex flex-col gap-2.5 animate-pulse pt-1" dir="rtl">
-      {Array(6).fill(0).map((_, i) => (
-        <div key={i} className="h-4 rounded bg-gray-100 dark:bg-gray-700" style={{ width: `${95 - (i % 3) * 8}%` }} />
-      ))}
-    </div>
-  );
 
   // One bordered mushaf page card (used for both single and the spread halves).
   // The top running head (surah · juz) and the centred page number at the foot
@@ -5177,6 +5052,7 @@ export default function Library() {
             with no verse picked the panel is short, and a chevron floating beside
             empty space read as unattached to anything. */}
         <div
+          ref={tafsirTabRef}
           className="reader-edge-tab fixed top-24 z-40"
           style={{ insetInlineEnd: tafsirOpen && isWide ? tafsirWidth : 0 }}
         >
@@ -6518,202 +6394,32 @@ export default function Library() {
               576×852 frame — simply renders smaller rather than being covered.
               The sidebar hides itself to pay for that room (see showSidebar). */}
           {tafsirOpen && (
-            <ErrorBoundary name="tafsir panel" onReset={reloadTafsir} fallback={({ reset }) => (
+            <ErrorBoundary name="tafsir panel" fallback={({ reset }) => (
               <div className="fixed bottom-24 inset-x-4 z-50 md:inset-x-auto md:end-6 md:w-96">
                 <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={() => setTafsirOpen(false)} />
               </div>
             )}>
-            {() => (<>
-              <div
-                data-dialog-keep
-                className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-                onClick={() => setTafsirOpen(false)}
+              <TafsirPanel
+                verse={tafsirVerse}
+                panelVerseKey={panelVerseKey}
+                edition={tafsirEdition}
+                onEditionChange={setTafsirEdition}
+                dialog={tafsirDialog}
+                onClose={() => setTafsirOpen(false)}
+                isWide={isWide}
+                width={tafsirWidth}
+                onWidthCommit={commitTafsirWidth}
+                onWidthPreview={previewTafsirWidth}
+                stepOrd={panelStepOrd}
+                onStep={stepSelection}
+                playingOrd={playingOrd}
+                isPlaying={isPlaying}
+                onToggleVerseAudio={toggleVerseAudio}
+                verseRef={verseRef}
+                fmtNum={fmtNum}
+                isArabic={isArabic}
+                selectClassName={selectCls}
               />
-              <div
-                {...tafsirDialog.dialogProps}
-                data-testid="tafsir-panel"
-                data-keeps-selection
-                className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
-                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
-                           md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0
-                           lg:sticky lg:top-20 lg:self-start lg:inset-auto lg:z-auto lg:h-auto lg:max-h-[calc(100vh-6rem)]
-                           lg:shrink-0 lg:rounded-2xl lg:rounded-e-none lg:border lg:border-e-0 lg:shadow-xl
-                           reader-panel reader-panel--end"
-                style={isWide ? { width: tafsirWidth } : undefined}
-              >
-                {/* Resize handle on the panel's inner edge — only where the panel is
-                    part of the layout. Absolutely positioned and 1px wide in flow
-                    terms, so it changes nothing about the panel's own box. */}
-                {isWide && (
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label={t('library.tafsirResize')}
-                    aria-valuenow={tafsirWidth}
-                    aria-valuemin={TAFSIR_MIN_W}
-                    aria-valuemax={TAFSIR_MAX_W}
-                    tabIndex={0}
-                    data-testid="tafsir-resize"
-                    onPointerDown={startTafsirResize}
-                    onKeyDown={onTafsirResizeKey}
-                    onDoubleClick={() => commitTafsirWidth(400)}
-                    className={`absolute inset-y-0 start-0 w-2 -ms-1 cursor-col-resize z-10 group
-                                flex items-center justify-center touch-none
-                                focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004f35] dark:focus-visible:ring-emerald-400 ${
-                      tafsirResizing ? 'bg-[#004f35]/20 dark:bg-emerald-400/20' : ''
-                    }`}
-                  >
-                    <span className="w-0.5 h-10 rounded-full bg-[#dce2f3] dark:bg-gray-600 group-hover:bg-[#004f35] dark:group-hover:bg-emerald-400 transition-colors" />
-                  </div>
-                )}
-                {/* Header */}
-                <div className="px-5 lg:pe-[25px] py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" aria-hidden="true" />
-                    <h2 id={tafsirDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
-                      {t(tafsirEd.kind === 'irab' ? 'library.irabTitle' : 'library.tafsirTitle')}
-                    </h2>
-                    <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
-                  </div>
-                  {/* Prev/next move the SELECTION, so the mushaf's highlight travels
-                      with the panel — crossing to the next page when it runs off
-                      the end of the visible one. */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Tooltip label={t('tooltips.prevVerse')}>
-                      <button
-                        onClick={() => stepSelection(-1)}
-                        disabled={panelStepOrd == null || panelStepOrd === 1}
-                        aria-label={t('tooltips.prevVerse')}
-                        className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                      >
-                        <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label={t('tooltips.nextVerse')}>
-                      <button
-                        onClick={() => stepSelection(1)}
-                        disabled={panelStepOrd == null || panelStepOrd === TOTAL_AYAHS}
-                        aria-label={t('tooltips.nextVerse')}
-                        className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                      >
-                        <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label={t('tooltips.close')}>
-                      <button
-                        onClick={() => setTafsirOpen(false)}
-                        aria-label={t('tooltips.close')}
-                        className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <FiX className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-
-                {/* Body */}
-                {/* pe-[25px]: the panel is flush against the window edge now, so the
-                    text needs a little room on that side to breathe. */}
-                <div className="flex-1 overflow-y-auto p-5 lg:pe-[25px] flex flex-col gap-4">
-                  {/* Nothing selected at all: say so. An empty panel reads like a
-                      load that never finished. (A selected verse whose page is
-                      still arriving — a cross-page step — keeps the skeleton,
-                      because that one really IS loading.) */}
-                  {!tafsirVerse && !panelVerseKey ? (
-                    <div data-testid="tafsir-empty" className="flex flex-col items-center gap-3 py-10 text-center">
-                      <FiBookOpen className="w-8 h-8 text-[#b0b6bd] dark:text-gray-600" />
-                      <p className="text-sm text-[#707974] dark:text-gray-400 max-w-[24ch]">{t('library.tafsirPickVerse')}</p>
-                    </div>
-                  ) : !tafsirVerse ? tafsirSkeleton : (
-                    <>
-                      {/* The verse, mushaf-styled — only once its text is known, never an empty frame */}
-                      {verseText(tafsirVerse) && (
-                        <div dir="rtl" data-testid="tafsir-verse-text" className="rounded-xl bg-[#fdf8ec] dark:bg-[#1f1b14] border border-amber-200/70 dark:border-amber-900/40 px-4 py-3">
-                          <p className="mushaf-text !text-xl text-[#1f1505] dark:text-[#f3e9d2]">
-                            {verseText(tafsirVerse)}
-                            <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                              ﴿{toArabicDigits(tafsirVerse.ayahNumber)}﴾
-                            </span>
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Surah / verse + play (toggles: pauses if this verse is playing) */}
-                      <div className="flex items-center justify-between gap-3">
-                        <p data-testid="tafsir-verse-ref" className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirVerse)}</p>
-                        {(() => {
-                          const tafsirOrd = ordOfKey(tafsirVerse.verseKey);
-                          const tafsirPlaying = tafsirOrd != null && tafsirOrd === playingOrd && isPlaying;
-                          return (
-                            <button
-                              onClick={() => toggleVerseAudio(tafsirOrd)}
-                              title={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
-                              aria-label={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
-                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                            >
-                              {tafsirPlaying
-                                ? <><FiPause className="w-3 h-3" /> {t('library.pause')}</>
-                                : <><FiPlay className="w-3 h-3 rtl:rotate-180" /> {t('library.playThisVerse')}</>}
-                            </button>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Edition select */}
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
-                          {t('library.tafsirEdition')}
-                        </label>
-                        <Tooltip label={t('tooltips.tafsirEdition')} className="w-full">
-                          <select
-                            value={tafsirEdition}
-                            aria-label={t('library.tafsirEdition')}
-                            onChange={e => setTafsirEdition(e.target.value)}
-                            className={selectCls}
-                          >
-                            {TAFSIR_EDITIONS.map(ed => (
-                              <option key={ed.id} value={ed.id}>{isArabic ? ed.nameAr : ed.nameEn}</option>
-                            ))}
-                          </select>
-                        </Tooltip>
-                      </div>
-
-                      {/* Tafsir text */}
-                      {tafsirLoading ? tafsirSkeleton : tafsirError ? (
-                        <div className="flex flex-col items-center gap-3 py-6 text-center">
-                          <FiAlertCircle className="w-8 h-8 text-[#707974] dark:text-gray-500" />
-                          <p className="text-sm text-[#404944] dark:text-gray-400">{t('library.tafsirError')}</p>
-                          <button
-                            onClick={() => setTafsirReloadKey(k => k + 1)}
-                            className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
-                          >
-                            {t('common.retry')}
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          {/* This book comments on a whole passage at once and returns
-                              the same text for every verse in it. Say so, rather than
-                              let it look as though the wrong verse loaded. */}
-                          {tafsirRun && (
-                            <p
-                              data-testid="tafsir-run"
-                              dir={isArabic ? 'rtl' : 'ltr'}
-                              className="rounded-xl border border-amber-300/70 dark:border-amber-800/50 bg-amber-50/80 dark:bg-amber-900/20 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-200"
-                            >
-                              {t('library.tafsirCovers', { from: fmtNum(tafsirRun.from), to: fmtNum(tafsirRun.to) })}
-                            </p>
-                          )}
-                          <div data-testid="tafsir-text" dir="rtl" className="tafsir-prose text-[#1A1A1A] dark:text-gray-200">
-                            {tafsirParagraphs.map((para, i) => <p key={i}>{para}</p>)}
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </>)}
             </ErrorBoundary>
           )}
 
