@@ -88,7 +88,7 @@ not occupy FR slots.
 - **NFR-01 / cold starts** — route-level code-splitting and lazy recharts are done
   (entry ~430 kB / ~139 kB gzip). What remains is the API's free hosting tier, which
   sleeps when idle: the first request after a quiet spell can take far longer than 3 s.
-- **Accessibility / colour contrast** (audit M-11) and a screen-reader pass (I-02).
+- **Accessibility / colour contrast** (audit M-11) and the screen-reader side of the self-test (I-02: the hidden verse is still in the screen-reader text — a product decision).
 - **Library render cost** — pointer moves and scrolls no longer re-render the reader;
   a memoised page card would cut the cost of the renders that remain (page turns,
   selection).
