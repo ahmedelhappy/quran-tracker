@@ -2657,14 +2657,20 @@ export default function Library() {
 
   useEffect(() => {
     const paint = (d) => {
+      // Most moves stay on the verse already under the pointer: the band has
+      // not changed since this function last drew it, so nothing is set and the
+      // reader does not re-render (M-10). The touch hold and a page turn under
+      // the drag set the band without it, so the next move here still clears
+      // the single-verse selection exactly as before.
+      const startOrd = Math.min(d.startOrd, d.lastOrd);
+      const endOrd = Math.max(d.startOrd, d.lastOrd);
+      if (d.painted?.startOrd === startOrd && d.painted?.endOrd === endOrd) return;
+      d.painted = { startOrd, endOrd };
       // Dragging out a span replaces whatever single verse was picked — there is
       // one selection, and this drag is now it. (The reverse is handled where a
       // word is clicked; between them, exactly one of the two is ever set.)
       setSelectedVerseKey(null);
-      setDragRange({
-        startOrd: Math.min(d.startOrd, d.lastOrd),
-        endOrd: Math.max(d.startOrd, d.lastOrd),
-      });
+      setDragRange(d.painted);
     };
 
     // The range's moving end follows whatever word is under (x, y).
