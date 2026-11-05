@@ -147,7 +147,7 @@ separation is the single most important architectural fact to be able to state.
 | Route groups | [../server/routes/](../server/routes/) | `/api/auth`, `/api/progress`, `/api/bookmarks`, `/api/annotations`, `/api/todos`, `/api/leaderboard`, `/api/chat`. |
 | Business logic | [../server/controllers/](../server/controllers/) | The actual work for each endpoint. |
 | Data shapes | [../server/models/](../server/models/) | Mongoose schemas: `User`, `UserProgress`, `Bookmark`, `Annotation`, `Todo`, `QuranMetadata`. |
-| Errors | [../server/middleware/errorCode.js](../server/middleware/errorCode.js), [../server/utils/errorResponse.js](../server/utils/errorResponse.js) | Every error reply carries a stable `code` (`VALIDATION_ERROR`, `RATE_LIMITED`, `CONFIRM_REMOVAL`, …) that the client turns into a sentence ([apiError.js](../client/src/utils/apiError.js)). `logError` keeps refused values out of the host's logs. |
+| Errors | [../server/middleware/errorCode.js](../server/middleware/errorCode.js), [../server/utils/errorResponse.js](../server/utils/errorResponse.js) | Every error reply carries a stable `code` (`INVALID_REQUEST`, `RATE_LIMITED`, `CONFIRM_REMOVAL`, …) that the client turns into a sentence ([apiError.js](../client/src/utils/apiError.js)). `logError` keeps refused values out of the host's logs. |
 | Frontend HTTP layer | [../client/src/services/api.js](../client/src/services/api.js) | One axios instance that every page calls through (20 s timeout for reads, 60 s for writes). |
 
 **The request lifecycle**, in one sentence: a React page calls a function in `api.js` →
@@ -269,8 +269,9 @@ example of model + controller + routes + tests done end-to-end).
 
 `Annotation` holds the reader's marks, anchored to a **verse** (`verseKey`, plus word
 positions for a highlight on part of it) so they survive any change to how a page is laid
-out: highlights, notes and hard flags, and one free-ink drawing per page (the
-`one_drawing_per_page` partial unique index). `Todo` is the to-do list beside the timer.
+out: highlights, notes and hard flags (a note or flag with no `verseKey` is about the whole
+page), free-floating text notes placed on the page (`kind: 'text'`, by position), and one
+free-ink drawing per page (the `one_drawing_per_page` partial unique index). `Todo` is the to-do list beside the timer.
 Deleting an account deletes these too — a test walks every model that references `User`
 and fails if one is left out.
 
@@ -314,9 +315,10 @@ password in readable form.
    hash.
 3. On success, sign and return a fresh JWT. Wrong email and wrong password get the same
    "Invalid email or password" reply. (Registration still reveals whether an address is
-   taken, so this is about not handing out a cheaper oracle, not a guarantee.) Repeated
-   failures on one account slow down and then lock briefly
-   ([utils/loginThrottle.js](../server/utils/loginThrottle.js)), on top of the per-IP
+   taken, so this is about not handing out a cheaper oracle, not a guarantee.) Five
+   failures for one email within 15 minutes lock it for a minute, and each further failure
+   doubles the lock, up to an hour; every email is counted, registered or not, so the lock
+   reveals nothing ([utils/loginThrottle.js](../server/utils/loginThrottle.js)), on top of the per-IP
    limiters in [middleware/rateLimiters.js](../server/middleware/rateLimiters.js) — both
    kept in process memory.
 
@@ -1029,10 +1031,11 @@ audit's H-04 review). The QCF page fonts, self-hosted under `client/public/fonts
   text utility; the reader no longer renders from it.
 - **Audio** — `getAyahAudioUrl(reciterId, ayahNumber)` builds a URL on the
   `cdn.islamic.network` audio CDN, or on everyayah.com for reciters that CDN doesn't carry.
-  34 reciters are listed in `RECITERS`; the comments note reciters that were dropped because
-  a CDN returned 403 or the files didn't match (a real, verified detail worth mentioning —
-  it shows the integrations were actually tested). Some of that CDN's files
-  cannot be served at all, so each reciter also names a `fallback` folder on everyayah.com,
+  34 reciters are listed in `RECITERS`; the comments list the editions and folders rejected after
+  checking — mislabelled or wrong-qari files, wrong content types, missing or empty folders,
+  low bitrates (a real, verified detail worth mentioning — it shows the integrations were
+  actually tested). Some of that CDN's files cannot be served at all, so most CDN reciters
+  also name an `everyayah` folder as a fallback (two have none),
   used only after the primary has spent its retries on the verse being played
   (`getFallbackAyahAudioUrl`, and `failBuf` in Library.jsx). It was chosen by comparing
   bytes, not names: the audio frames are identical to the primary's, so the fallback is
@@ -1488,7 +1491,8 @@ happened without it.
   turns single-key shortcuts off (WCAG 2.1.4).
 - **Titles and share cards.** [hooks/usePageTitle.js](../client/src/hooks/usePageTitle.js)
   names each page in both languages; [siteMeta.js](../client/siteMeta.js) feeds the build's
-  share cards, `robots.txt` and, with `VITE_SITE_URL`, the sitemap and canonical links.
+  share cards, `robots.txt` and, with `VITE_SITE_URL` (on Vercel, its production URL when
+  that is unset), the sitemap and canonical links.
 - **Loading less up front.** Each page is its own chunk; the locale JSON is fetched for the
   active language only (a small script `vite.config.js` adds to `index.html` starts that
   fetch alongside the entry chunk); recharts loads with the chart; the UI fonts are
