@@ -21,6 +21,15 @@ const isUsableBookmark = (b) => b != null && typeof b === 'object'
   && Number.isInteger(b.pageNumber) && b.pageNumber >= 1 && b.pageNumber <= 604
   && (b.label == null || typeof b.label === 'string');
 
+// The bookmark in a reply to an add, rename or move, held to the same rule: a
+// reply without one throws, so the caller's catch rolls back and says so
+// rather than putting `undefined` into the list.
+const bookmarkFrom = (res) => {
+  const b = res.data?.data;
+  if (!isUsableBookmark(b)) throw new Error('Unexpected bookmark reply');
+  return b;
+};
+
 // The Library's account-saved bookmarks (several per user, several per page as
 // long as their names differ): the list and its load, adding, renaming inline,
 // moving to the page being read, removing — each optimistic, rolled back on
@@ -84,7 +93,8 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
     const label = bookmarkLabel.trim();
     try {
       const res = await bookmarksAPI.add({ pageNumber: targetPage, ...(label ? { label } : {}) });
-      setBookmarks(prev => [...prev, res.data.data].sort(byBookmarkOrder));
+      const added = bookmarkFrom(res);
+      setBookmarks(prev => [...prev, added].sort(byBookmarkOrder));
       setBookmarkLabel('');
       showToast(t('library.bookmarks.added', { n: fmtNum(targetPage) }), 'success');
     } catch (e) {
@@ -104,8 +114,9 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
   const restoreBookmark = async ({ pageNumber, label }) => {
     try {
       const res = await bookmarksAPI.add({ pageNumber, ...(label ? { label } : {}) });
-      setBookmarks(list => [...list, res.data.data].sort(byBookmarkOrder));
-      return res.data.data;
+      const back = bookmarkFrom(res);
+      setBookmarks(list => [...list, back].sort(byBookmarkOrder));
+      return back;
     } catch {
       return null;
     }
@@ -160,7 +171,8 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
     setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label } : x)));
     try {
       const res = await bookmarksAPI.update(b._id, { label });
-      setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)));
+      const saved = bookmarkFrom(res);
+      setBookmarks(list => list.map(x => (x._id === b._id ? saved : x)));
     } catch (e) {
       setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label: b.label } : x)));
       // 409: the name is taken — or, when clearing it, this page already has
@@ -192,7 +204,8 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
   const undoMoveBookmark = async (b, replaced) => {
     try {
       const res = await bookmarksAPI.update(b._id, { pageNumber: b.pageNumber });
-      setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)).sort(byBookmarkOrder));
+      const saved = bookmarkFrom(res);
+      setBookmarks(list => list.map(x => (x._id === b._id ? saved : x)).sort(byBookmarkOrder));
       const back = replaced ? await restoreBookmark(replaced) : true;
       showToast(t(back ? 'library.bookmarks.restored' : 'library.bookmarks.restoreFailed'), back ? 'success' : 'error');
     } catch {
@@ -214,10 +227,11 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
     focusBookmarkAction(b._id, 'move');
     try {
       const res = await bookmarksAPI.update(b._id, { pageNumber: page, ...(replace ? { replace: true } : {}) });
+      const saved = bookmarkFrom(res);
       const replacedId = res.data.replaced?._id;
       setBookmarks(list => list
         .filter(x => x._id !== replacedId)
-        .map(x => (x._id === b._id ? res.data.data : x))
+        .map(x => (x._id === b._id ? saved : x))
         .sort(byBookmarkOrder));
       showToast(t('library.bookmarks.moved', { n: fmtNum(page) }), 'success', {
         action: { label: t('library.bookmarks.restore'), onClick: () => undoMoveBookmark(b, res.data.replaced) },
