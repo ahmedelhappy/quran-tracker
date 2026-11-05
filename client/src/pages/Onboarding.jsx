@@ -6,8 +6,6 @@ import { useToast } from '../hooks/useToast';
 import { progressAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiError';
 import Logo from '../components/Logo';
-import Tooltip from '../components/Tooltip';
-import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
 import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { SURAH_PAGES } from '../data/surahPages';

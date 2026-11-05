@@ -14,9 +14,8 @@ import { useDialog } from '../hooks/useDialog';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
-import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
 import { JUZ_RANGES } from '../data/juzRanges';
 import {
   mergeOrdRanges, subtractOrdRanges, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
