@@ -83,8 +83,10 @@ writes the next prompt. Commits happen only after visual acceptance.
   backgrounds) and one out-of-order `h4` on the dashboard keep Lighthouse A11y at
   92–96 · a check on REAL Safari (macOS/iOS) and Firefox for Android — Playwright's
   Windows WebKit and touch-emulated desktop Firefox are close, not identical ·
-  `og:url` / `og:image` hardcode the Vercel origin
-- **User-owned, no code:** email provider for password reset · Sentry DSNs · Atlas backups
+  ~~`og:url` / `og:image` hardcode the Vercel origin~~ (fixed in the audit fixes:
+  `client/siteMeta.js` builds them from `VITE_SITE_URL` or Vercel's production URL)
+- **User-owned, no code:** email provider for password reset (reset itself is built
+  and off until then — Phase 9) · Sentry DSNs · Atlas backups
 
 Items 1–7 are one prepared prompt — see **Intensive session — 2026-09-22** in Part 3.
 
