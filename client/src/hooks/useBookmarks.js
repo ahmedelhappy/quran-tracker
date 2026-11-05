@@ -219,8 +219,7 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
   const moveBookmark = async (b, page, replace = false) => {
     if (b.pageNumber === page) return;
     const occupant = replace ? bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id) : null;
-    const before = bookmarks;
-    setBookmarks(before
+    setBookmarks(list => list
       .filter(x => x._id !== occupant?._id)
       .map(x => (x._id === b._id ? { ...x, pageNumber: page } : x))
       .sort(byBookmarkOrder));
@@ -237,7 +236,14 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
         action: { label: t('library.bookmarks.restore'), onClick: () => undoMoveBookmark(b, res.data.replaced) },
       });
     } catch (e) {
-      setBookmarks(before);
+      // Undo only this move — put the bookmark back and the occupant it
+      // replaced — on the list as it is NOW: a rename or removal that finished
+      // meanwhile has already reached the server and must not be rolled back.
+      setBookmarks(list => {
+        const next = list.map(x => (x._id === b._id ? b : x));
+        if (occupant && !next.some(x => x._id === occupant._id)) next.push(occupant);
+        return next.sort(byBookmarkOrder);
+      });
       const conflict = e.response?.status === 409 ? e.response.data?.conflict : null;
       if (conflict) setBookmarkConfirm({ kind: 'replace', bookmark: b, conflict, page });
       else showToast(e.response?.status === 409 ? t('library.bookmarks.unnamedTaken', { n: fmtNum(page) }) : t('common.error'), 'error');
