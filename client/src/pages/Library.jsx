@@ -4202,17 +4202,23 @@ export default function Library() {
   // The docked panel's width: a resize is the panel's own business while it
   // runs (it re-renders only the panel), and lands here once, on release. The
   // edge tab beside it follows the drag directly, without a render.
+  // Where the tab sits is React's to say (its style prop); these only write it
+  // while the panel is docked beside it, and always to what React renders next,
+  // so the two never disagree once the drag is over.
+  const tabDockedRef = useRef(false);
+  useEffect(() => { tabDockedRef.current = tafsirOpen && isWide; }, [tafsirOpen, isWide]);
+  const placeTafsirTab = useCallback((w) => {
+    const tab = tafsirTabRef.current;
+    if (tab) tab.style.insetInlineEnd = `${tabDockedRef.current ? w : 0}px`;
+  }, []);
   const commitTafsirWidth = useCallback((w) => {
     setTafsirWidth(w);
     storage.set('tafsirPanelWidth', String(w));
-    // Where React is about to put it anyway; set here too, so a release at the
-    // width the drag started from (no prop change, no DOM write) is not left at
-    // the last previewed one.
-    if (tafsirTabRef.current) tafsirTabRef.current.style.insetInlineEnd = `${w}px`;
-  }, []);
-  const previewTafsirWidth = useCallback((w) => {
-    if (tafsirTabRef.current) tafsirTabRef.current.style.insetInlineEnd = `${w}px`;
-  }, []);
+    // Set here too: a release at the width the drag started from changes no
+    // prop, so React would not write over the last previewed one.
+    placeTafsirTab(w);
+  }, [placeTafsirTab]);
+  const previewTafsirWidth = placeTafsirTab;   // a drag in progress
 
   // The popover's tafsir icon — unchanged in effect: read THIS verse. Selecting
   // it is what points the panel at it.

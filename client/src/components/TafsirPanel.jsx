@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiBookOpen, FiChevronLeft, FiChevronRight, FiX, FiPlay, FiPause, FiAlertCircle } from 'react-icons/fi';
 import Tooltip from './Tooltip';
@@ -129,6 +129,16 @@ export default function TafsirPanel({
   // panel's INLINE-START edge — the side facing the mushaf in both writing
   // directions — so dragging toward the mushaf widens the panel in LTR and
   // dragging away from it does in RTL; `dir` decides which way that is.
+  // Ends a resize in progress without committing it: the panel is closing
+  // (Escape, the close button) or the layout left the docked column. Without
+  // this the window listeners outlived the panel and kept writing a width onto
+  // the edge tab, which then sat over the page with the panel gone. Nothing is
+  // written on the way out: in both cases the tab's own style prop has just
+  // changed (to 0), so React has already put it where it belongs.
+  const endResizeRef = useRef(null);
+  useEffect(() => () => endResizeRef.current?.(), []);
+  useEffect(() => { if (!isWide) endResizeRef.current?.(); }, [isWide]);
+
   const startResize = useCallback((e) => {
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();          // never start a text selection or a page-turn swipe
@@ -144,13 +154,18 @@ export default function TafsirPanel({
       setDragWidth(next);
       onWidthPreview?.(next);
     };
-    const onUp = (ev) => {
+    const stop = () => {
+      endResizeRef.current = null;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+    };
+    const onUp = (ev) => {
+      stop();
       setDragWidth(null);
       onWidthCommit(widthAt(ev));
     };
+    endResizeRef.current = () => { stop(); setDragWidth(null); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
