@@ -68,9 +68,9 @@ EMAIL_TRANSPORT=none          # none | console (development only); no real provi
 ```
 `server.js` refuses to start without `MONGODB_URI` and `JWT_SECRET`. `NODE_ENV=production` turns on the production CORS list, trust-proxy default and the reset checks.
 
-Frontend (`client/.env`, see `client/.env.example`): `VITE_API_URL` is the API base (`services/api.js`) and is **mandatory for a production build** (`vite.config.js` stops the build without it; dev falls back to `http://localhost:5000/api`). `VITE_SITE_URL` (optional) is the site's own origin: with it the build emits `sitemap.xml`, a Sitemap line in `robots.txt`, canonical links and absolute share-card URLs (`siteMeta.js`).
+Frontend (`client/.env`, see `client/.env.example`): `VITE_API_URL` is the API base (`services/api.js`) and is **mandatory for a production build** (`vite.config.js` stops the build without it; dev falls back to `http://localhost:5000/api`). `VITE_SITE_URL` (optional) is the site's own origin: with it the build emits `sitemap.xml`, a Sitemap line in `robots.txt`, canonical links and absolute share-card URLs (`siteMeta.js`); when it is unset, a Vercel build falls back to Vercel's `VERCEL_PROJECT_PRODUCTION_URL` (a malformed value fails the build).
 
-End-to-end (all optional): `PW_CHROME_PATH` (use an installed Chrome instead of Playwright's Chromium; leave unset on Linux/CI), `E2E_API_PORT` / `E2E_ADMIN_PORT` / `E2E_WEB_PORT` (default 5140/5141/5142), `E2E_REUSE_SERVERS=1` (reuse stacks you started yourself; never in CI).
+End-to-end (all optional): `PW_CHROME_PATH` (use an installed Chrome instead of Playwright's Chromium; leave unset on Linux/CI), `E2E_API_PORT` / `E2E_ADMIN_PORT` / `E2E_WEB_PORT` (default 5140/5141/5142), `E2E_REUSE_SERVERS=1` (reuse stacks you started yourself; never in CI). `CI` (set by GitHub Actions) forbids `.only`, allows one retry, runs two workers and adds the github/html reporters. The in-memory MongoDB honours the `MONGOMS_*` variables (CI sets `MONGOMS_PREFER_GLOBAL_PATH`; `MONGOMS_SYSTEM_BINARY` points it at a local mongod).
 
 ## Architecture
 
@@ -80,7 +80,7 @@ End-to-end (all optional): `PW_CHROME_PATH` (use an installed Chrome instead of 
 - `/api/auth` → `routes/authRoutes.js` (register, login, config, forgot/reset password, me, profile, password, account)
 - `/api/progress` → `routes/progressRoutes.js` (all protected by `middleware/auth.js`, JWT Bearer)
 - `/api/bookmarks`, `/api/annotations`, `/api/todos`, `/api/leaderboard` → their route files (protected)
-- `/api/chat` → `routes/chatRoutes.js` (Groq assistant; per-user daily limit in `middleware/chatRateLimit.js` / `utils/chatBudget.js`)
+- `/api/chat` → `routes/chatRoutes.js` (Groq assistant; a 20-per-5-minutes burst limiter in `middleware/chatRateLimit.js` plus a per-user daily budget in `utils/chatBudget.js`)
 
 Unknown routes answer a JSON 404. **Every API error carries a stable `code`** (`middleware/errorCode.js`, `utils/errorResponse.js` `serverError`/`logError`, `middleware/errorHandler.js`); the client turns codes into messages in `client/src/utils/apiError.js`. `logError` keeps refused values (E11000, validation, cast errors) out of the logs. Request bodies and queries are type-checked by `middleware/validate.js`. Rate limiters (`middleware/rateLimiters.js`) and the per-account login backoff (`utils/loginThrottle.js`) are in process memory.
 
@@ -119,7 +119,7 @@ After login, if `user.onboardingComplete === false`, the app redirects to `/onbo
 
 **HTTP and errors**: `services/api.js` — Axios with the Bearer token, 20 s timeouts for reads and 60 s for writes. `services/quranApi.js` and `services/mushafApi.js` fetch Quran content from outside hosts through `utils/fetchWithTimeout.js` (`NetworkError`, `RequestTimeoutError`). Every load failure goes through `utils/reportError.js` (`reportLoadFailure`; `reportError` is the one hook for an error service) and shows an error with Retry, never an empty "none yet". `components/ErrorBoundary.jsx` wraps regions; its function-children form keeps throws in that region's render inside the boundary.
 
-**Shared pieces worth knowing**: `utils/safeStorage.js` (every localStorage key goes through its registry), `hooks/useDialog.js` (focus, trap, Escape, inert background for every modal and sheet), `utils/shortcutKeys.js` (shortcut matching by `e.code` or `e.key`, and the switch that turns single-key shortcuts off), `hooks/usePageTitle.js` + `client/siteMeta.js` (titles and share cards), self-hosted UI fonts (`src/fonts.css`), recharts loaded only with the charts, security headers and a report-only CSP in `client/vercel.json`.
+**Shared pieces worth knowing**: `utils/safeStorage.js` (every localStorage key goes through its registry), `hooks/useDialog.js` (focus, trap, Escape, inert background for every modal and sheet), `utils/shortcutKeys.js` (shortcut matching by `e.code` or `e.key`, and the switch that turns single-key shortcuts off), `hooks/usePageTitle.js` + `client/siteMeta.js` (titles and share cards), self-hosted UI fonts (`src/fonts.css`), recharts loaded only with the charts, security headers and a report-only CSP in `client/vercel.json` (its `connect-src`/`media-src` name the API and the Quran and audio hosts — update it when either changes).
 
 **Pages**:
 - `Dashboard.jsx` — daily new memorization + review tasks, streak, week plan, timer and to-do
