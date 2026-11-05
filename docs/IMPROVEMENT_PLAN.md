@@ -43,8 +43,9 @@ writes the next prompt. Commits happen only after visual acceptance.
   has two commits of its own since (the README rewrite, and the defense notes —
   PROJECT_FACTS.md among them — taken out of the repo), so the merge brings those in.
 - **Health (`audit-fixes`):** 425/425 server tests · 297/297 client unit tests
-  (Vitest) · 14 Playwright flows on Chromium, WebKit and a phone (41 passed +
-  1 skipped across the three) · `npm run lint` 0 problems · production build clean
+  (Vitest) · 14 Playwright flows on Chromium, WebKit and a phone (last full
+  three-project run 41 passed + 1 skipped, Phase 9; Phases 10–12 ran Chromium and the
+  phone only, 27 + 1 skipped, as WebKit could not be installed in that container) · `npm run lint` 0 problems · production build clean
   (entry ~430 kB / ~139 kB gzip) · CI in `.github/workflows/ci.yml`. Lighthouse: see
   the Phase 5 and 6 rows (the self-hosted fonts cost the landing page ~0.5 s; the
   audit measured `/library` mobile Perf at 54–68, before Phase 11's render work).
