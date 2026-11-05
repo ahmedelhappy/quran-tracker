@@ -88,6 +88,47 @@ describe('MemorizedUnitPicker (M-20)', () => {
     expect(screen.getByText('settings.rangeDeleteConfirm')).toBeTruthy();
     fireEvent.click(screen.getByText('settings.rangeDeleteConfirmBtn'));
     expect(screen.getAllByRole('spinbutton').map((el) => el.value)).toEqual(['10', '10']);
-    expect([...coverageOf(seen.coverage, { from: 1, to: 1 })].join('')).toBe('none');
+    expect(coverageOf(seen.coverage, { from: 1, to: 1 })).toBe('none');
+  });
+
+  it('a sweep across Juz tiles selects every tile it crosses, not just the last', () => {
+    render(<Harness variant="onboarding" />);
+    // jsdom has no layout: the pointer's x names the tile under it.
+    const original = document.elementFromPoint;
+    document.elementFromPoint = (x) => tile(Math.round(x / 10));
+    try {
+      fireEvent.pointerDown(tile(1), { button: 0, clientX: 10, clientY: 0 });
+      for (const x of [20, 30, 40]) fireEvent.pointerMove(window, { clientX: x, clientY: 0 });
+      fireEvent.pointerUp(window);
+    } finally {
+      document.elementFromPoint = original;
+    }
+    expect([1, 2, 3, 4].map((id) => tile(id).getAttribute('aria-pressed'))).toEqual(['true', 'true', 'true', 'true']);
+  });
+
+  it('removing one of two overlapping rows clears the other\'s error', () => {
+    const onRangeErrorsChange = vi.fn();
+    render(<Harness variant="onboarding" onRangeErrorsChange={onRangeErrorsChange} />);
+    tab('onboarding.byRange');
+    fireEvent.click(screen.getByText('onboarding.addRange'));
+    const [s1, e1, s2, e2] = screen.getAllByRole('spinbutton');
+    fireEvent.change(s1, { target: { value: '1' } });
+    fireEvent.change(e1, { target: { value: '10' } });
+    fireEvent.change(s2, { target: { value: '5' } });
+    fireEvent.change(e2, { target: { value: '20' } });
+    expect(onRangeErrorsChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getAllByRole('spinbutton')[2].closest('.flex').querySelector('button'));
+    expect(onRangeErrorsChange).toHaveBeenLastCalledWith(false);
+    expect(document.getElementById('onboarding-range-error-0')).toBeNull();
+  });
+
+  it('says its rows have no errors once it is gone, so no parent stays blocked', () => {
+    const onRangeErrorsChange = vi.fn();
+    const { unmount } = render(<Harness variant="onboarding" onRangeErrorsChange={onRangeErrorsChange} />);
+    tab('onboarding.byRange');
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '700' } });
+    expect(onRangeErrorsChange).toHaveBeenLastCalledWith(true);
+    unmount();
+    expect(onRangeErrorsChange).toHaveBeenLastCalledWith(false);
   });
 });
