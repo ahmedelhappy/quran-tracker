@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiCheckCircle, FiAlertCircle, FiInfo, FiX } from 'react-icons/fi';
 import { ToastContext } from '../hooks/useToast';
@@ -67,9 +67,13 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const dismiss = useCallback((id) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+  // One value for the provider's life. A fresh object per render re-rendered every
+  // component that calls useToast — the whole Library, twice per toast (shown,
+  // then gone) — although showToast itself never changes (M-10).
+  const value = useMemo(() => ({ showToast }), [showToast]);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       {/* data-dialog-keep: a modal's inert sweep (useDialog) skips this region,
           so a toast raised while a dialog is up is still announced and clickable.
