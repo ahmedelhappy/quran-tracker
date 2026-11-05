@@ -66,7 +66,7 @@ import { useMushafZoom } from '../hooks/useMushafZoom';
 import { isShortcutKey, singleKeyShortcutsOn } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
-import { reportLoadFailure } from '../utils/reportError';
+import { reportError, reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
 import { clampPage, pageFromInput, adjacentAnnotatedPage } from '../utils/readerNav';
 import { apiErrorMessage } from '../utils/apiError';
@@ -105,6 +105,14 @@ const READER_EDGE_TAB = (edge) =>
     ? 'rounded-e-lg border-s-0'
     : 'rounded-s-lg border-e-0');
 const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
+// The list in an API reply, or a throw when the reply holds something else —
+// which the loader's catch then reports and shows as a failed load, rather than
+// a list the reader would crash drawing.
+const listFrom = (res, what) => {
+  const list = res.data?.data ?? [];
+  if (!Array.isArray(list)) throw new Error(`Unexpected ${what} payload`);
+  return list;
+};
 // The mushaf word under a screen point, looking THROUGH whatever covers it (the
 // ink layer while annotating).
 const wordAtPoint = (x, y) => document.elementsFromPoint(x, y)
@@ -3001,7 +3009,7 @@ export default function Library() {
   const loadHardList = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.listByKind('hard')
-      .then((r) => { setHardList(r.data?.data ?? []); setHardFailed(false); })
+      .then((r) => { setHardList(listFrom(r, 'hard list')); setHardFailed(false); })
       .catch((err) => { reportLoadFailure(err, 'the hard list'); setHardFailed(true); });
   }, []);
 
@@ -3010,7 +3018,20 @@ export default function Library() {
   const loadSummary = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.getSummary()
-      .then((r) => { setAnnoSummary(r.data?.data ?? []); setSummaryFailed(false); })
+      .then((r) => {
+        // annotatedPages (prev/next annotated page) is worked out from this in
+        // the reader's own render, above any error boundary: an entry without a
+        // real page would take the whole reader down, so it is left out here.
+        const list = listFrom(r, 'annotation summary');
+        const usable = list.filter((e) => e != null && Number.isInteger(e.pageNumber) && e.pageNumber >= 1 && e.pageNumber <= 604);
+        if (usable.length !== list.length) {
+          reportError(new Error('Annotation summary entries without a page were left out'), {
+            source: 'load', what: 'the annotation summary', dropped: list.length - usable.length,
+          });
+        }
+        setAnnoSummary(usable);
+        setSummaryFailed(false);
+      })
       .catch((err) => { reportLoadFailure(err, 'the annotation summary'); setSummaryFailed(true); });
   }, []);
 
