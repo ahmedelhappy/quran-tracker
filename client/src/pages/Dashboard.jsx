@@ -324,6 +324,18 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
   );
 };
 
+// The per-Juz progress list. The stat cards read it in the page's own render,
+// above every error boundary, so a reply that is not a list of Juz entries would
+// take the whole dashboard down: it is refused here and fails the load instead
+// (the tasks then show their error with Retry).
+const juzListFrom = (res) => {
+  const list = res.data?.data;
+  if (!Array.isArray(list) || !list.every((j) => j != null && typeof j === 'object')) {
+    throw new Error('Unexpected Juz progress payload');
+  }
+  return list;
+};
+
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -397,8 +409,9 @@ export default function Dashboard() {
       ]);
       progressAPI.checkIn(ignoreOffDay);
       if (!aliveRef.current) return;
+      const juzList = juzListFrom(juzRes);
       setData(taskRes.data.data);
-      setJuzData(juzRes.data.data);
+      setJuzData(juzList);
     } catch (err) {
       const kind = reportLoadFailure(err, "today's plan");
       if (aliveRef.current) setLoadError(kind);
@@ -682,7 +695,7 @@ export default function Dashboard() {
       ]);
       progressAPI.checkIn();
       setData(taskRes.data.data);
-      setJuzData(juzRes.data.data);
+      setJuzData(juzListFrom(juzRes));
       setCycleBannerDismissed(true);
     } catch {
       showToast(t('dashboard.failedMark'), 'error');
