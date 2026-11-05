@@ -157,7 +157,8 @@ export default function MemorizedUnitPicker({
   const removeRange = (i) => {
     const updated = pageRanges.filter((_, idx) => idx !== i);
     setPageRanges(updated);
-    setRangeErrors(rangeErrors.filter((_, idx) => idx !== i));
+    // Checked again: a row that overlapped only the one removed is fine now.
+    setRangeErrors(validateRanges(updated));
     setSelectedPages(rangesToPages(updated));
   };
   const updateRange = (i, key, val) => {
