@@ -34,25 +34,37 @@ writes the next prompt. Commits happen only after visual acceptance.
 > the two blocks directly below ("Current status" and "Open queue") are edited in
 > place, to stay current.
 
-### Current status — as of 2026-09-23
+### Current status — as of 2026-11-05
 
-- **Local commits, NOT pushed:** the 2026-09-22 intensive session commits phase by
-  phase on top of `origin/main` (`feaf1b8`); its rows are at the bottom of the log.
-  The user reviews and pushes.
-- **Health:** 126/126 server tests · client build clean · `npm run lint` 0 problems ·
-  core reader flows pass in Chrome 153, Firefox 155 and WebKit 26.6 (desktop and
-  phone) · Lighthouse mobile Perf 98–100 on `/`, `/dashboard`, `/library`.
-- **Shipped and user-tested:** Stages 0–8d, 6e, the 8b/8c fix rounds, the reader
-  polish rounds, and the recitation-stalling fix.
+- **Audit fixes:** the decision-free fixes from `docs/AUDIT_2026-10.md`, in 12 phases
+  (one log row each, 2026-10-27 onward). Phases 1–6 are on `main` (merged with the
+  Phase 6 log row, 2026-10-30; a push to `main` deploys). Phases 7–12 are on the
+  pushed branch `audit-fixes` only, waiting for the owner's review and merge; `main`
+  has two commits of its own since (the README rewrite, and the defense notes —
+  PROJECT_FACTS.md among them — taken out of the repo), so the merge brings those in.
+- **Health (`audit-fixes`):** 425/425 server tests · 297/297 client unit tests
+  (Vitest) · 14 Playwright flows on Chromium, WebKit and a phone (41 passed +
+  1 skipped across the three) · `npm run lint` 0 problems · production build clean
+  (entry ~430 kB / ~139 kB gzip) · CI in `.github/workflows/ci.yml`. Lighthouse: see
+  the Phase 5 and 6 rows (the self-hosted fonts cost the landing page ~0.5 s; the
+  audit measured `/library` mobile Perf at 54–68, before Phase 11's render work).
 - **Settled decisions — don’t re-litigate:** the page fits the window by default
   (Option D measured and rejected, 2026-09-08) · shortcuts match `e.code` OR `e.key`
   · أيسر التفاسير reads per-ayah via hefzmoyaser, while at-Tabari and Ibn Kathir stay
   on spa5k (hefzmoyaser truncates / abridges them) · a two-page spread shares ONE
   undo stack · focus mode removed · the range band paints only for a live drag or
-  an explicit span selection, never while merely reading.
+  an explicit span selection, never while merely reading · the mushaf is an RTL
+  book (forward = leftward in both languages) in a fixed 576×852 frame on a
+  15-slot grid · the verse is the unit of memorization, the page the unit of
+  scheduling, and annotations anchor to verseKey + word position.
 - **Accepted limitations still standing:** a same-calendar-day undo of a half-page
   day-2 completion can discard day-1’s segment · a verse straddling two pages
-  annotates on its selection page only.
+  annotates on its selection page only · all dates are UTC (per-user time zones,
+  M-16, are an owner decision).
+- **Waiting on the owner:** the audit's NEEDS-THE-OWNER list and each phase row's
+  "Owner decisions" (licensing H-04, publishing the privacy/terms drafts + Groq ZDR,
+  an email provider, the demo account, colour contrast M-11, Sentry, Atlas backups,
+  verifying `req.ip` behind Render, the cleanup scripts on real data).
 
 ### Open queue — priority order
 
