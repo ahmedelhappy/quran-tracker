@@ -36,7 +36,7 @@ npm start         # node server.js (production; needs MONGODB_URI and JWT_SECRET
 npm test          # node --test: integration tests on an in-memory MongoDB (mongodb-memory-server)
 npm run seed:demo -- --uri <mongodb-uri>   # seed a demo account with sample progress
 ```
-`npm test` downloads a mongod binary on first run (or set `MONGOMS_SYSTEM_BINARY` to a local one). It never reads `MONGODB_URI`.
+mongodb-memory-server fetches its mongod binary in its postinstall (`npm ci`), or on the first test run if that was skipped; `MONGOMS_SYSTEM_BINARY` points it at a local one instead. It never reads `MONGODB_URI`.
 
 ### Frontend (`cd client`)
 ```bash
@@ -88,7 +88,7 @@ Unknown routes answer a JSON 404. **Every API error carries a stable `code`** (`
 - `User` — credentials, `dailyNewPages` (0.5–10), streak (`currentStreak`/`lastActiveDate`, plus `prevStreak`/`prevActiveDate` for undo), `onboardingComplete`, plan fields (`reviewIntensity`, `offDays`, `pauseNewMemorization`, `pausedFromOnboarding`, `recentReviewCount`, `cycleReviewCount`, `cycleReviewStartPage`, `memorizationDirection`, `newMemorizationStartPage`, `planStartDate`), `language`, leaderboard (`displayName`, `leaderboardOptIn`), and the auth bookkeeping `passwordChangedAt`, `passwordResetTokenHash`, `passwordResetExpires` (both `select: false`)
 - `UserProgress` — one document per (userId, pageNumber): `status`, `memorizedDate`, `lastReviewedDate`, `reviewCount`, verse `segments` for a partly memorized page, and the undo snapshots
 - `Bookmark` — several per user and per page; only one *unnamed* bookmark per page
-- `Annotation` — verse-anchored highlights, notes and hard flags (verseKey + word positions), plus one free-ink drawing per page (`one_drawing_per_page` index)
+- `Annotation` — verse-anchored highlights, notes and hard flags (verseKey + word positions; no verseKey = the whole page), free-floating text notes (`kind: 'text'`), and one free-ink drawing per page (`one_drawing_per_page` index)
 - `Todo` — the reader's to-do list
 - `QuranMetadata` — static lookup (604 pages): `juzNumber`/`hizbNumber`, the ordered `surahs` on the page, the verse span (`firstVerseKey`/`lastVerseKey`/`verseKeys`) and `rubBoundaries`. Seeded from the committed `seed/data/quranStructure.json`
 
