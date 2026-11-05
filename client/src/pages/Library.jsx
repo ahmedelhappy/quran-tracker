@@ -3707,10 +3707,14 @@ export default function Library() {
     if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - gap - mh); // flip above
     let left = r.left + r.width / 2 - mw / 2;                                   // centre under the button
     left = Math.min(Math.max(left, 8), window.innerWidth - mw - 8);            // shift into view
-    setDrawMenuPos({ top, left });
+    // Unchanged is the common case (a scroll that does not move the button):
+    // keep the same object, so React skips the render (M-10).
+    setDrawMenuPos((prev) => (prev.top === top && prev.left === left ? prev : { top, left }));
   }, []);
+  // Only while the dropdown is up: it is the one thing this places. Listening for
+  // the whole of annotate mode re-rendered the reader on every scroll event (M-10).
   useLayoutEffect(() => {
-    if (drawPage == null) return;
+    if (drawPage == null || !drawMenuOpen) return;
     positionDrawMenu();
     const reposition = () => positionDrawMenu();
     window.addEventListener('scroll', reposition, true);
