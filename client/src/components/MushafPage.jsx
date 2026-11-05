@@ -326,7 +326,15 @@ export default function MushafPage({
                     dragRef.current = { word: w, x: e.clientX, y: e.clientY, moved: false };
                   }}
                   onPointerEnter={(e) => {
-                    setHoverWord({ line: line.lineNumber, index: i, verseKey: w.verseKey });
+                    // Only a change that is drawn re-renders the page: in normal
+                    // reading the hover tints a whole VERSE, so moving between its
+                    // words changes nothing; the self-tests key on the exact word.
+                    setHoverWord((prev) => (
+                      prev && prev.verseKey === w.verseKey
+                        && (!concealMode || (prev.line === line.lineNumber && prev.index === i))
+                        ? prev
+                        : { line: line.lineNumber, index: i, verseKey: w.verseKey }
+                    ));
                     const d = dragRef.current;
                     if (d && e.pointerType === 'mouse' && concealMode === 'hide') {
                       d.moved = true;
