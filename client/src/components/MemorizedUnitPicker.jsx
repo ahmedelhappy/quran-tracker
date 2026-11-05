@@ -92,12 +92,16 @@ export default function MemorizedUnitPicker({
   const origCoverage = original?.coverage;
 
   // Whole pages in, whole pages out — see the note above about sub-page coverage.
-  const setSelectedPages = (next) => {
-    const prevFull = fullyCoveredPages(coverage);
+  // Always an updater, worked out from the selection as it is when it applies:
+  // a drag across tiles toggles several in one gesture with the handler it
+  // started with, and a value computed from that render's selection made each
+  // tile overwrite the one before (only the last Juz of a sweep stayed).
+  const setSelectedPages = (next) => setCoverage((current) => {
+    const prevFull = fullyCoveredPages(current);
     const pages = typeof next === 'function' ? next(prevFull) : next;
-    const subPage = subtractOrdRanges(coverage, [...prevFull].map(pageOrdRange));
-    setCoverage(mergeOrdRanges([...subPage, ...[...pages].map(pageOrdRange)]));
-  };
+    const subPage = subtractOrdRanges(current, [...prevFull].map(pageOrdRange));
+    return mergeOrdRanges([...subPage, ...[...pages].map(pageOrdRange)]);
+  });
 
   // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
   const toggleRange = (start, end) => setSelectedPages(prev => {
@@ -114,8 +118,9 @@ export default function MemorizedUnitPicker({
   // server compiles for /progress/units.
   const toggleUnitRange = (range) => {
     if (!range) return;
-    if (coverageOf(coverage, range) === 'full') setCoverage((c) => subtractOrdRanges(c, [range]));
-    else setCoverage((c) => mergeOrdRanges([...c, range]));
+    setCoverage((c) => (coverageOf(c, range) === 'full'
+      ? subtractOrdRanges(c, [range])
+      : mergeOrdRanges([...c, range])));
   };
   const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
   const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
