@@ -105,11 +105,12 @@ const READER_EDGE_TAB = (edge) =>
     ? 'rounded-e-lg border-s-0'
     : 'rounded-s-lg border-e-0');
 const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
-// The list in an API reply, or a throw when the reply holds something else —
-// which the loader's catch then reports and shows as a failed load, rather than
-// a list the reader would crash drawing.
+// The list in an API reply, or a throw when the reply holds something else or
+// nothing (an HTML page from a misrouted request has no list either) — which the
+// loader's catch then reports and shows as a failed load, rather than a list the
+// reader would crash drawing or an empty one that reads as "none yet".
 const listFrom = (res, what) => {
-  const list = res.data?.data ?? [];
+  const list = res.data?.data;
   if (!Array.isArray(list)) throw new Error(`Unexpected ${what} payload`);
   return list;
 };

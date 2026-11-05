@@ -52,7 +52,9 @@ export function useBookmarks({ signedIn, targetPage, noteRead, showToast, t, fmt
     let cancelled = false;
     bookmarksAPI.list()
       .then(res => {
-        const list = res.data?.data ?? [];
+        // No list at all (an HTML page from a misrouted request, say) is a
+        // failed load too, not "no bookmarks".
+        const list = res.data?.data;
         if (!Array.isArray(list)) throw new Error('Unexpected bookmarks payload');
         const usable = list.filter(isUsableBookmark);
         if (usable.length !== list.length) {
