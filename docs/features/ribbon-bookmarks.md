@@ -12,8 +12,9 @@ dialog. The reader should be able to do it from the page itself, where they alre
 ## The design
 
 **Ribbon on every page header.** An outline ribbon in each page card's running head (each
-page of a two-page spread has its own); filled when the page holds any bookmark. It is a
-real button: "Bookmark page 50" / "Page 50 is bookmarked. Open its bookmarks".
+page of a two-page spread has its own); filled when the page holds a bookmark, and a
+stacked double ribbon when it holds more than one. It is a real button: "Bookmark page 50" /
+"Page 50 is bookmarked. Open its bookmarks" / "Page 50 has 2 bookmarks. Open them".
 
 **A tap always opens a small menu** (a popover beside the ribbon; a bottom sheet on phones):
 
@@ -21,7 +22,7 @@ real button: "Bookmark page 50" / "Page 50 is bookmarked. Open its bookmarks".
 |---|---|
 | Header | "Page 50" and a close button |
 | This page's bookmarks | Click the name to rename it in place (Enter or clicking away saves, Escape cancels); bin icon removes it, with Undo |
-| Your other bookmarks | One tap moves that bookmark to this page, with Undo. In the user's own order, so the top bookmark is first. Each shows its page number |
+| Your other bookmarks | One tap moves that bookmark to this page, with Undo. Each row's icon is a bookmark dropping onto a page, and its tooltip says "Move to page 50". In the user's own order, so the top bookmark is first. Each shows its current page number |
 | New bookmark | One field ("New bookmark, name optional") and a + button. The name is optional, also for the very first bookmark; an unnamed one shows as "Page N" |
 
 **Calm, not wordy.** No section titles or hint lines in the menu: icons carry the meaning
@@ -41,8 +42,11 @@ bar like every other toast, never over the page or the ribbon.
 
 - A page holds any number of named bookmarks but only one unnamed one. Moving an unnamed
   bookmark onto a page that has one replaces it; that row shows a ! with the tooltip
-  "Move here, replacing the unnamed bookmark on this page".
-- Names are unique per user (case-insensitive); a clash shows an inline message.
+  "Move to page 50, replacing the unnamed bookmark there".
+- **No two bookmarks may have the same name.** Names are compared as the reader sees them,
+  ignoring case and extra spaces, so a name can't copy another bookmark's name or an unnamed
+  bookmark's "Page N" label (in either language). A clash is refused with an inline message
+  (adding) or a toast (renaming). The server must enforce the same rule, not only the client.
 - Signed-out readers see no ribbon (or it opens the existing sign-in nudge).
 
 ## Decided, and why
@@ -56,6 +60,9 @@ bar like every other toast, never over the page or the ribbon.
 | Name required for the first bookmark? | No, optional everywhere | Fewer steps; an unnamed bookmark reads as its page |
 | Rename | Click the name (menu); pencil (sidebar) | Clicking a name in the sidebar keeps going to its page, as on `main` |
 | Reorder | Drag the grip, kept inside the list; tooltip instead of a hint line | Less text on screen |
+| Several bookmarks on one page | A stacked double-ribbon icon | The reader sees there is more than one before opening the menu |
+| Move icon in the menu | A bookmark dropping onto a page, tooltip "Move to page N" | An arrow alone didn't say where the bookmark goes |
+| Duplicate names | Never allowed, compared as shown (incl. "Page N") | Two bookmarks that read the same can't be told apart |
 
 ## Building it
 

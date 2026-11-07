@@ -127,7 +127,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .ic { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
-.ic.on { color: var(--brand); }
+.ic.on, .ic.move { color: var(--brand); }
 .ic svg { width: 15px; height: 15px; }
 .ib { border: 0; background: transparent; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .ib svg { width: 16px; height: 16px; }
@@ -209,9 +209,9 @@ function ar(n) { return String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d
 const T = {
   en: {
     bookmarks: 'Bookmarks', none: 'No bookmarks yet. Tap the ribbon on a page to add one.', page: (n) => `Page ${n}`, pageOf: (n) => `page ${n}`, num: (n) => n,
-    menuTitle: (n) => `Bookmark page ${n}`, onPage: 'On this page', moveHere: 'Move here', newB: 'New bookmark',
+    menuTitle: (n) => `Bookmark page ${n}`, onPage: 'On this page', moveHere: (n) => `Move to page ${n}`, marked2: (n, c) => `Page ${n} has ${c} bookmarks. Open them`, newB: 'New bookmark',
     namePh: 'Name (optional)', newPh: 'New bookmark, name optional', add: 'Add bookmark', nameReq: 'Your first bookmark', firstHint: 'A name is optional. Without one it shows as the page number.',
-    save: 'Save', remove: 'Remove', replaces: 'Move here, replacing the unnamed bookmark on this page',
+    save: 'Save', remove: 'Remove', replaces: (n) => `Move to page ${n}, replacing the unnamed bookmark there`,
     added: (n) => `Bookmarked page ${n}`, moved: (l, n) => `${l} moved to page ${n}`, removed: 'Bookmark removed',
     renamed: 'Bookmark renamed', reordered: 'Order saved', undo: 'Undo', undone: 'Undone', close: 'Close',
     unnamedTaken: 'This page already has a bookmark without a name. Give this one a name to keep both.',
@@ -223,9 +223,9 @@ const T = {
   },
   ar: {
     bookmarks: 'العلامات', none: 'لا توجد علامات بعد. اضغط على الشريط أعلى الصفحة لإضافة واحدة.', page: (n) => `صفحة ${ar(n)}`, pageOf: (n) => `صفحة ${ar(n)}`, num: (n) => ar(n),
-    menuTitle: (n) => `علامة على صفحة ${ar(n)}`, onPage: 'على هذه الصفحة', moveHere: 'انقلها إلى هنا', newB: 'علامة جديدة',
+    menuTitle: (n) => `علامة على صفحة ${ar(n)}`, onPage: 'على هذه الصفحة', moveHere: (n) => `انقلها إلى صفحة ${ar(n)}`, marked2: (n, c) => `على صفحة ${ar(n)} ${ar(c)} علامات. افتحها`, newB: 'علامة جديدة',
     namePh: 'الاسم (اختياري)', newPh: 'علامة جديدة، الاسم اختياري', add: 'أضف علامة', nameReq: 'علامتك الأولى', firstHint: 'الاسم اختياري. بدونه تظهر برقم الصفحة.',
-    save: 'حفظ', remove: 'حذف', replaces: 'انقلها إلى هنا مكان العلامة التي بلا اسم',
+    save: 'حفظ', remove: 'حذف', replaces: (n) => `انقلها إلى صفحة ${ar(n)} مكان العلامة التي بلا اسم`,
     added: (n) => `أضيفت علامة على صفحة ${ar(n)}`, moved: (l, n) => `نُقلت «${l}» إلى صفحة ${ar(n)}`, removed: 'حُذفت العلامة',
     renamed: 'غُيّر اسم العلامة', reordered: 'حُفظ الترتيب', undo: 'تراجع', undone: 'تم التراجع', close: 'إغلاق',
     unnamedTaken: 'على هذه الصفحة علامة بلا اسم. أعطِ هذه اسمًا لتبقى الاثنتان.',
@@ -254,6 +254,11 @@ const t = () => T[st.lang];
 const shownLabel = (b) => (st.lang === 'ar' && AR_NAMES[b.label]) || b.label;
 const nameOf = (b) => shownLabel(b) || t().page(b.page);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// No two bookmarks may read the same: names are compared as shown (an unnamed one
+// reads "Page N"), ignoring case and extra spaces.
+const norm = (s) => String(s).trim().replace(/\s+/g, ' ').toLowerCase();
+const takenName = (v, exceptId) => st.bms.some((x) => x.id !== exceptId
+  && [x.label, T.en.page(x.page), T.ar.page(x.page), AR_NAMES[x.label]].filter(Boolean).some((n) => norm(n) === norm(v)));
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 function reset(s) { st.scenario = s; st.bms = clone(SCENARIOS[s]); st.page = 45; st.open = false; st.toast = null; st.editing = null; st.err = ''; st.undo = null; render(); }
@@ -277,7 +282,7 @@ function act(fn, msg, { close = true } = {}) {
 function addHere(label) {
   label = label.trim();
   if (!label && st.bms.some((b) => b.page === st.page && !b.label)) { st.err = t().unnamedTaken; render(); return; }
-  if (label && st.bms.some((b) => (b.label || '').toLowerCase() === label.toLowerCase())) { st.err = t().dupName; render(); return; }
+  if (label && takenName(label)) { st.err = t().dupName; render(); return; }
   act(() => { st.bms.push({ id: ++st.seq, label, page: st.page }); }, t().added(st.page));
 }
 function moveHere(id) {
@@ -293,7 +298,7 @@ function rename(id, value) {
   const v = value.trim();
   st.editing = null;
   if (!b || v === b.label) { render(); return; }
-  if (v && st.bms.some((x) => x.id !== id && (x.label || '').toLowerCase() === v.toLowerCase())) { toast(t().dupName); render(); return; }
+  if (v && takenName(v, id)) { toast(t().dupName); render(); return; }
   if (!v && st.bms.some((x) => x.id !== id && x.page === b.page && !x.label)) { toast(t().unnamedTaken); render(); return; }
   act(() => { b.label = v; }, t().renamed, { close: false });
 }
@@ -308,6 +313,9 @@ function tapRibbon() {
 
 const ICON = (filled) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+const MULTI = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2.5h9a1 1 0 0 1 1 1V18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".7"/><path d="M5 5.5h10a1 1 0 0 1 1 1v15l-5.5-3.6L5 21.5v-15a1 1 0 0 1 1-1z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+// A bookmark dropping onto a page: the move goes to the page being read.
+const MOVEIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="9" width="15" height="12.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 9v5l2-1.3 2 1.3V9" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M12 1.5v5m-2.2-2.2L12 6.5l2.2-2.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v8a3 3 0 0 0 3 3h7m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const PEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
@@ -331,8 +339,8 @@ function menuHTML() {
       ${st.remove === 'yes' ? `<button class="ib danger" data-do="remove" data-id="${b.id}" data-tip="${esc(L.remove)}" aria-label="${esc(L.remove + ' ' + nameOf(b))}">${TRASH}</button>` : ''}</div>`).join('');
   const otherRows = others.map((b) => {
     const replaces = !b.label && unnamedHere;
-    return `<button class="row click" data-do="move" data-id="${b.id}" data-tip="${esc(replaces ? L.replaces : L.moveHere)}" aria-label="${esc(L.moveHere + ': ' + nameOf(b) + (replaces ? ', ' + L.replaces : ''))}">
-      <span class="ic" aria-hidden="true">${ARROW}</span>
+    return `<button class="row click" data-do="move" data-id="${b.id}" data-tip="${esc(replaces ? L.replaces(st.page) : L.moveHere(st.page))}" aria-label="${esc(L.moveHere(st.page) + ': ' + nameOf(b) + (replaces ? ', ' + L.replaces(st.page) : ''))}">
+      <span class="ic move" aria-hidden="true">${MOVEIN}</span>
       <span class="name">${esc(nameOf(b))}</span>
       ${replaces ? `<span class="warn" aria-hidden="true">!</span>` : ''}
       <span class="meta">${L.num(b.page)}</span>
@@ -366,7 +374,9 @@ function render() {
   document.documentElement.lang = st.lang;
   reader.dir = st.lang === 'ar' ? 'rtl' : 'ltr';
   reader.classList.toggle('phone', st.device === 'phone');
-  const marked = st.bms.some((b) => b.page === st.page);
+  const count = st.bms.filter((b) => b.page === st.page).length;
+  const marked = count > 0;
+  const ribbonLabel = count > 1 ? L.marked2(st.page, count) : marked ? L.marked(st.page) : L.unmarked(st.page);
   const lines = Array.from({ length: 15 }, (_, i) => i === 0 && st.page % 3 === 0
     ? '<div class="plate">سورة البقرة</div>'
     : `<div class="line" style="width:${i === 14 ? 62 : 100}%"></div>`).join('');
@@ -378,7 +388,7 @@ function render() {
         <div class="head">
           <div class="left">
             <button class="ribbon ${st.pop ? 'pop' : ''}" data-do="ribbon" aria-haspopup="dialog" aria-expanded="${st.open}"
-              aria-label="${marked ? L.marked(st.page) : L.unmarked(st.page)}" title="${marked ? L.marked(st.page) : L.unmarked(st.page)}">${ICON(marked)}</button>
+              aria-label="${ribbonLabel}" title="${ribbonLabel}">${count > 1 ? MULTI : ICON(marked)}</button>
             <span>${L.surah}</span>
           </div>
           <span>${L.juz(st.page < 22 ? 1 : st.page < 42 ? 2 : 3)}</span>
