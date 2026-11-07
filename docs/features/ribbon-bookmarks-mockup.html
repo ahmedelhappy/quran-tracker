@@ -1,0 +1,564 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page Ribbon Bookmarks</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap">
+<style>
+/* Layout: an options bar on top, then the reader mock: a mushaf page card with its
+   running head (where the ribbon lives) beside the bookmarks list. Phone mode puts the
+   list under the page and turns the menu into a bottom sheet. */
+:root {
+  --bg: #f9f9ff; --surface: #ffffff; --line: #dce2f3; --fg: #151c27; --muted: #5d6763;
+  --brand: #004f35; --brand-deep: #003527; --brand-soft: #e6f2ec;
+  --paper: #fdf8ec; --paper-line: #e8dcc0; --frame: #c9a85c; --ink-ghost: #d9ccad;
+  --warn-bg: #fff6e5; --warn-fg: #8a5300; --toast: #003527; --toast-fg: #ffffff; --danger: #b42318;
+  --shadow: 0 12px 40px rgba(0, 53, 39, .16); --lift: 0 10px 28px rgba(0, 53, 39, .22);
+  --ui: 'Inter', 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ar: 'Noto Sans Arabic', 'Inter', system-ui, sans-serif;
+  --mushaf: 'Amiri', 'Scheherazade New', serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111827; --surface: #1f2937; --line: #374151; --fg: #e5e7eb; --muted: #9ca3af;
+  --brand: #34d399; --brand-deep: #6ee7b7; --brand-soft: rgba(52, 211, 153, .12);
+  --paper: #1f1b14; --paper-line: #3b3222; --frame: #8a7440; --ink-ghost: #4a3f2b;
+  --warn-bg: rgba(245, 158, 11, .14); --warn-fg: #fbbf24; --toast: #065f46; --toast-fg: #ecfdf5; --danger: #f87171;
+  --shadow: 0 12px 40px rgba(0, 0, 0, .5); --lift: 0 10px 28px rgba(0, 0, 0, .55); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111827; --surface: #1f2937; --line: #374151; --fg: #e5e7eb; --muted: #9ca3af;
+  --brand: #34d399; --brand-deep: #6ee7b7; --brand-soft: rgba(52, 211, 153, .12);
+  --paper: #1f1b14; --paper-line: #3b3222; --frame: #8a7440; --ink-ghost: #4a3f2b;
+  --warn-bg: rgba(245, 158, 11, .14); --warn-fg: #fbbf24; --toast: #065f46; --toast-fg: #ecfdf5; --danger: #f87171;
+  --shadow: 0 12px 40px rgba(0, 0, 0, .5); --lift: 0 10px 28px rgba(0, 0, 0, .55); color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+h1 { font-size: 1.25rem; margin: 0; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 72ch; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.opt { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.opt-label { font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.seg button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 10px; font-size: .85rem; }
+.seg button[aria-pressed="true"] { background: var(--brand-deep); border-color: var(--brand-deep); color: var(--bg); }
+.chosen { font-size: .7rem; font-weight: 600; color: var(--brand); }
+
+.stage { display: flex; justify-content: center; }
+.reader { width: 100%; max-width: 980px; display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start;
+  background: var(--bg); border: 1px dashed var(--line); border-radius: 16px; padding: 64px 16px 16px; position: relative; overflow: hidden; min-height: 560px; }
+/* The strip above the page stands in for the app's navbar area: toasts appear
+   there, as they do in the app, and never cover the page or its ribbon. */
+.reader::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 52px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.reader.phone { max-width: 390px; grid-template-columns: minmax(0, 1fr); padding: 64px 12px 12px; }
+.reader.phone .side { order: 2; }
+.side { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.side h2 { margin: 0; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.side .empty { color: var(--muted); font-size: .85rem; margin: 0; }
+.bm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.bm { display: flex; align-items: center; gap: 4px; border-radius: 10px; padding: 3px 4px; background: var(--surface); position: relative; min-width: 0; }
+.bm.here { background: var(--brand-soft); }
+.bm.dragging { box-shadow: var(--lift); z-index: 5; transform-origin: center; transition: box-shadow .15s; cursor: grabbing; }
+.bm.dragging .grip { cursor: grabbing; }
+.grip { border: 0; background: transparent; width: 24px; height: 30px; border-radius: 6px; color: var(--muted); cursor: grab; touch-action: none; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.grip:hover { background: var(--brand-soft); color: var(--brand); }
+.grip svg { width: 12px; height: 16px; }
+.grip { position: relative; }
+/* The grip's tooltip, as the app's Tooltip shows one: on hover or keyboard focus,
+   after a short delay, never while dragging. */
+.grip::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); inset-inline-start: 0; white-space: nowrap;
+  background: var(--fg); color: var(--bg); font-size: .72rem; font-weight: 500; padding: 4px 8px; border-radius: 6px;
+  opacity: 0; transform: translateY(2px); pointer-events: none; transition: opacity .12s, transform .12s; z-index: 6; }
+.grip:hover::after, .grip:focus-visible::after { opacity: 1; transform: none; transition-delay: .35s; }
+.bm.dragging .grip::after { opacity: 0; }
+.nm { flex: 1; min-width: 0; border: 0; background: transparent; text-align: start; padding: 5px 6px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.nm:hover { background: var(--brand-soft); box-shadow: inset 0 -1px 0 var(--brand); }
+.nm-input { flex: 1; min-width: 0; border: 1px solid var(--brand); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 4px 6px; font: inherit; }
+.jump { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 8px; border: 0; background: transparent; padding: 5px 6px; border-radius: 6px; text-align: start; }
+.jump:hover { background: var(--brand-soft); }
+.jn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.pen { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; position: relative; }
+.pen:hover { background: var(--brand-soft); color: var(--brand); }
+.pen svg { width: 14px; height: 14px; }
+.pen::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); inset-inline-end: 0; white-space: nowrap; background: var(--fg); color: var(--bg); font-size: .72rem; padding: 4px 8px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 6; }
+.pen:hover::after, .pen:focus-visible::after { opacity: 1; transition-delay: .35s; }
+.go { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 2px 9px; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.go:hover { border-color: var(--brand); color: var(--brand); }
+.drop-hint { font-size: .72rem; color: var(--muted); }
+.reset { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 10px; align-self: start; font-size: .8rem; }
+
+.col { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; }
+.card { width: 100%; max-width: 440px; background: var(--paper); border: 1px solid var(--paper-line); border-radius: 18px; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; color: var(--muted); }
+.head .left { display: flex; align-items: center; gap: 6px; }
+.ribbon { width: 34px; height: 34px; border-radius: 10px; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: var(--brand); transition: background .15s; }
+.ribbon:hover { background: var(--brand-soft); }
+.ribbon svg { width: 20px; height: 20px; }
+.ribbon.pop svg { animation: pop .35s ease; }
+@keyframes pop { 40% { transform: scale(1.3); } }
+.frame { border: 3px double var(--frame); border-radius: 6px; padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; aspect-ratio: 576 / 852; justify-content: center; }
+.line { height: 9px; border-radius: 5px; background: var(--ink-ghost); }
+.plate { align-self: center; font: 700 1.05rem/1 var(--mushaf); color: var(--frame); border: 1px solid var(--frame); border-radius: 6px; padding: 6px 18px; }
+.foot { text-align: center; font: .85rem var(--mushaf); color: var(--muted); }
+.nav { display: flex; align-items: center; gap: 10px; }
+.nav button { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 6px 12px; }
+.nav .num { font-variant-numeric: tabular-nums; min-width: 92px; text-align: center; }
+
+.menu { position: absolute; z-index: 20; width: 310px; max-width: calc(100% - 24px); background: var(--surface); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px; display: flex; flex-direction: column; gap: 10px; animation: rise .16s ease; }
+@keyframes rise { from { opacity: 0; transform: translateY(-6px); } }
+.reader.phone .menu { inset: auto 0 0 0; width: auto; max-width: none; border-radius: 18px 18px 0 0; padding: 14px 14px 18px; animation: sheet .2s ease; }
+@keyframes sheet { from { transform: translateY(100%); } }
+.backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); z-index: 19; }
+.menu-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.menu-head b { font-size: .95rem; }
+.x { border: 0; background: transparent; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); }
+.x:hover { background: var(--brand-soft); }
+.sec { display: flex; flex-direction: column; gap: 4px; }
+.sec-title { font-size: .7rem; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding-inline: 4px; }
+.row { display: flex; align-items: center; gap: 6px; border-radius: 10px; padding: 4px 6px; min-width: 0; }
+.row.click { border: 0; background: transparent; width: 100%; text-align: start; padding: 7px 8px; }
+.row.click:hover, .row.click:focus-visible { background: var(--brand-soft); }
+.row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.ic { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+.ic.on { color: var(--brand); }
+.ic svg { width: 15px; height: 15px; }
+.ib { border: 0; background: transparent; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+.ib svg { width: 16px; height: 16px; }
+.ib:hover { background: var(--brand-soft); color: var(--brand); }
+.ib.danger:hover { color: var(--danger); }
+.ib.add { background: var(--brand-deep); color: var(--bg); }
+.ib.add:hover { background: var(--brand); color: var(--bg); }
+.warn { width: 16px; height: 16px; border-radius: 50%; background: var(--warn-bg); color: var(--warn-fg); font: 700 .7rem/16px var(--ui); text-align: center; flex: none; }
+/* One tooltip for every icon: on hover or keyboard focus, after a short delay. */
+[data-tip] { position: relative; }
+[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); inset-inline-end: 0; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  background: var(--fg); color: var(--bg); font: 500 .72rem/1.3 var(--ui); padding: 4px 8px; border-radius: 6px; opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 40; }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transition-delay: .35s; }
+.row.click[data-tip]::after { inset-inline-end: 8px; }
+.del { border: 0; background: transparent; color: var(--danger); font-size: .8rem; font-weight: 600; padding: 4px 6px; border-radius: 6px; }
+.del:hover { background: var(--brand-soft); }
+.note { font-size: .74rem; color: var(--warn-fg); background: var(--warn-bg); border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+.newrow { display: flex; gap: 6px; align-items: center; }
+.newrow input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 7px 9px; font: inherit; }
+.btn { border: 0; background: var(--brand-deep); color: var(--bg); border-radius: 8px; padding: 7px 12px; font-weight: 600; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.err { font-size: .78rem; color: var(--warn-fg); padding-inline: 4px; }
+.sub { font-size: .8rem; color: var(--muted); margin: 0; padding-inline: 4px; }
+hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+.toast { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 30; background: var(--toast); color: var(--toast-fg);
+  border-radius: 12px; padding: 9px 12px; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow); font-size: .88rem; max-width: calc(100% - 24px); animation: rise .18s ease; }
+.toast button { border: 0; background: transparent; color: var(--toast-fg); font-weight: 700; text-decoration: underline; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+[dir="rtl"] { font-family: var(--ar); }
+@media (max-width: 720px) { .reader { grid-template-columns: minmax(0, 1fr); } .reader .side { order: 2; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1>Bookmarking from the page ribbon</h1>
+    <ul class="lede" style="margin:0;padding-inline-start:1.2em">
+      <li>Outline ribbon = page not marked; filled = marked.</li>
+      <li>A tap on the ribbon always opens a menu: this page's bookmarks (click a name to rename, the bin removes), your other bookmarks to move here (top one first), and a field to add a new one. Hover any icon for what it does.</li>
+      <li>In the bookmarks list, click a bookmark to go to its page; the pencil renames it.</li>
+      <li>Reorder in the list by dragging the grip.</li>
+    </ul>
+    <p class="lede">Final design. Tap the ribbon at the top of the page; click a bookmark's name to rename it; drag the grip to reorder (hover it for a hint), or focus it and press Alt + ↑/↓. Nothing is saved; "Start over" resets.</p>
+  </header>
+
+  <section class="options" aria-label="Mockup options">
+    <div class="opt">
+      <span class="opt-label">Starting point</span>
+      <div class="seg" data-opt="scenario">
+        <button data-v="none" aria-pressed="false">No bookmarks</button>
+        <button data-v="one" aria-pressed="false">One bookmark</button>
+        <button data-v="many" aria-pressed="true">Several</button>
+      </div>
+    </div>
+    <div class="opt">
+      <span class="opt-label">View</span>
+      <div class="seg" data-opt="device">
+        <button data-v="desktop" aria-pressed="true">Desktop</button>
+        <button data-v="phone" aria-pressed="false">Phone</button>
+      </div>
+      <div class="seg" data-opt="lang">
+        <button data-v="en" aria-pressed="true">English</button>
+        <button data-v="ar" aria-pressed="false">العربية</button>
+      </div>
+      <div class="seg" data-opt="theme">
+        <button data-v="light" aria-pressed="false">Light</button>
+        <button data-v="dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="stage"><div class="reader" id="reader"></div></div>
+</div>
+
+<script>
+function ar(n) { return String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[d]); }
+const T = {
+  en: {
+    bookmarks: 'Bookmarks', none: 'No bookmarks yet. Tap the ribbon on a page to add one.', page: (n) => `Page ${n}`, pageOf: (n) => `page ${n}`, num: (n) => n,
+    menuTitle: (n) => `Bookmark page ${n}`, onPage: 'On this page', moveHere: 'Move here', newB: 'New bookmark',
+    namePh: 'Name (optional)', newPh: 'New bookmark, name optional', add: 'Add bookmark', nameReq: 'Your first bookmark', firstHint: 'A name is optional. Without one it shows as the page number.',
+    save: 'Save', remove: 'Remove', replaces: 'Move here, replacing the unnamed bookmark on this page',
+    added: (n) => `Bookmarked page ${n}`, moved: (l, n) => `${l} moved to page ${n}`, removed: 'Bookmark removed',
+    renamed: 'Bookmark renamed', reordered: 'Order saved', undo: 'Undo', undone: 'Undone', close: 'Close',
+    unnamedTaken: 'This page already has a bookmark without a name. Give this one a name to keep both.',
+    dupName: 'You already have a bookmark with this name.', prev: 'Previous page', next: 'Next page',
+    marked: (n) => `Page ${n} is bookmarked. Open its bookmarks`, unmarked: (n) => `Bookmark page ${n}`,
+    surah: 'Al-Baqarah', juz: (n) => `Juz ${n}`, start: 'Start over', go: (n) => `Go to page ${n}`,
+    rename: (l) => `Rename ${l}`, drag: (l) => `Reorder ${l}. Drag, or press Alt and an arrow key`, dropHint: 'Drag to reorder',
+    movedTo: (l, i, n) => `${l} moved to position ${i} of ${n}`,
+  },
+  ar: {
+    bookmarks: 'العلامات', none: 'لا توجد علامات بعد. اضغط على الشريط أعلى الصفحة لإضافة واحدة.', page: (n) => `صفحة ${ar(n)}`, pageOf: (n) => `صفحة ${ar(n)}`, num: (n) => ar(n),
+    menuTitle: (n) => `علامة على صفحة ${ar(n)}`, onPage: 'على هذه الصفحة', moveHere: 'انقلها إلى هنا', newB: 'علامة جديدة',
+    namePh: 'الاسم (اختياري)', newPh: 'علامة جديدة، الاسم اختياري', add: 'أضف علامة', nameReq: 'علامتك الأولى', firstHint: 'الاسم اختياري. بدونه تظهر برقم الصفحة.',
+    save: 'حفظ', remove: 'حذف', replaces: 'انقلها إلى هنا مكان العلامة التي بلا اسم',
+    added: (n) => `أضيفت علامة على صفحة ${ar(n)}`, moved: (l, n) => `نُقلت «${l}» إلى صفحة ${ar(n)}`, removed: 'حُذفت العلامة',
+    renamed: 'غُيّر اسم العلامة', reordered: 'حُفظ الترتيب', undo: 'تراجع', undone: 'تم التراجع', close: 'إغلاق',
+    unnamedTaken: 'على هذه الصفحة علامة بلا اسم. أعطِ هذه اسمًا لتبقى الاثنتان.',
+    dupName: 'لديك علامة بهذا الاسم من قبل.', prev: 'الصفحة السابقة', next: 'الصفحة التالية',
+    marked: (n) => `صفحة ${ar(n)} عليها علامة. افتح علاماتها`, unmarked: (n) => `ضع علامة على صفحة ${ar(n)}`,
+    surah: 'البقرة', juz: (n) => `الجزء ${ar(n)}`, start: 'ابدأ من جديد', go: (n) => `اذهب إلى صفحة ${ar(n)}`,
+    rename: (l) => `إعادة تسمية ${l}`, drag: (l) => `أعد ترتيب ${l}. اسحب، أو اضغط Alt وسهمًا`, dropHint: 'اسحب لإعادة الترتيب',
+    movedTo: (l, i, n) => `نُقلت ${l} إلى الموضع ${ar(i)} من ${ar(n)}`,
+  },
+};
+const SCENARIOS = {
+  none: [],
+  one: [{ id: 1, label: 'Where I stopped', page: 42 }],
+  many: [
+    { id: 1, label: 'Where I stopped', page: 42 },
+    { id: 2, label: 'Review', page: 47 },
+    { id: 3, label: '', page: 12 },
+    { id: 4, label: 'Ayat al-Kursi', page: 42 },
+  ],
+};
+const AR_NAMES = { 'Where I stopped': 'حيث توقفت', 'Review': 'مراجعة', 'Ayat al-Kursi': 'آية الكرسي' };
+const st = { single: 'menu', remove: 'yes', scenario: 'many', device: 'desktop', lang: 'en', page: 45, bms: [], seq: 10,
+  open: false, editing: null, draft: '', err: '', toast: null, undo: null, pop: false, live: '' };
+const reader = document.getElementById('reader');
+const t = () => T[st.lang];
+const shownLabel = (b) => (st.lang === 'ar' && AR_NAMES[b.label]) || b.label;
+const nameOf = (b) => shownLabel(b) || t().page(b.page);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clone = (x) => JSON.parse(JSON.stringify(x));
+
+function reset(s) { st.scenario = s; st.bms = clone(SCENARIOS[s]); st.page = 45; st.open = false; st.toast = null; st.editing = null; st.err = ''; st.undo = null; render(); }
+
+let toastTimer;
+function toast(msg, undoable) {
+  st.toast = { msg, undoable };
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { st.toast = null; render(); }, 5000);
+}
+function act(fn, msg, { close = true } = {}) {
+  const before = clone(st.bms);
+  fn();
+  st.undo = before;
+  if (close) st.open = false;
+  st.editing = null; st.err = ''; st.pop = true; st.draft = '';
+  toast(msg, true);
+  render();
+}
+
+function addHere(label) {
+  label = label.trim();
+  if (!label && st.bms.some((b) => b.page === st.page && !b.label)) { st.err = t().unnamedTaken; render(); return; }
+  if (label && st.bms.some((b) => (b.label || '').toLowerCase() === label.toLowerCase())) { st.err = t().dupName; render(); return; }
+  act(() => { st.bms.push({ id: ++st.seq, label, page: st.page }); }, t().added(st.page));
+}
+function moveHere(id) {
+  const b = st.bms.find((x) => x.id === id);
+  const shown = nameOf(b);
+  act(() => {
+    if (!b.label) st.bms = st.bms.filter((x) => !(x.page === st.page && !x.label && x.id !== id));
+    b.page = st.page;
+  }, t().moved(shown, st.page));
+}
+function rename(id, value) {
+  const b = st.bms.find((x) => x.id === id);
+  const v = value.trim();
+  st.editing = null;
+  if (!b || v === b.label) { render(); return; }
+  if (v && st.bms.some((x) => x.id !== id && (x.label || '').toLowerCase() === v.toLowerCase())) { toast(t().dupName); render(); return; }
+  if (!v && st.bms.some((x) => x.id !== id && x.page === b.page && !x.label)) { toast(t().unnamedTaken); render(); return; }
+  act(() => { b.label = v; }, t().renamed, { close: false });
+}
+
+function tapRibbon() {
+  const here = st.bms.filter((b) => b.page === st.page);
+  if (!here.length && st.bms.length === 1 && st.single === 'direct') return moveHere(st.bms[0].id);
+  st.open = !st.open; st.err = ''; st.editing = null; st.draft = '';
+  render();
+  if (st.open) setTimeout(() => (reader.querySelector('.menu input') || reader.querySelector('.menu button'))?.focus(), 0);
+}
+
+const ICON = (filled) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+const ARROW = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v8a3 3 0 0 0 3 3h7m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const PLUS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const PEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+const GRIP = '<svg viewBox="0 0 12 16" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="9" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="9" cy="13" r="1.4"/></g></svg>';
+
+// A name that is a button until clicked, then an input: Enter or leaving saves, Escape cancels.
+const nameField = (b, where) => st.editing === `${where}:${b.id}`
+  ? `<input class="nm-input" data-edit="${b.id}" value="${esc(shownLabel(b))}" placeholder="${esc(t().page(b.page))}" aria-label="${esc(t().rename(nameOf(b)))}">`
+  : `<button class="nm" data-do="edit" data-where="${where}" data-id="${b.id}" title="${esc(t().rename(nameOf(b)))}" aria-label="${esc(t().rename(nameOf(b)))}">${esc(nameOf(b))}</button>`;
+
+function menuHTML() {
+  const L = t();
+  const here = st.bms.filter((b) => b.page === st.page);
+  const others = st.bms.filter((b) => b.page !== st.page);
+  const unnamedHere = here.some((b) => !b.label);
+  // Words only where they carry the content (the names); everything else is an
+  // icon whose meaning is in its tooltip and accessible name.
+  const hereRows = here.map((b) => `<div class="row">
+      <span class="ic on" data-tip="${esc(L.onPage)}" aria-hidden="true">${ICON(true)}</span>
+      ${nameField(b, 'menu')}
+      ${st.remove === 'yes' ? `<button class="ib danger" data-do="remove" data-id="${b.id}" data-tip="${esc(L.remove)}" aria-label="${esc(L.remove + ' ' + nameOf(b))}">${TRASH}</button>` : ''}</div>`).join('');
+  const otherRows = others.map((b) => {
+    const replaces = !b.label && unnamedHere;
+    return `<button class="row click" data-do="move" data-id="${b.id}" data-tip="${esc(replaces ? L.replaces : L.moveHere)}" aria-label="${esc(L.moveHere + ': ' + nameOf(b) + (replaces ? ', ' + L.replaces : ''))}">
+      <span class="ic" aria-hidden="true">${ARROW}</span>
+      <span class="name">${esc(nameOf(b))}</span>
+      ${replaces ? `<span class="warn" aria-hidden="true">!</span>` : ''}
+      <span class="meta">${L.num(b.page)}</span>
+    </button>`;
+  }).join('');
+  return `${st.device === 'phone' ? '<div class="backdrop" data-do="close"></div>' : ''}
+  <div class="menu" role="dialog" aria-modal="${st.device === 'phone'}" aria-label="${L.menuTitle(st.page)}">
+    <div class="menu-head"><b>${L.page(st.page)}</b><button class="x" data-do="close" data-tip="${esc(L.close)}" aria-label="${L.close}">✕</button></div>
+    ${here.length ? `<div class="sec">${hereRows}</div><hr class="sep">` : ''}
+    ${others.length ? `<div class="sec">${otherRows}</div><hr class="sep">` : ''}
+    <form class="newrow" data-new><input id="newname" placeholder="${esc(L.newPh)}" value="${esc(st.draft)}" aria-label="${esc(L.newB)}">
+      <button class="ib add" data-tip="${esc(L.add)}" aria-label="${esc(L.add)}">${PLUS}</button></form>
+    ${st.err ? `<span class="err" role="alert">${esc(st.err)}</span>` : ''}
+  </div>`;
+}
+
+function listHTML() {
+  const L = t();
+  if (!st.bms.length) return `<p class="empty">${L.none}</p>`;
+  return `<ul class="bm-list">${st.bms.map((b) => `<li class="bm ${b.page === st.page ? 'here' : ''}" data-id="${b.id}">
+      <button class="grip" data-grip="${b.id}" data-tip="${esc(L.dropHint)}" aria-label="${esc(L.drag(nameOf(b)))}">${GRIP}</button>
+      ${st.editing === `side:${b.id}` ? nameField(b, 'side') : `<button class="jump" data-do="go" data-page="${b.page}" aria-label="${esc(L.go(b.page))}"><span class="jn">${esc(nameOf(b))}</span><span class="pg">${L.num(b.page)}</span></button>
+      <button class="pen" data-do="edit" data-where="side" data-id="${b.id}" data-tip="${esc(L.rename(nameOf(b)))}" aria-label="${esc(L.rename(nameOf(b)))}">${PEN}</button>`}
+    </li>`).join('')}</ul>`;
+}
+
+function render() {
+  const L = t();
+  const active = document.activeElement;
+  const refocusGrip = active?.dataset?.grip;
+  document.documentElement.lang = st.lang;
+  reader.dir = st.lang === 'ar' ? 'rtl' : 'ltr';
+  reader.classList.toggle('phone', st.device === 'phone');
+  const marked = st.bms.some((b) => b.page === st.page);
+  const lines = Array.from({ length: 15 }, (_, i) => i === 0 && st.page % 3 === 0
+    ? '<div class="plate">سورة البقرة</div>'
+    : `<div class="line" style="width:${i === 14 ? 62 : 100}%"></div>`).join('');
+  reader.innerHTML = `
+    <aside class="side"><h2>${L.bookmarks}</h2>${listHTML()}
+      <button class="reset" data-do="start">${L.start}</button></aside>
+    <div class="col">
+      <div class="card">
+        <div class="head">
+          <div class="left">
+            <button class="ribbon ${st.pop ? 'pop' : ''}" data-do="ribbon" aria-haspopup="dialog" aria-expanded="${st.open}"
+              aria-label="${marked ? L.marked(st.page) : L.unmarked(st.page)}" title="${marked ? L.marked(st.page) : L.unmarked(st.page)}">${ICON(marked)}</button>
+            <span>${L.surah}</span>
+          </div>
+          <span>${L.juz(st.page < 22 ? 1 : st.page < 42 ? 2 : 3)}</span>
+        </div>
+        <div class="frame" aria-hidden="true">${lines}</div>
+        <div class="foot">${ar(st.page)}</div>
+      </div>
+      <div class="nav">
+        <button data-do="next" aria-label="${L.next}">←</button>
+        <span class="num">${L.page(st.page)}</span>
+        <button data-do="prev" aria-label="${L.prev}">→</button>
+      </div>
+    </div>
+    ${st.open ? menuHTML() : ''}
+    ${st.toast ? `<div class="toast" role="status"><span>${esc(st.toast.msg)}</span>${st.toast.undoable && st.undo ? `<button data-do="undo">${L.undo}</button>` : ''}</div>` : ''}
+    <div class="sr" aria-live="polite">${esc(st.live)}</div>`;
+  st.pop = false;
+  if (st.open && st.device !== 'phone') placeMenu();
+  const editInput = reader.querySelector('[data-edit]');
+  if (editInput) { editInput.focus(); editInput.select(); }
+  if (refocusGrip) reader.querySelector(`[data-grip="${refocusGrip}"]`)?.focus();
+}
+
+function placeMenu() {
+  const menu = reader.querySelector('.menu');
+  const rib = reader.querySelector('.ribbon');
+  if (!menu || !rib) return;
+  const r = reader.getBoundingClientRect(), b = rib.getBoundingClientRect();
+  menu.style.top = `${b.bottom - r.top + 6}px`;
+  if (reader.dir === 'rtl') menu.style.right = `${Math.max(12, r.right - b.right)}px`;
+  else menu.style.left = `${Math.max(12, Math.min(b.left - r.left, r.width - menu.offsetWidth - 12))}px`;
+}
+
+// ── Drag to reorder: the grabbed row follows the pointer; the others glide
+// into their new places (FLIP), and the order is kept on release. ──
+let drag = null;
+function flip(list, mutate) {
+  const before = new Map([...list.children].map((el) => [el, el.getBoundingClientRect().top]));
+  mutate();
+  for (const el of list.children) {
+    if (el === drag?.el) continue;
+    const dy = before.get(el) - el.getBoundingClientRect().top;
+    if (!dy) continue;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    requestAnimationFrame(() => { el.style.transition = 'transform .18s ease'; el.style.transform = ''; });
+  }
+}
+reader.addEventListener('pointerdown', (e) => {
+  const grip = e.target.closest('[data-grip]');
+  if (!grip || e.button > 0) return;
+  e.preventDefault();
+  const el = grip.closest('.bm');
+  const list = el.parentElement;
+  drag = { el, list, startY: e.clientY, baseTop: el.getBoundingClientRect().top, before: clone(st.bms) };
+  el.classList.add('dragging');
+  el.style.transition = 'none';
+  grip.setPointerCapture(e.pointerId);
+});
+reader.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const { el, list } = drag;
+  const y = e.clientY;
+  for (const sib of list.children) {
+    if (sib === el) continue;
+    const r = sib.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    const elTop = el.getBoundingClientRect().top - (parseFloat(el.dataset.dy) || 0);
+    if (y < mid && r.top < elTop) { flip(list, () => list.insertBefore(el, sib)); break; }
+    if (y > mid && r.top > elTop) { flip(list, () => list.insertBefore(el, sib.nextSibling)); break; }
+  }
+  const natural = el.getBoundingClientRect().top - (parseFloat(el.dataset.dy) || 0);
+  // The row moves up and down only, and never leaves the list: it stops at the
+  // first and last slots however far the pointer goes.
+  const lr = list.getBoundingClientRect();
+  const h = el.offsetHeight;
+  const want = y - drag.startY - (natural - drag.baseTop);
+  const dy = Math.max(lr.top - natural, Math.min(lr.bottom - h - natural, want));
+  el.dataset.dy = dy;
+  el.style.transform = `translateY(${dy}px) scale(1.02)`;
+});
+function endDrag() {
+  if (!drag) return;
+  const { el, list, before } = drag;
+  el.style.transition = 'transform .18s ease';
+  el.style.transform = '';
+  delete el.dataset.dy;
+  const order = [...list.children].map((li) => Number(li.dataset.id));
+  drag = null;
+  setTimeout(() => {
+    el.classList.remove('dragging');
+    const changed = order.some((id, i) => id !== before[i].id);
+    if (!changed) { render(); return; }
+    st.bms = order.map((id) => st.bms.find((b) => b.id === id));
+    st.undo = before;
+    toast(t().reordered, true);
+    render();
+  }, 180);
+}
+reader.addEventListener('pointerup', endDrag);
+reader.addEventListener('pointercancel', endDrag);
+
+reader.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-do]');
+  if (!el) return;
+  const id = Number(el.dataset.id);
+  switch (el.dataset.do) {
+    case 'ribbon': tapRibbon(); break;
+    case 'close': st.open = false; render(); reader.querySelector('.ribbon')?.focus(); break;
+    // Forward is LEFTWARD in a mushaf, in both languages.
+    case 'next': st.page = Math.min(604, st.page + 1); st.open = false; render(); break;
+    case 'prev': st.page = Math.max(1, st.page - 1); st.open = false; render(); break;
+    case 'go': st.page = Number(el.dataset.page); st.open = false; render(); break;
+    case 'move': moveHere(id); break;
+    case 'remove': act(() => { st.bms = st.bms.filter((b) => b.id !== id); }, t().removed); break;
+    case 'edit': st.editing = `${el.dataset.where}:${id}`; render(); break;
+    case 'undo': if (st.undo) { st.bms = st.undo; st.undo = null; st.toast = { msg: t().undone }; render(); } break;
+    case 'start': reset(st.scenario); break;
+  }
+});
+reader.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (e.target.matches('[data-new]')) { st.draft = e.target.querySelector('input').value; addHere(st.draft); }
+});
+reader.addEventListener('input', (e) => {
+  if (e.target.id === 'newname') {
+    st.draft = e.target.value;
+  }
+});
+reader.addEventListener('keydown', (e) => {
+  const input = e.target.closest('[data-edit]');
+  if (input) {
+    if (e.key === 'Enter') { e.preventDefault(); rename(Number(input.dataset.edit), input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); st.editing = null; render(); }
+    return;
+  }
+  const grip = e.target.closest('[data-grip]');
+  if (grip && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    const id = Number(grip.dataset.grip);
+    const i = st.bms.findIndex((b) => b.id === id);
+    const j = i + (e.key === 'ArrowUp' ? -1 : 1);
+    if (j < 0 || j >= st.bms.length) return;
+    const before = clone(st.bms);
+    const list = reader.querySelector('.bm-list');
+    const [moved] = st.bms.splice(i, 1);
+    st.bms.splice(j, 0, moved);
+    flip(list, () => {
+      const li = list.children[i];
+      list.insertBefore(li, e.key === 'ArrowUp' ? list.children[j] : list.children[j].nextSibling);
+    });
+    st.undo = before;
+    st.live = t().movedTo(nameOf(moved), j + 1, st.bms.length);
+    toast(t().reordered, true);
+    setTimeout(render, 190);
+  }
+});
+reader.addEventListener('focusout', (e) => {
+  const input = e.target.closest?.('[data-edit]');
+  if (input && st.editing) rename(Number(input.dataset.edit), input.value);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && st.open && !st.editing) { st.open = false; render(); reader.querySelector('.ribbon')?.focus(); }
+  if (!st.open && !e.target.closest('input') && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    st.page = Math.max(1, Math.min(604, st.page + (e.key === 'ArrowLeft' ? 1 : -1))); render();
+  }
+});
+document.addEventListener('click', (e) => {
+  if (st.open && st.device !== 'phone' && !e.target.closest('.menu') && !e.target.closest('.ribbon')) { st.open = false; render(); }
+});
+
+document.querySelectorAll('.seg[data-opt]').forEach((seg) => seg.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-v]');
+  if (!b) return;
+  const opt = seg.dataset.opt, v = b.dataset.v;
+  seg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  if (opt === 'scenario') return reset(v);
+  if (opt === 'theme') { document.documentElement.setAttribute('data-theme', v); return; }
+  st[opt] = v; st.open = false; render();
+}));
+
+reset('many');
+</script>

@@ -48,14 +48,15 @@ _Last updated: 2026-11-07_
 - [ ] Move the rate limiters to Mongo or Redis before running a second server instance
 
 ## Planned features
-- [ ] **Bookmark from the page ribbon** (design agreed 2026-11-07; mockup: https://claude.ai/artifact/FB61YHeMqfmHGmHBGbJqVm)
+- [ ] **Bookmark from the page ribbon** — design agreed 2026-11-07, branch `feat/ribbon-bookmarks`;
+      full design and decisions in [features/ribbon-bookmarks.md](features/ribbon-bookmarks.md)
   - Outline ribbon on every page header, filled when the page holds a bookmark
-  - A tap always opens a menu (bottom sheet on phones): this page's bookmarks (click
-    the name to rename, Remove with Undo), "Move a bookmark here" (the top bookmark of
-    the user's order first), "New bookmark" (name optional)
+  - A tap always opens a small, icon-led menu (bottom sheet on phones): this page's
+    bookmarks (click the name to rename, bin removes with Undo), the other bookmarks to
+    move here (top one first), a field to add a new one (name optional); tooltips, not text
   - Sidebar list as on `main`: click a bookmark to go to its page; a pencil renames it
   - Later, maybe: a quicker way to move the main bookmark (one tap / a second button)
-  - Reorder the bookmarks list by dragging a grip (tooltip on hover; Alt+↑/↓ on the keyboard)
+  - Reorder the bookmarks list by dragging a grip, kept inside the list (tooltip on hover; Alt+↑/↓)
   - Server: a saved order for bookmarks (an `order` field and a reorder endpoint)
   - Toasts in the top bar, never over the page
 
