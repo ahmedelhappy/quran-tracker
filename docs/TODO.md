@@ -47,5 +47,19 @@ _Last updated: 2026-11-07_
 - [ ] Split Settings.jsx into sections
 - [ ] Move the rate limiters to Mongo or Redis before running a second server instance
 
+## Planned features
+- [ ] **Bookmark from the page ribbon** (design agreed 2026-11-07; mockup: https://claude.ai/artifact/FB61YHeMqfmHGmHBGbJqVm)
+  - Outline ribbon on every page header, filled when the page holds a bookmark
+  - Exactly one bookmark: a tap on another page moves it there at once, with Undo
+  - Otherwise a menu (bottom sheet on phones): this page's bookmarks (click the name
+    to rename, Remove with Undo), "Move a bookmark here", "New bookmark" (name optional)
+  - Reorder the bookmarks list by dragging a grip (tooltip on hover; Alt+↑/↓ on the keyboard)
+  - Server: a saved order for bookmarks (an `order` field and a reorder endpoint)
+  - Toasts in the top bar, never over the page
+
+## Future
+- [ ] Rework the UI/UX as a whole: less text on screen, calmer layouts
+- [ ] Design and test the phone view and its UX properly (barely tried so far)
+
 ## Done
 - [x] Audit fixes Phases 1–12, logged in docs/IMPROVEMENT_PLAN.md (2026-11-05)
