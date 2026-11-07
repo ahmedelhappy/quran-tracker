@@ -50,9 +50,11 @@ _Last updated: 2026-11-07_
 ## Planned features
 - [ ] **Bookmark from the page ribbon** (design agreed 2026-11-07; mockup: https://claude.ai/artifact/FB61YHeMqfmHGmHBGbJqVm)
   - Outline ribbon on every page header, filled when the page holds a bookmark
-  - Exactly one bookmark: a tap on another page moves it there at once, with Undo
-  - Otherwise a menu (bottom sheet on phones): this page's bookmarks (click the name
-    to rename, Remove with Undo), "Move a bookmark here", "New bookmark" (name optional)
+  - A tap always opens a menu (bottom sheet on phones): this page's bookmarks (click
+    the name to rename, Remove with Undo), "Move a bookmark here" (the top bookmark of
+    the user's order first), "New bookmark" (name optional)
+  - Sidebar list as on `main`: click a bookmark to go to its page; a pencil renames it
+  - Later, maybe: a quicker way to move the main bookmark (one tap / a second button)
   - Reorder the bookmarks list by dragging a grip (tooltip on hover; Alt+↑/↓ on the keyboard)
   - Server: a saved order for bookmarks (an `order` field and a reorder endpoint)
   - Toasts in the top bar, never over the page
