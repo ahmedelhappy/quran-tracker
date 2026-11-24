@@ -261,8 +261,11 @@ export default function MemorizedUnitPicker({
           </div>
           {editor ? (
             <>
-              {countLine(fullJuzCount, 'settings.juzSelected')}
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
+              <div className="flex items-center gap-1">
+                {countLine(fullJuzCount, 'settings.juzSelected')}
+                {/* The three-tap cycle and the colours are explained in the hint. */}
+                <InfoHint text={t('settings.juzGridNote')} label={t('hints.howToSelect')} size="xs" className="mt-2" />
+              </div>
             </>
           ) : (
             <div className="flex items-center justify-between mt-2">
@@ -383,8 +386,10 @@ export default function MemorizedUnitPicker({
         <div>
           {editor ? (
             <>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.rangeTabTitle')}</p>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mb-3">{t('settings.rangeTabHint')}</p>
+              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3 flex items-center gap-1.5">
+                {t('settings.rangeTabTitle')}
+                <InfoHint text={t('settings.rangeTabHint')} label={t('settings.rangeTabTitle')} size="xs" />
+              </p>
             </>
           ) : (
             <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">

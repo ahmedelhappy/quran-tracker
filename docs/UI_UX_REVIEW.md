@@ -24,7 +24,7 @@ or a product decision; nothing in code. Mockups of the top proposals:
 phone view is a desktop layout stacked into one column.** Every page opens with a subtitle
 that restates the page name, most settings carry a full sentence under the label, and the
 reader puts a dozen labelled sections above the mushaf on a phone. Accessibility is
-close: one unnamed control and 217 contrast failures, almost all from five grey/teal values.
+close: every control has a name, but 217 nodes fail contrast, almost all from five grey/teal values.
 
 Ranked by impact (effort in brackets):
 
@@ -106,8 +106,7 @@ Smaller ones: amber `#e17100` on `#fef3c6` → `#ab5600`; ribbon gold `#b38866` 
 
 Keep Feather (`react-icons/fi`) as the only set; today Dashboard mixes Feather with
 `react-icons/md`-style filled shapes in the stat cards. 20 px in toolbars, 16 px inline,
-1.75 stroke. Every icon-only control gets `Tooltip` + `aria-label` (all have names now except
-the leaderboard switch, fixed in Part B).
+1.75 stroke. Every icon-only control gets `Tooltip` + `aria-label`; the sweep found every one named.
 
 ### 2.5 Motion
 
@@ -239,8 +238,9 @@ single column.
   (the confirm dialogs still say "This cannot be undone").
 - [DECLUTTER] `settings.singleKeysDesc` (:359) is a shortcut list in running text ("/ to search,
   S for the sidebar, P, H, E, T and 1-4…") → hint next to the switch.
-- [DECLUTTER] The leaderboard opt-in switch (:482) has no accessible name (axe `button-name`,
-  critical) → `aria-labelledby` its visible label.
+- Checked: both switches (single-key shortcuts :363, leaderboard opt-in :482) are named by
+  `aria-labelledby`; the audit's unnamed-switch finding is already fixed. Their descriptions
+  move into hints but stay as visually hidden `aria-describedby` text.
 - [DECLUTTER] `MemorizedUnitPicker`: `settings.juzGridNote` (:265) "Orange = partially memorized…
   Click to select all → click again to mark for removal (red) → click once more to restore."
   and `settings.rangeTabHint` (:387) → hints (shared with Onboarding).

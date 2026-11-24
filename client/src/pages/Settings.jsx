@@ -355,8 +355,12 @@ function SingleKeyShortcutsRow() {
   return (
     <div className="flex items-center justify-between gap-4 mt-6 pt-6 border-t border-[#dce2f3] dark:border-gray-700">
       <div className="min-w-0">
-        <p id="settings-single-keys-label" className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.singleKeys')}</p>
-        <p id="settings-single-keys-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.singleKeysDesc')}</p>
+        <div className="flex items-center gap-1.5">
+          <p id="settings-single-keys-label" className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.singleKeys')}</p>
+          <InfoHint text={t('settings.singleKeysDesc')} label={t('settings.singleKeys')} />
+        </div>
+        {/* Still describes the switch for screen readers; sighted users get it from the hint. */}
+        <p id="settings-single-keys-hint" className="sr-only">{t('settings.singleKeysDesc')}</p>
       </div>
       <button
         type="button"
@@ -438,13 +442,17 @@ export function CommunityCard() {
       <div className="flex items-center gap-3 mb-2">
         <FiAward className="w-5 h-5 text-[#003527] dark:text-emerald-400" />
         <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.community.title')}</h3>
+        <InfoHint text={t('settings.community.desc')} label={t('settings.community.title')} />
       </div>
-      <p className="text-sm text-[#404944] dark:text-gray-400 mb-5">{t('settings.community.desc')}</p>
+      <div className="mb-3" />
 
       <div className="mb-5 max-w-sm">
-        <label htmlFor="settings-public-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
-          {t('settings.community.displayName')}
-        </label>
+        <div className="flex items-center gap-1 mb-1.5">
+          <label htmlFor="settings-public-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider">
+            {t('settings.community.displayName')}
+          </label>
+          <InfoHint text={t('settings.community.displayNameHint')} label={t('settings.community.displayName')} size="xs" />
+        </div>
         <div className="flex gap-2">
           <input
             id="settings-public-name"
@@ -469,13 +477,16 @@ export function CommunityCard() {
         {nameError && (
           <p id="settings-public-name-error" className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1.5">{nameError}</p>
         )}
-        <p id="settings-public-name-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
+        <p id="settings-public-name-hint" className="sr-only">{t('settings.community.displayNameHint')}</p>
       </div>
 
       <div className="flex items-center justify-between gap-4 pt-4 border-t border-[#dce2f3] dark:border-gray-700">
         <div>
-          <p id="settings-optin-label" className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
-          <p id="settings-optin-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
+          <div className="flex items-center gap-1.5">
+            <p id="settings-optin-label" className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
+            <InfoHint text={t('settings.community.optInHint')} label={t('settings.community.optInLabel')} />
+          </div>
+          <p id="settings-optin-hint" className="sr-only">{t('settings.community.optInHint')}</p>
         </div>
         <button
           type="button"
@@ -830,9 +841,11 @@ export default function Settings() {
       <Navbar />
 
       <main id="main-content" className={`flex-grow pt-[100px] ${isDirty ? 'pb-36' : 'pb-24'} px-6 max-w-[1280px] w-full mx-auto`}>
-        <div className="mb-12">
-          <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('settings.title')}</h1>
-          <p className="text-lg text-[#404944] dark:text-gray-400">{t('settings.subtitle')}</p>
+        <div className="mb-8">
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.title')}</h1>
+            <InfoHint text={t('settings.subtitle')} label={t('hints.aboutPage')} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -894,9 +907,11 @@ export default function Settings() {
                       {user?.name?.[0]?.toUpperCase() ?? 'U'}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{user?.name}</p>
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1">
+                        {user?.name}
+                        <InfoHint text={t('settings.avatarHint')} label={t('hints.moreInfo')} size="xs" />
+                      </p>
                       <p className="text-xs text-[#707974] dark:text-gray-400">{user?.email}</p>
-                      <p className="text-xs text-[#bfc9c3] dark:text-gray-500 mt-1">{t('settings.avatarHint')}</p>
                     </div>
                   </div>
 
@@ -915,9 +930,12 @@ export default function Settings() {
                   </div>
 
                   <div className="mb-6">
-                    <label htmlFor="settings-email" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
-                      {t('auth.email')}
-                    </label>
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <label htmlFor="settings-email" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider">
+                        {t('auth.email')}
+                      </label>
+                      <InfoHint text={t('settings.emailHint')} label={t('auth.email')} size="xs" />
+                    </div>
                     <input
                       id="settings-email"
                       type="email"
@@ -926,7 +944,7 @@ export default function Settings() {
                       aria-describedby="settings-email-hint"
                       className="w-full max-w-sm border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] dark:bg-gray-700/50 text-[#707974] dark:text-gray-500 cursor-not-allowed"
                     />
-                    <p id="settings-email-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
+                    <p id="settings-email-hint" className="sr-only">{t('settings.emailHint')}</p>
                   </div>
 
                   {/* Language row */}
@@ -951,8 +969,10 @@ export default function Settings() {
                   <h2 className="text-xl font-semibold text-[#ba1a1a] mb-4">{t('settings.danger')}</h2>
                   <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 py-3 border-b border-[#dce2f3] dark:border-gray-700">
                     <div>
-                      <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.resetProgress')}</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.resetProgressDesc')}</p>
+                      <p className="font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1.5">
+                        {t('settings.resetProgress')}
+                        <InfoHint text={t('settings.resetProgressDesc')} label={t('settings.resetProgress')} />
+                      </p>
                     </div>
                     <button onClick={() => setResetModal(true)} className="flex-shrink-0 border-2 border-[#ba1a1a] text-[#ba1a1a] text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                       {t('settings.resetData')}
@@ -960,8 +980,10 @@ export default function Settings() {
                   </div>
                   <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pt-3">
                     <div>
-                      <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.deleteAccount')}</p>
-                      <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.deleteAccountDesc')}</p>
+                      <p className="font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1.5">
+                        {t('settings.deleteAccount')}
+                        <InfoHint text={t('settings.deleteAccountDesc')} label={t('settings.deleteAccount')} />
+                      </p>
                     </div>
                     <button onClick={() => setDeleteModal(true)} className="flex-shrink-0 bg-[#ba1a1a] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors">
                       {t('settings.deleteAccount')}
@@ -1030,10 +1052,10 @@ export default function Settings() {
                       <FiBook className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.dailyTarget')}</p>
+                    <InfoHint text={t('settings.dailyTargetDesc')} label={t('settings.dailyTarget')} size="xs" />
                   </div>
 
                   <div className="mb-5">
-                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.dailyTargetDesc')}</p>
                     <div className="flex flex-wrap gap-3">
                       {DAILY_OPTIONS.map(v => (
                         <button
@@ -1105,8 +1127,16 @@ export default function Settings() {
 
                   {/* Where new memorization starts */}
                   <div>
-                    <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.memDirectionTitle')}</p>
-                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.memDirectionDesc')}</p>
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.memDirectionTitle')}</p>
+                      <InfoHint
+                        text={memDirChoice === 'fromEnd' ? `${t('settings.memDirectionDesc')} ${t('settings.memDirectionEndHint')}`
+                          : memDirChoice === 'custom' ? `${t('settings.memDirectionDesc')} ${t('settings.memStartWrapHint')}`
+                          : t('settings.memDirectionDesc')}
+                        label={t('settings.memDirectionTitle')}
+                        size="xs"
+                      />
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {[
                         { value: 'fromStart', labelKey: 'settings.memDirectionFromStart', descKey: 'settings.memDirectionFromStartDesc' },
@@ -1134,10 +1164,6 @@ export default function Settings() {
                         );
                       })}
                     </div>
-
-                    {memDirChoice === 'fromEnd' && (
-                      <p className="text-xs text-[#904d00] dark:text-amber-400 mt-2">💡 {t('settings.memDirectionEndHint')}</p>
-                    )}
 
                     {memDirChoice === 'custom' && (
                       <div className="mt-3 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600 flex flex-col gap-3">
@@ -1222,7 +1248,6 @@ export default function Settings() {
                           </div>
                         )}
 
-                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.memStartWrapHint')}</p>
                       </div>
                     )}
                   </div>
@@ -1236,10 +1261,12 @@ export default function Settings() {
                       <FiRefreshCw className="w-3.5 h-3.5 text-[#904d00] dark:text-amber-400" />
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.reviewSettings')}</p>
-                    <InfoHint text={t('hints.review')} label={t('dashboard.review')} size="xs" />
+                    <InfoHint
+                      text={`${t('hints.review')} ${t('settings.reviewSettingsDesc')} ${t('settings.modeIntensityDesc')}`}
+                      label={t('settings.reviewSettings')}
+                      size="xs"
+                    />
                   </div>
-
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('settings.reviewSettingsDesc')}</p>
 
                   {/* One unified selector: three presets + Fixed number, side by side */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
@@ -1295,7 +1322,7 @@ export default function Settings() {
                     </button>
                   </div>
 
-                  <p className="text-xs text-[#707974] dark:text-gray-400 mb-5 leading-relaxed">{t('settings.modeIntensityDesc')}</p>
+                  <div className="mb-5" />
 
                   {/* Fixed number reveals a single page-count input; recent-pages lives in Advanced */}
                   {reviewMode === 'fixed' && (
@@ -1312,8 +1339,10 @@ export default function Settings() {
                   )}
 
                   <div>
-                    <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.restDays')}</p>
-                    <p className="text-sm text-[#404944] dark:text-gray-400 mb-3">{t('settings.restDaysDesc')}</p>
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.restDays')}</p>
+                      <InfoHint text={t('settings.restDaysDesc')} label={t('settings.restDays')} size="xs" />
+                    </div>
                     <div className="flex flex-wrap gap-5">
                       {DAY_LABEL_KEYS.map((labelKey, idx) => {
                         const jsDay = DAY_JS_INDICES[idx];
@@ -1360,13 +1389,16 @@ export default function Settings() {
                         <FiPause className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
                       </div>
                       <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.pauseMemTitle')}</p>
+                      <InfoHint text={`${t('settings.pauseMemDesc')} ${t('settings.pauseMemSwitchBack')}`} label={t('settings.pauseMemTitle')} size="xs" />
                     </div>
                     <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
-                        <p className="text-xs text-[#707974] dark:text-gray-400 leading-relaxed">
-                          {isPaused ? t('settings.pauseMemActive', { count: dailyPages }) : t('settings.pauseMemDesc')}
-                        </p>
-                        <p className="text-xs text-[#003527] dark:text-emerald-400 mt-1">{t('settings.pauseMemSwitchBack')}</p>
+                        {/* The state stays visible; the explanation is in the hint above. */}
+                        {isPaused && (
+                          <p className="text-sm text-[#151c27] dark:text-gray-200 leading-relaxed">
+                            {t('settings.pauseMemActive', { count: dailyPages })}
+                          </p>
+                        )}
                       </div>
                       <Tooltip label={t('tooltips.pauseToggle')}>
                         <button
@@ -1412,8 +1444,9 @@ export default function Settings() {
                       <FiMapPin className="w-3.5 h-3.5 text-[#003527] dark:text-emerald-400" />
                     </div>
                     <p className="text-xs font-bold uppercase tracking-widest text-[#707974] dark:text-gray-400">{t('settings.cycleStartTitle')}</p>
+                    <InfoHint text={t('settings.cycleStartDesc')} label={t('settings.cycleStartTitle')} size="xs" />
                   </div>
-                  <p className="text-sm text-[#404944] dark:text-gray-400 mb-4 mt-1">{t('settings.cycleStartDesc')}</p>
+                  <div className="mb-4" />
 
                   {/* Current start indicator */}
                   <div className="flex items-center gap-3 mb-4 p-3 bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-xl border border-green-100 dark:border-emerald-800/30">
@@ -1603,15 +1636,18 @@ export default function Settings() {
                 <div className="flex items-center gap-3 mb-2 border-b border-[#dce2f3] dark:border-gray-700 pb-4">
                   <FiHelpCircle className="w-6 h-6 text-[#003527] dark:text-emerald-400" />
                   <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{t('settings.helpTitle')}</h2>
+                  <InfoHint text={t('settings.helpDesc')} label={t('settings.helpTitle')} />
                 </div>
-                <p className="text-sm text-[#404944] dark:text-gray-400 mb-6 mt-4">{t('settings.helpDesc')}</p>
+                <div className="mb-6" />
 
                 <div className="flex flex-col gap-3">
                   {/* How to memorize a page */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.showGuide')}</p>
-                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.showGuideDesc')}</p>
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1.5">
+                        {t('settings.showGuide')}
+                        <InfoHint text={t('settings.showGuideDesc')} label={t('settings.showGuide')} size="xs" />
+                      </p>
                     </div>
                     <button
                       onClick={() => setHowToOpen(true)}
@@ -1624,8 +1660,10 @@ export default function Settings() {
                   {/* Replay the dashboard tour */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayTour')}</p>
-                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayTourDesc')}</p>
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1.5">
+                        {t('settings.replayTour')}
+                        <InfoHint text={t('settings.replayTourDesc')} label={t('settings.replayTour')} size="xs" />
+                      </p>
                     </div>
                     <button
                       onClick={() => navigate('/dashboard?tour=1')}
@@ -1638,8 +1676,10 @@ export default function Settings() {
                   {/* Replay the Library tour */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 p-4 rounded-xl border border-[#bfc9c3] dark:border-gray-600 bg-[#f9f9ff] dark:bg-gray-700/30">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.replayLibraryTour')}</p>
-                      <p className="text-xs text-[#707974] dark:text-gray-400 mt-0.5">{t('settings.replayLibraryTourDesc')}</p>
+                      <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 flex items-center gap-1.5">
+                        {t('settings.replayLibraryTour')}
+                        <InfoHint text={t('settings.replayLibraryTourDesc')} label={t('settings.replayLibraryTour')} size="xs" />
+                      </p>
                     </div>
                     <button
                       onClick={() => navigate('/library?tour=1')}
