@@ -785,10 +785,13 @@ export default function Dashboard() {
             </div>
             <div>
               {/* The page's one h1: the greeting is what this page is called. */}
-              <h1 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
-                {t('dashboard.greeting', { name: user?.name?.split(' ')[0] })}
-              </h1>
-              <p className="text-[#404944] dark:text-gray-400">{t('dashboard.subtitle')}</p>
+              {/* What the page is for lives in the hint, not under the title. */}
+              <div className="flex items-start gap-2 mb-2">
+                <h1 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 leading-tight">
+                  {t('dashboard.greeting', { name: user?.name?.split(' ')[0] })}
+                </h1>
+                <InfoHint text={t('dashboard.subtitle')} label={t('hints.aboutPage')} className="mt-3" />
+              </div>
             </div>
             {(() => {
               const streak = stats?.currentStreak ?? user?.currentStreak ?? 0;
@@ -1027,10 +1030,10 @@ export default function Dashboard() {
                 <div className="w-20 h-20 rounded-full bg-[#004f35]/10 dark:bg-emerald-900/20 flex items-center justify-center text-[#004f35] dark:text-emerald-400 mb-6">
                   <span className="text-4xl">🌿</span>
                 </div>
-                <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 mb-4 tracking-tight">{t('dashboard.restDay')}</h2>
-                <p className="text-lg text-[#404944] dark:text-gray-400 max-w-2xl mb-8 leading-relaxed">
-                  {t('dashboard.restSubtitle')}
-                </p>
+                <div className="flex items-center gap-2 mb-8">
+                  <h2 className="text-4xl font-bold text-[#003527] dark:text-gray-100 tracking-tight">{t('dashboard.restDay')}</h2>
+                  <InfoHint text={t('dashboard.restSubtitle')} label={t('dashboard.restDay')} />
+                </div>
                 <div className="flex flex-col sm:flex-row gap-4 z-10">
                   <button
                     onClick={() => navigate('/progress')}
@@ -1141,9 +1144,9 @@ export default function Dashboard() {
                           <FiPause className="w-4 h-4 text-[#003527] dark:text-emerald-400" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#003527] dark:text-emerald-400">{t('dashboard.pausedTitle')}</p>
-                          <p className="text-xs text-[#707974] dark:text-gray-400 mt-1 leading-relaxed">
-                            {t('dashboard.pausedGoalNote', { count: user?.dailyNewPages ?? 1 })}
+                          <p className="text-sm font-semibold text-[#003527] dark:text-emerald-400 flex items-center gap-1">
+                            {t('dashboard.pausedTitle')}
+                            <InfoHint text={t('dashboard.pausedGoalNote', { count: user?.dailyNewPages ?? 1 })} label={t('dashboard.pausedTitle')} size="xs" />
                           </p>
                           <button
                             onClick={() => navigate('/settings?tab=memorization')}
@@ -1165,13 +1168,12 @@ export default function Dashboard() {
                           <div>
                             <p className="text-sm font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1">
                               {t('dashboard.continuePage')}
-                              <InfoHint text={t('hints.continuation')} label={t('dashboard.continuePage')} size="xs" />
+                              <InfoHint text={`${t('hints.continuation')} ${t('dashboard.continueHint')}`} label={t('dashboard.continuePage')} size="xs" />
                             </p>
                             <p className="text-lg font-medium text-blue-900 dark:text-blue-200">{t('dashboard.page')} {data.continuationPage.pageNumber}</p>
                             {!isMultiSurahPage(data.continuationPage) && formatSurahNames(data.continuationPage, i18n.language === 'ar') && (
                               <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{formatSurahNames(data.continuationPage, i18n.language === 'ar')}</p>
                             )}
-                            <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">{t('dashboard.continueHint')}</p>
                           </div>
                         </div>
                       )}
