@@ -10,6 +10,31 @@ Write commit messages in first person as if the developer wrote the code. Never 
 
 End every response with a one-line **TL;DR:** summarizing the outcome and what's needed next.
 
+## Working Sessions (local and Claude Code on the web)
+
+Any session that changes code or docs keeps its progress in the repo as it goes, so a
+session that stops (context limit, crash, closed tab) can be resumed from the repo alone:
+
+- **Branch**: never commit to `main` directly (pushing to `main` auto-deploys). Work on a
+  descriptive branch from `origin/main` (or the one named in the prompt), push only to it,
+  and open a PR to `main` when the work is done. The owner reviews and merges with
+  "Create a merge commit" (never squash/rebase — the log references commit hashes).
+- **Progress log**: the table at the BOTTOM of `docs/IMPROVEMENT_PLAN.md`. Before starting
+  work, append ONE row for the session: date, title + `— IN PROGRESS`, branch, and the
+  plan (steps in order). After EACH finished step, update that same row (commit hashes so
+  far, what changed, what is next), then commit and push immediately.
+- **To-do**: tick finished items in `docs/TODO.md` in the same commits; owner decisions
+  you hit go under "Decisions only the owner can make" instead of blocking the work.
+- **Stopping early**: write `STOPPED AT: <step>, NEXT: <what to do>` in the row, commit and
+  push before stopping. A new session told to "continue" starts from that row.
+- **Finishing**: set the row to `— delivered`, list every commit and the check results
+  (server tests, client lint/build/tests, e2e counts), then open the PR.
+- **Checks** before every push: `cd server && npm test`; `cd client && npm run lint &&
+  npm run build && npm test`; the Playwright e2e suite when UI behaviour changed.
+- Do not stop to ask the owner questions mid-run unless the prompt says to; record the
+  question in the row or in `docs/TODO.md` and continue with what does not depend on it.
+- `docs/IMPROVEMENT_PLAN.md` is stored with CRLF line endings; keep them when editing.
+
 ## Project Overview
 
 Full-stack Quran memorization tracker. Users register, select what they've already memorized (onboarding), then receive a daily task list: new pages to memorize + spaced-repetition reviews. Tracks streaks and visualizes progress by Juz (30 parts of the Quran, ~20 pages each). It also has a 604-page mushaf reader (the Library) with recitation, tafsir, annotations and bookmarks, an AI assistant, a leaderboard, and EN/AR with dark mode.
