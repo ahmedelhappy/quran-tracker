@@ -417,8 +417,11 @@ export default function Progress() {
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-extrabold mb-1">{t('progress.title')}</h1>
-          <p className="text-green-300 dark:text-gray-400 text-sm">{t('progress.subtitle')}</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-extrabold">{t('progress.title')}</h1>
+            {/* On the dark band: the hint's resting grey is lifted so it stays visible. */}
+            <InfoHint text={t('progress.subtitle')} label={t('hints.aboutPage')} className="text-green-200! hover:bg-white/10!" />
+          </div>
         </div>
       </div>
 

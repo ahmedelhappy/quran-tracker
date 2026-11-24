@@ -7,6 +7,7 @@ import { progressAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiError';
 import Logo from '../components/Logo';
 import LanguageToggle from '../components/LanguageToggle';
+import InfoHint from '../components/InfoHint';
 import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
@@ -200,19 +201,29 @@ export default function Onboarding() {
 
         <section className="flex flex-col gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl sacred-shadow border border-[#f0f3ff] dark:border-gray-700">
           <div>
-            <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.alreadyMemorized')}</h1>
-            <p className="text-[#404944] dark:text-gray-400">{t('onboarding.alreadyMemorizedHint')}</p>
+            {/* The how-to (the hint line, what each tab selects, that tabs
+                combine) is one hint by the heading instead of a box of text. */}
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.alreadyMemorized')}</h1>
+              <InfoHint
+                label={t('hints.howToSelect')}
+                text={
+                  <span className="flex flex-col gap-1.5">
+                    <span>{t('onboarding.alreadyMemorizedHint')}</span>
+                    <ul className="flex flex-col gap-1">
+                <li><strong>{t('onboarding.byJuz')}</strong> — {t('onboarding.tabGuideByJuz')}</li>
+                <li><strong>{t('onboarding.byHizb')}</strong> — {t('onboarding.tabGuideByHizb')}</li>
+                <li><strong>{t('onboarding.byQuarterHizb')}</strong> — {t('onboarding.tabGuideByQuarterHizb')}</li>
+                <li><strong>{t('onboarding.bySurah')}</strong> — {t('onboarding.tabGuideBySurah')}</li>
+                <li><strong>{t('onboarding.byRange')}</strong> — {t('onboarding.tabGuideByRange')}</li>
+                    </ul>
+                    <span>{t('onboarding.tabGuideCombine')}</span>
+                  </span>
+                }
+              />
+            </div>
           </div>
 
-          {/* Quick guide to the selection tabs + combine note */}
-          <div className="rounded-lg bg-[#f0f3ff] dark:bg-gray-700/40 border border-[#dce2f3] dark:border-gray-600 px-4 py-3 text-xs text-[#404944] dark:text-gray-300 space-y-1.5">
-            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byJuz')}</span> — {t('onboarding.tabGuideByJuz')}</p>
-            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byHizb')}</span> — {t('onboarding.tabGuideByHizb')}</p>
-            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byQuarterHizb')}</span> — {t('onboarding.tabGuideByQuarterHizb')}</p>
-            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.bySurah')}</span> — {t('onboarding.tabGuideBySurah')}</p>
-            <p><span className="font-semibold text-[#003527] dark:text-emerald-400">{t('onboarding.byRange')}</span> — {t('onboarding.tabGuideByRange')}</p>
-            <p className="pt-1 text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.tabGuideCombine')}</p>
-          </div>
 
           <MemorizedUnitPicker
             variant="onboarding"
@@ -237,8 +248,10 @@ export default function Onboarding() {
         {/* Daily goal */}
         <section className="flex flex-col gap-4">
           <div>
-            <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.dailyGoalTitle')}</h2>
-            <p className="text-[#404944] dark:text-gray-400">{t('onboarding.dailyGoalDesc')}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.dailyGoalTitle')}</h2>
+              <InfoHint text={t('onboarding.dailyGoalDesc')} label={t('onboarding.dailyGoalTitle')} />
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
@@ -272,8 +285,15 @@ export default function Onboarding() {
         {/* Memorization direction */}
         <section className="flex flex-col gap-4">
           <div>
-            <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.directionTitle')}</h2>
-            <p className="text-[#404944] dark:text-gray-400">{t('onboarding.directionDesc')}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.directionTitle')}</h2>
+              <InfoHint
+                text={direction === 'fromEnd' ? `${t('onboarding.directionDesc')} ${t('onboarding.directionEndHint')}`
+                  : direction === 'custom' ? `${t('onboarding.directionDesc')} ${t('onboarding.directionCustomHint')}`
+                  : t('onboarding.directionDesc')}
+                label={t('onboarding.directionTitle')}
+              />
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
@@ -298,10 +318,6 @@ export default function Onboarding() {
               </button>
             ))}
           </div>
-
-          {direction === 'fromEnd' && (
-            <p className="text-xs text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.directionEndHint')}</p>
-          )}
 
           {direction === 'custom' && (
             <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#f0f3ff] dark:border-gray-700 p-4 flex flex-col gap-3">
@@ -373,7 +389,6 @@ export default function Onboarding() {
                   ✓ {t('onboarding.directionCustomSelected', { page: customStartPage })}
                 </p>
               )}
-              <p className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.directionCustomHint')}</p>
             </div>
           )}
         </section>
@@ -432,13 +447,17 @@ export default function Onboarding() {
       <OnboardingHeader step={3} />
       <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h1>
-          <p className="text-[#404944] dark:text-gray-400">{t('onboarding.customizeDesc')}</p>
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.customizeTitle')}</h1>
+            <InfoHint text={t('onboarding.customizeDesc')} label={t('onboarding.customizeTitle')} />
+          </div>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h2>
-          <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.reviewIntensityDesc')}</p>
+          <div className="flex items-center gap-1.5 mb-4">
+            <h2 className="font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.reviewIntensity')}</h2>
+            <InfoHint text={t('onboarding.reviewIntensityDesc')} label={t('onboarding.reviewIntensity')} size="xs" />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
               const estimate = estimateReviewPages(selectedCount, divisor);
@@ -500,8 +519,10 @@ export default function Onboarding() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.restDays')}</h2>
-          <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.restDaysDesc')}</p>
+          <div className="flex items-center gap-1.5 mb-4">
+            <h2 className="font-semibold text-[#151c27] dark:text-gray-100">{t('onboarding.restDays')}</h2>
+            <InfoHint text={t('onboarding.restDaysDesc')} label={t('onboarding.restDays')} size="xs" />
+          </div>
           <div className="flex flex-wrap gap-4">
             {DAY_LABEL_KEYS.map((labelKey, i) => (
               <label key={i} className="flex items-center gap-2 cursor-pointer">

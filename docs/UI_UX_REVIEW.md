@@ -253,8 +253,8 @@ single column.
 
 ### Leaderboard (`pages/Leaderboard.jsx`)
 
-- [DECLUTTER] `leaderboard.joinBody` (:125) and `leaderboard.displayNameHint` (:145) → hints;
-  the "join" card keeps its title, field and button.
+- [DECLUTTER] `leaderboard.joinBody` (:125) → hint by the card title. `leaderboard.displayNameHint`
+  (:145, "This name is public…") stays visible: it is the consent line for the action.
 - [PROPOSAL] Empty leaderboard for a new deployment: show a friendly one-liner instead of an
   empty table.
 

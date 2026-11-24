@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import InfoHint from '../components/InfoHint';
 import { FiAward } from 'react-icons/fi';
 import { leaderboardAPI, authAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -121,8 +122,10 @@ export default function Leaderboard() {
         {/* Opt-in card (only when not yet opted in) */}
         {!optedIn && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100 mb-1">{t('leaderboard.joinTitle')}</h2>
-            <p className="text-sm text-[#4A4A4A] dark:text-gray-400 mb-4">{t('leaderboard.joinBody')}</p>
+            <div className="flex items-center gap-1.5 mb-4">
+              <h2 className="text-lg font-bold text-[#1A1A1A] dark:text-gray-100">{t('leaderboard.joinTitle')}</h2>
+              <InfoHint text={t('leaderboard.joinBody')} label={t('leaderboard.joinTitle')} />
+            </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
