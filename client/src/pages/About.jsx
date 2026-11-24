@@ -103,7 +103,7 @@ const About = () => {
 
       <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">
         <div className="max-w-4xl mx-auto px-6 text-center text-sm text-[#4A4A4A] dark:text-gray-400">
-          {t('landing.footer.copyright')}
+          {t('landing.footer.copyright', { year: new Date().getFullYear() })}
         </div>
       </footer>
     </div>

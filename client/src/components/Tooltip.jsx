@@ -7,6 +7,12 @@ import { createPortal } from 'react-dom';
  * portal with fixed positioning, so it is never clipped by a parent's overflow
  * and it auto-flips when it would run off the top/bottom of the screen.
  *
+ * It opens on MOUSE hover and on KEYBOARD focus only. A tap on a touch screen
+ * fires compatibility mouse events and focuses the button, which used to leave
+ * the bubble stuck over the screen after the tap; pointer type and
+ * :focus-visible tell those apart. To explain something on touch, use
+ * <InfoHint>, which opens on tap.
+ *
  * Touch screens have no hover, so the trigger ALWAYS receives an aria-label too
  * (taken from `label` unless the child already sets one) — never rely on the
  * tooltip alone to name an icon button.
@@ -19,6 +25,11 @@ import { createPortal } from 'react-dom';
  *     <button>…</button>
  *   </Tooltip>
  */
+// Keyboard focus, not the focus a tap or a click leaves behind.
+const isFocusVisible = (el) => {
+  try { return el.matches(':focus-visible'); } catch { return true; }
+};
+
 const GAP = 8;      // distance between trigger and bubble
 const MARGIN = 8;   // keep this far from the viewport edge
 
@@ -65,9 +76,9 @@ export default function Tooltip({ label, children, placement = 'top', className 
     <span
       ref={triggerRef}
       className={`inline-flex ${className}`}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
+      onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') hide(); }}
+      onFocus={(e) => { if (isFocusVisible(e.target)) show(); }}
       onBlur={hide}
     >
       {trigger}

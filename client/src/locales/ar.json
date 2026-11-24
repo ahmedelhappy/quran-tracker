@@ -1435,7 +1435,7 @@
       ]
     },
     "footer": {
-      "copyright": "© 2025 Quran Tracker. مُعينك على حفظ كتاب الله.",
+      "copyright": "© {{year}} Quran Tracker. مُعينك على حفظ كتاب الله.",
       "privacy": "سياسة الخصوصية",
       "terms": "شروط الخدمة",
       "contact": "تواصل مع الدعم"

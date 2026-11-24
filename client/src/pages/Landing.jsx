@@ -460,7 +460,7 @@ const Landing = () => {
       {/* ── FOOTER ───────────────────────────────────────── */}
       <footer className="bg-[#FAF9F6] dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 py-6">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-[#4A4A4A] dark:text-gray-400">
-          <span>{t('landing.footer.copyright')}</span>
+          <span>{t('landing.footer.copyright', { year: new Date().getFullYear() })}</span>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
             <a href="#" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('landing.footer.privacy')}</a>
             <a href="#" className="whitespace-nowrap hover:text-[#1B4332] transition-colors">{t('landing.footer.terms')}</a>

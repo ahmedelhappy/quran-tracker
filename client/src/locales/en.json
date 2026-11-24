@@ -1259,7 +1259,7 @@
       ]
     },
     "footer": {
-      "copyright": "© 2025 Quran Tracker. Dedicated to the pursuit of Hifz.",
+      "copyright": "© {{year}} Quran Tracker. Dedicated to the pursuit of Hifz.",
       "privacy": "Privacy Policy",
       "terms": "Terms of Service",
       "contact": "Contact Support"
