@@ -52,6 +52,11 @@ actually read.
   and how. Being wrong is the useful part.
 - **Read tests as documentation.** `server/tests/*.test.js` shows exactly how every endpoint
   is *supposed* to behave — often clearer than the controller itself. Run `npm test` early.
+  The client has its own: Vitest + React Testing Library next to the code
+  (`client/src/**/*.test.js(x)`, `npm test` in `client/`) and Playwright flows that drive
+  the production build against the real API on an in-memory database (`client/e2e/`,
+  `npm run test:e2e`). CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs all
+  of them, plus lint and a build, on every push and pull request to `main`.
 - **Replay history.** `git log --oneline` is the project's story. Pick a feature commit and
   read its diff — you'll see how a feature actually lands across files.
 - **AI as explainer, not writer.** During the study week, ask AI to explain code you've
@@ -67,14 +72,14 @@ dev`, `client`: `npm run dev`). Then trace *login* through every layer, in this 
 (hash hook) → back. Watch the request in DevTools' Network tab. If you can narrate this
 round-trip cold, you understand "full stack" as an architecture.
 
-**Day 2 — Backend day.** Read the three data models (§2), then [middleware/auth.js](../server/middleware/auth.js),
+**Day 2 — Backend day.** Read the six data models (§2), then [middleware/auth.js](../server/middleware/auth.js),
 then [progressController.js](../server/controllers/progressController.js) with §4 of this
 guide open beside it — `getTodayTasks` is the hardest and most valuable read in the repo.
 Then read `server/tests/progress.test.js` and run the suite. Finish by breaking something on
 purpose (rename a field, watch which test fails) — nothing teaches structure faster.
 
 **Day 3 — React day.** [main.jsx](../client/src/main.jsx) → [App.jsx](../client/src/App.jsx)
-(providers + routes) → the three contexts (§5) → one simple page ([Progress.jsx](../client/src/pages/Progress.jsx))
+(providers + routes) → the four contexts (§5) → one simple page ([Progress.jsx](../client/src/pages/Progress.jsx))
 → then [Dashboard.jsx](../client/src/pages/Dashboard.jsx) (the canonical fetch→state→render
 page, §5). Exercise: find one real usage each of `useState`, `useEffect`, `useMemo`,
 `useCallback`, `useRef` in the codebase and explain to yourself why *that* hook and not
@@ -126,6 +131,9 @@ separation is the single most important architectural fact to be able to state.
                                                               │  (cloud database)│
                                                               │  users,          │
                                                               │  userprogresses, │
+                                                              │  bookmarks,      │
+                                                              │  annotations,    │
+                                                              │  todos,          │
                                                               │  quranmetadatas  │
                                                               └──────────────────┘
 ```
@@ -134,12 +142,13 @@ separation is the single most important architectural fact to be able to state.
 
 | Concern | File | What it does |
 |---|---|---|
-| Server bootstrap | [../server/server.js](../server/server.js) | Connects to MongoDB, then starts listening on `PORT` (default 5000). |
-| Express app config | [../server/app.js](../server/app.js) | Wires up middleware (CORS, JSON parsing, `helmet`, `compression`, request logging) and mounts the three route groups. Kept separate from `server.js` so tests can import the app without opening a real DB connection or a network port. |
-| Route groups | [../server/routes/](../server/routes/) | `/api/auth`, `/api/progress`, `/api/chat`. |
+| Server bootstrap | [../server/server.js](../server/server.js) | Refuses to start without `MONGODB_URI` and `JWT_SECRET`, connects to MongoDB, then listens on `PORT` (default 5000). On SIGTERM/SIGINT [utils/shutdown.js](../server/utils/shutdown.js) stops taking connections, lets in-flight requests finish and closes Mongo (Render sends SIGTERM on every deploy). |
+| Express app config | [../server/app.js](../server/app.js) | Wires up middleware (an error-code guard, request logging, CORS, JSON parsing, `helmet`, `compression`, trust proxy, a general `/api` rate limiter) and mounts the seven route groups. Kept separate from `server.js` so tests can import the app without opening a real DB connection or a network port. |
+| Route groups | [../server/routes/](../server/routes/) | `/api/auth`, `/api/progress`, `/api/bookmarks`, `/api/annotations`, `/api/todos`, `/api/leaderboard`, `/api/chat`. |
 | Business logic | [../server/controllers/](../server/controllers/) | The actual work for each endpoint. |
-| Data shapes | [../server/models/](../server/models/) | Mongoose schemas: `User`, `UserProgress`, `QuranMetadata`. |
-| Frontend HTTP layer | [../client/src/services/api.js](../client/src/services/api.js) | One axios instance that every page calls through. |
+| Data shapes | [../server/models/](../server/models/) | Mongoose schemas: `User`, `UserProgress`, `Bookmark`, `Annotation`, `Todo`, `QuranMetadata`. |
+| Errors | [../server/middleware/errorCode.js](../server/middleware/errorCode.js), [../server/utils/errorResponse.js](../server/utils/errorResponse.js) | Every error reply carries a stable `code` (`INVALID_REQUEST`, `RATE_LIMITED`, `CONFIRM_REMOVAL`, …) that the client turns into a sentence ([apiError.js](../client/src/utils/apiError.js)). `logError` keeps refused values out of the host's logs. |
+| Frontend HTTP layer | [../client/src/services/api.js](../client/src/services/api.js) | One axios instance that every page calls through (20 s timeout for reads, 60 s for writes). |
 
 **The request lifecycle**, in one sentence: a React page calls a function in `api.js` →
 axios sends an HTTP request with the user's token attached → Express matches it to a
@@ -150,20 +159,26 @@ re-renders.
 In [app.js](../server/app.js) the route groups are mounted like this:
 
 ```js
-app.use('/api/auth', require('./routes/authRoutes'));      // register, login, profile
-app.use('/api/progress', require('./routes/progressRoutes')); // the memorization plan
-app.use('/api/chat', require('./routes/chatRoutes'));       // the AI assistant
-app.use('/api/bookmarks', require('./routes/bookmarkRoutes')); // saved page bookmarks
+app.use('/api/auth', require('./routes/authRoutes'));               // register, login, profile, password reset
+app.use('/api/progress', require('./routes/progressRoutes'));       // the memorization plan
+app.use('/api/bookmarks', require('./routes/bookmarkRoutes'));      // saved page bookmarks
+app.use('/api/annotations', require('./routes/annotationRoutes'));  // highlights, notes, hard flags, ink
+app.use('/api/todos', require('./routes/todoRoutes'));              // the reader's to-do list
+app.use('/api/leaderboard', require('./routes/leaderboardRoutes')); // opt-in leaderboard
+app.use('/api/chat', require('./routes/chatRoutes'));               // the AI assistant
 ```
 
-There's also a `GET /health` endpoint returning `{ status: 'ok' }` — that's not for users,
-it's for an uptime monitor (UptimeRobot) to ping.
+Anything else under the app answers a JSON 404 with `code: 'NOT_FOUND'`.
+
+There's also a `GET /health` endpoint returning `{ status: 'ok' }` without touching the
+database — that's not for users, it's for Render's health check (`healthCheckPath` in
+[render.yaml](../render.yaml)) and an uptime monitor to ping.
 
 ---
 
 ## 2. The data models
 
-All three models live in [../server/models/](../server/models/). A Mongoose *schema*
+All six models live in [../server/models/](../server/models/). A Mongoose *schema*
 describes the shape of a document; a *model* is the thing you query. MongoDB stores
 documents (JSON-like records) in *collections* (like tables, but schema-flexible).
 
@@ -174,7 +189,7 @@ One document per registered person. The fields worth knowing:
 | Field | Meaning |
 |---|---|
 | `name`, `email`, `password` | Credentials. `email` is `unique` + lowercased; `password` has `select: false` so it's **never returned by a query unless explicitly asked for** (more on that in §3). |
-| `dailyNewPages` | The user's goal: how many new pages to memorize per day. Range **0.5–10**, default 1. The 0.5 case (a page every *other* day) is handled specially — see §4. |
+| `dailyNewPages` | The user's goal: how many new pages to memorize per day. Range **0.5–10**, default 1. The 0.5 case (half a page every active day) is handled specially — see §4. |
 | `currentStreak` | Consecutive active days. |
 | `lastActiveDate` | The last day the user did something. This single field is what the streak math compares against. |
 | `onboardingComplete` | Has the user finished the initial "what do you already know" setup? Controls redirects on the frontend. |
@@ -187,6 +202,10 @@ One document per registered person. The fields worth knowing:
 | `language` | `'en'` or `'ar'`. |
 | `pausedFromOnboarding` | Set when a user finished onboarding already knowing pages but chose to pause new memorization first — drives the "first cycle complete" celebration. |
 | `prevStreak`, `prevActiveDate` | A snapshot of the streak state taken at the day's *first* streak-affecting action. Exists so that undoing the day's only completion can honestly restore the streak — the old `lastActiveDate` isn't reconstructible once overwritten. |
+| `memorizationDirection`, `newMemorizationStartPage` | Where new memorization starts: from Al-Fatiha, from An-Nas backwards, or a chosen page. |
+| `displayName`, `leaderboardOptIn` | The public name and the opt-in for the leaderboard (off by default; the real name is never shown there). |
+| `passwordChangedAt` | Stamped on every password change or reset; any token issued before it is refused (§3). |
+| `passwordResetTokenHash`, `passwordResetExpires` | The sha256 of the one live reset link and its 30-minute expiry. Both `select: false`. |
 
 `timestamps: true` auto-adds `createdAt` / `updatedAt`.
 
@@ -208,12 +227,15 @@ pages in the Quran, a user who has memorized 200 pages has 200 of these document
 | `memorizedDate` | When the page was first memorized. |
 | `lastReviewedDate` | When it was last revised. **This field drives review scheduling** — the oldest one is the most "due." |
 | `reviewCount` | How many times it has been reviewed. |
+| `segments` | For a page memorized only in part: the verse ranges that are (a half-page plan, a Surah or Hizb that ends mid-page). Empty means the whole page. |
+| `undoNew`, `undoReview` | What a completion changed, so "undo" (today only) can put it back exactly. |
 
-Three indexes make the common queries fast:
+Four indexes make the common queries fast:
 - `{ userId, pageNumber }` is **unique** — the database itself guarantees you can't have
   two records for the same page for the same user.
 - `{ userId, status }` — for "give me all this user's memorized pages."
 - `{ userId, lastReviewedDate }` — for "sort this user's pages by how stale their review is."
+- `{ memorizedDate }` — for queries across users by when a page was memorized.
 
 **Why one doc per page instead of one array on the User?** Covered in §7, but the short
 version: per-page history (dates, counts) is exactly what spaced repetition needs, and
@@ -222,29 +244,44 @@ indexed per-page queries scale better than rewriting one giant array on every ac
 ### QuranMetadata — [../server/models/QuranMetadata.js](../server/models/QuranMetadata.js)
 
 A static lookup table: 604 documents, one per page, describing **what is on that page** —
-its `juzNumber`, `surahName` / `surahNameArabic`, and a `surahs` array (a page can span
-more than one surah). This never changes per user; it's reference data.
+its `juzNumber` and `hizbNumber`, the ordered `surahs` on it (`{ number, name, nameArabic }`;
+a page can span more than one surah), its exact verse span (`firstVerseKey`, `lastVerseKey`,
+`verseKeys`) and `rubBoundaries`. This never changes per user; it's reference data.
 
 It's seeded once with [../server/seed/quranData.js](../server/seed/quranData.js)
-(`node seed/quranData.js --uri <mongodb-uri>` — the target is never read from `.env`).
-Controllers join against it only to *label* pages for display
-— it holds no Quran text. The actual Arabic text and audio come from an external API (§6).
+(`node seed/quranData.js --uri <mongodb-uri>` — the target is never read from `.env`), from
+the committed [seed/data/quranStructure.json](../server/seed/data/quranStructure.json).
+Controllers join against it to *label* pages and to compile Surah/Hizb units into verse
+ranges — it holds no Quran text. The Arabic text and audio the reader shows come from
+external APIs (§6, §9); the one piece of Quran text the repo does commit is the verse-search
+index (`client/public/data/search-index.json`, see "Verse search" below).
 
 ### Bookmark — [../server/models/Bookmark.js](../server/models/Bookmark.js)
 
-The newest model: one document per saved page bookmark — `{ userId, pageNumber, label? }`,
-capped at 100 per user. Uniqueness is enforced by the database itself: a **unique**
-`{ userId, pageNumber }` index means one bookmark per page per user, and non-empty labels
-are checked unique per user case-insensitively (a Mongo *collation* query — worth reading in
+One document per saved bookmark — `{ userId, pageNumber, label? }`, capped at 100 per user.
+A page can hold **several** bookmarks as long as their names differ; only one *unnamed*
+bookmark per page is allowed (a partial unique index), and non-empty labels are checked
+unique per user case-insensitively (a Mongo *collation* query — worth reading in
 [bookmarkController.js](../server/controllers/bookmarkController.js) as a small, complete
 example of model + controller + routes + tests done end-to-end).
+
+### Annotation and Todo — [../server/models/Annotation.js](../server/models/Annotation.js), [../server/models/Todo.js](../server/models/Todo.js)
+
+`Annotation` holds the reader's marks, anchored to a **verse** (`verseKey`, plus word
+positions for a highlight on part of it) so they survive any change to how a page is laid
+out: highlights, notes and hard flags (a note or flag with no `verseKey` is about the whole
+page), free-floating text notes placed on the page (`kind: 'text'`, by position), and one
+free-ink drawing per page (the `one_drawing_per_page` partial unique index). `Todo` is the to-do list beside the timer.
+Deleting an account deletes these too — a test walks every model that references `User`
+and fails if one is left out.
 
 ### How they relate
 
 ```
 User (1) ───────< UserProgress (many)        QuranMetadata (reference, not user-specific)
   _id            userId → User._id              pageNumber ◀── joined by page number
-                 pageNumber ───────────────────────────────┘
+   │             pageNumber ───────────────────────────────┘
+   ├────────< Bookmark, Annotation, Todo (many; each carries userId)
 ```
 
 A user owns many progress records; each progress record points back to its user and is
@@ -259,11 +296,14 @@ password in readable form.
 
 ### Step 1 — Register issues a token
 [../server/controllers/authController.js](../server/controllers/authController.js) → `register`:
-1. Reject if the email already exists.
+1. Validate the input (a linear-time email check, the password policy in
+   [utils/passwordPolicy.js](../server/utils/passwordPolicy.js)) and reject an email that
+   already exists — that reply does say the address is taken; sign-up cannot avoid it.
 2. `User.create({ name, email, password })`. The model's `pre('save')` hook hashes the
    password here automatically.
-3. `generateToken(user._id)` signs a **JWT** (JSON Web Token) containing just the user id,
-   using `process.env.JWT_SECRET`, valid for 30 days.
+3. `generateToken(user._id)` signs a **JWT** (JSON Web Token) containing the user id and
+   `iatMs` (its issue time to the millisecond), using `process.env.JWT_SECRET`, valid for
+   30 days.
 4. Return the token + safe user fields (never the password).
 
 ### Step 2 — Login verifies and re-issues
@@ -273,23 +313,24 @@ password in readable form.
 2. `user.matchPassword(password)` runs `bcrypt.compare`, which re-hashes the attempt with
    the stored salt and checks for a match. We never decrypt anything — bcrypt is a one-way
    hash.
-3. On success, sign and return a fresh JWT. Note the deliberately vague "Invalid email or
-   password" message for both wrong-email and wrong-password — that avoids leaking which
-   accounts exist.
+3. On success, sign and return a fresh JWT. Wrong email and wrong password get the same
+   "Invalid email or password" reply. (Registration still reveals whether an address is
+   taken, so this is about not handing out a cheaper oracle, not a guarantee.) Five
+   failures for one email within 15 minutes lock it for a minute, and each further failure
+   doubles the lock, up to an hour; every email is counted, registered or not, so the lock
+   reveals nothing ([utils/loginThrottle.js](../server/utils/loginThrottle.js)), on top of the per-IP
+   limiters in [middleware/rateLimiters.js](../server/middleware/rateLimiters.js) — both
+   kept in process memory.
 
 ### Step 3 — The browser stores and attaches the token
 On the client, [../client/src/context/AuthContext.jsx](../client/src/context/AuthContext.jsx)
-saves the token to `localStorage` under the key `'token'`. Then the axios instance in
-[../client/src/services/api.js](../client/src/services/api.js) attaches it to **every**
-outgoing request via a request interceptor:
-
-```js
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-```
+saves the token to `localStorage` under the key `'token'` (so a reload keeps you signed in),
+and [../client/src/services/api.js](../client/src/services/api.js) keeps this tab's own copy
+in memory, `sessionToken`, which a request interceptor attaches to **every** outgoing request
+as `Authorization: Bearer <token>`. Reading it from memory rather than from `localStorage`
+on each request is deliberate: a sign-in in *another* tab rewrites `localStorage`, and this
+tab's saves must not silently start going to that other account (M-08) — the tab adopts the
+new token only when its own session is re-checked.
 
 There's also a *response* interceptor: if a call **that carried a token** comes back
 `401 Unauthorized`, it wipes the token and bounces the user to `/login?returnTo=…`, so an
@@ -303,12 +344,24 @@ throwing them off a page they are allowed to read would be a bug, not a self-hea
 2. `jwt.verify(token, JWT_SECRET)` — this both checks the signature (proves we issued it)
    and that it hasn't expired. If either fails it throws, and we return `401`.
 3. `User.findById(decoded.id)` and attach the result to `req.user`, so every downstream
-   controller knows who's calling.
+   controller knows who's calling. A token issued before the user's `passwordChangedAt`
+   is refused with `SESSION_EXPIRED`: changing or resetting a password signs out every
+   other session (the change itself returns a fresh token for this one).
 
 How routes opt in: in [../server/routes/progressRoutes.js](../server/routes/progressRoutes.js)
 the line `router.use(protect)` applies the guard to *all* progress routes. In
 [../server/routes/authRoutes.js](../server/routes/authRoutes.js) it's applied per-route, so
 `register` and `login` stay public while `/me`, `/profile`, etc. are protected.
+
+### Password reset — built, and off until an email provider exists
+`POST /api/auth/forgot-password` gives the same reply for every well-formed address and
+emails a link carrying a random token in its `#token=` fragment (only the token's sha256 is
+stored, for 30 minutes); `POST /api/auth/reset-password` checks the new password, consumes
+the token in one conditional update and stamps `passwordChangedAt`. The link's origin is
+`CLIENT_URL`, never the request's Host header. It is on only when `PASSWORD_RESET_ENABLED=true`,
+`EMAIL_TRANSPORT` delivers mail ([utils/mailer.js](../server/utils/mailer.js) — `none` and
+a development-only `console` exist today) and `CLIENT_URL` is usable; otherwise both answer
+404 `RESET_DISABLED` and `GET /api/auth/config` tells the login page not to offer it.
 
 ### Password storage in one breath
 Passwords are hashed with **bcryptjs** at salt strength 10 (`bcrypt.genSalt(10)`), stored
@@ -338,8 +391,8 @@ The answer has two parts: **new pages to memorize** and **review pages (Muraja'a
 
 This app turns that theory into two review "buckets":
 
-1. **Recent review** — pages memorized in the last few active days. These are the most
-   fragile (steepest part of the forgetting curve), so they're reviewed *often*.
+1. **Recent review** — the pages memorized most recently through the plan. These are the
+   most fragile (steepest part of the forgetting curve), so they're reviewed *often*.
 2. **Cycle review** — everything older, revisited on a rotation. The whole memorized set
    gets cycled through over a window of days. Within the cycle, pages are taken
    **oldest-reviewed-first**, i.e. whichever page is closest to being forgotten is offered
@@ -364,8 +417,8 @@ timezone bugs where "today" shifts depending on the server's locale (see §7).
 
 **A) Off days.** If today's weekday is in the user's `offDays` (and they didn't explicitly
 override with `?ignoreOffDay=true`), the function returns empty task lists with
-`isOffDay: true`. Importantly it still *preserves the streak*: if the streak is alive, it
-bumps `lastActiveDate` to today so a scheduled rest day doesn't break the chain.
+`isOffDay: true`. Reading the plan writes nothing: the streak on a rest day is kept alive by
+the dashboard's separate `POST /api/progress/checkin` (see G).
 
 **B) Load the raw material.** It fetches all of the user's memorized pages, sorted by
 `lastReviewedDate` ascending then `pageNumber`:
@@ -385,17 +438,19 @@ const assignedToday     = Math.ceil(dailyNewPages * (daysPassed + 1));
 const assignedYesterday = Math.ceil(dailyNewPages * daysPassed);
 return Math.max(0, assignedToday - assignedYesterday);
 ```
-So at 0.5/day you get one page one day, zero the next — exactly "a page every other day."
-New pages are then chosen by walking 1→604 and taking the first not-yet-memorized pages
-(Quran order). New pages are skipped entirely for a `pauseNewMemorization` user or a
-**Hafiz** (someone who's memorized all 604 — nothing new left, review only).
+A plan of 0.5/day is the exception: it gets **one task every active day, and that task is
+half a page** of verses (`nextHalfPageTask`), so two days complete one page. New pages are
+chosen in the user's direction (from Al-Fatiha, from An-Nas, or from a chosen start page),
+skipping what is already memorized. New pages are skipped entirely for a
+`pauseNewMemorization` user or a **Hafiz** (all 604 pages fully memorized — nothing new
+left, review only).
 
-On a "zero new pages" day (the off-cycle half of a 0.5/day plan), it surfaces a
+When no new page is due (in practice, while new memorization is paused), it surfaces a
 **continuation page** — the most recently memorized page — so the user keeps consolidating
 instead of seeing an empty column.
 
-**D) How many *reviews* today?** `computeDailyReviewTarget(totalMemorized, reviewIntensity)`
-sets the cycle size:
+**D) How many *reviews* today?** `computeDailyReviewTarget(pagesWithProgress, reviewIntensity, isHafiz)`
+sets the cycle size (a partly memorized page counts as one reviewable page):
 - 0 if nothing is memorized.
 - For a full Hafiz (604): a fixed daily load (`standard` = 60 pages/day; `strong` finishes
   the whole Quran in 7 days, ≈87/day).
@@ -407,15 +462,15 @@ sets the cycle size:
   So at `standard`, the whole memorized portion is reviewed about every 10 days. A manual
   `cycleReviewCount` on the user overrides the formula.
 
-**E) Splitting recent vs. cycle so no page appears twice.** The function computes the last
-**three active days** (days the user actually memorized or reviewed, on/after
-`planStartDate` — which is why onboarding pages, dated "yesterday" before the plan started,
-are excluded). Pages memorized within that recent window are owned by the **recent review**
-bucket; the **cycle** bucket explicitly excludes them so a page is never shown in both
-sections at once.
+**E) Splitting recent vs. cycle so no page appears twice.** The **recent** pool is the
+**N newest** pages memorized on or after `planStartDate` (not today's) — which is why
+onboarding pages, dated "yesterday" before the plan started, are excluded. N is
+`recentReviewCount` or the formula `max(3, min(ceil(dailyNewPages*3), 6))`; taking the N
+newest rather than a fixed window of days means raising the setting really surfaces more
+pages. The **cycle** bucket explicitly excludes the recent pool so a page is never shown in
+both sections at once.
 
-- *Recent review pages*: the recent-window pages not yet reviewed today, capped by
-  `recentReviewCount` or the formula `max(3, min(ceil(dailyNewPages*3), 6))`.
+- *Recent review pages*: the recent pool's pages not yet reviewed today.
 - *Cycle review pages*: everything else memorized (minus today's new pages), already sorted
   oldest-reviewed-first, sliced to the remaining daily target. The next few beyond the
   target become `extraReviewPages` for the dashboard's "Want more?" section.
@@ -424,10 +479,12 @@ sections at once.
 batched query (`getMetadataMap`) — not one query per page — then mapped into display DTOs
 with surah names and juz numbers.
 
-**G) Stats & a "view-only" streak tick.** It returns totals, percentage, completion flags,
-and an estimated finish date. If the day is already complete and the streak is still alive,
-it bumps `lastActiveDate` even though the user marked nothing — so simply *finishing* (or
-having nothing due) keeps the streak honest.
+**G) Stats, and the check-in.** It returns totals, percentage, completion flags and an
+estimated finish date — and writes nothing. After showing the plan, the dashboard sends
+`POST /api/progress/checkin`: if today is a rest day, or the day is already complete (or had
+nothing due), and the streak is still alive, it moves `lastActiveDate` to today even though
+the user marked nothing — so a rest day or a finished day keeps the streak honest. It uses
+the same `planToday`/`dayCompletion` as the dashboard, so the two can't disagree.
 
 ### Completing a task and the streak rule
 
@@ -466,15 +523,22 @@ copies of the rules.
 ```
 <ThemeProvider>          // dark/light/system theme
   <AuthProvider>         // who is logged in
-    <ToastProvider>      // pop-up notifications
-      <Router> … <Routes> … </Router>
+    <ToastProvider>      // notifications, shown at the top in a status/alert region
+      <TimerProvider>    // the one session timer shared by every page
+        <Router> … <AccountScope> … <Routes> … </Router>
 ```
 
-Routes fall into two kinds:
-- **Public** (`/`, `/about`, `/login`, `/register`) — wrapped in `PublicRoute`, which
+`AccountScope` remounts everything under it when the signed-in account changes, so no
+state from one account (a draft, a chat history) can show up under another. Every page is
+loaded lazily (`React.lazy`), the whole tree sits under a root `ErrorBoundary`, and the
+chat assistant has a boundary of its own.
+
+Routes fall into three kinds:
+- **Public** (`/`, `/login`, `/register`, `/forgot-password`) — wrapped in `PublicRoute`, which
   *redirects logged-in users away* to the dashboard (or to `returnTo`, if they were sent to
   sign in from somewhere).
-- **Public, but not wrapped** (`/library`) — the mushaf reads without an account. The page
+- **Public, but not wrapped** (`/library`, `/about`, `/reset-password`) — the mushaf reads
+  without an account, and a reset link works whoever is signed in. The Library
   itself decides what to show: everything that saves to an account is hidden AND never
   requested while signed out, and one sign-in nudge stands in its place (§6).
 - **Protected** (`/dashboard`, `/onboarding`, `/settings`, `/progress`, `/leaderboard`) —
@@ -532,7 +596,9 @@ This is the canonical "fetch then render" pattern:
    ```
    `Promise.all` means both load together rather than one-after-the-other (faster — relevant
    to the < 3s performance requirement). While `loading` is true the page shows skeleton
-   placeholders (the `Sk` component); on failure it shows a toast.
+   placeholders (the `Sk` component); on failure it reports the error (`reportLoadFailure`)
+   and shows an error with Retry in place of the tasks. After a successful load it sends the
+   streak check-in (`POST /api/progress/checkin`, §4).
 
 2. **Render from state.** The returned `data` drives everything: the stats "bento" cards
    (streak chip, **current-Juz ring**, memorized-pages stat), and the **Today / This Week**
@@ -675,15 +741,16 @@ The **only** memorized indicator is a small tick button in each page card's foot
 (`data-tour="lib-mark"`) — there's no separate badge or banner elsewhere on the page. It
 calls `markPageMemorized`/`unmarkPageMemorized`, which optimistically flip a local
 `memorizedPages` Set, then call `progressAPI.markComplete` (adding) or
-`progressAPI.updateMemorized` (removing — `/uncomplete` only undoes pages memorized *today*
-and would 400 on an older page), rolling back on failure. In two-page view each half of the
+`progressAPI.changeMemorized({ remove: [page] })` (removing just that page —
+`PATCH /api/progress/memorized`; it used to send the whole local set as a replace, which
+deleted any page this tab didn't know about), rolling back on failure. The ticks stay
+disabled until the reader's progress has loaded. In two-page view each half of the
 spread has its own tick, so either page can be marked independently.
 
-### Focus mode, two-page view, and navigation
+### Two-page view and navigation
 
-**Focus mode** (`focusMode`, persisted to `localStorage['mushafFocus']`) hides the sidebar
-and page chrome for a distraction-free read; **view** (`single`/`double`, persisted to
-`localStorage['mushafView']`) switches to a two-page spread on wide screens
+(Focus mode is gone — removed on purpose; the sidebar has its own show/hide toggle and the
+`S` key.) **View** (`single`/`double`, persisted to `localStorage['mushafView']`) switches to a two-page spread on wide screens
 (`twoPage = view === 'double' && isWide`), snapping to an odd anchor page so the spread
 always pairs correctly. Every page-change path funnels through one function, `goToPage`,
 which clamps to `1..604` and re-snaps for two-page view — so all of the following stay
@@ -747,9 +814,35 @@ what it *requests* matters as much as what it *shows*.
 
 ### Bookmarks
 
-Account-saved, multiple per user, backed by the `Bookmark` model (§2) via
-[bookmarksAPI](../client/src/services/api.js) — add/remove/list against the current page,
-each with an optional label, listed in the sidebar for one-tap navigation.
+Account-saved, several per user (and per page, as long as their names differ), backed by
+the `Bookmark` model (§2) via [bookmarksAPI](../client/src/services/api.js). All of it lives
+in [hooks/useBookmarks.js](../client/src/hooks/useBookmarks.js): the list and its load (a
+reply that isn't a list counts as a failed load, with Retry; an entry that can't be drawn is
+left out and reported), add with an optional label, rename inline, move to the page being
+read (with a confirm, or a replace when an unnamed bookmark lands on another), remove (with
+a confirm) — each optimistic, rolled back on failure, with Restore in the toast. The Library
+only renders the sidebar list and passes in the page an add or a move acts on.
+
+### Tafsir panel
+
+[components/TafsirPanel.jsx](../client/src/components/TafsirPanel.jsx) is the commentary
+beside the page (a bottom sheet on phones, an overlay on tablets, a resizable column from
+`lg`). It is mounted only while open, inside its own error boundary, and owns its fetch,
+loading/error/Retry state and the paragraphs — so a bad payload crashes only the panel, and
+the boundary's Retry remounts it, which reads the commentary again. The Library decides
+which verse it follows (the selection, or the last verse shown) and keeps the edition and
+the saved width ([tafsirWidth.js](../client/src/components/tafsirWidth.js)).
+
+### Keeping the reader fast
+
+The Library is one large component, so it matters what re-renders it. Pointer moves and
+scrolls must not: the hover tint lives in `MushafPage` and only changes state when the
+verse under the pointer does; a range drag sets the band only when one of its ends moves;
+dragged elements (`hooks/useDraggable.js`) are moved by a direct style write and committed
+to state on release; a tafsir resize re-renders only the panel; the draw menu listens to
+scrolls only while it's open; and the toast context's value never changes. Measured on the
+built app at 4× CPU throttling, a 60-move range drag went from 63 Library renders to 11, a
+popover drag from 66 to 7, a tafsir resize from 67 to 5.
 
 ---
 
@@ -773,7 +866,7 @@ Two tour builders, both following the same shape:
 - [dashboardTour.js](../client/src/components/dashboardTour.js) — `startDashboardTour({ t, onDone })`
   walks 5 dashboard regions (new-memorization column, listen button, review column, streak
   chip, settings link), each targeted by a stable `data-tour="…"` attribute, e.g.
-  `[data-tour="new-mem"]` on [Dashboard.jsx:838](../client/src/pages/Dashboard.jsx). Steps
+  `[data-tour="new-mem"]` in [Dashboard.jsx](../client/src/pages/Dashboard.jsx). Steps
   whose target isn't currently in the DOM (the new-memorization column doesn't exist for a
   Hafiz; the Settings link is desktop-only) are filtered out *before* the tour starts, so it
   never spotlights an empty space.
@@ -803,7 +896,7 @@ Every tour is gated by its own `localStorage` flag, checked before launching and
 | `seenLibraryTour` | library reader tour finishes | first visit to `/library` |
 | `seenVerseActionsHint` | the coachmark is shown/dismissed | first time the verse popover appears, only if no tour is currently running |
 
-On [Dashboard.jsx:344–386](../client/src/pages/Dashboard.jsx), this chaining is explicit: the
+In [Dashboard.jsx](../client/src/pages/Dashboard.jsx) (the tour effect), this chaining is explicit: the
 dashboard tour's `onDone` calls `showGuideOnce()`, which only opens
 `HowToMemorizeModal` if `seenMemorizeGuide` isn't set yet — so a brand-new user sees the tour,
 then (once) the how-to guide, in sequence, while a returning user sees neither. A
@@ -876,6 +969,19 @@ A single CTA at the bottom of the Memorization Map (`FiEdit2` icon) routes to
 editor instead of making them hunt for it — Progress is read-mostly (it visualizes state),
 so editing intentionally lives one click away on Settings rather than being duplicated here.
 
+That editor and Onboarding's "what have you memorized?" step are the same component,
+[MemorizedUnitPicker.jsx](../client/src/components/MemorizedUnitPicker.jsx): five tabs (Juz,
+Hizb, ¼ Hizb, Surah, page Range) over one selection held as **verse ranges**, because a
+Surah or Hizb boundary falls mid-page and rounding to pages spilled a selection into its
+neighbour. The editor variant adds what only editing needs — units a change would remove in
+red, each unit's percentage, a confirm before deleting a range row, Restore — and saves only
+the **difference** from what it loaded (`PATCH /api/progress/memorized` for whole pages,
+`PUT /api/progress/units` for the mid-page remainders), so a page marked elsewhere since the
+editor opened is never deleted. Onboarding sends everything in one all-or-nothing
+`POST /api/progress/onboarding` (whole pages, verse ranges and the plan); if the server
+cannot undo a half-applied request it answers `ONBOARDING_PARTIAL`, and a deleted account
+gets 401.
+
 ### Settings: a simplified review-intensity selector
 
 The review-settings group in [Settings.jsx](../client/src/pages/Settings.jsx) presents four
@@ -912,9 +1018,11 @@ pattern as the compact/detailed map toggle above.
 
 ### Quran content — [../client/src/services/quranApi.js](../client/src/services/quranApi.js)
 
-The app stores **no Quran text or audio itself** (the QCF page *fonts* are self-hosted, but
-they're glyph shapes, not text). Content comes from public sources, all called from the
-browser:
+The app serves **no recitation audio and no page text of its own**: those come from public
+sources, all called from the browser. Two derived files are committed: the page structure
+the server seeds from, and the verse-search index (`client/public/data/search-index.json`,
+every verse's words — so the repo *does* hold Quran text; its licence is part of the
+audit's H-04 review). The QCF page fonts, self-hosted under `client/public/fonts/qcf/`, are glyph shapes, not text.
 
 - **Page text/layout** — now comes from the **quran.com API v4** via
   [mushafApi.js](../client/src/services/mushafApi.js) (per-word glyph codes + line numbers —
@@ -922,21 +1030,30 @@ browser:
   `quranApi.js`'s older `fetchPageText` (alquran.cloud `quran-uthmani`) remains only as a
   text utility; the reader no longer renders from it.
 - **Audio** — `getAyahAudioUrl(reciterId, ayahNumber)` builds a URL on the
-  `cdn.islamic.network` audio CDN. Five reciters are listed in `RECITERS`; the comment notes
-  one reciter was dropped because the CDN returned 403 for it (a real, verified detail worth
-  mentioning — it shows the integrations were actually tested). Some of that CDN's files
-  cannot be served at all, so each reciter also names a `fallback` folder on everyayah.com,
+  `cdn.islamic.network` audio CDN, or on everyayah.com for reciters that CDN doesn't carry.
+  34 reciters are listed in `RECITERS`; the comments list the editions and folders rejected after
+  checking — mislabelled or wrong-qari files, wrong content types, missing or empty folders,
+  low bitrates (a real, verified detail worth mentioning — it shows the integrations were
+  actually tested). Some of that CDN's files cannot be served at all, so most CDN reciters
+  also name an `everyayah` folder as a fallback (two have none),
   used only after the primary has spent its retries on the verse being played
   (`getFallbackAyahAudioUrl`, and `failBuf` in Library.jsx). It was chosen by comparing
   bytes, not names: the audio frames are identical to the primary's, so the fallback is
   provably the same recording.
-- **Tafsir (commentary)** — four editions in `TAFSIR_EDITIONS`. Some come per-page from
-  alquran.cloud, others per-ayah from a separate jsDelivr-hosted CDN.
+- **Tafsir (commentary)** — nine editions in `TAFSIR_EDITIONS` (one of them i'rab, grammar,
+  rather than commentary). Some come per-page from alquran.cloud, others per-ayah from the
+  spa5k tafsir files on jsDelivr or from hefzmoyaser.net (with the jsDelivr copy as its
+  fallback). A classical tafsir often comments on a whole passage at once; the panel says
+  which verses a block covers (`findTafsirRun`).
 
 Two engineering details to point out:
-- **In-memory caching.** `pageTextCache`, `tafsirPageCache`, and `tafsirAyahCache` are
-  `Map`s that memoize responses, so revisiting a page is instant and doesn't re-hit the
-  network — directly supporting the < 3s performance target.
+- **In-memory caching.** `pageTextCache`, `tafsirPageCache`, `tafsirAyahCache` and the
+  others memoize responses in size-capped LRU caches ([lruCache.js](../client/src/utils/lruCache.js)),
+  so revisiting a page is instant and doesn't re-hit the network — directly supporting the
+  < 3s performance target — without growing for ever. Every outside request is bounded by
+  [fetchWithTimeout.js](../client/src/utils/fetchWithTimeout.js) (`NetworkError`,
+  `RequestTimeoutError`), and a failure goes through `reportLoadFailure` to an error with
+  Retry.
 - **Text cleanup.** `splitBasmala` separates the Basmala onto its own centered line (except
   where it's genuinely ayah 1, like Al-Fatiha), `toArabicDigits` converts ayah numbers to
   Arabic-Indic numerals, and there's a guard that strips a stray BOM character the API
@@ -965,12 +1082,18 @@ What makes it more than a generic chatbot:
   exact tasks (a half page with its verse range, the review pages) — instructing the model
   to answer from *that* data and never invent numbers. So "what should I memorize today?"
   gets the same answer the dashboard gives.
-- **It fails safe.** If the progress lookup throws, it's caught and the chat continues
-  *without* the context block — a data hiccup never breaks the conversation.
+- **It fails safe.** If the progress lookup throws, it's caught and the model is told the
+  user's data is unavailable right now and must not be guessed — a data hiccup never breaks
+  the conversation, and never produces an invented streak.
+- **It sees no identity.** The summary holds no name, email or date; a test checks the
+  whole outgoing call.
 - **It's guarded.** Input validation requires a 1–10 message array, each message a non-empty
-  string ≤ 2000 chars. And [../server/middleware/chatRateLimit.js](../server/middleware/chatRateLimit.js)
-  caps each user at **20 requests / 5 minutes** so nobody can spam the endpoint and run up
-  external API cost. The limiter is mounted *after* `protect` so it can key the limit on the
+  string ≤ 2000 chars. [../server/middleware/chatRateLimit.js](../server/middleware/chatRateLimit.js)
+  caps each user at **20 requests / 5 minutes** (a burst limit), and
+  [../server/utils/chatBudget.js](../server/utils/chatBudget.js) at **50 messages a UTC day**
+  (`CHAT_DAILY_LIMIT`, counted in memory). A reply is capped at 2,048 tokens
+  (`CHAT_MAX_TOKENS`) and 20 s (`CHAT_TIMEOUT_MS`, a 504 after that), so nobody can run up
+  the external API's cost. The limiters are mounted *after* `protect` so they key on the
   authenticated user id.
 
 ---
@@ -987,8 +1110,9 @@ transactions that would favor SQL. Mongoose still gives us schema validation, ty
 indexes on top.
 
 **Q: How does the review scheduling actually work?**
-Two buckets. *Recent review* = pages memorized in the last few active days, reviewed
-frequently because they're freshest and most fragile. *Cycle review* = everything older,
+Two buckets. *Recent review* = the N newest pages memorized since the plan started (N is
+`recentReviewCount`, or `max(3, min(ceil(dailyNewPages×3), 6))`), reviewed frequently
+because they're freshest and most fragile. *Cycle review* = everything else,
 rotated through over a window (≈10 days at `standard` intensity), taken
 **oldest-reviewed-first** so the page nearest to being forgotten comes up first. The daily
 counts come from `computeDailyReviewTarget`; the selection and de-duplication happen in
@@ -1017,11 +1141,14 @@ from queries by default; login verifies with `bcrypt.compare`. bcrypt is one-way
 so identical passwords produce different hashes and the originals can't be recovered.
 
 **Q: How is session security handled?**
-JWTs. On login/register the server signs a token (carrying just the user id) with a server
-secret, valid 30 days. The browser stores it and the axios interceptor attaches it as a
-`Bearer` token on every request. The `protect` middleware verifies the signature and expiry
-on protected routes. It's hardened with `helmet` (security headers), a CORS allow-list, and
-rate-limiting on the chat endpoint.
+JWTs. On login/register the server signs a token (carrying the user id and its issue time
+to the millisecond, `iatMs`) with a server secret, valid 30 days. The browser stores it and
+the axios interceptor attaches it as a `Bearer` token on every request. The `protect`
+middleware verifies the signature and expiry on protected routes, and refuses a token issued
+before the user's last password change or reset. It's hardened with `helmet` (security
+headers), a CORS allow-list, a general per-IP limit on the whole API, stricter limits on
+sign-in, registration and password reset, a per-account sign-in backoff, and limits on the
+chat.
 
 **Q: How are timezones handled?**
 Every date comparison is reduced to a `YYYY-MM-DD` string in **UTC** (`getDateString` calls
@@ -1044,19 +1171,21 @@ Several honest levers: (1) the per-user queries are already indexed, which is th
 that matters as users grow; (2) the API is stateless (JWT, no server session), so it scales
 horizontally behind a load balancer; (3) `QuranMetadata` is tiny and static, so it could be
 cached in memory or even shipped as a constant; (4) the heavy Quran text/audio is served by
-external CDNs, not us, and is cached client-side; (5) future steps would be adding
-pagination/projection to the few list endpoints and route-level code-splitting on the
-frontend to cut the initial JS bundle (a known follow-up noted in
-[FEATURES.md](FEATURES.md) §5).
+external CDNs, not us, and is cached client-side; (5) the frontend is already split by
+route, with recharts and the search index loaded on demand. The next steps would be
+pagination/projection on the few list endpoints, moving the in-memory rate-limit and chat
+counters to a shared store before running a second instance, and an always-on server
+instead of the free tier that sleeps.
 
 **Q: How do rest days and the streak interact?**
-`offDays` are weekdays the user excused. On those days `getTodayTasks` returns no tasks but
-still advances `lastActiveDate` so the chain survives. The streak only resets when a *real*
+`offDays` are weekdays the user excused. On those days `getTodayTasks` returns no tasks and
+writes nothing; the dashboard's `POST /api/progress/checkin` moves `lastActiveDate` to today
+so the chain survives. The streak only resets when a *real*
 (non-off) day passes with no activity — `isStreakContinued` checks each in-between day for
 exactly that.
 
 **Q: What happens when someone finishes the whole Quran (Hafiz)?**
-`getTodayTasks` detects `totalMemorized === 604`, stops assigning new pages, and switches the
+`getTodayTasks` detects `fullPages === 604` (every page fully memorized — a partly memorized page doesn't count), stops assigning new pages, and switches the
 review target to a Hafiz-specific schedule (e.g. `standard` reviews 60 pages/day; `strong`
 covers all 604 in a week). The dashboard shows a congratulations banner instead of a "new
 memorization" column.
@@ -1126,12 +1255,13 @@ Quick plain-language definitions of the terms used throughout this guide.
 - **Muraja'ah** (مراجعة) — systematic *revision/review* of already-memorized Quran. The
   "review" tasks in this app are exactly this: keeping memorized pages fresh.
 - **Hafiz** — someone who has memorized the *entire* Quran. In code this is the
-  `totalMemorized === 604` state: no new pages remain, so the app switches to review-only
+  `fullPages === 604` state: no new pages remain, so the app switches to review-only
   and shows a congratulations banner.
 - **Tashkeel** — the diacritical marks (short-vowel and pronunciation signs) written above
   and below Arabic letters. Correct tashkeel is essential for reciting the Quran accurately,
-  which is why the app pulls the `quran-uthmani` edition (full diacritics) and uses
-  dedicated Quranic fonts to render it.
+  which is why the reader draws each page with the printed mushaf's own per-page QCF glyph
+  fonts, so every mark sits exactly as printed; Uthmani text in Amiri Quran / Scheherazade
+  New is used only outside the page (the tafsir preview, search).
 
 ### Technical terms (the engineering)
 
@@ -1140,7 +1270,7 @@ Quick plain-language definitions of the terms used throughout this guide.
   exchanges JSON. This app's whole `client ↔ server` boundary is REST, e.g.
   `GET /api/progress/today`.
 - **JWT (JSON Web Token)** — a small, digitally *signed* token the server hands out at
-  login. It carries a little data (here, the user id) and an expiry, and the signature lets
+  login. It carries a little data (here, the user id and its issue time) and an expiry, and the signature lets
   the server later confirm it issued the token without storing any session on its side. The
   browser sends it on every request as a `Bearer` token.
 - **bcrypt** — a deliberately slow, one-way *password hashing* algorithm with a built-in
@@ -1232,7 +1362,7 @@ true, and each is a pattern worth knowing:
   only hands out the store object, which never changes. Components read it through
   `useSyncExternalStore` hooks ([hooks/useTimer.js](../client/src/hooks/useTimer.js))
   that return the exact text they show, so a readout re-renders once a second and
-  the 5,000-line Library never re-renders for the clock at all. Same idea as the
+  the 6,500-line Library never re-renders for the clock at all. Same idea as the
   zoom store in `useMushafZoom`.
 - **localStorage + the `storage` event.** The state survives reloads and route
   changes and works without an account. Every other tab gets a `storage` event when
@@ -1309,3 +1439,67 @@ The hard part is not the list but deciding what goes in it:
   only the list components subscribe to that clock
   ([hooks/useRecentPages.js](../client/src/hooks/useRecentPages.js)), so the Library
   itself never re-renders for it.
+
+## Plumbing every page relies on
+
+Small, shared pieces that most changes touch. Each exists because a specific failure
+happened without it.
+
+**Server**
+- **Error codes.** Every error reply is `{ success: false, code, message }` with a stable
+  `code` ([middleware/errorCode.js](../server/middleware/errorCode.js) fills one in for any
+  status that lacks it). The client never parses messages; it maps codes to its own
+  sentences in both languages ([utils/apiError.js](../client/src/utils/apiError.js)).
+- **Logging without leaking.** `logError` ([utils/errorResponse.js](../server/utils/errorResponse.js))
+  logs a refused value's *class, code and field names* — never the value (a racing sign-up's
+  duplicate-key error carries the email). Groq failures are logged by class, status, request
+  id and cause chain, never the body, which can quote the user's words.
+- **Shutdown.** [utils/shutdown.js](../server/utils/shutdown.js) drains in-flight requests and
+  closes Mongo on SIGTERM, which Render sends on every deploy.
+- **Mail.** [utils/mailer.js](../server/utils/mailer.js) is the one seam for email
+  (`EMAIL_TRANSPORT`): `none`, or `console` for development (refused in production). A real
+  provider is one more entry there.
+- **The assistant sees no identity.** The progress summary sent to Groq holds no name, email
+  or date ([chatController.js](../server/controllers/chatController.js)); a test checks the
+  outgoing body. What each outside service receives is inventoried in
+  [docs/legal/README.md](legal/README.md), next to the unpublished privacy-policy and terms
+  drafts.
+
+**Client**
+- **Load failures are never silent.** Every loader's `catch` calls `reportLoadFailure(err, what)`
+  ([utils/reportError.js](../client/src/utils/reportError.js)): a failed request is logged
+  with what failed and how, anything else goes to `reportError` — the single hook an error
+  service (Sentry) would plug into. The screen then shows an error with Retry, never an
+  empty "none yet".
+- **Requests are bounded.** Axios times out reads at 20 s and writes at 60 s; requests to
+  other hosts go through [utils/fetchWithTimeout.js](../client/src/utils/fetchWithTimeout.js),
+  which throws `NetworkError` or `RequestTimeoutError` so callers can tell them apart.
+- **Crashes stay in their region.** [ErrorBoundary.jsx](../client/src/components/ErrorBoundary.jsx)
+  wraps the tasks, the timer, the to-do, the reader's sidebar and panels, the chat. Given a
+  *function* as children it renders it inside the boundary, so values computed while
+  rendering that region (the dashboard's task lists, the tafsir paragraphs) crash the region,
+  not the page. Data that the page's own render needs is checked as it arrives instead
+  (bookmarks, the annotation summary).
+- **Storage never throws.** [utils/safeStorage.js](../client/src/utils/safeStorage.js) wraps
+  localStorage (private windows and blocked storage throw) and lists every key the app
+  keeps, sorted into the person's (cleared on sign-out) and the device's (kept).
+- **Dialogs.** [hooks/useDialog.js](../client/src/hooks/useDialog.js) gives every modal and
+  sheet its first focus, a focus trap, Escape and an inert background, and returns focus
+  where it came from.
+- **Shortcuts.** [utils/shortcutKeys.js](../client/src/utils/shortcutKeys.js) matches a key by
+  `e.code` or `e.key` (see "Keyboard shortcuts" above) and holds the Settings switch that
+  turns single-key shortcuts off (WCAG 2.1.4).
+- **Titles and share cards.** [hooks/usePageTitle.js](../client/src/hooks/usePageTitle.js)
+  names each page in both languages; [siteMeta.js](../client/siteMeta.js) feeds the build's
+  share cards, `robots.txt` and, with `VITE_SITE_URL` (on Vercel, its production URL when
+  that is unset), the sitemap and canonical links.
+- **Loading less up front.** Each page is its own chunk; the locale JSON is fetched for the
+  active language only (a small script `vite.config.js` adds to `index.html` starts that
+  fetch alongside the entry chunk); recharts loads with the chart; the UI fonts are
+  self-hosted ([src/fonts.css](../client/src/fonts.css)) rather than fetched from Google.
+- **Headers.** [client/vercel.json](../client/vercel.json) sets the security headers
+  (`frame-ancestors 'none'` is already enforced), cache rules and a *report-only*
+  Content-Security-Policy, to be enforced once it has been watched in production. Its
+  `connect-src` and `media-src` name the API (`https://quran-tracker-api.onrender.com`)
+  and every Quran and audio host: change `VITE_API_URL` or add an outside host, and that
+  header has to change with it.

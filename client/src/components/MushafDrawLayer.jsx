@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useRef, useState, useEffect } from 'react';
 import { FiCheck, FiX, FiMessageSquare } from 'react-icons/fi';
 import { isSecondaryPress } from '../utils/selfTestCycle';
@@ -120,6 +121,7 @@ export default function MushafDrawLayer({
   const lastRef = useRef(null);
   const shiftRef = useRef(null);  // { anchorIdx } while a shift-straight segment is active
   const strokesRef = useRef(strokes);
+  const { t } = useTranslation();
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
 
   // Inline editor state for placing / editing a text note.
@@ -304,7 +306,10 @@ export default function MushafDrawLayer({
       </svg>
 
       {/* Text notes + inline editor — an HTML overlay in the same extended box */}
-      <div className="mushaf-text-layer" aria-hidden={!active}>
+      {/* Never aria-hidden: in read mode its note icons are the buttons that open
+          the notes, and hiding focusable buttons from screen readers left them
+          reachable by Tab but nameless and unannounced (M-12, L8). */}
+      <div className="mushaf-text-layer">
         {/* Text notes render as an ICON only — the text itself never draws on the
             mushaf. Read mode: click opens the note panel. Draw mode: tap edits,
             drag moves, × deletes. Hover shows a short excerpt. */}
@@ -328,17 +333,17 @@ export default function MushafDrawLayer({
                 onContextMenu={active && onSecondaryPress ? (e) => e.preventDefault() : undefined}
                 onClick={active ? undefined : (e) => { e.stopPropagation(); onReadText?.(n); }}
               >
-                <FiMessageSquare className="w-full h-full" />
+                <FiMessageSquare className="w-full h-full" aria-hidden="true" />
               </button>
               {active && (
                 <button
                   type="button"
                   className="mushaf-text-note-del"
-                  aria-label="Delete note"
+                  aria-label={t('library.draw.deleteNote')}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); onDeleteText?.(n._id); }}
                 >
-                  <FiX className="w-full h-full" />
+                  <FiX className="w-full h-full" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -353,13 +358,14 @@ export default function MushafDrawLayer({
               maxLength={300}
               dir="auto"
               placeholder={placeholder}
+              aria-label={placeholder}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') commitEditor(); else if (e.key === 'Escape') closeEditor(); }}
               onBlur={commitEditor}
               className={`mushaf-text-input mushaf-text-note--${color}`}
             />
-            <button type="button" className="mushaf-text-editor-ok" aria-label="Save note" onMouseDown={(e) => e.preventDefault()} onClick={commitEditor}>
-              <FiCheck className="w-full h-full" />
+            <button type="button" className="mushaf-text-editor-ok" aria-label={t('library.draw.saveNote')} onMouseDown={(e) => e.preventDefault()} onClick={commitEditor}>
+              <FiCheck className="w-full h-full" aria-hidden="true" />
             </button>
           </div>
         )}

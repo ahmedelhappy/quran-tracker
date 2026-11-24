@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from 'react';
+import { useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiAlertTriangle } from 'react-icons/fi';
+import { useDialog } from '../hooks/useDialog';
 
 // A small yes/no dialog in the site's card style (the same surface, border,
 // shadow and type as the other modals), with a round tinted icon badge: the
@@ -8,55 +9,26 @@ import { FiAlertTriangle } from 'react-icons/fi';
 // what is at stake (a trash can, a bookmark…); a destructive dialog without one
 // shows a warning sign.
 //
-// Keyboard-complete: focus lands on Cancel (the safe choice) when it opens, Tab
-// stays inside it, Escape cancels, and focus goes back to whatever had it
-// before. Keys never leak out to page-level shortcuts — the Library turns pages
-// on the arrow keys, which must not fire behind a dialog.
+// Keyboard-complete through useDialog: focus lands on Cancel (the safe choice)
+// when it opens, Tab stays inside it, Escape cancels, the page behind it is
+// inert, and focus goes back to whatever had it before. Keys never leak out to
+// page-level shortcuts — the Library turns pages on the arrow keys, which must
+// not fire behind a dialog.
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, isDanger = false, icon }) => {
   const { t } = useTranslation();
-  const titleId = useId();
   const messageId = useId();
   const cancelRef = useRef(null);
-  const dialogRef = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const opener = document.activeElement;
-    cancelRef.current?.focus();
-    return () => {
-      // The dialog has unmounted by now, so focus fell to <body>. Hand it back to
-      // the opener if it still exists and nothing else has claimed focus.
-      if (opener?.isConnected && (!document.activeElement || document.activeElement === document.body)) {
-        opener.focus();
-      }
-    };
-  }, [isOpen]);
+  const { dialogProps, titleId } = useDialog({ open: isOpen, onClose, role: 'alertdialog', initialFocusRef: cancelRef });
 
   if (!isOpen) return null;
 
   const Icon = icon ?? (isDanger ? FiAlertTriangle : null);
 
-  const onKeyDown = (e) => {
-    e.stopPropagation();
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-    if (e.key === 'Tab') {
-      const buttons = dialogRef.current?.querySelectorAll('button');
-      if (!buttons?.length) return;
-      const first = buttons[0];
-      const last = buttons[buttons.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={onKeyDown}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div data-dialog-keep className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
-        ref={dialogRef}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+        {...dialogProps}
         aria-describedby={message ? messageId : undefined}
         className="relative z-10 w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6"
       >

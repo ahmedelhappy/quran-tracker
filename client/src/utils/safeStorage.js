@@ -85,7 +85,7 @@ export const TOKEN_KEY = 'token';
 //   reciter, recentReciters, playbackRate, versePause,
 //   tafsirEdition, tafsirPanelWidth, mushafView, mushafSidebar,
 //   mushafAnnoVisible, mushafZoom, readerTools, readerToolsTab,
-//   chatbotPosY                                      reader and layout settings
+//   chatbotPosY, singleKeyShortcuts                  reader and layout settings
 //   seenLibraryTour, seenVerseActionsHint, seenVerseTapCue,
 //   seenDashboardTour, seenMemorizeGuide             first-run hints shown here
 //   timerState, timerSettings                        the timer — a device tool

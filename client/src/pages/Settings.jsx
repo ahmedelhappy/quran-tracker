@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
@@ -9,19 +10,21 @@ import { switchLanguage } from '../i18n';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ConfirmModal from '../components/ConfirmModal';
+import { useDialog } from '../hooks/useDialog';
 import HowToMemorizeModal from '../components/HowToMemorizeModal';
 import Tooltip from '../components/Tooltip';
 import InfoHint from '../components/InfoHint';
-import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiPlus, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
+import { FiBook, FiEdit2, FiUser, FiSave, FiX, FiMonitor, FiSun, FiMoon, FiZap, FiLock, FiEye, FiEyeOff, FiRotateCcw, FiMapPin, FiList, FiRefreshCw, FiChevronDown, FiChevronUp, FiPause, FiHelpCircle, FiPlay, FiAward } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
-import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { JUZ_RANGES } from '../data/juzRanges';
 import {
-  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
-  coverageOf, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
+  mergeOrdRanges, subtractOrdRanges, fullyCoveredPages, splitCoverageForSave, coverageFromProgress, toVerseKeyRanges,
 } from '../utils/unitRanges';
-import { useDragSelect } from '../hooks/useDragSelect';
+import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { newPasswordProblem } from '../utils/passwordRules';
 import { reportLoadFailure } from '../utils/reportError';
+import { apiErrorMessage } from '../utils/apiError';
+import { singleKeyShortcutsOn, setSingleKeyShortcuts } from '../utils/shortcutKeys';
 
 const DAY_LABEL_KEYS = ['settings.dayMon', 'settings.dayTue', 'settings.dayWed', 'settings.dayThu', 'settings.dayFri', 'settings.daySat', 'settings.daySun'];
 const DAY_JS_INDICES = [1, 2, 3, 4, 5, 6, 0];
@@ -42,68 +45,14 @@ const DAILY_OPTIONS = [0.5, 1, 2, 5];
 // as the input's default so it shows the number actually in effect on any preset.
 const autoRecentPages = (dailyNewPages) => Math.max(3, Math.min(Math.ceil((dailyNewPages || 1) * 3), 6));
 
-const JUZ_RANGES = [
-  {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
-  {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
-  {juz:7,start:122,end:141},{juz:8,start:142,end:161},{juz:9,start:162,end:181},
-  {juz:10,start:182,end:201},{juz:11,start:202,end:221},{juz:12,start:222,end:241},
-  {juz:13,start:242,end:261},{juz:14,start:262,end:281},{juz:15,start:282,end:301},
-  {juz:16,start:302,end:321},{juz:17,start:322,end:341},{juz:18,start:342,end:361},
-  {juz:19,start:362,end:381},{juz:20,start:382,end:401},{juz:21,start:402,end:421},
-  {juz:22,start:422,end:441},{juz:23,start:442,end:461},{juz:24,start:462,end:481},
-  {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
-  {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
-];
-
-function toPageRanges(sortedPages) {
-  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
-  const pages = [...sortedPages].sort((a, b) => a - b);
-  const ranges = [];
-  let start = pages[0], prev = pages[0];
-  for (let i = 1; i < pages.length; i++) {
-    if (pages[i] !== prev + 1) {
-      ranges.push({ start: String(start), end: String(prev) });
-      start = pages[i];
-    }
-    prev = pages[i];
-  }
-  ranges.push({ start: String(start), end: String(prev) });
-  return ranges;
-}
-
-// Expand the editable range rows into the set of pages they cover.
-function rangesToPages(pageRanges) {
-  const pages = new Set();
-  pageRanges.forEach(({ start, end }) => {
-    const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
-      for (let p = s; p <= e; p++) pages.add(p);
-  });
-  return pages;
-}
-
-function validateRanges(pageRanges) {
-  const errors = pageRanges.map(() => ({}));
-  const parsed = pageRanges.map(r => ({ start: parseInt(r.start, 10), end: parseInt(r.end, 10) }));
-  parsed.forEach((r, i) => {
-    if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
-      errors[i].start = 'common.validationRange';
-    if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
-      errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
-      errors[i].end = 'common.validationEndGreater';
-    parsed.forEach((other, j) => {
-      if (i === j) return;
-      if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
-          r.start < other.end && r.end > other.start)
-        errors[i].start = 'common.validationNoOverlap';
-    });
-  });
-  return errors;
-}
-
 // ── Edit Progress Modal ──────────────────────────────────
-function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
+// Exported for its tests (Settings.test.jsx).
+export function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad, memorizedPageNums, partialPages }) {
+  // A modal dialog for the keyboard and screen readers too (M-12): focus lands
+  // on the dialog itself (so its title is read first, and the next Tab is its
+  // close button), Tab stays inside, Escape closes, the settings page behind is
+  // inert, and focus returns to "Edit progress".
+  const { dialogProps, titleId } = useDialog({ open: isOpen, onClose });
   // Single source of truth: the selection as VERSE ranges (global ayah numbers).
   //
   // It used to be a set of whole page numbers, which is fine for Juz / Surah /
@@ -116,133 +65,34 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
   // them (`selectedPages` = the pages every verse of which is covered).
   const [coverage, setCoverage] = useState([]);
   const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
-  const addCoverage = (range) => { if (range) setCoverage((c) => mergeOrdRanges([...c, range])); };
-  const cutCoverage = (range) => { if (range) setCoverage((c) => subtractOrdRanges(c, [range])); };
-  const setSelectedPages = (next) => {
-    // The page-shaped tabs still think in pages; translate back onto the model.
-    // They only see WHOLE pages, so they only replace whole pages: the sub-page
-    // coverage they cannot show (a half page, a hizb's mid-page end) is carried
-    // over. Rebuilding from pages alone dropped it, and the save then removed
-    // those verses — toggling Juz 1 deleted a half-memorized page 22.
-    const prevFull = fullyCoveredPages(coverage);
-    const pages = typeof next === 'function' ? next(prevFull) : next;
-    const subPage = subtractOrdRanges(coverage, [...prevFull].map(pageOrdRange));
-    setCoverage(mergeOrdRanges([...subPage, ...[...pages].map(pageOrdRange)]));
-  };
-  const [selectionMode, setSelectionMode] = useState('juz');
-  const [surahSearch, setSurahSearch] = useState('');
-  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
-  const [rangeErrors, setRangeErrors] = useState([{}]);
-  const [pendingDeleteIdx, setPendingDeleteIdx] = useState(null);
+  // The picker's own state (tab, search, range rows) starts over with a new key:
+  // on every opening and on Restore. It says when its range rows stop being valid.
+  const [pickerKey, setPickerKey] = useState(0);
+  const [hasRangeErrors, setHasRangeErrors] = useState(false);
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
-  const { t, i18n } = useTranslation();
-  const isArabic = i18n.language === 'ar';
+  const { t } = useTranslation();
 
-  // Pages memorized when the modal opened — lets us flag (in red) anything the user removes.
-  const origSet = useMemo(() => new Set(memorizedPageNums), [memorizedPageNums]);
-  const countIn = (set, start, end) => { let c = 0; for (let p = start; p <= end; p++) if (set.has(p)) c++; return c; };
-  // Percentage of a unit's VERSES that are covered, for the tile badge.
-  const verseCoveragePct = (merged, range) => {
-    if (!range) return 0;
-    let covered = 0;
-    for (const m of merged) {
-      if (m.to < range.from) continue;
-      if (m.from > range.to) break;
-      covered += Math.min(m.to, range.to) - Math.max(m.from, range.from) + 1;
-    }
-    return Math.round((covered / (range.to - range.from + 1)) * 100);
+  // What was memorized when the modal opened — lets the picker flag (in red)
+  // anything the user removes.
+  const original = useMemo(() => ({
+    pages: new Set(memorizedPageNums),
+    coverage: coverageFromProgress(memorizedPageNums, partialPages),
+  }), [memorizedPageNums, partialPages]);
+  const restoreOriginal = () => {
+    setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
+    setPickerKey((k) => k + 1);
+    setHasRangeErrors(false);
   };
-
   useEffect(() => {
     if (isOpen) {
       setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
-      setSelectionMode('juz');
-      setSurahSearch('');
-      const initRanges = toPageRanges(memorizedPageNums);
-      setPageRanges(initRanges);
-      setRangeErrors(initRanges.map(() => ({})));
-      setPendingDeleteIdx(null);
+      setPickerKey((k) => k + 1);
+      setHasRangeErrors(false);
     }
   }, [isOpen, memorizedPageNums, partialPages]);
 
-  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
-  const toggleRange = (start, end) => setSelectedPages(prev => {
-    const next = new Set(prev);
-    const full = countIn(next, start, end) === (end - start + 1);
-    for (let p = start; p <= end; p++) { if (full) next.delete(p); else next.add(p); }
-    return next;
-  });
-  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Hizb and quarter-Hizb are verse-exact: their boundaries fall mid-page, so
-  // they add and remove the unit's own verse span rather than whole pages. That
-  // is what stops a selection bleeding into the unit next door, and it is the
-  // same span the server compiles for PUT /api/progress/units.
-  const toggleUnitRange = (range) => {
-    if (!range) return;
-    if (coverageOf(coverage, range) === 'full') cutCoverage(range);
-    else addCoverage(range);
-  };
-  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
-  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
-  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
-
-  const filteredSurahs = SURAH_PAGES.filter(s => {
-    if (!surahSearch.trim()) return true;
-    const q = surahSearch.trim().toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.arabic.includes(surahSearch.trim()) ||
-      String(s.number).includes(q)
-    );
-  });
-
-  const addRange = () => { setPageRanges(r => [...r, { start: '', end: '' }]); setRangeErrors(e => [...e, {}]); };
-  const removeRange = (i) => {
-    const updated = pageRanges.filter((_, idx) => idx !== i);
-    setPageRanges(updated);
-    setRangeErrors(e => e.filter((_, idx) => idx !== i));
-    setSelectedPages(rangesToPages(updated));
-  };
-  const updateRange = (i, key, val) => {
-    const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
-    setPageRanges(updated);
-    setRangeErrors(validateRanges(updated));
-    setSelectedPages(rangesToPages(updated));
-  };
-
-  // Tabs are views over one canonical set, so switching only re-renders. The Range
-  // tab keeps editable text rows, so we regenerate them from the set when entering it.
-  const handleTabSwitch = (newMode) => {
-    if (newMode === selectionMode) return;
-    if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
-      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
-      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
-      setPendingDeleteIdx(null);
-    }
-    setSurahSearch('');
-    setSelectionMode(newMode);
-  };
-
-  const restoreOriginal = () => {
-    setCoverage(coverageFromProgress(memorizedPageNums, partialPages));
-    setSelectionMode('juz');
-    setSurahSearch('');
-    const initRanges = toPageRanges(memorizedPageNums);
-    setPageRanges(initRanges);
-    setRangeErrors(initRanges.map(() => ({})));
-    setPendingDeleteIdx(null);
-  };
-
-  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
   const selectedCount = selectedPages.size;
-  const fullJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === (end - start + 1)).length;
-  const fullSurahCount = SURAH_PAGES.filter(s => countIn(selectedPages, s.start, s.end) === (s.end - s.start + 1)).length;
-  const fullHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
-  const fullRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
-
   const handleSave = async () => {
     setSaving(true);
     let landed = false; // whether any request of this save went through
@@ -300,280 +150,34 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div data-dialog-keep className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div {...dialogProps} className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('settings.editProgressTitle')}</h3>
           <Tooltip label={t('tooltips.close')}>
             <button onClick={onClose} className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
-              <FiX className="w-5 h-5" />
+              <FiX className="w-5 h-5" aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
 
         <div className="p-6 space-y-6">
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-[#404944] dark:text-gray-400">{t('onboarding.selectMode')}</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              {[
-                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
-                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
-                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
-                { mode: 'surah', labelKey: 'onboarding.bySurah' },
-                { mode: 'range', labelKey: 'onboarding.byRange' },
-              ].map(({ mode, labelKey }) => (
-                <button
-                  key={mode}
-                  onClick={() => handleTabSwitch(mode)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectionMode === mode
-                      ? 'bg-[#003527] text-white border-[#003527]'
-                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                  }`}
-                >
-                  {t(labelKey)}
-                </button>
-              ))}
+          <MemorizedUnitPicker
+            key={pickerKey}
+            variant="editor"
+            coverage={coverage}
+            setCoverage={setCoverage}
+            original={original}
+            onRangeErrorsChange={setHasRangeErrors}
+            tabsExtra={(
               <button
                 onClick={restoreOriginal}
                 className="ms-auto text-xs text-[#003527] dark:text-emerald-400 hover:underline transition-colors font-medium"
               >
                 {t('settings.restore')}
               </button>
-            </div>
-          </div>
-
-          {selectionMode === 'juz' && (
-            <div>
-              <div className="grid grid-cols-5 gap-2">
-                {JUZ_RANGES.map(({ juz, start, end }) => {
-                  const size = end - start + 1;
-                  const sel = countIn(selectedPages, start, end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, start, end) > 0;
-                  const pct = Math.round((sel / size) * 100);
-                  return (
-                    <button
-                      key={juz}
-                      data-tile-id={juz}
-                      onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
-                      onClick={() => ds.handleClick(juz, toggleJuz)}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      <span>{juz}</span>
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullJuzCount > 0 ? t('settings.juzSelected', { count: fullJuzCount }) : t('settings.noJuzSelected')}
-              </p>
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('settings.juzGridNote')}</p>
-            </div>
-          )}
-
-          {selectionMode === 'hizb' && (
-            <div>
-              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-                {HIZB_RANGES.map(({ hizb, start, end }) => {
-                  const range = hizbOrdRange(hizb);
-                  const state = coverageOf(coverage, range);
-                  const isFull = state === 'full';
-                  const isPartial = state === 'partial';
-                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
-                  const pct = verseCoveragePct(coverage, range);
-                  return (
-                    <button
-                      key={hizb}
-                      data-tile-id={hizb}
-                      onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
-                      onClick={() => ds.handleClick(hizb, toggleHizb)}
-                      className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-medium transition-colors border touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      <span>{hizb}</span>
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullHizbCount > 0 ? t('onboarding.hizbSelected', { count: fullHizbCount }) : t('settings.noJuzSelected')}
-              </p>
-            </div>
-          )}
-
-          {selectionMode === 'rub' && (
-            <div>
-              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
-                {RUB_RANGES.map(({ rub, hizb, quarter, start, end }) => {
-                  const state = coverageOf(coverage, rubOrdRange(rub));
-                  const isFull = state === 'full';
-                  const isPartial = state === 'partial';
-                  const isRemoved = state === 'none' && countIn(origSet, start, end) > 0;
-                  return (
-                    <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
-                      <button
-                        data-tile-id={rub}
-                        onPointerDown={(e) => ds.start(e, rub, toggleRub)}
-                        onClick={() => ds.handleClick(rub, toggleRub)}
-                        className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium transition-colors border touch-pan-y select-none ${
-                          isFull
-                            ? 'bg-[#003527] text-white border-[#003527]'
-                            : isRemoved
-                              ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                              : isPartial
-                                ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                                : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                        }`}
-                      >
-                        {hizb}.{quarter}
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                {fullRubCount > 0 ? t('onboarding.quarterHizbSelected', { count: fullRubCount }) : t('settings.noJuzSelected')}
-              </p>
-            </div>
-          )}
-
-          {selectionMode === 'surah' && (
-            <div>
-              <input
-                type="text"
-                placeholder={t('onboarding.surahSearchPlaceholder')}
-                value={surahSearch}
-                onChange={e => setSurahSearch(e.target.value)}
-                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
-              />
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {filteredSurahs.map(s => {
-                  const size = s.end - s.start + 1;
-                  const sel = countIn(selectedPages, s.start, s.end);
-                  const isFull = sel === size;
-                  const isPartial = sel > 0 && !isFull;
-                  const isRemoved = sel === 0 && countIn(origSet, s.start, s.end) > 0;
-                  const pct = Math.round((sel / size) * 100);
-                  return (
-                    <button
-                      key={s.number}
-                      data-tile-id={s.number}
-                      onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
-                      onClick={() => ds.handleClick(s.number, toggleSurah)}
-                      className={`relative flex flex-col items-center justify-center h-[76px] px-2 pt-4 pb-1 rounded-lg border text-center transition-colors touch-pan-y select-none ${
-                        isFull
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : isRemoved
-                            ? 'bg-red-50 dark:bg-red-900/20 border-red-400 text-red-700 dark:text-red-300'
-                            : isPartial
-                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                              : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:text-emerald-400 dark:hover:border-emerald-500'
-                      }`}
-                    >
-                      {(isFull || isPartial || isRemoved) && (
-                        <span className="absolute top-1 end-1 text-[9px] leading-none opacity-80">
-                          {isFull ? '100' : isRemoved ? '0' : pct}%
-                        </span>
-                      )}
-                      <span className="text-xs font-medium leading-tight line-clamp-2 w-full">
-                        {s.number}. {isArabic ? s.arabic : s.name}
-                      </span>
-                      <span className={`text-[10px] mt-0.5 leading-tight line-clamp-1 w-full ${isFull ? 'text-white/70' : isRemoved ? 'text-red-600/70 dark:text-red-300/70' : isPartial ? 'text-amber-700/70 dark:text-amber-300/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
-                        {isArabic ? s.name : s.arabic}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {fullSurahCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: fullSurahCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'range' && (
-            <div>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-1">{t('settings.rangeTabTitle')}</p>
-              <p className="text-xs text-[#707974] dark:text-gray-400 mb-3">{t('settings.rangeTabHint')}</p>
-              <div className="space-y-2">
-                {pageRanges.map((r, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <input type="number" min="1" max="604" value={r.start} onChange={e => { updateRange(i, 'start', e.target.value); setPendingDeleteIdx(null); }}
-                        placeholder={t('settings.rangeStart')}
-                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <span className="text-[#404944] dark:text-gray-400 text-sm shrink-0">{t('settings.to')}</span>
-                      <input type="number" min="1" max="604" value={r.end} onChange={e => { updateRange(i, 'end', e.target.value); setPendingDeleteIdx(null); }}
-                        placeholder={t('settings.rangeEnd')}
-                        className={`flex-1 border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`} />
-                      <Tooltip label={t('tooltips.removeRange')}>
-                        <button
-                          onClick={() => setPendingDeleteIdx(pendingDeleteIdx === i ? null : i)}
-                          className={`shrink-0 transition-colors ${pendingDeleteIdx === i ? 'text-[#ba1a1a]' : 'text-[#bfc9c3] dark:text-gray-500 hover:text-[#ba1a1a] dark:hover:text-red-400'}`}
-                        >
-                          <FiX className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                    {pendingDeleteIdx === i && (
-                      <div className="flex items-center justify-between gap-3 px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40 rounded-lg">
-                        <p className="text-xs text-red-700 dark:text-red-300">
-                          {t('settings.rangeDeleteConfirm', { start: r.start || '?', end: r.end || '?' })}
-                        </p>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <button onClick={() => setPendingDeleteIdx(null)} className="text-xs text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors">
-                            {t('settings.cancel')}
-                          </button>
-                          <button
-                            onClick={() => {
-                              removeRange(i);
-                              setPendingDeleteIdx(null);
-                            }}
-                            className="text-xs font-semibold text-[#ba1a1a] hover:text-red-800 dark:hover:text-red-300 transition-colors"
-                          >
-                            {t('settings.rangeDeleteConfirmBtn')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && pendingDeleteIdx !== i && (
-                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                    )}
-                  </div>
-                ))}
-                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                  <FiPlus className="w-3 h-3" /> {t('settings.addRange')}
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          />
 
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
@@ -614,23 +218,51 @@ function EditProgressModal({ isOpen, onClose, onSave, onRetryLoad, progressLoad,
 }
 
 // ── Change Password Card ─────────────────────────────────
-function ChangePasswordCard() {
+// The field each of the server's password refusals is about (server/
+// controllers/authController.js changePassword, utils/passwordPolicy.js).
+const PW_ERROR_FIELD = {
+  PASSWORD_FIELDS_REQUIRED: 'current',
+  WRONG_PASSWORD: 'current',
+  PASSWORD_TOO_SHORT: 'newPw',
+  PASSWORD_TOO_LONG: 'newPw',
+  PASSWORD_UNCHANGED: 'newPw',
+};
+
+// Exported for its tests (Settings.test.jsx).
+export function ChangePasswordCard() {
   const { showToast } = useToast();
   const { t } = useTranslation();
   const { changePassword } = useAuth();
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwShow, setPwShow] = useState({ current: false, newPw: false, confirm: false });
   const [pwLoading, setPwLoading] = useState(false);
+  // A problem is said next to the field it is about (aria-invalid +
+  // aria-describedby) and that field takes focus, so a screen-reader user
+  // hears what to fix where they fix it; the toast stays, as the summary
+  // everyone else sees (M-12). That goes for the server's refusals too — a
+  // wrong current password is the common one; one that is about no field (the
+  // network) is said under the button instead, and focus stays put.
+  const [pwError, setPwError] = useState(null); // { field, message } | null
+  // Rendered before the focus moves (flushSync), so the field already carries
+  // aria-invalid and its error when a screen reader lands on it.
+  const fail = (field, message) => {
+    flushSync(() => setPwError({ field, message }));
+    if (field !== 'form') document.getElementById(`settings-pw-${field}`)?.focus();
+    showToast(message, 'error');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setPwError(null);
     const { current, newPw, confirm } = pwForm;
-    if (!current || !newPw || !confirm) return showToast(t('settings.password.allRequired'), 'error');
+    if (!current || !newPw || !confirm) {
+      return fail(!current ? 'current' : !newPw ? 'newPw' : 'confirm', t('settings.password.allRequired'));
+    }
     const pwProblem = newPasswordProblem(newPw);
-    if (pwProblem === 'tooShort') return showToast(t('settings.password.tooShort'), 'error');
-    if (pwProblem === 'tooLong') return showToast(t('settings.password.tooLong'), 'error');
-    if (newPw !== confirm) return showToast(t('settings.password.mismatch'), 'error');
-    if (newPw === current) return showToast(t('settings.password.mustDiffer'), 'error');
+    if (pwProblem === 'tooShort') return fail('newPw', t('settings.password.tooShort'));
+    if (pwProblem === 'tooLong') return fail('newPw', t('settings.password.tooLong'));
+    if (newPw !== confirm) return fail('confirm', t('settings.password.mismatch'));
+    if (newPw === current) return fail('newPw', t('settings.password.mustDiffer'));
 
     setPwLoading(true);
     try {
@@ -641,7 +273,7 @@ function ChangePasswordCard() {
       showToast(t(signedOut ? 'settings.password.successSignIn' : 'settings.password.success'), 'success');
       setPwForm({ current: '', newPw: '', confirm: '' });
     } catch (error) {
-      showToast(error.response?.data?.message ?? t('settings.password.failed'), 'error');
+      fail(PW_ERROR_FIELD[error?.response?.data?.code] ?? 'form', apiErrorMessage(error, t, 'settings.password.failed'));
     } finally {
       setPwLoading(false);
     }
@@ -662,14 +294,18 @@ function ChangePasswordCard() {
       <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
         {fields.map(({ key, label }) => (
           <div key={key}>
-            <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor={`settings-pw-${key}`} className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
               {label}
             </label>
             <div className="relative">
               <input
+                id={`settings-pw-${key}`}
                 type={pwShow[key] ? 'text' : 'password'}
+                autoComplete={key === 'current' ? 'current-password' : 'new-password'}
+                aria-invalid={pwError?.field === key}
+                aria-describedby={pwError?.field === key ? `settings-pw-${key}-error` : undefined}
                 value={pwForm[key]}
-                onChange={e => setPwForm(prev => ({ ...prev, [key]: e.target.value }))}
+                onChange={e => { setPwForm(prev => ({ ...prev, [key]: e.target.value })); if (pwError?.field === key) setPwError(null); }}
                 className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 pe-10 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
               />
               <Tooltip label={pwShow[key] ? t('tooltips.hidePassword') : t('tooltips.showPassword')} className="absolute inset-y-0 end-0">
@@ -678,10 +314,13 @@ function ChangePasswordCard() {
                   onClick={() => setPwShow(prev => ({ ...prev, [key]: !prev[key] }))}
                   className="h-full px-3 flex items-center text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200"
                 >
-                  {pwShow[key] ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                  {pwShow[key] ? <FiEyeOff className="w-4 h-4" aria-hidden="true" /> : <FiEye className="w-4 h-4" aria-hidden="true" />}
                 </button>
               </Tooltip>
             </div>
+            {pwError?.field === key && (
+              <p id={`settings-pw-${key}-error`} className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1">{pwError.message}</p>
+            )}
           </div>
         ))}
         <button
@@ -691,7 +330,45 @@ function ChangePasswordCard() {
         >
           {pwLoading ? t('settings.password.saving') : <><FiSave className="w-4 h-4" /> {t('settings.password.update')}</>}
         </button>
+        {pwError?.field === 'form' && (
+          <p className="text-xs text-[#ba1a1a] dark:text-red-400">{pwError.message}</p>
+        )}
       </form>
+    </div>
+  );
+}
+
+// ── Single-key shortcuts (WCAG 2.1.4) ────────────────────
+// A setting of this device, saved the moment it is flipped (no Save bar): the
+// reader reads it on every keypress, so it applies at once.
+function SingleKeyShortcutsRow() {
+  const { t } = useTranslation();
+  const { showToast } = useToast();
+  const [on, setOn] = useState(singleKeyShortcutsOn);
+  // With storage blocked the choice still holds in this tab (shortcutKeys.js),
+  // but not past it — which the reader is told, rather than finding the
+  // shortcuts back on in the next tab.
+  const flip = () => {
+    if (!setSingleKeyShortcuts(!on)) showToast(t('settings.singleKeysTabOnly'), 'info');
+    setOn(!on);
+  };
+  return (
+    <div className="flex items-center justify-between gap-4 mt-6 pt-6 border-t border-[#dce2f3] dark:border-gray-700">
+      <div className="min-w-0">
+        <p id="settings-single-keys-label" className="text-lg font-medium text-[#151c27] dark:text-gray-200">{t('settings.singleKeys')}</p>
+        <p id="settings-single-keys-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.singleKeysDesc')}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby="settings-single-keys-label"
+        aria-describedby="settings-single-keys-hint"
+        onClick={flip}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-[#1B4332]' : 'bg-gray-300 dark:bg-gray-600'}`}
+      >
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'ltr:translate-x-6 rtl:-translate-x-6' : 'ltr:translate-x-1 rtl:-translate-x-1'}`} />
+      </button>
     </div>
   );
 }
@@ -700,13 +377,23 @@ function ChangePasswordCard() {
 // Self-contained (its own state + immediate save) so it doesn't touch the
 // profile section's dirty/Save-bar machinery — mirrors ChangePasswordCard and
 // the pause-memorization toggle.
-function CommunityCard() {
+// Exported for its tests (Settings.test.jsx).
+export function CommunityCard() {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t } = useTranslation();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [optIn, setOptIn] = useState(!!user?.leaderboardOptIn);
   const [saving, setSaving] = useState(false);
+  // A name the card — or the server — refuses is said under the field, which
+  // takes focus (M-12). Any other failure (the network) is about no field: the
+  // toast says it.
+  const [nameError, setNameError] = useState(null); // message | null
+  const refuseName = (message) => {
+    flushSync(() => setNameError(message)); // rendered before the focus moves, as above
+    document.getElementById('settings-public-name')?.focus();
+    showToast(message, 'error');
+  };
 
   const persist = async (payload, rollback) => {
     setSaving(true);
@@ -715,7 +402,9 @@ function CommunityCard() {
       updateUser(res.data.data);
       showToast(t('settings.community.saved'), 'success');
     } catch (error) {
-      showToast(error.response?.data?.message ?? t('settings.community.failed'), 'error');
+      const message = apiErrorMessage(error, t, 'settings.community.failed');
+      if (/^DISPLAY_NAME_/.test(error?.response?.data?.code ?? '')) refuseName(message);
+      else showToast(message, 'error');
       if (rollback) rollback();
     } finally {
       setSaving(false);
@@ -725,7 +414,7 @@ function CommunityCard() {
   const toggleOptIn = async () => {
     const next = !optIn;
     if (next && displayName.trim().length < 3) {
-      showToast(t('settings.community.nameRequired'), 'error');
+      refuseName(t('settings.community.nameRequired'));
       return;
     }
     setOptIn(next); // optimistic
@@ -738,7 +427,7 @@ function CommunityCard() {
   const saveName = async () => {
     const trimmed = displayName.trim();
     if (trimmed.length > 0 && trimmed.length < 3) {
-      showToast(t('settings.community.nameTooShort'), 'error');
+      refuseName(t('settings.community.nameTooShort'));
       return;
     }
     await persist({ displayName: trimmed || null });
@@ -753,14 +442,17 @@ function CommunityCard() {
       <p className="text-sm text-[#404944] dark:text-gray-400 mb-5">{t('settings.community.desc')}</p>
 
       <div className="mb-5 max-w-sm">
-        <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+        <label htmlFor="settings-public-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
           {t('settings.community.displayName')}
         </label>
         <div className="flex gap-2">
           <input
+            id="settings-public-name"
             type="text"
+            aria-invalid={!!nameError}
+            aria-describedby={nameError ? 'settings-public-name-error settings-public-name-hint' : 'settings-public-name-hint'}
             value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
+            onChange={e => { setDisplayName(e.target.value); setNameError(null); }}
             maxLength={30}
             placeholder={t('settings.community.displayNamePlaceholder')}
             className="flex-1 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] focus:border-transparent dark:placeholder:text-gray-500"
@@ -774,18 +466,23 @@ function CommunityCard() {
             <FiSave className="w-4 h-4" /> {t('settings.community.save')}
           </button>
         </div>
-        <p className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
+        {nameError && (
+          <p id="settings-public-name-error" className="text-xs text-[#ba1a1a] dark:text-red-400 mt-1.5">{nameError}</p>
+        )}
+        <p id="settings-public-name-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1.5">{t('settings.community.displayNameHint')}</p>
       </div>
 
       <div className="flex items-center justify-between gap-4 pt-4 border-t border-[#dce2f3] dark:border-gray-700">
         <div>
-          <p className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
-          <p className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
+          <p id="settings-optin-label" className="font-medium text-[#151c27] dark:text-gray-200">{t('settings.community.optInLabel')}</p>
+          <p id="settings-optin-hint" className="text-sm text-[#404944] dark:text-gray-400">{t('settings.community.optInHint')}</p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={optIn}
+          aria-labelledby="settings-optin-label"
+          aria-describedby="settings-optin-hint"
           onClick={toggleOptIn}
           disabled={saving}
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${optIn ? 'bg-[#1B4332]' : 'bg-gray-300 dark:bg-gray-600'}`}
@@ -1132,7 +829,7 @@ export default function Settings() {
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <Navbar />
 
-      <main className={`flex-grow pt-[100px] ${isDirty ? 'pb-36' : 'pb-24'} px-6 max-w-[1280px] w-full mx-auto`}>
+      <main id="main-content" className={`flex-grow pt-[100px] ${isDirty ? 'pb-36' : 'pb-24'} px-6 max-w-[1280px] w-full mx-auto`}>
         <div className="mb-12">
           <h1 className="text-3xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('settings.title')}</h1>
           <p className="text-lg text-[#404944] dark:text-gray-400">{t('settings.subtitle')}</p>
@@ -1142,10 +839,13 @@ export default function Settings() {
 
           {/* Sidebar */}
           <div className="hidden lg:block lg:col-span-3">
-            <nav className="flex flex-col gap-2 sticky top-[120px]">
+            {/* Named, so it isn't a second unnamed navigation next to the
+                navbar's; the section on screen is the current one (M-12). */}
+            <nav aria-label={t('settings.title')} className="flex flex-col gap-2 sticky top-[120px]">
               {sidebarItems.map(({ id, label, icon }) => (
                 <button
                   key={id}
+                  aria-current={activeSection === id ? 'true' : undefined}
                   onClick={() => setActiveSection(id)}
                   className={`px-4 py-3 rounded-lg font-medium flex items-center gap-3 text-left rtl:text-right transition-colors ${
                     activeSection === id
@@ -1160,10 +860,11 @@ export default function Settings() {
           </div>
 
           {/* Mobile tab row */}
-          <div className="lg:hidden flex gap-1 bg-[#f0f3ff] dark:bg-gray-800 p-1 rounded-xl border border-[#dce2f3] dark:border-gray-700">
+          <nav aria-label={t('settings.title')} className="lg:hidden flex gap-1 bg-[#f0f3ff] dark:bg-gray-800 p-1 rounded-xl border border-[#dce2f3] dark:border-gray-700">
             {sidebarItems.map(({ id, label }) => (
               <button
                 key={id}
+                aria-current={activeSection === id ? 'true' : undefined}
                 onClick={() => setActiveSection(id)}
                 className={`flex-1 py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
                   activeSection === id
@@ -1174,7 +875,7 @@ export default function Settings() {
                 {label}
               </button>
             ))}
-          </div>
+          </nav>
 
           {/* Content */}
           <div className="col-span-1 lg:col-span-9 flex flex-col gap-8">
@@ -1200,10 +901,11 @@ export default function Settings() {
                   </div>
 
                   <div className="mb-6">
-                    <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label htmlFor="settings-display-name" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
                       {t('settings.displayName')}
                     </label>
                     <input
+                      id="settings-display-name"
                       type="text"
                       value={profileName}
                       onChange={e => setProfileName(e.target.value)}
@@ -1213,16 +915,18 @@ export default function Settings() {
                   </div>
 
                   <div className="mb-6">
-                    <label className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label htmlFor="settings-email" className="block text-xs font-medium text-[#404944] dark:text-gray-400 uppercase tracking-wider mb-1.5">
                       {t('auth.email')}
                     </label>
                     <input
+                      id="settings-email"
                       type="email"
                       value={user?.email ?? ''}
                       readOnly
+                      aria-describedby="settings-email-hint"
                       className="w-full max-w-sm border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-[#e7eefe] dark:bg-gray-700/50 text-[#707974] dark:text-gray-500 cursor-not-allowed"
                     />
-                    <p className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
+                    <p id="settings-email-hint" className="text-xs text-[#707974] dark:text-gray-500 mt-1">{t('settings.emailHint')}</p>
                   </div>
 
                   {/* Language row */}
@@ -1335,6 +1039,7 @@ export default function Settings() {
                         <button
                           key={v}
                           onClick={() => { setDailyMode('fixed'); setDailyPages(v); }}
+                          aria-pressed={dailyMode === 'fixed' && dailyPages === v}
                           className={`px-6 py-3 rounded-xl border font-medium transition-colors ${
                             dailyMode === 'fixed' && dailyPages === v
                               ? 'border-2 border-[#003527] bg-[#003527] text-white shadow-sm'
@@ -1362,6 +1067,7 @@ export default function Settings() {
                         <span className="text-sm">{t('settings.customPages')}</span>
                         <input
                           ref={customPagesInputRef}
+                          aria-label={t('settings.customPages')}
                           type="number" min="0.5" max="10"
                           value={dailyMode === 'custom' ? customInputText : ''}
                           placeholder="—"
@@ -1457,6 +1163,7 @@ export default function Settings() {
                               key={mode}
                               type="button"
                               onClick={() => setMemStartMode(mode)}
+                              aria-pressed={memStartMode === mode}
                               className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                                 memStartMode === mode
                                   ? 'bg-[#003527] text-white border-[#003527]'
@@ -1477,6 +1184,7 @@ export default function Settings() {
                                   key={juz}
                                   type="button"
                                   onClick={() => setMemStartPage(start)}
+                                  aria-pressed={isSelected}
                                   className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
                                     isSelected
                                       ? 'bg-[#003527] text-white border-[#003527]'
@@ -1499,6 +1207,7 @@ export default function Settings() {
                                   key={s.number}
                                   type="button"
                                   onClick={() => setMemStartPage(s.start)}
+                                  aria-pressed={isSelected}
                                   className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
                                     isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
                                   }`}
@@ -1542,6 +1251,7 @@ export default function Settings() {
                           key={value}
                           type="button"
                           onClick={() => { setReviewMode('intensity'); setIntensity(value); }}
+                          aria-pressed={selected}
                           className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
                             selected
                               ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
@@ -1550,7 +1260,7 @@ export default function Settings() {
                         >
                           <div className="flex justify-between items-center mb-2">
                             <span className={`font-medium ${selected ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t(labelKey)}</span>
-                            <span className={selected ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
+                            <span aria-hidden="true" className={selected ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{selected ? '●' : '○'}</span>
                           </div>
                           {estimate != null && (
                             <p className="text-xs font-semibold text-[#904d00] dark:text-amber-400 mb-1">{t('settings.intensityEstimate', { count: estimate })}</p>
@@ -1570,6 +1280,7 @@ export default function Settings() {
                         }
                         setReviewMode('fixed');
                       }}
+                      aria-pressed={reviewMode === 'fixed'}
                       className={`p-4 rounded-xl border-2 text-start transition-all h-full ${
                         reviewMode === 'fixed'
                           ? 'border-[#fe932c] bg-[#f9f9ff] dark:bg-gray-700/50 shadow-sm'
@@ -1578,7 +1289,7 @@ export default function Settings() {
                     >
                       <div className="flex justify-between items-center mb-2">
                         <span className={`font-medium ${reviewMode === 'fixed' ? 'text-[#904d00]' : 'text-[#151c27] dark:text-gray-200'}`}>{t('settings.modeFixed')}</span>
-                        <span className={reviewMode === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'fixed' ? '●' : '○'}</span>
+                        <span aria-hidden="true" className={reviewMode === 'fixed' ? 'text-[#fe932c]' : 'text-[#bfc9c3] dark:text-gray-500'}>{reviewMode === 'fixed' ? '●' : '○'}</span>
                       </div>
                       <p className="text-xs text-[#404944] dark:text-gray-400 leading-relaxed">{t('settings.modeFixedDesc')}</p>
                     </button>
@@ -1590,10 +1301,11 @@ export default function Settings() {
                   {reviewMode === 'fixed' && (
                     <div className="flex items-center justify-between gap-4 p-4 mb-6 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
-                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
+                        <p id="settings-cycle-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.cycleReviewLabel')}</p>
+                        <p id="settings-cycle-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('settings.cycleReviewHint')}</p>
                       </div>
                       <input type="number" min="0" max="40" value={cycleReviewValue}
+                        aria-labelledby="settings-cycle-review-label" aria-describedby="settings-cycle-review-hint"
                         onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 40) setCycleReviewValue(n); }}
                         className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                     </div>
@@ -1615,7 +1327,7 @@ export default function Settings() {
                       })}
                     </div>
                     <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-                      {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+                      {t('onboarding.availableDaysHint', { count: 7 - offDays.length })}
                     </p>
                   </div>
                 </div>
@@ -1652,7 +1364,7 @@ export default function Settings() {
                     <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
                         <p className="text-xs text-[#707974] dark:text-gray-400 leading-relaxed">
-                          {isPaused ? t('settings.pauseMemActive', { pages: dailyPages }) : t('settings.pauseMemDesc')}
+                          {isPaused ? t('settings.pauseMemActive', { count: dailyPages }) : t('settings.pauseMemDesc')}
                         </p>
                         <p className="text-xs text-[#003527] dark:text-emerald-400 mt-1">{t('settings.pauseMemSwitchBack')}</p>
                       </div>
@@ -1683,10 +1395,11 @@ export default function Settings() {
                     </div>
                     <div className="flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
-                        <p className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
+                        <p id="settings-recent-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('settings.recentReviewLabel')}</p>
+                        <p id="settings-recent-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('settings.recentReviewHint')}</p>
                       </div>
                       <input type="number" min="0" max="20" value={recentReviewValue}
+                        aria-labelledby="settings-recent-review-label" aria-describedby="settings-recent-review-hint"
                         onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 0 && n <= 20) setRecentReviewValue(n); }}
                         className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                     </div>
@@ -1731,6 +1444,7 @@ export default function Settings() {
                       { mode: 'page',  labelKey: 'settings.cycleStartByPage' },
                     ].map(({ mode, labelKey }) => (
                       <button key={mode} onClick={() => setCycleStartMode(mode)}
+                        aria-pressed={cycleStartMode === mode}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                           cycleStartMode === mode
                             ? 'bg-[#003527] text-white border-[#003527]'
@@ -1758,6 +1472,8 @@ export default function Settings() {
                         return (
                           <button key={juz.juzNumber}
                             onClick={() => saveCycleStart(juz.firstMemPage)}
+                            aria-pressed={isSelected}
+                            aria-label={t('common.juzN', { n: juz.juzNumber })}
                             disabled={cycleStartSaving}
                             className={`aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-colors border ${
                               isSelected
@@ -1787,6 +1503,7 @@ export default function Settings() {
                         const isSelected = cycleStartPage === s.firstMemPage;
                         return (
                           <button key={s.number} onClick={() => saveCycleStart(s.firstMemPage)}
+                            aria-pressed={isSelected}
                             disabled={cycleStartSaving}
                             className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors disabled:opacity-60 ${
                               isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
@@ -1805,6 +1522,7 @@ export default function Settings() {
                   {cycleStartMode === 'page' && (
                     <div className="flex flex-wrap items-center gap-3">
                       <input type="number" min="1" max="604" value={cycleStartInput}
+                        aria-label={t('settings.cycleStartPageHint')}
                         onChange={e => setCycleStartInput(e.target.value)} placeholder="1–604"
                         className="w-28 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
                       <button
@@ -1874,6 +1592,8 @@ export default function Settings() {
                     </button>
                   </div>
                 </div>
+
+                <SingleKeyShortcutsRow />
               </section>
             )}
 
@@ -1976,7 +1696,7 @@ export default function Settings() {
         onClose={() => setResetModal(false)}
         onConfirm={handleResetProgress}
         title={t('settings.resetModal_title')}
-        message={t('settings.resetModal_message', { streak: user?.currentStreak ?? 0 })}
+        message={t('settings.resetModal_message', { count: user?.currentStreak ?? 0 })}
         confirmText={t('settings.resetConfirm')}
         isDanger
       />

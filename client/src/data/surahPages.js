@@ -1,3 +1,5 @@
+import { PAGE_FIRST_AYAH } from './pageAyahStarts';
+
 // ayahs = the surah's total verse count, derived from server/seed/data/quranStructure.json
 // (max ayah number seen across every page's verseKeys for that surah number) —
 // not hand-typed, so it always matches the mushaf structure data the backend serves.
@@ -118,13 +120,28 @@ const _raw = [
   { number: 114, name: "An-Nas",           arabic: "الناس",            startPage: 604, ayahs: 6 },
 ];
 
-export const SURAH_PAGES = _raw.map((s, i) => ({
-  number: s.number,
-  name: s.name,
-  arabic: s.arabic,
-  start: s.startPage,
-  end: i + 1 < _raw.length ? Math.max(s.startPage, _raw[i + 1].startPage - 1) : 604,
-  ayahs: s.ayahs,
-}));
+// `end` is the page the surah's LAST verse is on. It used to be "the page before
+// the next surah starts", which is one page short whenever the two share a page
+// — 46 surahs, An-Nisa among them (it ends on 106, where Al-Ma'idah begins). So
+// `start..end` spans every page holding any of the surah's verses, and the first
+// and last of those pages may hold a neighbour's verses too: select a surah by its
+// verse span (unitRanges.surahOrdRange), not by these pages. Derived from the
+// verse counts and PAGE_FIRST_AYAH rather than typed, and checked against the
+// structure data by surahPages.test.js.
+let firstOrd = 1; // global ayah number of the surah's first verse
+let page = 1;     // walks forward: surahs are in mushaf order
+export const SURAH_PAGES = _raw.map((s) => {
+  const lastOrd = firstOrd + s.ayahs - 1;
+  while (page < PAGE_FIRST_AYAH.length && PAGE_FIRST_AYAH[page] <= lastOrd) page++;
+  firstOrd = lastOrd + 1;
+  return {
+    number: s.number,
+    name: s.name,
+    arabic: s.arabic,
+    start: s.startPage,
+    end: page,
+    ayahs: s.ayahs,
+  };
+});
 
 export const SURAH_BY_NUMBER = Object.fromEntries(SURAH_PAGES.map((s) => [s.number, s]));

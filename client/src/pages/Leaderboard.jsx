@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { apiErrorMessage } from '../utils/apiError';
 
 const MEDALS = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
@@ -89,7 +90,7 @@ export default function Leaderboard() {
       showToast(t('leaderboard.joined'), 'success');
       load();
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
     } finally {
       setJoining(false);
     }
@@ -102,17 +103,20 @@ export default function Leaderboard() {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
+      {/* The title bar is part of the page's content, so it sits inside the
+          one main landmark with the rest (the skip link lands on its heading). */}
+      <main id="main-content" className="flex-1 flex flex-col">
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-3xl mx-auto">
           <h1 className="text-3xl font-extrabold mb-1 flex items-center gap-2">
-            <FiAward className="w-7 h-7" /> {t('leaderboard.title')}
+            <FiAward className="w-7 h-7" aria-hidden="true" /> {t('leaderboard.title')}
           </h1>
           <p className="text-green-300 dark:text-gray-400 text-sm">{t('leaderboard.subtitle')}</p>
         </div>
       </div>
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
+      <div className="flex-1 max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
 
         {/* Opt-in card (only when not yet opted in) */}
         {!optedIn && (
@@ -151,6 +155,7 @@ export default function Leaderboard() {
             <button
               key={tab.key}
               onClick={() => setPeriod(tab.key)}
+              aria-pressed={period === tab.key}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 period === tab.key
                   ? 'bg-white dark:bg-gray-700 text-[#1B4332] dark:text-emerald-400 shadow-sm'
@@ -211,6 +216,7 @@ export default function Leaderboard() {
         {!loading && !error && optedIn && !data?.me && entries.length > 0 && (
           <p className="text-center text-sm text-[#707974] dark:text-gray-400">{t('leaderboard.notRankedYet')}</p>
         )}
+      </div>
       </main>
 
       <Footer />

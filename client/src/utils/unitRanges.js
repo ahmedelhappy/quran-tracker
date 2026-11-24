@@ -1,9 +1,9 @@
 // Verse-exact spans for the memorization units, and coverage maths over them.
 //
-// The Juz / Surah / Range tabs of the memorized-pages editors are genuinely
-// page-aligned: a juz and a surah both begin at the top of a page, so selecting
-// one is the same thing as selecting its pages. Hizb and quarter-hizb are NOT —
-// their boundaries land mid-page, and ADJACENT UNITS SHARE THE PAGE THEY MEET ON:
+// The Juz / Range tabs of the memorized-pages editors are genuinely page-aligned:
+// a juz begins at the top of a page, so selecting one is the same thing as
+// selecting its pages. Hizb, quarter-hizb and surah are NOT — their boundaries
+// land mid-page, and ADJACENT UNITS SHARE THE PAGE THEY MEET ON:
 //
 //   rub 125 (32.1) = pages 312-315 | rub 126 (32.2) = 315-317 | rub 127 = 317-319
 //
@@ -16,7 +16,7 @@
 
 import { RUB_BOUNDARIES } from '../data/rubBoundaries';
 import { PAGE_FIRST_AYAH } from '../data/pageAyahStarts';
-import { ordOfKey, keyOfOrd, TOTAL_AYAHS, TOTAL_PAGES } from './verseIndex';
+import { ordOf, ordOfKey, keyOfOrd, ayahCount, TOTAL_AYAHS, TOTAL_PAGES } from './verseIndex';
 
 // Global ayah number each rub opens on, in reading order.
 const RUB_START_ORDS = RUB_BOUNDARIES.map(ordOfKey);
@@ -37,8 +37,19 @@ export const hizbOrdRange = (n) => {
   return first && last ? { from: first.from, to: last.to } : null;
 };
 
+// Surah n (1..114): its first verse to its last. An-Nisa ends on page 106, the
+// page Al-Ma'idah opens on, so whole pages would claim Al-Ma'idah 5:1-2 as well;
+// and the page it starts on still holds the end of Aal-Imran (M-13).
+export const surahOrdRange = (n) => {
+  if (!(n >= 1 && n <= 114)) return null;
+  return { from: ordOf(n, 1), to: ordOf(n, ayahCount(n)) };
+};
+
 export const unitOrdRange = (unit, ref) =>
-  unit === 'hizb' ? hizbOrdRange(ref) : unit === 'rub' ? rubOrdRange(ref) : null;
+  unit === 'hizb' ? hizbOrdRange(ref)
+    : unit === 'rub' ? rubOrdRange(ref)
+      : unit === 'surah' ? surahOrdRange(ref)
+        : null;
 
 // The verses a whole mushaf page holds. A verse that straddles a page break
 // belongs to the page it STARTS on, which is exactly how PAGE_FIRST_AYAH is built.
@@ -76,6 +87,11 @@ export const coverageOf = (merged, range) => {
   return covered === range.to - range.from + 1 ? 'full' : 'partial';
 };
 
+// The pressed state a selection tile reports to assistive tech (M-12): the
+// three coverage states as aria-pressed's true / "mixed" / false, so a partly
+// selected Juz or Surah is not told apart from the others by colour alone.
+export const pressedOf = (state) => (state === 'full' ? true : state === 'partial' ? 'mixed' : false);
+
 // The verse-key ranges to send to PUT /api/progress/units as `unit: 'verses'`.
 // Selections are merged first, so picking a whole hizb-worth of quarters costs
 // one request rather than four, and "select everything" costs one rather than 240.
@@ -101,7 +117,7 @@ export const subtractOrdRanges = (ranges, cut) => {
 };
 
 // The pages whose every verse is covered. This is the page-shaped view the
-// Juz / Surah / Range tabs edit, derived from the one verse-level model rather
+// Juz / Range tabs edit, derived from the one verse-level model rather
 // than kept alongside it.
 export const fullyCoveredPages = (merged) => {
   const pages = new Set();

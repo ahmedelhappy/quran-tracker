@@ -16,6 +16,7 @@ const protect = async (req, res, next) => {
   if (!token) {
     return res.status(401).json({
       success: false,
+      code: 'NOT_AUTHORIZED',
       message: 'Not authorized, no token provided'
     });
   }
@@ -30,18 +31,30 @@ const protect = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
+        code: 'NOT_AUTHORIZED',
         message: 'User not found'
       });
     }
 
-    // Reject tokens minted before the user last changed their password, so a
-    // password change invalidates every session issued beforehand. `iat` is in
-    // seconds; passwordChangedAt is already back-dated a second when set.
+    // Reject tokens minted before the user last changed (or reset) their
+    // password, so either one ends every session issued beforehand. Tokens
+    // carry their issue time to the millisecond (`iatMs`), compared exactly: a
+    // session opened a moment before the change is refused, and the one handed
+    // out right after it is not. Tokens from before `iatMs` existed only have
+    // the whole-second `iat`; for them the change's own second is given the
+    // benefit of the doubt, as before, until they expire (30 days). A token
+    // with neither carries no proof it is newer than the change, so it is
+    // refused: written as "not provably fresh", since `undefined < n` is false
+    // and the plain comparison would have let it through.
     if (req.user.passwordChangedAt) {
-      const changedAtSec = Math.floor(req.user.passwordChangedAt.getTime() / 1000);
-      if (decoded.iat < changedAtSec) {
+      const changedAtMs = req.user.passwordChangedAt.getTime();
+      const stale = Number.isFinite(decoded.iatMs)
+        ? decoded.iatMs < changedAtMs
+        : !(decoded.iat >= Math.floor(changedAtMs / 1000));
+      if (stale) {
         return res.status(401).json({
           success: false,
+          code: 'SESSION_EXPIRED',
           message: 'Session expired, please log in again'
         });
       }
@@ -57,6 +70,7 @@ const protect = async (req, res, next) => {
     if (JWT_ERRORS.has(error.name)) {
       return res.status(401).json({
         success: false,
+        code: 'NOT_AUTHORIZED',
         message: 'Not authorized, token invalid'
       });
     }

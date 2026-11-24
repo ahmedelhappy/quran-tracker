@@ -79,3 +79,46 @@ describe('buildSearchEngine on the committed index', () => {
     expect(hits.every((h) => h.from >= 1 && h.to >= h.from)).toBe(true);
   });
 });
+
+// Text copied from a mushaf or quran.com is Uthmani; the index is in the plain
+// spelling (L-14). The fixtures are quran.com's own text_uthmani for pages 49-51.
+describe('searching Uthmani text pasted in, on the committed index', () => {
+  let engine;
+  beforeAll(async () => {
+    engine = await buildSearchEngine(JSON.parse(readFileSync(INDEX_PATH, 'utf8')));
+  });
+  const fixture = (page) => JSON.parse(readFileSync(
+    fileURLToPath(new URL(`../../e2e/fixtures/quran-com/page-${page}.json`, import.meta.url)), 'utf8',
+  )).verses;
+
+  it('finds the words the audit pasted, as often as their plain spelling', () => {
+    for (const [uthmani, plain] of [
+      ['يَٰٓأَيُّهَا', 'يا أيها'],
+      ['إِبْرَٰهِـۧمَ', 'ابراهيم'],
+      ['الْقُرْءَانُ', 'القرآن'],
+      ['مَسْـُٔولًا', 'مسؤولا'],
+      ['ٱلسَّمَـٰوَٰتِ', 'السماوات'],
+    ]) {
+      const pasted = engine.search(uthmani).occurrences;
+      expect(pasted.length, uthmani).toBeGreaterThan(0);
+      expect(pasted, uthmani).toEqual(engine.search(plain).occurrences);
+    }
+  });
+
+  it('finds every verse of pages 49-51 pasted whole, over exactly its words', () => {
+    for (const page of [49, 50, 51]) {
+      for (const v of fixture(page)) {
+        const words = v.words.filter((w) => w.char_type_name === 'word');
+        const hit = engine.search(v.text_uthmani).occurrences.find((h) => h.ord === v.id);
+        expect(hit, v.verse_key).toEqual({ ord: v.id, from: 1, to: words[words.length - 1].position });
+      }
+    }
+  });
+
+  it('lands a pasted phrase on the glyphs of the words it covers', () => {
+    // 2:286, words 5-9: the waqf sign is not a word, and the hit skips it.
+    const v = fixture(49).find((x) => x.verse_key === '2:286');
+    expect(engine.search('إِلَّا وُسْعَهَا ۚ لَهَا مَا كَسَبَتْ').occurrences)
+      .toContainEqual({ ord: v.id, from: 5, to: 9 });
+  });
+});

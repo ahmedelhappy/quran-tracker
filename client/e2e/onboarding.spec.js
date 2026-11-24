@@ -1,7 +1,7 @@
 // Flow 1: a new person registers, says they already know Juz 30 during
 // onboarding, and lands on a dashboard holding today's tasks: the first new page
 // and reviews drawn from Juz 30.
-import { test, expect, API, countsFor } from './support/test.js'
+import { test, expect, API, countsFor, createAccount, signIn } from './support/test.js'
 
 let counter = 0
 
@@ -18,11 +18,23 @@ test('register, pick Juz 30 in onboarding, and see today\'s tasks', async ({ pag
   await expect(page).toHaveURL(/\/onboarding$/)
   await page.getByRole('button', { name: "Let's Begin" }).click()
 
-  // The Juz grid is the default tab; its tiles are labelled 1…30.
-  await page.getByRole('button', { name: '30', exact: true }).click()
+  // The Juz grid is the default tab; its tiles show 1…30 and are named
+  // "Juz 1"…"Juz 30", and say whether they are picked.
+  const juz30 = page.getByRole('button', { name: 'Juz 30', exact: true })
+  await expect(juz30).toHaveAttribute('aria-pressed', 'false')
+  await juz30.click()
+  await expect(juz30).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('1 Juz selected')).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
+  // Every screen of it is a page of its own: one main landmark (the skip link's
+  // target) holding one h1 (M-12) — the plan step, the "building" screen
+  // between it and the last step, and the last step.
+  const pageTitle = (name) => page.locator('main#main-content').getByRole('heading', { level: 1, name })
+  await expect(pageTitle('Customize Your Experience')).toBeVisible()
   await page.getByRole('button', { name: 'Generate My Plan' }).click()
+  await expect(pageTitle('Building your personalized plan...')).toBeVisible()
+  await expect(pageTitle(/Your Plan is Ready!/)).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
   await page.getByRole('button', { name: 'Start My Journey' }).click()
 
   await expect(page).toHaveURL(/\/dashboard$/)
@@ -41,4 +53,40 @@ test('register, pick Juz 30 in onboarding, and see today\'s tasks', async ({ pag
   const { data: user } = await me.json()
   expect(user.onboardingComplete).toBe(true)
   expect((await countsFor(request, user._id)).UserProgress).toBe(23)
+})
+
+// A failed save says why, not just "try again": here the server could not put
+// back what it had written (L-18), so some pages may already be saved and the
+// person is told to send the same selection again — which then finishes.
+test('a failed onboarding save says why, and sending it again finishes', async ({ page, request }) => {
+  const account = await createAccount(request, { label: 'onboarding-partial' })
+  await signIn(page, account)
+  await page.goto('/onboarding')
+  await page.getByRole('button', { name: "Let's Begin" }).click()
+  await page.getByRole('button', { name: 'Juz 30', exact: true }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Generate My Plan' }).click()
+
+  await page.route('**/api/progress/onboarding', (route) => route.fulfill({
+    status: 500,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: false, code: 'ONBOARDING_PARTIAL', message: 'Onboarding failed part-way' }),
+  }), { times: 1 })
+  await page.getByRole('button', { name: 'Start My Journey' }).click()
+  await expect(page.getByText(/some of your pages may already be marked memorized/)).toBeVisible()
+  await expect(page).toHaveURL(/\/onboarding$/)
+
+  // The toast never covers the button that raised it (M-12, WCAG 2.4.11): it
+  // used to sit over it, both at the bottom end, so it had to be closed first.
+  // Now the button is clicked again with the toast still up.
+  const start = page.getByRole('button', { name: 'Start My Journey' })
+  // A failure's toast sits in the toasts' assertive (role="alert") region.
+  const toastBox = await page.getByRole('alert').locator('> div').first().boundingBox()
+  const startBox = await start.boundingBox()
+  const overlaps = toastBox.x < startBox.x + startBox.width && startBox.x < toastBox.x + toastBox.width &&
+    toastBox.y < startBox.y + startBox.height && startBox.y < toastBox.y + toastBox.height
+  expect(overlaps).toBe(false)
+  await start.click()
+  await expect(page).toHaveURL(/\/dashboard$/)
+  expect((await countsFor(request, account.id)).UserProgress).toBe(23)
 })

@@ -7,12 +7,14 @@
 const groqPath = require.resolve('groq-sdk');
 const groqCalls = [];
 const groqRequestOptions = [];
+const groqClientOptions = [];
 // A test can script the model's behaviour (hang, fail, cut off) by setting this;
 // null means the default canned reply.
 let groqImpl = null;
 class FakeGroq {
   constructor(options) {
     this.options = options;
+    groqClientOptions.push(options);
     this.chat = {
       completions: {
         create: async (params, requestOptions) => {
@@ -44,6 +46,9 @@ const User = require('../models/User');
 const UserProgress = require('../models/UserProgress');
 const { buildProgressSummary } = require('../controllers/progressController');
 const { PAGE_BY_NUMBER } = require('../utils/segments');
+// The SDK's real error classes (only its entry point is faked above), so the
+// log tests throw exactly what production sees.
+const GroqErrors = require('groq-sdk/error');
 
 const GUIDE = fs.readFileSync(path.join(__dirname, '..', 'chat', 'appGuide.md'), 'utf8');
 
@@ -163,7 +168,7 @@ describe('POST /api/chat — the system prompt', () => {
     const p4 = PAGE_BY_NUMBER.get(4).verseKeys;
     const firstHalf = `${p4[0]}–${p4[Math.ceil(p4.length / 2) - 1]}`;
     assert.ok(system.includes("THE USER'S CURRENT DATA"));
-    assert.ok(system.includes('- Name: Maryam'));
+    assert.ok(!system.includes('Maryam'), 'the name stays out of the prompt (H-05)');
     assert.ok(system.includes('Total memorized: 3 of 604 pages'));
     assert.ok(system.includes(`page 4 — verses ${firstHalf} (first half)`), system);
     // Guardrails travel with it.
@@ -184,6 +189,70 @@ describe('POST /api/chat — the system prompt', () => {
     const res = await request(app).post('/api/chat').send({ messages: [{ role: 'user', content: 'hi' }] });
     assert.equal(res.status, 401);
     assert.equal(groqCalls.length, 0);
+  });
+});
+
+// H-05: what leaves for Groq is the plan, never the person. The whole outgoing
+// call — request body, request options and the client's constructor options —
+// is serialised and searched for every identifier the account holds.
+describe('POST /api/chat — no personal data reaches Groq', () => {
+  before(connect);
+  after(disconnect);
+  beforeEach(async () => {
+    await clearDatabase();
+    await seedMetadata(30);
+    groqCalls.length = 0;
+    groqRequestOptions.length = 0;
+    groqImpl = null;
+  });
+
+  test("the payload carries the plan but not the name, email, id, display name or dates", async () => {
+    const user = await createUser({
+      name: 'Zubaydah Qx7Tracer',
+      email: 'zq7.tracer+h05@example.com',
+      displayName: 'QxDisplayTracer',
+      leaderboardOptIn: true,
+      dailyNewPages: 1,
+      reviewIntensity: 'strong',
+      language: 'ar',
+      currentStreak: 4,
+      lastActiveDate: daysAgo(1),
+      planStartDate: daysAgo(3),
+    });
+    for (const p of [1, 2, 3]) {
+      await addMemorizedPage(user._id, p, { memorizedDate: daysAgo(20), lastReviewedDate: daysAgo(9) });
+    }
+
+    groqClientOptions.length = 0;
+    const res = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${tokenFor(user._id)}`)
+      .send({ messages: [{ role: 'user', content: 'Greet me and tell me my plan for today.' }] });
+    assert.equal(res.status, 200);
+    assert.equal(groqCalls.length, 1);
+
+    // The client's own options count too: anything identifying passed to the
+    // constructor (a `user` tag, default headers) would leave with the call.
+    const outgoing = JSON.stringify({ body: groqCalls[0], options: groqRequestOptions[0], client: groqClientOptions });
+    const forbidden = [
+      'Zubaydah', 'Qx7Tracer', 'zq7.tracer', 'example.com', 'QxDisplayTracer',
+      String(user._id),
+      // Dates of activity, in any form the server would print them.
+      ...[0, 1, 3, 9, 20].map((n) => daysAgo(n).toISOString().slice(0, 10)),
+    ];
+    for (const needle of forbidden) {
+      assert.ok(!outgoing.includes(needle), `"${needle}" must not reach Groq`);
+    }
+    // Only the model call's own fields: no `user` tag or metadata riding along.
+    assert.deepEqual(Object.keys(groqCalls[0]).sort(), ['max_completion_tokens', 'messages', 'model']);
+
+    // …and what it does need is still there.
+    const system = groqCalls[0].messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+    assert.ok(system.includes('Total memorized: 3 of 604 pages'), system);
+    assert.ok(system.includes('Current streak: 4 day(s)'), system);
+    assert.ok(system.includes('Review intensity: strong'), system);
+    assert.ok(system.includes('App language: Arabic'), system);
+    assert.ok(system.includes('as "you" without a name'), 'the model is told to address the user generically');
   });
 });
 
@@ -351,12 +420,95 @@ describe('POST /api/chat — history hygiene and limits', () => {
     }
   });
 
+  test('a failed progress lookup still answers, and tells the model the data is missing (H-05)', async () => {
+    const user = await createUser();
+    const originalFind = UserProgress.find;
+    UserProgress.find = () => { throw new Error('database down'); };
+    let res;
+    try {
+      res = await quietly(() => chat(user, [{ role: 'user', content: "what's my streak?" }]));
+    } finally {
+      UserProgress.find = originalFind;
+    }
+    assert.equal(res.status, 200, 'a data error never breaks chat');
+    const system = groqCalls[0].messages.filter((m) => m.role === 'system');
+    assert.equal(system.length, 2, 'the guide, then a note in place of the data');
+    assert.match(system[1].content, /unavailable right now/);
+    assert.ok(!system[1].content.includes('Current streak'), 'no half-built summary');
+  });
+
   test('an upstream failure is a 502 JSON', async () => {
     const user = await createUser();
     groqImpl = async () => { throw Object.assign(new Error('503 over capacity'), { status: 503 }); };
     const res = await quietly(() => chat(user, [{ role: 'user', content: 'hi' }]));
     assert.equal(res.status, 502);
-    assert.deepEqual(res.body, { success: false, message: 'AI service unavailable' });
+    assert.deepEqual(res.body, { success: false, code: 'SERVER_ERROR', message: 'AI service unavailable' });
+  });
+
+  // Everything console.error printed while `fn` ran, one string.
+  async function errorLog(fn) {
+    const logged = [];
+    const original = console.error;
+    console.error = (...args) => logged.push(args.map(String).join(' '));
+    let res;
+    try { res = await fn(); } finally { console.error = original; }
+    return { res, log: logged.join('\n') };
+  }
+
+  test('an upstream error that quotes the chat back is logged by status, code and safe headers only (H-05)', async () => {
+    const user = await createUser();
+    const words = 'my private words 7f3a';
+    // The error groq-sdk itself throws for a 400 (its real class, which never
+    // sets `name`): the message is built from Groq's body, and a failed
+    // generation carries the model's output, which can repeat what the user wrote.
+    groqImpl = async () => {
+      throw new GroqErrors.BadRequestError(
+        400,
+        { error: { message: `Failed to generate: ${words}`, type: 'invalid_request_error', code: 'tool_use_failed', failed_generation: words } },
+        undefined,
+        new Headers({
+          'x-request-id': 'req_1',
+          'retry-after': '7',
+          'x-ratelimit-remaining-requests': '99',
+          'x-ratelimit-remaining-tokens': '5000',
+          'x-echo': words,
+        }),
+      );
+    };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: words }]));
+    assert.equal(res.status, 502);
+    assert.ok(!log.includes('7f3a'), log);
+    assert.ok(log.includes('BadRequestError 400 tool_use_failed/invalid_request_error'), log);
+    for (const pair of ['x-request-id=req_1', 'retry-after=7', 'x-ratelimit-remaining-requests=99', 'x-ratelimit-remaining-tokens=5000']) {
+      assert.ok(log.includes(pair), `${pair} in ${log}`);
+    }
+  });
+
+  test('a connection error is logged with its cause chain (H-05)', async () => {
+    const user = await createUser();
+    // What groq-sdk throws when fetch itself fails: no status, the reason two
+    // causes down.
+    groqImpl = async () => {
+      const refused = Object.assign(new Error('connect ECONNREFUSED 1.2.3.4:443'), { code: 'ECONNREFUSED' });
+      throw new GroqErrors.APIConnectionError({ cause: new TypeError('fetch failed', { cause: refused }) });
+    };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: 'my private words 7f3a' }]));
+    assert.equal(res.status, 502);
+    assert.ok(!log.includes('7f3a'), log);
+    assert.match(log, /APIConnectionError: Connection error\./);
+    assert.match(log, /caused by TypeError: fetch failed/);
+    assert.match(log, /caused by Error ECONNREFUSED: connect ECONNREFUSED 1\.2\.3\.4:443/);
+  });
+
+  test('a response that fails to parse is logged by class and stack frames, not its quoting message (H-05)', async () => {
+    const user = await createUser();
+    // Short enough that V8 quotes all of it back in the message.
+    groqImpl = async () => { JSON.parse('x 7f3a'); };
+    const { res, log } = await errorLog(() => chat(user, [{ role: 'user', content: 'hi' }]));
+    assert.equal(res.status, 502);
+    assert.ok(!log.includes('7f3a'), log);
+    assert.match(log, /SyntaxError/);
+    assert.match(log, /\n\s+at /, 'the frames still say where it failed');
   });
 
   test('a reply cut off before any answer is a 502, not an empty bubble', async () => {

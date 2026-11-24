@@ -1,8 +1,9 @@
 const UserProgress = require('../models/UserProgress');
 const User = require('../models/User');
 const { getMetadataForPages } = require('../utils/quranMetadataCache');
-const { serverError } = require('../utils/errorResponse');
-const { PAGE_RULE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { serverError, logError } = require('../utils/errorResponse');
+const { PAGE_RULE, MAX_PAGE, realPageMatch, toPageNumber, parsePageList } = require('../utils/pageNumbers');
+const { parsePlanSettings } = require('../utils/planSettings');
 const { isStreakContinued } = require('../utils/streak');
 const clock = require('../utils/clock');
 // Every write below changes how many pages this user has memorized, which is
@@ -380,9 +381,13 @@ const buildProgressSummary = async (user) => {
   const reviewPageNumbers = isOffDay ? [] : plan.reviewPages.map((p) => p.pageNumber);
   const recentReviewPageNumbers = isOffDay ? [] : plan.cappedRecentPages.map((p) => p.pageNumber);
 
+  // Only what the assistant needs to answer about the plan. Nothing that names
+  // the person (name, email, id, display name) and no dates of activity: this
+  // summary goes to Groq, an outside service (H-05).
   return {
-    name: user.name,
     dailyNewPages: user.dailyNewPages || 1,
+    reviewIntensity: user.reviewIntensity || 'standard',
+    language: user.language === 'ar' ? 'ar' : 'en',
     isOffDay,
     isHafiz,
     pauseNewMemorization: !!user.pauseNewMemorization,
@@ -403,54 +408,210 @@ const buildProgressSummary = async (user) => {
 
 exports.buildProgressSummary = buildProgressSummary;
 
-// @desc    Complete onboarding - save initial progress
+// Put a user's progress rows for `pages` back to `before` (the rows those pages
+// had when the request started): rows the request created are deleted, rows it
+// changed are restored as they were.
+const restoreProgress = async (userId, pages, before) => {
+  const existed = new Set(before.map((d) => d.pageNumber));
+  const created = pages.filter((p) => !existed.has(p));
+  if (created.length) await UserProgress.deleteMany({ userId, pageNumber: { $in: created } });
+  if (before.length) {
+    await UserProgress.bulkWrite(before.map((doc) => ({
+      replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true },
+    })));
+  }
+};
+
+// @desc    Complete onboarding: the memorized pages, the verse ranges of the
+//          partly memorized ones, the daily goal and the plan, in one request
 // @route   POST /api/progress/onboarding
 // @access  Private
+//
+// All or nothing (L-18). It used to be several requests — this one set
+// onboardingComplete first, then the client sent the verse ranges one by one
+// and the plan last — so a failure part-way left an account that counted as
+// onboarded with only some of its pages and the default plan, and a reload went
+// straight to the dashboard. Now:
+//   1. everything is validated before anything is written (a 400 writes nothing);
+//   2. the progress rows go in one ordered bulk write; if it fails, the rows it
+//      touched are put back as they were before the request;
+//   3. last, ONE update of the user document sets the goal, the plan and
+//      onboardingComplete together. A single-document write is atomic, so the
+//      flag is never set without the plan, nor before every page is saved. If
+//      it fails, the rows of step 2 are put back as well.
+// Every write is an upsert of a final value (a whole page, or verses merged into
+// a page's segments), so a retry after any failure — even one whose response was
+// lost after the server finished — lands on the same state and duplicates nothing.
+//
+// What this cannot undo: the process dying between steps 2 and 3 (or a restore
+// that itself fails) leaves step 2's rows on an account that is not onboarded,
+// and a retry with a SMALLER selection would keep the pages it dropped. A retry
+// does not clear them, because it cannot tell them apart from progress the
+// account had before onboarding — a signed-in account that has not onboarded
+// can already save pages from the Library (units, memorized, complete),
+// and those rows look the same. Telling them apart would take a marker on every
+// row this endpoint writes; for a crash in a window of one write, the person
+// can still fix the pages in Settings.
+//
+// Why not a multi-document transaction: Atlas would support one, but the local
+// and CI stacks (mongodb-memory-server, the e2e and harness servers) run a
+// standalone mongod, which refuses transactions, and a second code path for
+// them would be the untested one. The ordered write above needs neither.
 exports.completeOnboarding = async (req, res) => {
+  // Set when a failure may have left part of the selection behind (below).
+  let partial = false;
   try {
     const userId = req.user._id;
     const { dailyNewPages } = req.body;
+    const invalid = (code, message) => res.status(400).json({ success: false, code, message });
 
-    // Checked before anything is written, so a bad list leaves the account as it was.
+    // 1. Validate everything first, so a bad request leaves the account as it was.
     let memorizedPages = [];
     if (req.body.memorizedPages !== undefined) {
       const parsed = parsePageList(req.body.memorizedPages, 'memorizedPages');
-      if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
+      if (parsed.error) return invalid('INVALID_PAGE', parsed.error);
       memorizedPages = parsed.pages;
     }
 
+    // The sub-page remainder of the selection — the mid-page ends of a surah or
+    // a hizb — as verse ranges, stored as partial `segments` like /progress/units.
+    const verseRanges = req.body.verseRanges ?? [];
+    if (!Array.isArray(verseRanges) || verseRanges.length > MAX_PAGE) {
+      return invalid('INVALID_VERSE_RANGES', `verseRanges must be an array of at most ${MAX_PAGE} ranges`);
+    }
+    const whole = new Set(memorizedPages);
+    const rangesByPage = new Map(); // page → its parts of the ranges; whole pages left out
+    for (const ref of verseRanges) {
+      let range;
+      try {
+        range = compileUnitRange('verses', ref);
+      } catch (err) {
+        return invalid('INVALID_VERSE_RANGES', err.message);
+      }
+      for (const pr of rangeToPages(range.from, range.to)) {
+        if (whole.has(pr.pageNumber)) continue;
+        rangesByPage.set(pr.pageNumber, [...(rangesByPage.get(pr.pageNumber) ?? []), pr]);
+      }
+    }
+
+    const plan = parsePlanSettings(req.body);
+    if (plan.status) return invalid(plan.code, plan.message);
+
     const dailyGoal = Math.min(Math.max(parseFloat(dailyNewPages) || 1, 0.5), 10);
 
-    await User.findByIdAndUpdate(userId, {
-      dailyNewPages: dailyGoal,
-      onboardingComplete: true,
-      planStartDate: clock.now(),
-    });
+    // 2. The progress rows, in one ordered bulk write.
+    const touched = [...memorizedPages, ...rangesByPage.keys()];
+    const before = touched.length
+      ? await UserProgress.find({ userId, pageNumber: { $in: touched } }).lean()
+      : [];
+    const beforeByPage = new Map(before.map((d) => [d.pageNumber, d]));
 
-    if (memorizedPages.length > 0) {
-      const yesterday = clock.now();
-      yesterday.setUTCHours(0, 0, 0, 0);
-      yesterday.setDate(yesterday.getDate() - 1);
+    const yesterday = clock.now();
+    yesterday.setUTCHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-      const bulkOps = memorizedPages.map(pageNumber => ({
+    const bulkOps = memorizedPages.map(pageNumber => ({
+      updateOne: {
+        filter: { userId, pageNumber },
+        update: {
+          $set: {
+            userId,
+            pageNumber,
+            status: 'memorized',
+            memorizedDate: yesterday,
+            lastReviewedDate: yesterday,
+            reviewCount: 0,
+            segments: [],
+          },
+        },
+        upsert: true,
+      },
+    }));
+    for (const [pageNumber, ranges] of rangesByPage) {
+      const existing = beforeByPage.get(pageNumber);
+      const memorized = existing?.status === 'memorized';
+      // A page already memorized whole stays whole: merged into its empty
+      // `segments`, the new verses would read as all there is and shrink it.
+      if (memorized && !existing.segments?.length) continue;
+      let segments = memorized ? existing.segments : [];
+      const meta = PAGE_BY_NUMBER.get(pageNumber);
+      for (const pr of ranges) segments = addRangeToPage(segments, pr.fromVerseKey, pr.toVerseKey, meta).segments;
+      bulkOps.push({
         updateOne: {
           filter: { userId, pageNumber },
           update: {
-            $set: {
-              userId,
-              pageNumber,
-              status: 'memorized',
-              memorizedDate: yesterday,
-              lastReviewedDate: yesterday,
-              reviewCount: 0,
+            $set: { status: 'memorized', segments },
+            $setOnInsert: {
+              userId, pageNumber,
+              memorizedDate: yesterday, lastReviewedDate: yesterday, reviewCount: 0,
             },
           },
           upsert: true,
         },
-      }));
-
-      await UserProgress.bulkWrite(bulkOps);
+      });
     }
+
+    // Put step 2's rows back after a later failure. Should even that fail, the
+    // account may keep part of this selection while it is not onboarded: log
+    // everything needed to repair it by hand, and answer ONBOARDING_PARTIAL, not
+    // a plain error, so the client does not promise that nothing was saved.
+    const leftBehind = (why, errors) => {
+      partial = true;
+      console.error(`Onboarding: ${why}; the account may keep part of the selection`,
+        { userId: String(userId), touched, ...errors });
+    };
+    const undoProgress = (writeError) => restoreProgress(userId, touched, before)
+      .catch((restoreError) => leftBehind('could not put the progress rows back', { writeError, restoreError }));
+
+    if (bulkOps.length) {
+      try {
+        await UserProgress.bulkWrite(bulkOps, { ordered: true });
+      } catch (writeError) {
+        // Some rows may have gone in before the failure: put them back, so the
+        // account is exactly as it was and onboarding can simply be sent again.
+        await undoProgress(writeError);
+        throw writeError;
+      }
+    }
+
+    // The account was deleted while this request ran. deleteAccount removes the
+    // progress first and the account last, so rows this request wrote after the
+    // first step outlive the account: every row under this id is an orphan now.
+    // Remove them and answer as the auth check does for a deleted account.
+    const accountGone = async () => {
+      await UserProgress.deleteMany({ userId })
+        .catch((err) => console.error('Onboarding: could not remove the rows of a deleted account', { userId: String(userId), err }));
+      return res.status(401).json({ success: false, code: 'NOT_AUTHORIZED', message: 'User not found' });
+    };
+
+    // 3. Last, in one atomic single-document update: goal, plan and the flag.
+    let updated;
+    try {
+      updated = await User.updateOne({ _id: userId }, {
+        $set: {
+          ...plan.update,
+          dailyNewPages: dailyGoal,
+          planStartDate: clock.now(),
+          onboardingComplete: true,
+        },
+      });
+    } catch (writeError) {
+      // The rows of step 2 must go too: the account still is not onboarded, so
+      // the client shows an empty selection again, and a smaller one sent then
+      // would leave the pages it dropped memorized for good. But a write-concern
+      // timeout can arrive AFTER the update was applied — then the account is
+      // onboarded and its rows must stay — so undo them only when a fresh read
+      // shows the flag still off. A failed read leaves them: they hold exactly
+      // what this request was saving.
+      if (bulkOps.length) {
+        const now = await User.findById(userId, { onboardingComplete: 1 }).lean()
+          .catch((readError) => { leftBehind('could not re-read the account after a failed update', { writeError, readError }); });
+        if (now === null) return accountGone();
+        if (now && !now.onboardingComplete) await undoProgress(writeError);
+      }
+      throw writeError;
+    }
+    if (updated.matchedCount === 0) return accountGone();
 
     leaderboardCache.clear();
 
@@ -463,7 +624,14 @@ exports.completeOnboarding = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Onboarding error:', error);
+    logError('Onboarding error:', error);
+    if (partial) {
+      return res.status(500).json({
+        success: false,
+        code: 'ONBOARDING_PARTIAL',
+        message: 'Onboarding failed part-way, and some of the pages may already be saved',
+      });
+    }
     serverError(res, 'Error completing onboarding', error);
   }
 };
@@ -639,7 +807,7 @@ exports.getTodayTasks = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetTodayTasks error:', error);
+    logError('GetTodayTasks error:', error);
     serverError(res, "Error fetching today's tasks", error);
   }
 };
@@ -690,7 +858,7 @@ exports.checkIn = async (req, res) => {
 
     res.status(200).json({ success: true, data: { ticked, currentStreak: user.currentStreak || 0 } });
   } catch (error) {
-    console.error('CheckIn error:', error);
+    logError('CheckIn error:', error);
     serverError(res, 'Error checking in', error);
   }
 };
@@ -857,7 +1025,7 @@ exports.markPageComplete = async (req, res) => {
       data: { pageNumber, type, newStreak },
     });
   } catch (error) {
-    console.error('MarkPageComplete error:', error);
+    logError('MarkPageComplete error:', error);
     serverError(res, 'Error marking page complete', error);
   }
 };
@@ -996,7 +1164,7 @@ exports.unmarkPageComplete = async (req, res) => {
       data: { currentStreak },
     });
   } catch (error) {
-    console.error('UnmarkPageComplete error:', error);
+    logError('UnmarkPageComplete error:', error);
     serverError(res, 'Error undoing completion', error);
   }
 };
@@ -1039,7 +1207,7 @@ exports.getEstimate = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetEstimate error:', error);
+    logError('GetEstimate error:', error);
     serverError(res, 'Error calculating estimate', error);
   }
 };
@@ -1224,7 +1392,7 @@ exports.getWeekPlan = async (req, res) => {
 
     res.status(200).json({ success: true, data: enrichedPlan });
   } catch (error) {
-    console.error('GetWeekPlan error:', error);
+    logError('GetWeekPlan error:', error);
     serverError(res, 'Error fetching week plan', error);
   }
 };
@@ -1273,7 +1441,7 @@ exports.getAllProgress = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('GetAllProgress error:', error);
+    logError('GetAllProgress error:', error);
     serverError(res, 'Error fetching progress', error);
   }
 };
@@ -1368,7 +1536,7 @@ exports.updateMemorized = async (req, res) => {
       data: { memorizedCount: newPageSet.size, removed: wouldRemove },
     });
   } catch (error) {
-    console.error('UpdateMemorized error:', error);
+    logError('UpdateMemorized error:', error);
     serverError(res, 'Error updating memorized pages', error);
   }
 };
@@ -1431,7 +1599,7 @@ exports.changeMemorized = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('ChangeMemorized error:', error);
+    logError('ChangeMemorized error:', error);
     serverError(res, 'Error updating memorized pages', error);
   }
 };
@@ -1456,7 +1624,7 @@ exports.resetProgress = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Progress reset successfully' });
   } catch (error) {
-    console.error('ResetProgress error:', error);
+    logError('ResetProgress error:', error);
     serverError(res, 'Error resetting progress', error);
   }
 };
@@ -1538,7 +1706,7 @@ exports.getJuzProgress = async (req, res) => {
 
     res.status(200).json({ success: true, data: juzProgress });
   } catch (error) {
-    console.error('GetJuzProgress error:', error);
+    logError('GetJuzProgress error:', error);
     serverError(res, 'Error fetching Juz progress', error);
   }
 };
@@ -1651,7 +1819,7 @@ exports.updateUnits = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('UpdateUnits error:', error);
+    logError('UpdateUnits error:', error);
     serverError(res, 'Error updating memorization units', error);
   }
 };

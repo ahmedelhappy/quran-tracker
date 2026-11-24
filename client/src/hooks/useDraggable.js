@@ -53,6 +53,12 @@ export function useDraggable(storageKey, { axis } = {}) {
       h: rect.height,
     };
     const margin = 8;
+    // The position while the pointer is down. It is written straight onto the
+    // element and committed to state once, on release: a state update per
+    // pointermove re-rendered the whole component that owns the hook — the
+    // entire Library, for the verse popover (M-10). React leaves the element's
+    // transform alone meanwhile, because the `style` it renders has not changed.
+    let live = null;
 
     const onMove = (ev) => {
       const dx = ev.clientX - start.px;
@@ -69,13 +75,15 @@ export function useDraggable(storageKey, { axis } = {}) {
       nx = Math.min(Math.max(nx, minX), maxX);
       ny = Math.min(Math.max(ny, minY), maxY);
 
-      setPos({ x: nx, y: ny });
+      live = { x: nx, y: ny };
+      el.style.transform = `translate(${nx}px, ${ny}px)`;
     };
 
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      if (live) setPos(live);
     };
 
     window.addEventListener('pointermove', onMove);

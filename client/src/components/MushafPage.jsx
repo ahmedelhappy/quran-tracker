@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useId } from 'react';
 import { SURAH_PAGES } from '../data/surahPages';
 import BasmalaGlyph from './BasmalaGlyph';
 import { hideModeStep } from '../utils/selfTestCycle';
@@ -64,7 +64,15 @@ export default function MushafPage({
   // How a verse is named to a screen reader — "Surah Al-Isra, ayah 87". Passed in
   // so it can be said in the interface's language; the fallback is the bare key.
   verseLabel = (v) => `${v.surahNumber}:${v.ayahNumber}`,
+  // The keyboard's way to a verse's actions (M-12): Enter on the verse that is
+  // already selected opens them, as a right-click does for the mouse. The
+  // first Enter still just selects, exactly as a click does. Called with the
+  // verse key and the focused element (to place the actions beside it).
+  // `verseActionsHint` is what the selected verse says it can do.
+  onVerseActionsKey,
+  verseActionsHint,
 }) {
+  const hintId = useId();
   const [hoverWord, setHoverWord] = useState(null);       // { line, index, verseKey } | null
   const [tapBlurVerse, setTapBlurVerse] = useState(null); // touch cover-mode transient
   const tapTimerRef = useRef(null);
@@ -220,10 +228,14 @@ export default function MushafPage({
           to a pixel and absolutely positioned, so it is outside the 15-slot grid and
           changes nothing about the printed page. */}
       <div className="mushaf-sr-text">
+        {/* The label is in the interface's language, the verse in Arabic: only
+            the verse is marked lang="ar", so an English reading of "Surah …,
+            ayah …" isn't voiced by the Arabic voice (and vice versa). */}
         {(pageData?.verses ?? []).map((v) => (
-          <p key={v.verseKey} lang="ar">{verseLabel(v)}: {v.textUthmani}</p>
+          <p key={v.verseKey}>{verseLabel(v)}: <span lang="ar">{v.textUthmani}</span></p>
         ))}
       </div>
+      {verseActionsHint && <span id={hintId} hidden>{verseActionsHint}</span>}
       {lines.map((line) => {
         // Each row is pinned to its true printed line number (1..15). Ornamental
         // pages 1–2 aren't a 15-line grid — they flow centred, so no row pinning.
@@ -234,7 +246,7 @@ export default function MushafPage({
         if (line.type === 'surah') {
           return (
             <div key={`s-${line.lineNumber}`} className="mushaf-surah-line" style={rowStyle}>
-              <div className="mushaf-surah-frame" role="img" aria-label={`سورة ${surahName(line.surahNumber)}`}>
+              <div className="mushaf-surah-frame" role="img" lang="ar" aria-label={`سورة ${surahName(line.surahNumber)}`}>
                 <span className="mushaf-surah-glyph">{`${String(line.surahNumber).padStart(3, '0')}surah`}</span>
               </div>
             </div>
@@ -281,14 +293,21 @@ export default function MushafPage({
                 : '';
               const isNoteMedallion = w.charType === 'end' && noteVerses?.has(w.verseKey);
               const isVerseAnchor = verseAnchors.get(w.verseKey) === w.position;
+              const isSelected = w.verseKey === selectedVerseKey;
+              // Enter on the selected verse opens its actions — outside the self-
+              // tests, whose Enter keeps running their own reveal/hide cycle.
+              const actionsByKey = isSelected && !concealMode && onVerseActionsKey;
               const a11y = isVerseAnchor
                 ? {
                   role: 'button',
                   tabIndex: 0,
                   'aria-label': verseLabel(verseByKey.get(w.verseKey) ?? { verseKey: w.verseKey }),
+                  'aria-pressed': isSelected,
+                  'aria-describedby': actionsByKey && verseActionsHint ? hintId : undefined,
                   onKeyDown: (e) => {
                     if (e.key !== 'Enter' && e.key !== ' ') return;
                     e.preventDefault();
+                    if (e.key === 'Enter' && actionsByKey) { onVerseActionsKey(w.verseKey, e.currentTarget); return; }
                     handleWordClick(w);
                   },
                 }
@@ -307,7 +326,15 @@ export default function MushafPage({
                     dragRef.current = { word: w, x: e.clientX, y: e.clientY, moved: false };
                   }}
                   onPointerEnter={(e) => {
-                    setHoverWord({ line: line.lineNumber, index: i, verseKey: w.verseKey });
+                    // Only a change that is drawn re-renders the page: in normal
+                    // reading the hover tints a whole VERSE, so moving between its
+                    // words changes nothing; the self-tests key on the exact word.
+                    setHoverWord((prev) => (
+                      prev && prev.verseKey === w.verseKey
+                        && (!concealMode || (prev.line === line.lineNumber && prev.index === i))
+                        ? prev
+                        : { line: line.lineNumber, index: i, verseKey: w.verseKey }
+                    ));
                     const d = dragRef.current;
                     if (d && e.pointerType === 'mouse' && concealMode === 'hide') {
                       d.moved = true;

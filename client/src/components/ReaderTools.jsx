@@ -46,13 +46,14 @@ export default function ReaderTools({ tools, open, onOpenChange, activeId, onAct
       {open && (
         <div id={bodyId} className="flex flex-col gap-3">
           {tools.length > 1 && (
-            <div role="tablist" aria-label={t('library.tools.title')} className="grid grid-flow-col auto-cols-fr gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-1">
+            // Plain toggle buttons, not ARIA tabs: the tab pattern promises
+            // arrow-key movement between tabs that these never had (M-12).
+            <div role="group" aria-label={t('library.tools.title')} className="grid grid-flow-col auto-cols-fr gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-1">
               {tools.map((tool) => (
                 <button
                   key={tool.id}
                   type="button"
-                  role="tab"
-                  aria-selected={tool.id === active.id}
+                  aria-pressed={tool.id === active.id}
                   onClick={() => onActiveChange(tool.id)}
                   className={`text-xs font-semibold rounded-md px-2 py-1 transition-colors ${
                     tool.id === active.id
@@ -65,7 +66,7 @@ export default function ReaderTools({ tools, open, onOpenChange, activeId, onAct
               ))}
             </div>
           )}
-          <div role={tools.length > 1 ? 'tabpanel' : undefined}>{active.content}</div>
+          <div>{active.content}</div>
         </div>
       )}
     </div>

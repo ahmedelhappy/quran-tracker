@@ -3,7 +3,6 @@ const path = require('path');
 const Groq = require('groq-sdk');
 const { buildProgressSummary } = require('./progressController');
 const { tryConsume } = require('../utils/chatBudget');
-const clock = require('../utils/clock');
 
 // The app's own guide (server/chat/appGuide.md), read once when the server boots.
 // It is what lets the assistant answer "how do I…?" about THIS app — the pages, the
@@ -26,6 +25,7 @@ const SYSTEM_MESSAGE = {
     '- Quran memorization technique, and questions about the Quran, its surahs and ayahs, tafsir, or hadith related to the Quran — answer from your own knowledge, accurately and humbly.',
     '- Anything else: decline politely in one sentence and offer to help with the Quran or the app instead.',
     "Reply in the language of the user's latest message (Arabic to Arabic, English to English). The guide names buttons in English; when replying in Arabic, describe a control by what it does instead of quoting its English label.",
+    "You are not given the user's name or any other personal detail, and no answer needs one: speak to the user directly as \"you\" without a name, and never ask for their name, email, phone number or other personal details.",
     'Keep replies concise (under 150 words), warm and encouraging. Write plain text: short numbered steps are fine, but no headings, tables or other markdown except links.',
     'When a page of the app would help, link to it with a path from the guide\'s list, written as a markdown link such as [open page 291](/library?page=291). Use only those paths. Never include external links or web addresses.',
     '',
@@ -48,12 +48,20 @@ const listPages = (nums, max = 30) => (nums.length > max
 // Renders the user's live progress snapshot into a system message the model treats
 // as authoritative. Used to answer "what should I memorize today?", "how many pages
 // are left?", "what's my streak?" from real data instead of guessing.
+//
+// Everything here goes to Groq, so it carries the plan and nothing about the
+// person (H-05): no name — the model used to greet people by it, which no answer
+// needs — and no calendar dates. "Today" is all the model has to know; the
+// server has already worked out what today holds.
 const buildUserContextMessage = (summary) => {
-  const todayUTC = clock.now().toISOString().split('T')[0];
   const lines = [
-    `THE USER'S CURRENT DATA (authoritative and live, as of ${todayUTC} UTC):`,
-    `- Name: ${summary.name}`,
+    "THE USER'S CURRENT DATA (authoritative and live, as of today):",
     `- Daily new-page goal: ${summary.dailyNewPages} page(s) per day`,
+    // The setting that sizes the daily review ("why so many reviews?"), and the
+    // app's language, which settles the reply language when a message is
+    // neither clearly Arabic nor English.
+    `- Review intensity: ${summary.reviewIntensity} (light, standard or strong)`,
+    `- App language: ${summary.language === 'ar' ? 'Arabic' : 'English'}`,
     `- Total memorized: ${summary.totalMemorized} of ${summary.totalPages} pages (${summary.percentage}%)`,
     `- Pages left to memorize: ${summary.pagesLeft}`,
     `- Current streak: ${summary.currentStreak} day(s)`,
@@ -95,6 +103,12 @@ const buildUserContextMessage = (summary) => {
   );
 
   return { role: 'system', content: lines.join('\n') };
+};
+
+// Sent in place of the user's data when it could not be loaded.
+const USER_DATA_UNAVAILABLE_MESSAGE = {
+  role: 'system',
+  content: "THE USER'S CURRENT DATA is unavailable right now: it could not be loaded. If the user asks about their progress, plan, streak or what to do today, say you cannot see their progress at the moment and suggest they check the Dashboard or try again shortly. Never guess or invent numbers or pages.",
 };
 
 // Caps the size of any single message to bound token cost sent to the model.
@@ -140,6 +154,54 @@ const chatLimits = () => ({
 // instructions) or extra properties on a turn (each is rebuilt as exactly
 // { role, content }, never spread from the request).
 const CONVERSATION_ROLES = new Set(['user', 'assistant']);
+
+// What an upstream failure leaves in the server log. Groq's error body is its
+// own text and can quote the request back — a failed generation carries the
+// model's output, which repeats the user's words — so an HTTP error is logged by
+// its status, Groq's error code/type and a few headers that hold only ids and
+// counters, never the body or the message built from it. An error with no
+// status was raised on this side (a dropped connection, a bug here); its message
+// and those of its causes name a network or code failure and hold no chat text —
+// except a SyntaxError, whose message can quote the response it failed to parse.
+//
+// groq-sdk never sets `name` on its errors (every one reads "Error"), so the
+// class name is what tells a RateLimitError from a BadRequestError.
+const LOGGED_GROQ_HEADERS = [
+  'x-request-id', 'retry-after', 'x-ratelimit-remaining-requests', 'x-ratelimit-remaining-tokens',
+];
+const errorName = (e) => e?.constructor?.name || e?.name || 'Error';
+// The "    at …" lines of a stack, without the message line(s) above them.
+const stackFrames = (e) => (typeof e?.stack === 'string'
+  ? e.stack.split('\n').filter((line) => /^\s+at /.test(line)).join('\n')
+  : '');
+const describeLocalError = (e) => {
+  const name = errorName(e);
+  if (e instanceof SyntaxError) return name;
+  const code = typeof e?.code === 'string' || typeof e?.code === 'number' ? ` ${e.code}` : '';
+  return `${name}${code}: ${e?.message ?? String(e)}`;
+};
+const describeGroqError = (error) => {
+  if (error?.status) {
+    const body = error.error?.error ?? error.error;
+    const code = [body?.code, body?.type].filter((v) => typeof v === 'string').join('/');
+    const headers = error.headers;
+    const read = (key) => (typeof headers?.get === 'function' ? headers.get(key) : headers?.[key]);
+    const picked = headers
+      ? LOGGED_GROQ_HEADERS.map((key) => [key, read(key)]).filter(([, v]) => v != null && v !== '')
+      : [];
+    const headerText = picked.map(([key, v]) => `${key}=${v}`).join(' ');
+    return `${errorName(error)} ${error.status}${code ? ` ${code}` : ''}${headerText ? ` ${headerText}` : ''}`;
+  }
+  const lines = [describeLocalError(error)];
+  // A connection error wraps the real reason (fetch failed → ECONNRESET …).
+  let cause = error?.cause;
+  for (let depth = 0; cause && depth < 3; depth++, cause = cause.cause) {
+    lines.push(`  caused by ${describeLocalError(cause)}`);
+  }
+  const frames = stackFrames(error);
+  if (frames) lines.push(frames);
+  return lines.join('\n');
+};
 
 // Logged once, not on every message, when chat is off for want of a key.
 let warnedNoKey = false;
@@ -228,13 +290,16 @@ exports.sendMessage = async (req, res) => {
 
     // Append the user's live progress as an authoritative context block. If the
     // lookup fails for any reason, fall back to the plain assistant — a data
-    // error must never break chat.
+    // error must never break chat. SYSTEM_MESSAGE promises the user's data
+    // follows it, so the fallback says it is missing: told nothing, the model
+    // would answer "what's my streak?" with an invented number.
     const systemMessages = [SYSTEM_MESSAGE];
     try {
       const summary = await buildProgressSummary(req.user);
       systemMessages.push(buildUserContextMessage(summary));
     } catch (summaryError) {
       console.error('Chat progress-context error (continuing without it):', summaryError);
+      systemMessages.push(USER_DATA_UNAVAILABLE_MESSAGE);
     }
 
     timer = setTimeout(() => deadline.abort(), timeoutMs);
@@ -271,7 +336,7 @@ exports.sendMessage = async (req, res) => {
       console.error(`Groq API timed out after ${timeoutMs} ms`);
       return res.status(504).json({ success: false, message: 'The AI service took too long to answer' });
     }
-    console.error('Groq API error:', error);
+    console.error('Groq API error:', describeGroqError(error));
     return res.status(502).json({ success: false, message: 'AI service unavailable' });
   } finally {
     clearTimeout(timer);

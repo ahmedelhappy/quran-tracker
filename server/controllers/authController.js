@@ -1,26 +1,30 @@
 const User = require('../models/User');
-const { EMAIL_MAX_LENGTH, EMAIL_PATTERN } = User;
+const { EMAIL_MAX_LENGTH, EMAIL_PATTERN, normalizeEmail } = User;
 const UserProgress = require('../models/UserProgress');
 const jwt = require('jsonwebtoken');
-const { serverError } = require('../utils/errorResponse');
+const { serverError, logError } = require('../utils/errorResponse');
 const leaderboardCache = require('../utils/leaderboardCache');
 const { newPasswordProblem } = require('../utils/passwordPolicy');
 const { loginThrottle } = require('../utils/loginThrottle');
 const { deleteUserData } = require('../utils/userData');
 const chatBudget = require('../utils/chatBudget');
 const { PAGE_RULE, toPageNumber } = require('../utils/pageNumbers');
+const { parsePlanSettings } = require('../utils/planSettings');
+const mailer = require('../utils/mailer');
+const {
+  RESET_TOKEN_PATTERN, RESET_TOKEN_TTL_MS, RESET_TOKEN_TTL_MINUTES,
+  hashResetToken, newResetToken, passwordResetConfig, resetLink,
+} = require('../utils/passwordReset');
 
-// Generate JWT Token
+// Generate JWT Token. `iatMs` is when it was issued, to the millisecond: the
+// standard `iat` is whole seconds, too coarse to tell a session opened just
+// before a password change or reset from one opened just after it (see
+// middleware/auth.js).
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  return jwt.sign({ id, iatMs: Date.now() }, process.env.JWT_SECRET, {
     expiresIn: '30d'
   });
 };
-
-// Emails are stored trimmed and lower-cased (see the User model), so every lookup
-// must compare the same form. Non-strings never get here — the route's type gate
-// rejects them — but an absent field arrives as undefined.
-const normalizeEmail = (raw) => (typeof raw === 'string' ? raw.trim().toLowerCase() : '');
 
 // The validate middleware already turns 'true' / 'false' into real booleans;
 // this keeps the controller right on its own too. Boolean('false') is true.
@@ -39,12 +43,12 @@ exports.register = async (req, res) => {
     // backstop for every other write path.
     const email = normalizeEmail(req.body.email);
     if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid email' });
+      return res.status(400).json({ success: false, code: 'INVALID_EMAIL', message: 'Please provide a valid email' });
     }
 
     const passwordProblem = newPasswordProblem(password);
     if (passwordProblem) {
-      return res.status(400).json({ success: false, message: passwordProblem });
+      return res.status(400).json({ success: false, ...passwordProblem });
     }
 
     // Check if user already exists. A conflict, not a malformed request — and the
@@ -53,6 +57,7 @@ exports.register = async (req, res) => {
     if (userExists) {
       return res.status(409).json({
         success: false,
+        code: 'EMAIL_TAKEN',
         message: 'User already exists with this email'
       });
     }
@@ -81,7 +86,7 @@ exports.register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Register error:', error);
+    logError('Register error:', error);
     serverError(res, 'Server error during registration', error);
   }
 };
@@ -99,6 +104,7 @@ exports.login = async (req, res) => {
     if (!email || !password || email.length > EMAIL_MAX_LENGTH) {
       return res.status(400).json({
         success: false,
+        code: 'CREDENTIALS_REQUIRED',
         message: 'Please provide email and password'
       });
     }
@@ -133,6 +139,7 @@ exports.login = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
+        code: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password'
       });
     }
@@ -169,7 +176,7 @@ exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error);
+    logError('Login error:', error);
     serverError(res, 'Server error during login', error);
   }
 };
@@ -208,7 +215,7 @@ exports.getMe = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('GetMe error:', error);
+    logError('GetMe error:', error);
     serverError(res, 'Server error', error);
   }
 };
@@ -228,12 +235,14 @@ exports.updateProfile = async (req, res) => {
       if (!name || name.trim().length === 0) {
         return res.status(400).json({
           success: false,
+          code: 'NAME_REQUIRED',
           message: 'Name cannot be empty'
         });
       }
       if (name.length > 50) {
         return res.status(400).json({
           success: false,
+          code: 'NAME_TOO_LONG',
           message: 'Name cannot exceed 50 characters'
         });
       }
@@ -245,33 +254,18 @@ exports.updateProfile = async (req, res) => {
       if (isNaN(pages) || pages < 0.5 || pages > 10) {
         return res.status(400).json({
           success: false,
+          code: 'INVALID_DAILY_GOAL',
           message: 'Daily pages must be between 0.5 and 10'
         });
       }
       updateData.dailyNewPages = pages;
     }
 
-    const { reviewIntensity, offDays } = req.body;
-
-    if (reviewIntensity !== undefined) {
-      if (!['light', 'standard', 'strong'].includes(reviewIntensity)) {
-        return res.status(400).json({
-          success: false,
-          message: 'reviewIntensity must be "light", "standard", or "strong"'
-        });
-      }
-      updateData.reviewIntensity = reviewIntensity;
-    }
-
-    if (offDays !== undefined) {
-      if (!Array.isArray(offDays) || !offDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6)) {
-        return res.status(400).json({
-          success: false,
-          message: 'offDays must be an array of integers between 0 (Sun) and 6 (Sat)'
-        });
-      }
-      updateData.offDays = offDays;
-    }
+    // The plan fields (rest days, review intensity / counts, where new work
+    // starts) share their rules with onboarding, which saves them too.
+    const plan = parsePlanSettings(req.body);
+    if (plan.status) return res.status(plan.status).json({ success: false, code: plan.code, message: plan.message });
+    Object.assign(updateData, plan.update);
 
     const { language } = req.body;
 
@@ -279,30 +273,11 @@ exports.updateProfile = async (req, res) => {
       if (!['en', 'ar'].includes(language)) {
         return res.status(400).json({
           success: false,
+          code: 'INVALID_LANGUAGE',
           message: 'language must be "en" or "ar"'
         });
       }
       updateData.language = language;
-    }
-
-    if (req.body.recentReviewCount !== undefined) {
-      const v = req.body.recentReviewCount;
-      if (v === null) {
-        updateData.recentReviewCount = null;
-      } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n <= 20) updateData.recentReviewCount = n;
-      }
-    }
-
-    if (req.body.cycleReviewCount !== undefined) {
-      const v = req.body.cycleReviewCount;
-      if (v === null) {
-        updateData.cycleReviewCount = null;
-      } else {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 0 && n <= 40) updateData.cycleReviewCount = n;
-      }
     }
 
     if (req.body.pauseNewMemorization !== undefined) {
@@ -320,30 +295,8 @@ exports.updateProfile = async (req, res) => {
       } else {
         // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
         const n = toPageNumber(v);
-        if (n === null) return res.status(400).json({ success: false, message: `cycleReviewStartPage ${PAGE_RULE}` });
+        if (n === null) return res.status(400).json({ success: false, code: 'INVALID_PAGE', message: `cycleReviewStartPage ${PAGE_RULE}` });
         updateData.cycleReviewStartPage = n;
-      }
-    }
-
-    if (req.body.memorizationDirection !== undefined) {
-      if (!['fromStart', 'fromEnd'].includes(req.body.memorizationDirection)) {
-        return res.status(400).json({
-          success: false,
-          message: 'memorizationDirection must be "fromStart" or "fromEnd"'
-        });
-      }
-      updateData.memorizationDirection = req.body.memorizationDirection;
-    }
-
-    if (req.body.newMemorizationStartPage !== undefined) {
-      const v = req.body.newMemorizationStartPage;
-      if (v === null) {
-        updateData.newMemorizationStartPage = null;
-      } else {
-        // parseInt would store 1.5 as page 1 and "4.5" as page 4 (M-01).
-        const n = toPageNumber(v);
-        if (n === null) return res.status(400).json({ success: false, message: `newMemorizationStartPage ${PAGE_RULE}` });
-        updateData.newMemorizationStartPage = n;
       }
     }
 
@@ -356,7 +309,7 @@ exports.updateProfile = async (req, res) => {
       } else {
         const trimmed = String(dn).trim();
         if (trimmed.length < 3 || trimmed.length > 30) {
-          return res.status(400).json({ success: false, message: 'Display name must be 3 to 30 characters' });
+          return res.status(400).json({ success: false, code: 'DISPLAY_NAME_LENGTH', message: 'Display name must be 3 to 30 characters' });
         }
         updateData.displayName = trimmed;
       }
@@ -370,7 +323,7 @@ exports.updateProfile = async (req, res) => {
           ? updateData.displayName
           : (await User.findById(userId).select('displayName'))?.displayName;
         if (!effectiveName) {
-          return res.status(400).json({ success: false, message: 'A display name is required to join the leaderboard' });
+          return res.status(400).json({ success: false, code: 'DISPLAY_NAME_REQUIRED', message: 'A display name is required to join the leaderboard' });
         }
       }
       updateData.leaderboardOptIn = optIn;
@@ -442,7 +395,7 @@ exports.updateProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('UpdateProfile error:', error);
+    logError('UpdateProfile error:', error);
     serverError(res, 'Error updating profile', error);
   }
 };
@@ -456,29 +409,29 @@ exports.changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Both current and new password are required' });
+      return res.status(400).json({ success: false, code: 'PASSWORD_FIELDS_REQUIRED', message: 'Both current and new password are required' });
     }
     // Only the NEW password meets the current rules; the current one is whatever
     // the account was created with, possibly under the old 6-character minimum.
     const passwordProblem = newPasswordProblem(newPassword);
     if (passwordProblem) {
-      return res.status(400).json({ success: false, message: passwordProblem });
+      return res.status(400).json({ success: false, ...passwordProblem });
     }
     if (newPassword === currentPassword) {
-      return res.status(400).json({ success: false, message: 'New password must be different from current password' });
+      return res.status(400).json({ success: false, code: 'PASSWORD_UNCHANGED', message: 'New password must be different from current password' });
     }
 
     const user = await User.findById(userId).select('+password');
     const isMatch = await user.matchPassword(currentPassword);
     if (!isMatch) {
-      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      return res.status(400).json({ success: false, code: 'WRONG_PASSWORD', message: 'Current password is incorrect' });
     }
 
     user.password = newPassword;
     await user.save();
 
     // The save stamped passwordChangedAt, which revokes every token minted before
-    // it — including the one this request came in with. Hand back a fresh one so
+    // it — including the one this request came in with, however recent. Hand back a fresh one so
     // THIS session carries on; every other device still has to sign in again.
     res.status(200).json({
       success: true,
@@ -486,7 +439,7 @@ exports.changePassword = async (req, res) => {
       data: { token: generateToken(user._id) },
     });
   } catch (error) {
-    console.error('ChangePassword error:', error);
+    logError('ChangePassword error:', error);
     serverError(res, 'Error changing password', error);
   }
 };
@@ -513,7 +466,154 @@ exports.deleteAccount = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
-    console.error('DeleteAccount error:', error);
+    logError('DeleteAccount error:', error);
     serverError(res, 'Error deleting account', error);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Password reset (H-06) — built, tested, and OFF until an email provider is
+// configured (utils/passwordReset.js decides; requireResetEnabled below guards
+// both endpoints).
+// ---------------------------------------------------------------------------
+
+// @desc    What the client needs to know before sign-in: today only whether
+//          "Forgot password?" should be offered
+// @route   GET /api/auth/config
+// @access  Public
+exports.authConfig = (req, res) => {
+  // Cacheable for a few minutes: it changes only with a redeploy.
+  res.set('Cache-Control', 'public, max-age=300');
+  res.status(200).json({ success: true, data: { passwordReset: passwordResetConfig().enabled } });
+};
+
+// Both reset endpoints answer as if they did not exist while reset is off —
+// before any limiter counts the request or the body is looked at.
+exports.requireResetEnabled = (req, res, next) => {
+  if (passwordResetConfig().enabled) return next();
+  return res.status(404).json({ success: false, code: 'RESET_DISABLED', message: 'Password reset is not available' });
+};
+
+// The one answer to every well-formed request, sent before any email goes out.
+const FORGOT_ANSWER = {
+  success: true,
+  message: 'If an account exists for that address, we have sent it a link to reset the password.',
+};
+
+// @desc    Email a password-reset link
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = async (req, res) => {
+  try {
+    // A malformed address is refused for what it is — that depends only on the
+    // input, so it says nothing about which accounts exist.
+    const email = normalizeEmail(req.body.email);
+    if (!email || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ success: false, code: 'INVALID_EMAIL', message: 'Please provide a valid email' });
+    }
+
+    // Nothing in the answer may depend on whether the address has an account:
+    // not the body, not the status, not the time it takes. So the same work is
+    // done either way — a token is made and hashed, and ONE conditional write
+    // is sent, which stores the hash on the account if there is one and matches
+    // nothing if there is not — and the reply goes out before any email does.
+    // A new request overwrites the stored hash, so only the latest link works.
+    const { token, hash } = newResetToken();
+    const config = passwordResetConfig();
+    const user = await User.findOneAndUpdate(
+      { email },
+      { $set: { passwordResetTokenHash: hash, passwordResetExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS) } },
+      { new: true, projection: { email: 1, language: 1 } },
+    );
+
+    res.status(200).json(FORGOT_ANSWER);
+
+    // Delivery runs after the reply, so a slow (or failing) transport cannot
+    // show up in the response time or status of a real address. A failure is
+    // logged without the token, the link or the address — the account id and
+    // the transport are enough to follow it up; the person can ask again.
+    if (user) {
+      setImmediate(() => {
+        mailer.sendPasswordReset({
+          to: user.email,
+          link: resetLink(config.origin, token),
+          language: user.language,
+          minutes: RESET_TOKEN_TTL_MINUTES,
+        }).catch((error) => console.error(
+          `Password reset email failed to send (user ${user._id}, transport ${config.transport}):`,
+          error?.message ?? error,
+        ));
+      });
+    }
+  } catch (error) {
+    logError('ForgotPassword error:', error);
+    serverError(res, 'Server error', error);
+  }
+};
+
+const RESET_TOKEN_INVALID = {
+  success: false,
+  code: 'RESET_TOKEN_INVALID',
+  message: 'This reset link is invalid or has expired. Please ask for a new one.',
+};
+
+// @desc    Set a new password with a reset token
+// @route   POST /api/auth/reset-password
+// @access  Public
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    // One answer for a token that is malformed, unknown, used or expired, so
+    // the reply never says which. Malformed ones are refused without a query.
+    if (typeof token !== 'string' || !RESET_TOKEN_PATTERN.test(token)) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+    // The policy first: a password it refuses must not use up the link.
+    const passwordProblem = newPasswordProblem(password);
+    if (passwordProblem) {
+      return res.status(400).json({ success: false, ...passwordProblem });
+    }
+
+    // The token is matched by its SHA-256 in an index lookup. No comparison of
+    // the secret itself happens in this process, so there is nothing to make
+    // constant-time: the database compares hashes, and timing that could at
+    // best reveal a prefix of a HASH, which cannot be turned back into a token.
+    const hash = hashResetToken(token);
+    const pending = () => ({ passwordResetTokenHash: hash, passwordResetExpires: { $gt: new Date() } });
+
+    // A cheap check before bcrypt, so made-up tokens cost one indexed read.
+    if (!(await User.exists(pending()))) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+
+    // Consuming the token and setting the password are ONE atomic update,
+    // conditional on the token still being there and unexpired. Two requests
+    // with the same link can both pass the check above, but only one of them
+    // matches here; the other finds the token gone and gets the same refusal.
+    // passwordChangedAt revokes every session issued before now, exactly as a
+    // password change does.
+    const passwordHash = await User.hashPassword(password);
+    const user = await User.findOneAndUpdate(
+      pending(),
+      {
+        $set: { password: passwordHash, passwordChangedAt: User.passwordChangedStamp() },
+        $unset: { passwordResetTokenHash: 1, passwordResetExpires: 1 },
+      },
+      { new: true, projection: { email: 1 } },
+    );
+    if (!user) {
+      return res.status(400).json(RESET_TOKEN_INVALID);
+    }
+
+    // The person has just shown they read this address's mail, so a sign-in
+    // lock on it (perhaps someone else's guessing) is lifted: they can sign in
+    // with the new password at once.
+    loginThrottle.reset(user.email);
+
+    res.status(200).json({ success: true, message: 'Your password has been reset. Please sign in.' });
+  } catch (error) {
+    logError('ResetPassword error:', error);
+    serverError(res, 'Server error', error);
   }
 };

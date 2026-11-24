@@ -70,6 +70,35 @@ describe('Auth API', () => {
     assert.equal(login.status, 200);
   });
 
+  test('a sign-up that races past the email check is a 409 that keeps the email out of the log (H-05)', async () => {
+    await User.init(); // the unique email index must exist for the race to collide
+    await createUser({ email: 'race.7f3a@example.com' });
+    // Both sign-ups passed the findOne check; the second meets the unique index.
+    const originalFindOne = User.findOne;
+    User.findOne = function raced(...args) {
+      const query = originalFindOne.apply(this, args);
+      query.exec = async () => null;
+      return query;
+    };
+    const logged = [];
+    const originalError = console.error;
+    console.error = (...args) => logged.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a) + String(a?.stack))).join(' '));
+    let res;
+    try {
+      res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Ali', email: 'race.7f3a@example.com', password: 'secret123' });
+    } finally {
+      User.findOne = originalFindOne;
+      console.error = originalError;
+    }
+    assert.equal(res.status, 409);
+    assert.equal(res.body.code, 'EMAIL_TAKEN');
+    const log = logged.join('\n');
+    assert.ok(log.includes('Register error:') && log.includes('11000'), log);
+    assert.ok(!log.includes('7f3a'), log);
+  });
+
   test('a missing field is 400 and a taken email is 409 — never 500', async () => {
     const originalError = console.error;
     console.error = () => {};
@@ -273,6 +302,49 @@ describe('Auth API', () => {
       const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${old}`);
       assert.equal(res.status, 401);
     }
+  });
+
+  // H-06 harness finding: with whole-second `iat` and a stamp back-dated a
+  // second, a session opened in the ~2 s before the change survived it.
+  test('a session opened moments before a password change ends with it; the fresh token and later ones work', async () => {
+    await createUser({ email: 'quick@example.com', password: 'secret123' });
+    const signIn = async (password) => (await request(app).post('/api/auth/login').send({ email: 'quick@example.com', password })).body.data.token;
+    const thisTab = await signIn('secret123');
+    const otherDevice = await signIn('secret123'); // same second, other device
+    const change = await request(app).put('/api/auth/password').set('Authorization', `Bearer ${thisTab}`)
+      .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
+    assert.equal(change.status, 200);
+    for (const [label, token, status] of [
+      ['the other device', otherDevice, 401],
+      ['this tab\'s old token', thisTab, 401],
+      ['the fresh token', change.body.data.token, 200],
+      ['a sign-in after the change', await signIn('newpass123'), 200],
+    ]) {
+      const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+      assert.equal(res.status, status, label);
+    }
+  });
+
+  test('tokens without a millisecond time still follow the whole-second rule', async () => {
+    const user = await createUser({ email: 'legacy@example.com', password: 'secret123' });
+    const now = Math.floor(Date.now() / 1000);
+    await User.updateOne({ _id: user._id }, { $set: { passwordChangedAt: new Date(now * 1000 + 500) } });
+    const sameSecond = jwt.sign({ id: user._id, iat: now }, process.env.JWT_SECRET);
+    const secondBefore = jwt.sign({ id: user._id, iat: now - 1 }, process.env.JWT_SECRET);
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${sameSecond}`)).status, 200);
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${secondBefore}`)).status, 401);
+  });
+
+  test('after a password change, a token with no issue time at all is refused', async () => {
+    const user = await createUser({ email: 'notime@example.com', password: 'secret123' });
+    const timeless = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { noTimestamp: true });
+    assert.equal(jwt.decode(timeless).iat, undefined);
+    // Before any change there is nothing to compare it with.
+    assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${timeless}`)).status, 200);
+    await User.updateOne({ _id: user._id }, { $set: { passwordChangedAt: new Date() } });
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${timeless}`);
+    assert.equal(res.status, 401);
+    assert.equal(res.body.code, 'SESSION_EXPIRED');
   });
 
   test('a refused password change issues no token', async () => {

@@ -121,3 +121,11 @@ export const countsFor = async (request, userId) => {
   expect(res.ok(), await res.text()).toBe(true)
   return res.json()
 }
+
+// The last password-reset link the API "emailed" to `email` (the admin port's
+// capture transport; see e2e/support/api-server.cjs).
+export const resetLinkFor = async (request, email) => {
+  const res = await request.get(`${ADMIN}/reset-link?email=${encodeURIComponent(email)}`)
+  expect(res.ok(), await res.text()).toBe(true)
+  return (await res.json()).link
+}

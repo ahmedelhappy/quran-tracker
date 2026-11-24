@@ -19,6 +19,14 @@ input[type=number] { -moz-appearance: textfield; }
 
 html { scroll-behavior: smooth; }
 
+/* The navbar is fixed over the top 4-4.5rem of every page. Without this, a
+   control that Tab scrolls UP to is brought only to the window's top edge —
+   under the bar (a Library verse on the first line, in Arabic, where the tab
+   order runs down the sidebar first). The browser leaves this much room
+   whenever it scrolls something into view: focus, scrollIntoView, #anchors
+   (M-12, WCAG 2.4.11 Focus Not Obscured). */
+html { scroll-padding-top: 5rem; }
+
 /* Tell the browser the page is dark, so what it draws ITSELF — the native face of
    a <select>, the scrollbars — is dark too. Without it WebKit painted its own light
    select surface under the light dark-mode text, leaving blank white boxes. */
@@ -42,10 +50,19 @@ html.dark { color-scheme: dark; }
    verse, not the one glyph, and never round it — the band already shapes it. */
 :where(.mushaf-word):focus-visible {
   outline: 2px solid #004f35;
-  outline-offset: 1px;
+  /* Drawn INSIDE the word's box: each printed line clips its overflow (the
+     fixed 15-slot grid), which cut an outside ring down to a sliver at its
+     two ends (M-12). */
+  outline-offset: -2px;
   border-radius: 0;
 }
 .dark :where(.mushaf-word):focus-visible { outline-color: #34d399; }
+/* A dialog takes focus itself when it has nothing better to focus (useDialog):
+   that is a place to start from, not a control, so it gets no ring. */
+:where([role="dialog"], [role="alertdialog"])[tabindex="-1"]:focus { outline: none; }
+/* The skip link focuses <main> itself (SkipLink): the whole page is not a
+   control either. */
+:where(main)[tabindex="-1"]:focus { outline: none; }
 
 body {
   font-family: 'Inter', sans-serif;

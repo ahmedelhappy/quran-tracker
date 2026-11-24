@@ -1,3 +1,5 @@
+import { intlLocale } from './intlLocale';
+
 // The time maths behind the shared timer — pure functions, no React, no storage.
 //
 // EVERYTHING is computed from wall-clock timestamps, never by counting ticks. A
@@ -98,9 +100,9 @@ export const formatDuration = (ms, { roundUp = false } = {}) => {
 };
 
 // The wall-clock time in the reader's language and their 12/24-hour choice.
-// Arabic asks for Arabic-Indic digits explicitly (`nu-arab`), and gets ص / م.
+// Arabic gets Arabic-Indic digits (intlLocale asks for `nu-arab`) and ص / م.
 export const formatClock = (now, { isArabic = false, hour24 = false, seconds = true } = {}) =>
-  new Date(now).toLocaleTimeString(isArabic ? 'ar-u-nu-arab' : 'en-US', {
+  new Date(now).toLocaleTimeString(intlLocale(isArabic), {
     hour: hour24 ? '2-digit' : 'numeric',
     minute: '2-digit',
     ...(seconds ? { second: '2-digit' } : {}),

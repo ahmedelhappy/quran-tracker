@@ -24,7 +24,20 @@ router.use(protect);
 // Type gates — reject objects/arrays where scalars/number-arrays are expected,
 // so a Mongo-operator payload can never reach a query. Value ranges are checked
 // in the controller.
-const onboardingSchema = { memorizedPages: 'numberArray', dailyNewPages: 'number' };
+// Onboarding saves the plan in the same request (L-18), so it gates the plan
+// fields the way the profile route does; each verse range is checked by the
+// controller.
+const onboardingSchema = {
+  memorizedPages: 'numberArray',
+  verseRanges: 'objectArray',
+  dailyNewPages: 'number',
+  offDays: 'numberArray',
+  reviewIntensity: 'string',
+  recentReviewCount: { type: 'number', nullable: true },
+  cycleReviewCount: { type: 'number', nullable: true },
+  memorizationDirection: 'string',
+  newMemorizationStartPage: { type: 'number', nullable: true },
+};
 const memorizedSchema = { memorizedPages: 'numberArray', confirmRemoval: 'numberArray' };
 const memorizedDeltaSchema = { add: 'numberArray', remove: 'numberArray' };
 const completeSchema = {

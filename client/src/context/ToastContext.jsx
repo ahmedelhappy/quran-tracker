@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiCheckCircle, FiAlertCircle, FiInfo, FiX } from 'react-icons/fi';
 import { ToastContext } from '../hooks/useToast';
@@ -38,7 +38,7 @@ const ToastItem = ({ id, message, type, action, duration, onDismiss }) => {
       onMouseLeave={start}
       onFocus={pause}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) start(); }}
-      className={`${s.bg} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 min-w-[260px] max-w-sm`}
+      className={`${s.bg} pointer-events-auto text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 min-w-[260px] max-w-sm`}
     >
       {s.icon}
       <span className="flex-1 text-sm font-medium leading-snug">{message}</span>
@@ -67,14 +67,38 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const dismiss = useCallback((id) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+  // One value for the provider's life. A fresh object per render re-rendered every
+  // component that calls useToast — the whole Library, twice per toast (shown,
+  // then gone) — although showToast itself never changes (M-10).
+  const value = useMemo(() => ({ showToast }), [showToast]);
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={value}>
       {children}
-      <div role="status" aria-live="polite" className="fixed bottom-6 end-6 z-[100] flex flex-col gap-2 pointer-events-none">
-        {toasts.map(t => (
-          <div key={t.id} className="pointer-events-auto">
-            <ToastItem {...t} onDismiss={dismiss} />
+      {/* data-dialog-keep: a modal's inert sweep (useDialog) skips this region,
+          so a toast raised while a dialog is up is still announced and clickable.
+
+          Top centre, just under the navbar — never at the bottom, where every
+          action that raises a toast lives: the onboarding "Start my journey"
+          button (a 4-line error toast at the bottom end covered it at
+          1280×720), the Settings save bar, the progress editor's footer, the
+          Library audio bar and the chat panel. Centred, so it is the same in
+          either direction, and full-width-with-margins on a phone (M-12,
+          WCAG 2.4.11 Focus Not Obscured). */}
+      <div data-dialog-keep className="fixed top-20 inset-x-0 px-4 z-[100] flex flex-col items-center pointer-events-none">
+        {/* Two live regions in the one stack, both always present (a region
+            that appears with its first message is often not announced): a
+            failure interrupts (role="alert", assertive) so it is never lost
+            behind other speech, and everything else waits its turn (M-12).
+            Spacing is padding on each toast, not a gap, so an empty region
+            takes no room. */}
+        {[['alert', toasts.filter(t => t.type === 'error')], ['status', toasts.filter(t => t.type !== 'error')]].map(([role, list]) => (
+          <div key={role} role={role} aria-live={role === 'alert' ? 'assertive' : 'polite'} className="flex flex-col items-center">
+            {list.map(t => (
+              <div key={t.id} className="pb-2">
+                <ToastItem {...t} onDismiss={dismiss} />
+              </div>
+            ))}
           </div>
         ))}
       </div>

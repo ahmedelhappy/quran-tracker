@@ -3,48 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { progressAPI, authAPI } from '../services/api';
-import { FiPlus, FiX } from 'react-icons/fi';
+import { progressAPI } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 import Logo from '../components/Logo';
-import Tooltip from '../components/Tooltip';
-import InfoHint from '../components/InfoHint';
 import LanguageToggle from '../components/LanguageToggle';
+import MemorizedUnitPicker from '../components/MemorizedUnitPicker';
 import { SURAH_PAGES } from '../data/surahPages';
-import { HIZB_RANGES, RUB_RANGES } from '../data/hizbRanges';
+import { JUZ_RANGES } from '../data/juzRanges';
 import {
-  hizbOrdRange, rubOrdRange, pageOrdRange, mergeOrdRanges, subtractOrdRanges,
-  coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
+  surahOrdRange, coverageOf, fullyCoveredPages, splitCoverageForSave, toVerseKeyRanges,
 } from '../utils/unitRanges';
-import { useDragSelect } from '../hooks/useDragSelect';
-
-function toPageRanges(sortedPages) {
-  if (!sortedPages || sortedPages.length === 0) return [{ start: '', end: '' }];
-  const pages = [...sortedPages].sort((a, b) => a - b);
-  const ranges = [];
-  let start = pages[0], prev = pages[0];
-  for (let i = 1; i < pages.length; i++) {
-    if (pages[i] !== prev + 1) {
-      ranges.push({ start: String(start), end: String(prev) });
-      start = pages[i];
-    }
-    prev = pages[i];
-  }
-  ranges.push({ start: String(start), end: String(prev) });
-  return ranges;
-}
-
-const JUZ_RANGES = [
-  {juz:1,start:1,end:21},{juz:2,start:22,end:41},{juz:3,start:42,end:61},
-  {juz:4,start:62,end:81},{juz:5,start:82,end:101},{juz:6,start:102,end:121},
-  {juz:7,start:122,end:141},{juz:8,start:142,end:161},{juz:9,start:162,end:181},
-  {juz:10,start:182,end:201},{juz:11,start:202,end:221},{juz:12,start:222,end:241},
-  {juz:13,start:242,end:261},{juz:14,start:262,end:281},{juz:15,start:282,end:301},
-  {juz:16,start:302,end:321},{juz:17,start:322,end:341},{juz:18,start:342,end:361},
-  {juz:19,start:362,end:381},{juz:20,start:382,end:401},{juz:21,start:402,end:421},
-  {juz:22,start:422,end:441},{juz:23,start:442,end:461},{juz:24,start:462,end:481},
-  {juz:25,start:482,end:501},{juz:26,start:502,end:521},{juz:27,start:522,end:541},
-  {juz:28,start:542,end:561},{juz:29,start:562,end:581},{juz:30,start:582,end:604},
-];
+import { countIn } from '../utils/pageRanges';
 
 const DAY_LABEL_KEYS = ['onboarding.dayName0','onboarding.dayName1','onboarding.dayName2','onboarding.dayName3','onboarding.dayName4','onboarding.dayName5','onboarding.dayName6'];
 
@@ -58,57 +27,21 @@ const INTENSITY_OPTIONS = [
 const estimateReviewPages = (memorized, divisor) =>
   memorized > 0 ? Math.max(1, Math.round(memorized / divisor)) : null;
 
-// Returns display-friendly time estimate from a raw day count (unit is a translation key)
+// Returns display-friendly time estimate from a raw day count. The unit is a
+// translation key with plural forms, picked by `value` (t(unitKey, { count: value })).
 function formatEstimate(days) {
   if (!days || days <= 0) return null;
-  if (days < 7) return { value: days, unitKey: days === 1 ? 'onboarding.timeDay' : 'onboarding.timeDays' };
+  if (days < 7) return { value: days, unitKey: 'onboarding.timeDays' };
   if (days < 30) {
     const weeks = Math.round(days / 7);
-    return { value: weeks, unitKey: weeks === 1 ? 'onboarding.timeWeek' : 'onboarding.timeWeeks' };
+    return { value: weeks, unitKey: 'onboarding.timeWeeks' };
   }
   if (days < 365) {
     const months = Math.round(days / 30);
-    return { value: months, unitKey: months === 1 ? 'onboarding.timeMonth' : 'onboarding.timeMonths' };
+    return { value: months, unitKey: 'onboarding.timeMonths' };
   }
   const years = parseFloat((days / 365).toFixed(1));
-  return { value: years, unitKey: years === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
-}
-
-// Expand the range rows into the set of pages they cover.
-function rangesToPages(pageRanges) {
-  const pages = new Set();
-  pageRanges.forEach(({ start, end }) => {
-    const s = parseInt(start, 10), e = parseInt(end, 10);
-    if (!isNaN(s) && !isNaN(e) && s >= 1 && e <= 604 && s <= e)
-      for (let p = s; p <= e; p++) pages.add(p);
-  });
-  return pages;
-}
-
-// Is every page in [start, end] present in the selected set?
-function isCovered(selected, start, end) {
-  for (let p = start; p <= end; p++) if (!selected.has(p)) return false;
-  return true;
-}
-
-function validateRanges(pageRanges) {
-  const errors = pageRanges.map(() => ({}));
-  const parsed = pageRanges.map(r => ({ start: parseInt(r.start, 10), end: parseInt(r.end, 10) }));
-  parsed.forEach((r, i) => {
-    if (r.start !== '' && !isNaN(r.start) && (r.start < 1 || r.start > 604))
-      errors[i].start = 'common.validationRange';
-    if (r.end !== '' && !isNaN(r.end) && (r.end < 1 || r.end > 604))
-      errors[i].end = 'common.validationRange';
-    if (!isNaN(r.start) && !isNaN(r.end) && r.start > r.end)
-      errors[i].end = 'common.validationEndGreater';
-    parsed.forEach((other, j) => {
-      if (i === j) return;
-      if (!isNaN(r.start) && !isNaN(r.end) && !isNaN(other.start) && !isNaN(other.end) &&
-          r.start < other.end && r.end > other.start)
-        errors[i].start = 'common.validationNoOverlap';
-    });
-  });
-  return errors;
+  return { value: years, unitKey: 'onboarding.timeYears' };
 }
 
 const OnboardingHeader = ({ step }) => {
@@ -136,7 +69,7 @@ const OnboardingHeader = ({ step }) => {
 };
 
 export default function Onboarding() {
-  const { refreshUser } = useAuth();
+  const { refreshUser, updateUser } = useAuth();
   const { showToast } = useToast();
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === 'ar';
@@ -144,20 +77,14 @@ export default function Onboarding() {
 
   const [step, setStep] = useState(1);
   // Single source of truth: the selection as VERSE ranges (global ayah numbers).
-  // Juz and Surah start at the top of a page, so page-rounding suits them; a Hizb
+  // A Juz starts at the top of a page, so page-rounding suits it; a Surah, Hizb
   // or quarter-Hizb boundary falls mid-page and adjacent units SHARE that page, so
   // rounding up used to spill a selection into both neighbours. Verses are the
   // honest unit, and the page-shaped tabs read a derived view of them.
   const [coverage, setCoverage] = useState([]);
   const selectedPages = useMemo(() => fullyCoveredPages(coverage), [coverage]);
-  const setSelectedPages = (next) => {
-    const pages = typeof next === 'function' ? next(fullyCoveredPages(coverage)) : next;
-    setCoverage(mergeOrdRanges([...pages].map(pageOrdRange)));
-  };
-  const [selectionMode, setSelectionMode] = useState('juz');
-  const [surahSearch, setSurahSearch] = useState('');
-  const [pageRanges, setPageRanges] = useState([{ start: '', end: '' }]);
-  const [rangeErrors, setRangeErrors] = useState([{}]);
+  // The Range tab's rows are the picker's own; it says when they stop being valid.
+  const [hasRangeErrors, setHasRangeErrors] = useState(false);
   const [dailyPages, setDailyPages] = useState(1);
   // 'fromStart' | 'fromEnd' | 'custom' — custom anchors new memorization at a
   // Juz/Surah start page; the selection id keeps only the clicked card highlighted
@@ -173,10 +100,8 @@ export default function Onboarding() {
   const [generatingPlan, setGeneratingPlan] = useState(false);
 
   const selectedCount = selectedPages.size;
-  const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => isCovered(selectedPages, start, end)).length;
-  const selectedSurahCount = SURAH_PAGES.filter(s => isCovered(selectedPages, s.start, s.end)).length;
-  const selectedHizbCount = HIZB_RANGES.filter(({ hizb }) => coverageOf(coverage, hizbOrdRange(hizb)) === 'full').length;
-  const selectedRubCount = RUB_RANGES.filter(({ rub }) => coverageOf(coverage, rubOrdRange(rub)) === 'full').length;
+  const selectedJuzCount = JUZ_RANGES.filter(({ start, end }) => countIn(selectedPages, start, end) === end - start + 1).length;
+  const selectedSurahCount = SURAH_PAGES.filter(s => coverageOf(coverage, surahOrdRange(s.number)) === 'full').length;
 
   // Client-side estimate
   const activeDays = 7 - offDays.length;
@@ -185,90 +110,31 @@ export default function Onboarding() {
   const estimatedDays = effectiveDaily > 0 ? Math.ceil(remaining / effectiveDaily) : null;
   const estimateDisplay = formatEstimate(estimatedDays);
 
-  // Toggle every page in [start, end]: clear them if fully covered, otherwise add them all.
-  const toggleRange = (start, end) => setSelectedPages(prev => {
-    const next = new Set(prev);
-    const covered = isCovered(next, start, end);
-    for (let p = start; p <= end; p++) { if (covered) next.delete(p); else next.add(p); }
-    return next;
-  });
-
-  const toggleJuz = (n) => { const r = JUZ_RANGES.find(j => j.juz === n); if (r) toggleRange(r.start, r.end); };
-  const toggleSurah = (n) => { const s = SURAH_PAGES.find(x => x.number === n); if (s) toggleRange(s.start, s.end); };
-  // Hizb and quarter-Hizb are verse-exact: they add and remove the unit's own
-  // verse span, which is what stops a selection bleeding into the unit next door
-  // over the page the two share. Same span the server compiles for /progress/units.
-  const toggleUnitRange = (range) => {
-    if (!range) return;
-    if (coverageOf(coverage, range) === 'full') setCoverage((c) => subtractOrdRanges(c, [range]));
-    else setCoverage((c) => mergeOrdRanges([...c, range]));
-  };
-  const toggleHizb = (n) => toggleUnitRange(hizbOrdRange(n));
-  const toggleRub = (n) => toggleUnitRange(rubOrdRange(n));
-  const ds = useDragSelect(); // drag across tiles to toggle the whole swept range
-
-  const filteredSurahs = SURAH_PAGES.filter(s => {
-    if (!surahSearch.trim()) return true;
-    const q = surahSearch.trim().toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.arabic.includes(surahSearch.trim()) ||
-      String(s.number).includes(q)
-    );
-  });
-
-  const allJuzSelected = selectedJuzCount === JUZ_RANGES.length;
-  const selectAll = () => setSelectedPages(allJuzSelected ? new Set() : new Set(Array.from({ length: 604 }, (_, i) => i + 1)));
-
   const toggleOffDay = (d) =>
     setOffDays(prev => {
       if (!prev.includes(d) && prev.length === 6) return prev;
       return prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d];
     });
 
-  // Tabs are views over one canonical set, so switching only re-renders. The Range
-  // tab keeps editable text rows, so we regenerate them from the set when entering it.
-  const handleTabSwitch = (newMode) => {
-    if (newMode === selectionMode) return;
-    if (newMode === 'range') {
-      const derived = toPageRanges(Array.from(selectedPages).sort((a, b) => a - b));
-      setPageRanges(derived.length > 0 ? derived : [{ start: '', end: '' }]);
-      setRangeErrors(derived.length > 0 ? derived.map(() => ({})) : [{}]);
-    }
-    setSelectionMode(newMode);
-  };
-
-  const addRange = () => {
-    setPageRanges(r => [...r, { start: '', end: '' }]);
-    setRangeErrors(e => [...e, {}]);
-  };
-  const removeRange = (i) => {
-    const updated = pageRanges.filter((_, idx) => idx !== i);
-    setPageRanges(updated);
-    setRangeErrors(e => e.filter((_, idx) => idx !== i));
-    setSelectedPages(rangesToPages(updated));
-  };
-  const updateRange = (i, key, val) => {
-    const updated = pageRanges.map((item, idx) => idx === i ? { ...item, [key]: val } : item);
-    setPageRanges(updated);
-    setRangeErrors(validateRanges(updated));
-    setSelectedPages(rangesToPages(updated));
-  };
-
-  const hasRangeErrors = rangeErrors.some(e => e.start || e.end);
-
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // Whole pages through onboarding, then the sub-page remainder — the mid-page
-      // ends of a Hizb selection — as verse ranges, which the units endpoint stores
-      // as partial `segments` instead of rounding them up to whole pages.
+      // One request, which the server applies all or nothing (L-18): the whole
+      // pages, the sub-page remainder — the mid-page ends of a Surah or Hizb —
+      // as verse ranges (stored as partial `segments`, not rounded up to pages),
+      // and the plan. It used to be several requests with the account marked
+      // onboarded by the first, so a failure part-way left it on the dashboard
+      // with part of the selection and the default plan. Now a failed request
+      // puts back what it wrote, and pressing the button again is safe. The one
+      // exception the server can see — it could not put the rows back — comes
+      // as ONBOARDING_PARTIAL, whose message says some pages may be saved.
+      // (A server that dies mid-request cannot say anything; see
+      // completeOnboarding in progressController.)
       const { fullPages, leftovers } = splitCoverageForSave(coverage);
-      await progressAPI.completeOnboarding({ memorizedPages: fullPages, dailyNewPages: dailyPages });
-      for (const ref of toVerseKeyRanges(leftovers)) {
-        await progressAPI.updateUnits({ action: 'add', unit: 'verses', ref });
-      }
-      await authAPI.updateProfile({
+      await progressAPI.completeOnboarding({
+        memorizedPages: fullPages,
+        verseRanges: toVerseKeyRanges(leftovers),
+        dailyNewPages: dailyPages,
         offDays,
         memorizationDirection: direction === 'fromEnd' ? 'fromEnd' : 'fromStart',
         newMemorizationStartPage: direction === 'custom' ? customStartPage : null,
@@ -276,10 +142,22 @@ export default function Onboarding() {
           ? { cycleReviewCount: fixedReviewValue, recentReviewCount: null }
           : { reviewIntensity, cycleReviewCount: null, recentReviewCount: null }),
       });
+      // The account is onboarded now. If re-reading it fails, the stale copy
+      // would bounce the dashboard straight back here, so mark it locally.
+      updateUser({ onboardingComplete: true, dailyNewPages: dailyPages });
       await refreshUser();
       navigate('/dashboard');
-    } catch {
-      showToast(t('onboarding.submitError'), 'error');
+    } catch (err) {
+      // The reason, in the reader's language: a slow or unreachable server, a
+      // rate limit, a partly saved selection — or, for a code with no sentence
+      // of its own, "try again". (apiErrorMessage reports anything that is not
+      // a failed request; a failed one is logged here with its code.)
+      if (err?.isAxiosError) {
+        console.warn('Onboarding could not be saved:', {
+          status: err.response?.status, code: err.response?.data?.code ?? err.code,
+        });
+      }
+      showToast(apiErrorMessage(err, t, 'onboarding.submitError'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -293,7 +171,7 @@ export default function Onboarding() {
       <div className="fixed top-4 start-4 z-10">
         <LanguageToggle variant="icon" />
       </div>
-      <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
+      <main id="main-content" className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow max-w-lg w-full p-8 relative overflow-hidden border border-[#dce2f3] dark:border-gray-700">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#064e3b] via-[#004f35] to-[#064e3b]" />
         <div className="text-center space-y-4">
           <div className="flex justify-center mb-2">
@@ -307,10 +185,10 @@ export default function Onboarding() {
             onClick={() => setStep(2)}
             className="w-full bg-[#003527] text-white py-3.5 rounded-lg font-medium hover:bg-[#064e3b] transition-colors mt-4 flex items-center justify-center gap-2"
           >
-            {t('onboarding.letsBegin')} <span className="inline-block rtl:rotate-180">→</span>
+            {t('onboarding.letsBegin')} <span className="inline-block rtl:rotate-180" aria-hidden="true">→</span>
           </button>
         </div>
-      </div>
+      </main>
     </div>
   );
 
@@ -318,7 +196,7 @@ export default function Onboarding() {
   if (step === 2) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 flex flex-col">
       <OnboardingHeader step={2} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-10">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-10">
 
         <section className="flex flex-col gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl sacred-shadow border border-[#f0f3ff] dark:border-gray-700">
           <div>
@@ -336,209 +214,21 @@ export default function Onboarding() {
             <p className="pt-1 text-[#904d00] dark:text-amber-400 font-medium">💡 {t('onboarding.tabGuideCombine')}</p>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-[#404944] dark:text-gray-400 flex items-center gap-1">
-              {t('onboarding.selectMode')}
-              <InfoHint text={t('hints.juz')} label={t('progress.juz')} size="xs" />
-            </p>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { mode: 'juz',   labelKey: 'onboarding.byJuz' },
-                { mode: 'hizb',  labelKey: 'onboarding.byHizb' },
-                { mode: 'rub',   labelKey: 'onboarding.byQuarterHizb' },
-                { mode: 'surah', labelKey: 'onboarding.bySurah' },
-                { mode: 'range', labelKey: 'onboarding.byRange' },
-              ].map(({ mode, labelKey }) => (
-                <button
-                  key={mode}
-                  onClick={() => handleTabSwitch(mode)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectionMode === mode
-                      ? 'bg-[#003527] text-white border-[#003527]'
-                      : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                  }`}
-                >
-                  {t(labelKey)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectionMode === 'juz' && (
-            <div>
-              <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                {JUZ_RANGES.map(({ juz, start, end }) => (
-                  <button
-                    key={juz}
-                    data-tile-id={juz}
-                    onPointerDown={(e) => ds.start(e, juz, toggleJuz)}
-                    onClick={() => ds.handleClick(juz, toggleJuz)}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                      isCovered(selectedPages, start, end)
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    {juz}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                {selectedJuzCount > 0 && (
-                  <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">{t('onboarding.juzSelected', { count: selectedJuzCount })}</p>
-                )}
-                <button onClick={selectAll} className="ms-auto text-xs font-medium text-[#003527] dark:text-emerald-400 hover:text-[#064e3b] transition-colors flex items-center gap-1">
-                  {allJuzSelected ? t('onboarding.deselectAll') : t('onboarding.selectAll')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectionMode === 'hizb' && (
-            <div>
-              <div className="grid grid-cols-6 sm:grid-cols-10 gap-2">
-                {HIZB_RANGES.map(({ hizb }) => (
-                  <button
-                    key={hizb}
-                    data-tile-id={hizb}
-                    onPointerDown={(e) => ds.start(e, hizb, toggleHizb)}
-                    onClick={() => ds.handleClick(hizb, toggleHizb)}
-                    className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                      coverageOf(coverage, hizbOrdRange(hizb)) === 'full'
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : coverageOf(coverage, hizbOrdRange(hizb)) === 'partial'
-                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                          : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    {hizb}
-                  </button>
-                ))}
-              </div>
-              {selectedHizbCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.hizbSelected', { count: selectedHizbCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'rub' && (
-            <div>
-              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
-                {RUB_RANGES.map(({ rub, hizb, quarter }) => (
-                  <Tooltip key={rub} label={t('onboarding.quarterHizbTooltip', { hizb, quarter })}>
-                    <button
-                      data-tile-id={rub}
-                      onPointerDown={(e) => ds.start(e, rub, toggleRub)}
-                      onClick={() => ds.handleClick(rub, toggleRub)}
-                      className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] font-medium cursor-pointer transition-colors border touch-pan-y select-none ${
-                        coverageOf(coverage, rubOrdRange(rub)) === 'full'
-                          ? 'bg-[#003527] text-white border-[#003527]'
-                          : coverageOf(coverage, rubOrdRange(rub)) === 'partial'
-                            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400 text-amber-800 dark:text-amber-300'
-                            : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                      }`}
-                    >
-                      {hizb}.{quarter}
-                    </button>
-                  </Tooltip>
-                ))}
-              </div>
-              {selectedRubCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.quarterHizbSelected', { count: selectedRubCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'surah' && (
-            <div>
-              <input
-                type="text"
-                placeholder={t('onboarding.surahSearchPlaceholder')}
-                value={surahSearch}
-                onChange={e => setSurahSearch(e.target.value)}
-                className="w-full border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 mb-3"
-              />
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                {filteredSurahs.map(s => {
-                  const surahSelected = isCovered(selectedPages, s.start, s.end);
-                  return (
-                  <button
-                    key={s.number}
-                    data-tile-id={s.number}
-                    onPointerDown={(e) => ds.start(e, s.number, toggleSurah)}
-                    onClick={() => ds.handleClick(s.number, toggleSurah)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-colors touch-pan-y select-none ${
-                      surahSelected
-                        ? 'bg-[#003527] text-white border-[#003527]'
-                        : 'bg-[#f9f9ff] dark:bg-gray-700 border-[#bfc9c3] dark:border-gray-600 text-[#404944] dark:text-gray-300 hover:border-[#003527] hover:text-[#003527] dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-                    }`}
-                  >
-                    <span className="text-xs font-medium leading-tight">
-                      {s.number}. {isArabic ? s.arabic : s.name}
-                    </span>
-                    <span className={`text-[10px] mt-0.5 leading-tight ${surahSelected ? 'text-white/70' : 'text-[#404944]/60 dark:text-gray-400'}`}>
-                      {isArabic ? s.name : s.arabic}
-                    </span>
-                  </button>
-                  );
-                })}
-              </div>
-              {selectedSurahCount > 0 && (
-                <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium mt-2">{t('onboarding.surahsSelected', { count: selectedSurahCount })}</p>
-              )}
-            </div>
-          )}
-
-          {selectionMode === 'range' && (
-            <div>
-              <p className="text-sm font-medium text-[#151c27] dark:text-gray-200 mb-3">
-                {t('onboarding.addPageRanges')} <span className="text-xs font-normal text-[#404944] dark:text-gray-400">{t('onboarding.optional')}</span>
-              </p>
-              <div className="space-y-2">
-                {pageRanges.map((r, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <input
-                          type="number" min="1" max="604" value={r.start}
-                          onChange={e => updateRange(i, 'start', e.target.value)}
-                          placeholder={t('onboarding.rangeStart')}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.start ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                        />
-                      </div>
-                      <span className="text-[#404944] dark:text-gray-400 text-sm flex-shrink-0">{t('onboarding.to')}</span>
-                      <div className="flex-1 relative">
-                        <input
-                          type="number" min="1" max="604" value={r.end}
-                          onChange={e => updateRange(i, 'end', e.target.value)}
-                          placeholder={t('onboarding.rangeEnd')}
-                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#f0f3ff] dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527] dark:placeholder:text-gray-500 ${rangeErrors[i]?.end ? 'border-[#ba1a1a]' : 'border-[#bfc9c3] dark:border-gray-600'}`}
-                        />
-                      </div>
-                      {pageRanges.length > 1 && (
-                        <Tooltip label={t('tooltips.removeRange')} className="flex-shrink-0">
-                          <button onClick={() => removeRange(i)} className="text-[#404944] dark:text-gray-400 hover:text-[#ba1a1a]">
-                            <FiX className="w-4 h-4" />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                    {(rangeErrors[i]?.start || rangeErrors[i]?.end) && (
-                      <p className="text-xs text-[#ba1a1a]">{t(rangeErrors[i]?.end || rangeErrors[i]?.start)}</p>
-                    )}
-                  </div>
-                ))}
-                <button onClick={addRange} className="flex items-center gap-1.5 text-xs text-[#003527] dark:text-emerald-400 font-medium hover:underline mt-1">
-                  <FiPlus className="w-3 h-3" /> {t('onboarding.addRange')}
-                </button>
-              </div>
-            </div>
-          )}
+          <MemorizedUnitPicker
+            variant="onboarding"
+            coverage={coverage}
+            setCoverage={setCoverage}
+            onRangeErrorsChange={setHasRangeErrors}
+          />
 
           {selectedCount > 0 && (
             <div className="bg-[#f0fdf4] dark:bg-emerald-900/20 rounded-lg px-4 py-2 border border-green-100 dark:border-emerald-800/30">
               <p className="text-xs text-[#004f35] dark:text-emerald-400 font-medium">
-                {t('onboarding.totalSelectedAll', { pages: selectedCount, juz: selectedJuzCount, surah: selectedSurahCount })}
+                {t('onboarding.totalSelectedAll', {
+                  pages: t('units.pages', { count: selectedCount }),
+                  juz: t('units.juz', { count: selectedJuzCount }),
+                  surah: t('units.surahs', { count: selectedSurahCount }),
+                })}
               </p>
             </div>
           )}
@@ -553,13 +243,14 @@ export default function Onboarding() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { value: 0.5, label: '0.5', subKey: 'onboarding.pagesPerDay' },
-              { value: 1,   label: '1',   subKey: 'onboarding.pagePerDay' },
+              { value: 1,   label: '1',   subKey: 'onboarding.pagesPerDay' },
               { value: 2,   label: '2',   subKey: 'onboarding.pagesPerDay' },
               { value: 5,   label: '5',   subKey: 'onboarding.pagesPerDay', badgeKey: 'onboarding.intense' },
             ].map(({ value, label, subKey, badgeKey }) => (
               <button
                 key={value}
                 onClick={() => setDailyPages(value)}
+                aria-pressed={dailyPages === value}
                 className={`flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 transition-colors relative overflow-hidden ${
                   dailyPages === value
                     ? 'border-[#003527] bg-[#b0f0d6] dark:bg-emerald-900/40 text-[#064e3b] dark:text-emerald-300'
@@ -567,7 +258,7 @@ export default function Onboarding() {
                 }`}
               >
                 <span className="text-4xl font-semibold">{label}</span>
-                <span className="text-xs">{t(subKey)}</span>
+                <span className="text-xs">{t(subKey, { count: value })}</span>
                 {badgeKey && (
                   <div className="absolute top-0 end-0 bg-[#fe932c] text-white text-[10px] px-2 py-1 rounded-es-lg font-bold">
                     {t(badgeKey)}
@@ -593,6 +284,7 @@ export default function Onboarding() {
               <button
                 key={value}
                 onClick={() => setDirection(value)}
+                aria-pressed={direction === value}
                 className={`flex flex-col items-start gap-1.5 p-5 rounded-xl border-2 text-start transition-colors ${
                   direction === value
                     ? 'border-[#003527] bg-[#b0f0d6] dark:bg-emerald-900/40 text-[#064e3b] dark:text-emerald-300'
@@ -621,6 +313,7 @@ export default function Onboarding() {
                   <button
                     key={mode}
                     onClick={() => setCustomStartMode(mode)}
+                    aria-pressed={customStartMode === mode}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                       customStartMode === mode
                         ? 'bg-[#003527] text-white border-[#003527]'
@@ -638,6 +331,8 @@ export default function Onboarding() {
                     <button
                       key={juz}
                       onClick={() => { setCustomStartPage(start); setCustomStartSel(`juz-${juz}`); }}
+                      aria-pressed={customStartSel === `juz-${juz}`}
+                      aria-label={t('common.juzN', { n: juz })}
                       className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-colors border ${
                         customStartSel === `juz-${juz}`
                           ? 'bg-[#003527] text-white border-[#003527]'
@@ -658,6 +353,7 @@ export default function Onboarding() {
                       <button
                         key={s.number}
                         onClick={() => { setCustomStartPage(s.start); setCustomStartSel(`surah-${s.number}`); }}
+                        aria-pressed={isSelected}
                         className={`w-full flex items-center justify-between px-4 py-2.5 text-start transition-colors ${
                           isSelected ? 'bg-[#003527] text-white' : 'hover:bg-[#f0fdf4] dark:hover:bg-emerald-900/20 text-[#151c27] dark:text-gray-200'
                         }`}
@@ -688,7 +384,7 @@ export default function Onboarding() {
             onClick={() => setStep(1)}
             className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800"
           >
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => setStep(3)}
@@ -703,17 +399,19 @@ export default function Onboarding() {
   );
 
   // ── GENERATING PLAN — Loading screen ─────────────────
+  // A page of its own while it shows, so it gets what every page has: the
+  // main landmark the skip link points at, and an h1 (M-12).
   if (generatingPlan) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex items-center justify-center p-6">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-8">
+      <main id="main-content" className="bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 max-w-sm w-full p-10 flex flex-col items-center text-center gap-8">
         <div className="relative w-20 h-20 flex-shrink-0">
           <div className="absolute inset-0 rounded-full border-4 border-[#dce2f3] dark:border-gray-700" />
           <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#2D6A4F] animate-spin" />
         </div>
         <div>
-          <h2 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-4">
+          <h1 className="text-xl font-semibold text-[#003527] dark:text-gray-100 mb-4">
             {t('onboarding.buildingPlan')}
-          </h2>
+          </h1>
           <div className="flex items-center justify-center gap-2">
             {[0, 0.2, 0.4].map((delay) => (
               <span
@@ -724,7 +422,7 @@ export default function Onboarding() {
             ))}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 
@@ -732,14 +430,14 @@ export default function Onboarding() {
   if (step === 3) return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <OnboardingHeader step={3} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center mb-4">
-          <h2 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h2>
+          <h1 className="text-2xl font-semibold text-[#151c27] dark:text-gray-100 mb-2">{t('onboarding.customizeTitle')}</h1>
           <p className="text-[#404944] dark:text-gray-400">{t('onboarding.customizeDesc')}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.reviewIntensity')}</h2>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.reviewIntensityDesc')}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {INTENSITY_OPTIONS.map(({ value, labelKey, descKey, divisor }) => {
@@ -790,10 +488,11 @@ export default function Onboarding() {
           {reviewIntensity === 'fixed' && (
             <div className="mt-4 flex items-center justify-between gap-4 p-4 bg-[#f9f9ff] dark:bg-gray-700/30 rounded-xl border border-[#bfc9c3] dark:border-gray-600">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('onboarding.fixedReviewLabel')}</p>
-                <p className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.fixedReviewHint')}</p>
+                <p id="onboarding-fixed-review-label" className="text-sm font-medium text-[#151c27] dark:text-gray-200">{t('onboarding.fixedReviewLabel')}</p>
+                <p id="onboarding-fixed-review-hint" className="text-xs text-[#707974] dark:text-gray-400">{t('onboarding.fixedReviewHint')}</p>
               </div>
               <input type="number" min="1" max="40" value={fixedReviewValue}
+                aria-labelledby="onboarding-fixed-review-label" aria-describedby="onboarding-fixed-review-hint"
                 onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 40) setFixedReviewValue(n); }}
                 className="w-16 shrink-0 border border-[#bfc9c3] dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm text-center bg-[#f0f3ff] dark:bg-gray-700 text-[#151c27] dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#003527]" />
             </div>
@@ -801,7 +500,7 @@ export default function Onboarding() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 p-6">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.restDays')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-1">{t('onboarding.restDays')}</h2>
           <p className="text-sm text-[#404944] dark:text-gray-400 mb-4">{t('onboarding.restDaysDesc')}</p>
           <div className="flex flex-wrap gap-4">
             {DAY_LABEL_KEYS.map((labelKey, i) => (
@@ -817,13 +516,13 @@ export default function Onboarding() {
             ))}
           </div>
           <p className="text-xs text-[#707974] dark:text-gray-400 mt-2">
-            {t('onboarding.availableDaysHint', { n: 7 - offDays.length })}
+            {t('onboarding.availableDaysHint', { count: 7 - offDays.length })}
           </p>
         </div>
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(2)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={() => {
@@ -846,7 +545,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-[#f9f9ff] dark:bg-gray-900 sacred-pattern flex flex-col">
       <OnboardingHeader step={4} />
-      <main className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
+      <main id="main-content" className="flex-1 w-full max-w-[800px] mx-auto px-6 pb-12 flex flex-col gap-8">
         <div className="text-center">
           <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-700/40 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-3xl">⭐</span>
@@ -861,7 +560,7 @@ export default function Onboarding() {
           <div className="bg-[#003527] rounded-2xl p-5 text-white">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#80bea6] mb-1">{t('onboarding.estimatedCompletion')}</p>
             <p className="text-4xl font-bold">{estimateDisplay ? `${estimateDisplay.value}` : '—'}</p>
-            <p className="text-sm text-[#80bea6] capitalize">{estimateDisplay ? t(estimateDisplay.unitKey) : t('onboarding.timeMonths')}</p>
+            <p className="text-sm text-[#80bea6] capitalize">{estimateDisplay ? t(estimateDisplay.unitKey, { count: estimateDisplay.value }) : t('onboarding.timeMonths', { count: 5 })}</p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#dce2f3] dark:border-gray-700 p-5 sacred-shadow">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#404944] dark:text-gray-400 mb-1">{t('onboarding.targetGoalLabel')}</p>
@@ -872,8 +571,8 @@ export default function Onboarding() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { labelKey: 'onboarding.alreadyMemorizedStat', value: `${approxJuz} ${t('progress.juz')}` },
-            { labelKey: 'onboarding.dailyNew',             value: `${dailyPages} ${t(dailyPages !== 1 ? 'onboarding.pagesPerDay' : 'onboarding.pagePerDay')}` },
+            { labelKey: 'onboarding.alreadyMemorizedStat', value: t('units.juz', { count: approxJuz }) },
+            { labelKey: 'onboarding.dailyNew',             value: t('onboarding.dailyPagesValue', { count: dailyPages }) },
             { labelKey: 'dashboard.review',                value: reviewIntensity === 'fixed' ? t('dashboard.reviewCount', { count: fixedReviewValue }) : t(INTENSITY_OPTIONS.find(o => o.value === reviewIntensity)?.labelKey ?? 'settings.intensityStandard') },
             { labelKey: 'onboarding.offDaysStat',          value: offDayLabel },
           ].map(({ labelKey, value }) => (
@@ -885,7 +584,7 @@ export default function Onboarding() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-700 p-6 sacred-shadow">
-          <h3 className="font-semibold text-[#151c27] dark:text-gray-100 mb-4">{t('onboarding.tipsTitle')}</h3>
+          <h2 className="font-semibold text-[#151c27] dark:text-gray-100 mb-4">{t('onboarding.tipsTitle')}</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             {[
               { icon: '🌅', titleKey: 'onboarding.tip1Title', descKey: 'onboarding.tip1Desc' },
@@ -906,7 +605,7 @@ export default function Onboarding() {
 
         <div className="flex justify-between items-center border-t border-[#dce2f3] dark:border-gray-700 pt-6">
           <button onClick={() => setStep(3)} className="text-sm text-[#404944] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-[#e7eefe] dark:hover:bg-gray-800">
-            <span className="inline-block rtl:rotate-180">←</span> {t('onboarding.back')}
+            <span className="inline-block rtl:rotate-180" aria-hidden="true">←</span> {t('onboarding.back')}
           </button>
           <button
             onClick={handleSubmit}

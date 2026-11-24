@@ -47,3 +47,38 @@ describe('Chatbot retry (M-14)', () => {
     expect(screen.queryByRole('button', { name: 'common.retry' })).toBeNull();
   });
 });
+
+describe('Chatbot keyboard and screen reader (M-12)', () => {
+  beforeEach(() => {
+    cleanup();
+    sendMessage.mockReset();
+    Element.prototype.scrollIntoView = () => {};
+  });
+
+  it('opens as a named dialog with focus in the message box, and Escape hands focus back to the launcher', () => {
+    render(<MemoryRouter><Chatbot /></MemoryRouter>);
+    const launcher = screen.getByRole('button', { name: 'chatbot.toggleLabel' });
+    launcher.focus();
+    fireEvent.click(launcher);
+    expect(screen.getByRole('dialog', { name: 'chatbot.title' })).toBeTruthy();
+    const box = screen.getByRole('textbox', { name: 'chatbot.placeholder' });
+    expect(document.activeElement).toBe(box);
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'chatbot.toggleLabel' }));
+  });
+
+  it('replies land in a live log, and the box keeps focus while one is on its way', async () => {
+    let answer;
+    sendMessage.mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    openAndAsk();
+    const box = screen.getByRole('textbox', { name: 'chatbot.placeholder' });
+    expect(box.disabled).toBe(false);
+    expect(screen.getByText('chatbot.typing')).toBeTruthy();
+    answer({ data: { data: { reply: 'Review page 5 today.' } } });
+    const log = screen.getByRole('log');
+    expect(log.getAttribute('aria-live')).toBe('polite');
+    expect(await screen.findByText('Review page 5 today.')).toBeTruthy();
+    expect(log.contains(screen.getByText('Review page 5 today.'))).toBe(true);
+  });
+});

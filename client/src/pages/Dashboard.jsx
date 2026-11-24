@@ -21,6 +21,7 @@ import { formatSurahNames, formatSegmentLabel, formatTaskSurahLabel, isMultiSura
 import { getDailyVerse } from '../services/dailyVerse';
 import { round1 } from '../utils/formatNumber';
 import { storage } from '../utils/safeStorage';
+import { intlLocale } from '../utils/intlLocale';
 
 // Ghost icon button: open the Library at this page to listen while reviewing.
 // `tourAnchor` tags this button as the guided-tour "Listen" target.
@@ -47,8 +48,7 @@ const dayOfYear = () => {
 
 const formatDate = (iso, lang = 'en') => {
   const d = new Date(iso + 'T00:00:00Z');
-  const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
-  return d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return d.toLocaleDateString(intlLocale(lang === 'ar'), { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
 // ── Circular Juz progress ring ───────────────────────────
@@ -324,6 +324,18 @@ const WeekDayCard = ({ day, isToday, todayData }) => {
   );
 };
 
+// The per-Juz progress list. The stat cards read it in the page's own render,
+// above every error boundary, so a reply that is not a list of Juz entries would
+// take the whole dashboard down: it is refused here and fails the load instead
+// (the tasks then show their error with Retry).
+const juzListFrom = (res) => {
+  const list = res.data?.data;
+  if (!Array.isArray(list) || !list.every((j) => j != null && typeof j === 'object')) {
+    throw new Error('Unexpected Juz progress payload');
+  }
+  return list;
+};
+
 export default function Dashboard() {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -397,8 +409,9 @@ export default function Dashboard() {
       ]);
       progressAPI.checkIn(ignoreOffDay);
       if (!aliveRef.current) return;
+      const juzList = juzListFrom(juzRes);
       setData(taskRes.data.data);
-      setJuzData(juzRes.data.data);
+      setJuzData(juzList);
     } catch (err) {
       const kind = reportLoadFailure(err, "today's plan");
       if (aliveRef.current) setLoadError(kind);
@@ -639,14 +652,6 @@ export default function Dashboard() {
     return Math.round((today - last) / 86400000) > 1;
   })();
 
-  // Split review pages into recent and cycle
-  const recentPages = data?.recentReviewPages ?? [];
-  const cycleReviewPages = data?.reviewPages ?? [];
-  const allReviewPages = [
-    ...recentPages.map(p => ({ ...p, isRecent: true })),
-    ...cycleReviewPages.map(p => ({ ...p, isRecent: false })),
-  ];
-
   // Daily review breakdown — the stable per-day targets (cycle pages + recently
   // memorized pages), not the live list lengths, so the stat card and its hint
   // show the everyday review load and don't count down to zero as pages are done.
@@ -655,11 +660,14 @@ export default function Dashboard() {
   const reviewTotalCount = stats?.dailyReviewTotal ?? (reviewCycleCount + reviewRecentCount);
   const reviewBreakdown =
     reviewCycleCount > 0 && reviewRecentCount > 0
-      ? t('hints.reviewBoth', { cycle: reviewCycleCount, recent: reviewRecentCount })
+      ? t('hints.reviewBoth', {
+        cycle: t('hints.reviewCycleOnly', { count: reviewCycleCount }),
+        recent: t('hints.reviewRecentOnly', { count: reviewRecentCount }),
+      })
       : reviewCycleCount > 0
-        ? t('hints.reviewCycleOnly', { cycle: reviewCycleCount })
+        ? t('hints.reviewCycleOnly', { count: reviewCycleCount })
         : reviewRecentCount > 0
-          ? t('hints.reviewRecentOnly', { recent: reviewRecentCount })
+          ? t('hints.reviewRecentOnly', { count: reviewRecentCount })
           : '';
   // Stat-card hint: explains why the total may exceed the cycle target they set.
   const dailyReviewHintText = reviewBreakdown
@@ -670,24 +678,12 @@ export default function Dashboard() {
     ? `${t('hints.review')} ${t('hints.reviewToday', { breakdown: reviewBreakdown })}`
     : t('hints.review');
 
-  const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(taskKey('new', p.pageNumber, p.segment)));
-  const revPending = allReviewPages.filter(p => !completedKeys.has(taskKey('review', p.pageNumber)));
-
-  const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
-    (completedKeys.size > 0 || data.stats?.todayComplete);
-
   const REVIEW_LIMIT = 5;
-  const hasMoreReview = allReviewPages.length > REVIEW_LIMIT;
 
   const showContinuation = !loading && data && stats?.targetNewPages === 0 && data.continuationPage;
 
   const isHafiz = (stats?.totalMemorized ?? 0) >= 604;
   const isPaused = !isHafiz && (user?.pauseNewMemorization === true);
-
-  // Each new task carries its half on a half-page plan; the server refuses a
-  // bare completion of a page it serves as a half (SEGMENT_REQUIRED).
-  const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new', p.segment));
-  const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
 
   const handleFirstCycleResume = async () => {
     try {
@@ -699,7 +695,7 @@ export default function Dashboard() {
       ]);
       progressAPI.checkIn();
       setData(taskRes.data.data);
-      setJuzData(juzRes.data.data);
+      setJuzData(juzListFrom(juzRes));
       setCycleBannerDismissed(true);
     } catch {
       showToast(t('dashboard.failedMark'), 'error');
@@ -710,7 +706,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-[#FFFDF5] dark:bg-gray-900 sacred-pattern flex flex-col">
       <Navbar />
 
-      <main className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
+      <main id="main-content" className="flex-grow w-full max-w-[1280px] mx-auto px-6 pt-32 pb-12 flex flex-col gap-12">
 
         {/* First cycle complete banner */}
         {data?.firstCycleComplete && !cycleBannerDismissed && (
@@ -760,7 +756,7 @@ export default function Dashboard() {
               <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center shrink-0 text-2xl">🌟</div>
               <div className="flex-1">
                 <p className="text-amber-400 text-[10px] font-bold uppercase tracking-widest mb-1">{t('dashboard.hafizBadge')}</p>
-                <h3 className="text-white text-xl md:text-2xl font-bold mb-2">{t('dashboard.hafizCongrats')}</h3>
+                <h2 className="text-white text-xl md:text-2xl font-bold mb-2">{t('dashboard.hafizCongrats')}</h2>
                 <p className="text-white/60 text-sm leading-relaxed max-w-xl">{t('dashboard.hafizMessage')}</p>
                 <div className="flex gap-3 mt-4 flex-wrap">
                   {[
@@ -788,15 +784,16 @@ export default function Dashboard() {
               </svg>
             </div>
             <div>
-              <h2 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
+              {/* The page's one h1: the greeting is what this page is called. */}
+              <h1 className="text-[32px] font-semibold text-[#003527] dark:text-gray-100 mb-2 leading-tight">
                 {t('dashboard.greeting', { name: user?.name?.split(' ')[0] })}
-              </h2>
+              </h1>
               <p className="text-[#404944] dark:text-gray-400">{t('dashboard.subtitle')}</p>
             </div>
             {(() => {
               const streak = stats?.currentStreak ?? user?.currentStreak ?? 0;
               const lastActive = user?.lastActiveDate
-                ? new Date(user.lastActiveDate).toLocaleDateString()
+                ? new Date(user.lastActiveDate).toLocaleDateString(intlLocale(i18n.language === 'ar'))
                 : null;
               if (streak === 0) {
                 return (
@@ -815,7 +812,7 @@ export default function Dashboard() {
                 >
                   <FiZap className="w-4 h-4 text-[#fe932c]" />
                   <span className="text-xs font-bold uppercase tracking-wider">
-                    {streak} {t(streak === 1 ? 'dashboard.streakDay' : 'dashboard.streakDays')}
+                    {streak} {t('dashboard.streakDays', { count: streak })}
                   </span>
                   <InfoHint text={t('hints.streak')} label={t('dashboard.streak')} size="xs" />
                 </div>
@@ -847,7 +844,7 @@ export default function Dashboard() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-[#404944] dark:text-gray-400">{t('dashboard.dailyReview')}</span>
                     <InfoHint text={dailyReviewHintText} label={t('dashboard.dailyReview')} size="xs" />
                   </div>
-                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats ? `${reviewTotalCount} ${t('dashboard.pages')}` : '—'}</div>
+                  <div className="text-2xl font-semibold text-[#003527] dark:text-gray-100">{stats ? t('dashboard.reviewCount', { count: reviewTotalCount }) : '—'}</div>
                 </>
               )}
             </div>
@@ -929,26 +926,30 @@ export default function Dashboard() {
         {/* ── Tasks Section with Tabs ───────────────────────── */}
         <section className="flex flex-col gap-4">
           {/* Tab bar */}
-          <div className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
+          {/* Toggle buttons that say which view is showing (M-12) — not ARIA
+              tabs, whose arrow-key pattern these never had. */}
+          <div role="group" aria-label={t('dashboard.viewLabel')} className="flex items-center gap-1 border-b border-[#dce2f3] dark:border-gray-700">
             <button
               onClick={() => setActiveTab('today')}
+              aria-pressed={activeTab === 'today'}
               className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'today'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiCalendar className="w-4 h-4" />{t('dashboard.today')}
+              <FiCalendar className="w-4 h-4" aria-hidden="true" />{t('dashboard.today')}
             </button>
             <button
               onClick={() => { setActiveTab('week'); loadWeekPlan(); }}
+              aria-pressed={activeTab === 'week'}
               className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                 activeTab === 'week'
                   ? 'border-[#004f35] text-[#003527] dark:text-emerald-400 dark:border-emerald-500'
                   : 'border-transparent text-[#707974] dark:text-gray-500 hover:text-[#003527] dark:hover:text-gray-300'
               }`}
             >
-              <FiList className="w-4 h-4" />{t('dashboard.thisWeek')}
+              <FiList className="w-4 h-4" aria-hidden="true" />{t('dashboard.thisWeek')}
             </button>
             <button
               onClick={() => setHowToOpen(true)}
@@ -969,7 +970,25 @@ export default function Dashboard() {
               tasks are a function, so a throw in their JSX happens inside the
               boundary (see ErrorBoundary). */}
           <ErrorBoundary name="dashboard tasks" onReset={reloadTasks} fallback={({ reset }) => <RegionFallback onRetry={reset} />}>
-          {() => (<>
+          {() => {
+          // The day's task lists are worked out HERE, inside the boundary, not in
+          // the page's own render: a plan whose lists are not what they should be
+          // then crashes this region, with its Retry, instead of the whole app.
+          // Split review pages into recent and cycle.
+          const allReviewPages = [
+            ...(data?.recentReviewPages ?? []).map(p => ({ ...p, isRecent: true })),
+            ...(data?.reviewPages ?? []).map(p => ({ ...p, isRecent: false })),
+          ];
+          const newPending = (data?.newPages ?? []).filter(p => !completedKeys.has(taskKey('new', p.pageNumber, p.segment)));
+          const revPending = allReviewPages.filter(p => !completedKeys.has(taskKey('review', p.pageNumber)));
+          const allTasksDone = data && !loading && newPending.length === 0 && revPending.length === 0 &&
+            (completedKeys.size > 0 || data.stats?.todayComplete);
+          const hasMoreReview = allReviewPages.length > REVIEW_LIMIT;
+          // Each new task carries its half on a half-page plan; the server refuses a
+          // bare completion of a page it serves as a half (SEGMENT_REQUIRED).
+          const markAllNew = () => newPending.forEach(p => markComplete(p.pageNumber, 'new', p.segment));
+          const markAllReview = () => revPending.forEach(p => markComplete(p.pageNumber, 'review'));
+          return (<>
           {activeTab === 'today' && (
             loading ? (
               /* The skeleton stands in for the REAL shape — two columns, a heading
@@ -1034,7 +1053,7 @@ export default function Dashboard() {
               <div className="flex flex-col gap-4">
                 <div className="bg-white dark:bg-gray-800 rounded-xl p-10 sacred-shadow border border-[#dce2f3] dark:border-gray-700 flex flex-col items-center text-center">
                   <p className="text-4xl mb-3">🎉</p>
-                  <h3 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('dashboard.allDone')}</h3>
+                  <h2 className="text-2xl font-semibold text-[#003527] dark:text-gray-100 mb-2">{t('dashboard.allDone')}</h2>
                   <p className="text-[#404944] dark:text-gray-400">{t('dashboard.comeBack')}</p>
                 </div>
 
@@ -1042,10 +1061,11 @@ export default function Dashboard() {
                 <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
                   <button
                     onClick={() => { setShowWantMore(!showWantMore); if (!showWantMore) loadExtraPages(); }}
+                    aria-expanded={showWantMore}
                     className="w-full p-4 flex justify-between items-center hover:bg-[#f9f9ff] dark:hover:bg-gray-700/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-lg">✨</span>
+                      <span className="text-lg" aria-hidden="true">✨</span>
                       <span className="text-base font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.wantMore')}</span>
                     </div>
                     {showWantMore ? <FiChevronUp className="w-4 h-4 text-[#707974] dark:text-gray-500" /> : <FiChevronDown className="w-4 h-4 text-[#707974] dark:text-gray-500" />}
@@ -1057,7 +1077,7 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.memorizeMore')}</h4>
+                            <h3 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.memorizeMore')}</h3>
                             <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.upcomingPages')}</span>
                           </div>
                           <div className="space-y-2">
@@ -1073,7 +1093,7 @@ export default function Dashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-3">
                             <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                            <h4 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.reviewMore')}</h4>
+                            <h3 className="text-sm font-semibold text-[#151c27] dark:text-gray-200">{t('dashboard.reviewMore')}</h3>
                             <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.additionalPages')}</span>
                           </div>
                           <div className="space-y-2">
@@ -1102,7 +1122,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2" data-tour="new-mem">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#004f35]" />
-                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h4>
+                      <h2 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.newMem')}</h2>
                       <InfoHint text={t('hints.newMem')} label={t('dashboard.newMem')} />
                     </div>
                     {!isPaused && newPending.length > 0 && (
@@ -1123,7 +1143,7 @@ export default function Dashboard() {
                         <div>
                           <p className="text-sm font-semibold text-[#003527] dark:text-emerald-400">{t('dashboard.pausedTitle')}</p>
                           <p className="text-xs text-[#707974] dark:text-gray-400 mt-1 leading-relaxed">
-                            {t('dashboard.pausedGoalNote', { pages: user?.dailyNewPages ?? 1 })}
+                            {t('dashboard.pausedGoalNote', { count: user?.dailyNewPages ?? 1 })}
                           </p>
                           <button
                             onClick={() => navigate('/settings?tab=memorization')}
@@ -1178,7 +1198,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between gap-2" data-tour="review">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-[#fe932c]" />
-                      <h4 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h4>
+                      <h2 className="text-lg font-semibold text-[#151c27] dark:text-gray-100">{t('dashboard.review')}</h2>
                       <InfoHint text={reviewHeadingHintText} label={t('dashboard.review')} />
                       <span className="text-xs text-[#707974] dark:text-gray-500">{t('dashboard.reviewCount', { count: allReviewPages.length })}</span>
                     </div>
@@ -1254,7 +1274,8 @@ export default function Dashboard() {
               )}
             </div>
           )}
-          </>)}
+          </>);
+          }}
           </ErrorBoundary>
           </div>
         </section>
@@ -1264,13 +1285,14 @@ export default function Dashboard() {
           <div className="bg-white dark:bg-gray-800 rounded-xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 overflow-hidden">
             <button
               onClick={() => setTipOpen(!tipOpen)}
+              aria-expanded={tipOpen}
               className="w-full p-4 flex justify-between items-center bg-[#b0f0d6]/5 dark:bg-emerald-900/10 hover:bg-[#b0f0d6]/10 dark:hover:bg-emerald-900/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <FiZap className="w-5 h-5 text-[#fe932c]" />
+                <FiZap className="w-5 h-5 text-[#fe932c]" aria-hidden="true" />
                 <span className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('dashboard.tipTitle')}</span>
               </div>
-              <span className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
+              <span aria-hidden="true" className={`text-[#707974] dark:text-gray-500 transition-transform duration-300 ${tipOpen ? 'rotate-180' : ''}`}>▾</span>
             </button>
             {tipOpen && (
               <div className="p-4 border-t border-[#dce2f3] dark:border-gray-700 text-[#404944] dark:text-gray-300 leading-relaxed bg-white dark:bg-gray-800">

@@ -38,7 +38,9 @@ test('deleting the account signs out, blocks sign-in and leaves no data behind',
   await page.getByLabel('Email Address').fill(account.email)
   await page.getByLabel('Password', { exact: true }).fill(account.password)
   await page.getByRole('button', { name: 'Log In' }).click()
-  await expect(page.getByText('Invalid email or password')).toBeVisible()
+  // Said under the form (and tied to both fields), as well as in the toast.
+  await expect(page.locator('#login-error')).toHaveText('Invalid email or password')
+  await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('aria-invalid', 'true')
   await expect(page).toHaveURL(/\/login$/)
 
   const after = await countsFor(request, account.id)

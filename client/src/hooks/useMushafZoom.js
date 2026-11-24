@@ -31,8 +31,10 @@ import { storage } from '../utils/safeStorage';
  * ink stroke, a self-test reveal, a swipe):
  *   - wheel / trackpad scroll, Shift+wheel sideways, and the scrollbars;
  *   - one-finger touch pan (native), which the swipe-to-turn yields to;
- *   - the keyboard: after clicking on the page, the browser's own arrow/Page keys
- *     scroll the box (the reader keeps ←/→ and PageUp/PageDown for turning);
+ *   - the keyboard: ←/→ pan the zoomed page sideways and turn it only once it is
+ *     against that edge (the reader's key handler, like the swipe); after
+ *     clicking on the page the browser's own ↑/↓ scroll it up and down;
+ *     PageUp/PageDown always turn;
  *   - HOLDING SPACE and dragging — the hand tool of every document viewer. While
  *     Space is held, the pan owns the pointer outright (captured on the window
  *     before anything else sees it), so a pan can never also start a range or a

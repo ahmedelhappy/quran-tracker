@@ -12,7 +12,9 @@ import ErrorNotice from '../components/ErrorNotice';
 import { FiChevronDown, FiChevronUp, FiEdit2, FiSave, FiX } from 'react-icons/fi';
 import { SURAH_PAGES } from '../data/surahPages';
 import { JUZ_RANGES } from '../data/juzRanges';
+import { surahOrdRange, coverageFromProgress } from '../utils/unitRanges';
 import { round1 } from '../utils/formatNumber';
+import { intlLocale } from '../utils/intlLocale';
 import { reportLoadFailure } from '../utils/reportError';
 
 // recharts is most of this page's code; the chart arrives after the page (M-09).
@@ -25,15 +27,15 @@ const WEEKDAY_LABEL_KEYS = ['', 'settings.dayMon', '', 'settings.dayWed', '', 's
 const toISODate = (d) => d.toISOString().split('T')[0];
 const levelForCount = (c) => (c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 2 : c <= 4 ? 3 : 4);
 
-// Display-friendly time estimate from a raw day count; unit is a translation key
+// Display-friendly time estimate from a raw day count; the unit is a translation
+// key with plural forms, picked by `value`
 // (reuses the onboarding.time* strings so both estimate cards read identically).
 function formatEstimate(days) {
   if (!days || days <= 0) return null;
-  if (days < 7) return { value: days, unitKey: days === 1 ? 'onboarding.timeDay' : 'onboarding.timeDays' };
-  if (days < 30) { const w = Math.round(days / 7); return { value: w, unitKey: w === 1 ? 'onboarding.timeWeek' : 'onboarding.timeWeeks' }; }
-  if (days < 365) { const m = Math.round(days / 30); return { value: m, unitKey: m === 1 ? 'onboarding.timeMonth' : 'onboarding.timeMonths' }; }
-  const y = parseFloat((days / 365).toFixed(1));
-  return { value: y, unitKey: y === 1 ? 'onboarding.timeYear' : 'onboarding.timeYears' };
+  if (days < 7) return { value: days, unitKey: 'onboarding.timeDays' };
+  if (days < 30) return { value: Math.round(days / 7), unitKey: 'onboarding.timeWeeks' };
+  if (days < 365) return { value: Math.round(days / 30), unitKey: 'onboarding.timeMonths' };
+  return { value: parseFloat((days / 365).toFixed(1)), unitKey: 'onboarding.timeYears' };
 }
 
 const toUTCMidnight = (date) => {
@@ -100,8 +102,25 @@ function ContributionGraph({ weeks, locale }) {
     return labels;
   }, [weeks, locale]);
 
+  // What the grid says, in words (M-12): its cells are colour and a hover
+  // title, which a screen reader can't reach. The grid is one image named by
+  // this sentence: the span, the pages done in it and on how many days.
+  const summary = useMemo(() => {
+    const cells = weeks.flat().filter(Boolean);
+    if (!cells.length) return '';
+    const fmt = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const pages = cells.reduce((n, c) => n + c.count, 0);
+    const days = cells.filter((c) => c.count > 0).length;
+    return t('progress.heatmapSummary', {
+      from: fmt(cells[0].date),
+      to: fmt(cells[cells.length - 1].date),
+      pages: t('progress.pagesCount', { count: pages }),
+      days: t('progress.activeDays', { count: days }),
+    });
+  }, [weeks, locale, t]);
+
   return (
-    <div dir="ltr" className="overflow-x-auto pb-1">
+    <div dir="ltr" className="overflow-x-auto pb-1" role="img" aria-label={summary}>
       <div className="inline-flex flex-col gap-[3px]">
         {/* Month labels */}
         <div className="flex gap-[3px] ps-7">
@@ -303,17 +322,32 @@ export default function Progress() {
   const projectedDate = estimate?.estimatedDays
     ? new Date(Date.now() + estimate.estimatedDays * 86400000)
     : null;
-  const dateLocale = isArabic ? 'ar-u-ca-gregory-nu-arab' : 'en-US';
+  const dateLocale = intlLocale(isArabic);
 
-  const surahStats = useMemo(() => SURAH_PAGES.map(surah => {
-    const total = surah.end - surah.start + 1;
-    let count = 0;
-    for (let p = surah.start; p <= surah.end; p++) {
-      if (activeSet.has(p)) count++;
-    }
-    const pct = total > 0 ? Math.round(count / total * 100) : 0;
-    return { ...surah, pct };
-  }), [activeSet]);
+  // Per-surah progress counts VERSES, not pages: a surah's first and last pages
+  // usually hold a neighbour's verses too, so "every page touched" called a
+  // surah complete when only its neighbour's half of a shared page was
+  // memorized (M-13). Partial pages count their exact segments; a page toggled
+  // in edit mode counts as whole, like everywhere else while editing.
+  const surahStats = useMemo(() => {
+    const segmentsKept = (overallStats?.partialPages ?? [])
+      .filter(p => !editMode || draft.has(p.pageNumber) === memorizedSet.has(p.pageNumber));
+    const coverage = coverageFromProgress([...activeSet], segmentsKept);
+    return SURAH_PAGES.map(surah => {
+      const range = surahOrdRange(surah.number);
+      let covered = 0;
+      for (const m of coverage) {
+        if (m.to < range.from) continue;
+        if (m.from > range.to) break;
+        covered += Math.min(m.to, range.to) - Math.max(m.from, range.from) + 1;
+      }
+      const total = range.to - range.from + 1;
+      // Never round a surah up to complete, or down to untouched.
+      const raw = (covered / total) * 100;
+      const pct = covered === total ? 100 : covered === 0 ? 0 : Math.min(99, Math.max(1, Math.round(raw)));
+      return { ...surah, pct };
+    });
+  }, [activeSet, overallStats, editMode, draft, memorizedSet]);
 
   const surahComplete   = surahStats.filter(s => s.pct === 100).length;
   const surahInProgress = surahStats.filter(s => s.pct > 0 && s.pct < 100).length;
@@ -335,7 +369,7 @@ export default function Progress() {
       cumulative += byDate[d];
       const dt = new Date(d + 'T00:00:00Z');
       return {
-        label: dt.toLocaleDateString(i18n.language === 'ar' ? 'ar-SA' : 'en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+        label: dt.toLocaleDateString(intlLocale(i18n.language === 'ar'), { month: 'short', day: 'numeric', timeZone: 'UTC' }),
         pages: cumulative,
       };
     });
@@ -377,6 +411,9 @@ export default function Progress() {
     <div className="min-h-screen bg-[#FAF9F6] dark:bg-gray-900 flex flex-col">
       <Navbar />
 
+      {/* The title bar is part of the page's content, so it sits inside the
+          one main landmark with the rest (the skip link lands on its heading). */}
+      <main id="main-content" className="flex-1 flex flex-col">
       {/* Header bar */}
       <div className="bg-[#1B4332] dark:bg-gray-800 text-white pt-24 pb-10 px-6">
         <div className="max-w-6xl mx-auto">
@@ -385,7 +422,7 @@ export default function Progress() {
         </div>
       </div>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
+      <div className="flex-1 max-w-6xl mx-auto w-full px-6 py-8 space-y-6">
 
         {/* Load error — what happened, with Retry. With nothing loaded yet the
             page below is not drawn: it showed 0.0% and "604 pages remaining",
@@ -403,6 +440,7 @@ export default function Progress() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
+              aria-pressed={activeTab === tab.key}
               className={`pb-3 text-sm font-semibold transition-colors ${
                 activeTab === tab.key
                   ? 'border-b-2 border-[#004f35] dark:border-emerald-400 text-[#003527] dark:text-emerald-400'
@@ -453,7 +491,7 @@ export default function Progress() {
                   </div>
                 ) : (
                   <>
-                    <ContributionGraph weeks={weeks} locale={isArabic ? 'ar-SA' : 'en-US'} />
+                    <ContributionGraph weeks={weeks} locale={intlLocale(isArabic)} />
                     <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                       <div className="flex items-center gap-2 text-xs text-[#4A4A4A] dark:text-gray-400">
                         <span>{t('progress.less')}</span>
@@ -493,7 +531,7 @@ export default function Progress() {
                   <div>
                     <div className="flex items-end gap-2">
                       <span className="text-4xl font-extrabold text-[#1A1A1A] dark:text-gray-100 tabular-nums">{estimateDisplay.value}</span>
-                      <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey)}</span>
+                      <span className="text-lg font-semibold text-[#4A4A4A] dark:text-gray-400 mb-1 capitalize">{t(estimateDisplay.unitKey, { count: estimateDisplay.value })}</span>
                     </div>
                     {/* Name the REST DAYS too, not just the daily pages. The estimate
                         has always divided the daily rate by the active days — 2.5
@@ -636,6 +674,24 @@ export default function Progress() {
                                     </div>
                                   );
                                 })}
+                                {!editMode && (
+                                  // The tiles above are colour and a hover title; this is
+                                  // what they add up to, for a screen reader (M-12).
+                                  <span className="sr-only">
+                                    {(() => {
+                                      let memorized = 0;
+                                      let partly = 0;
+                                      for (let page = start; page <= end; page++) {
+                                        if (!activeSet.has(page)) continue;
+                                        const f = partialMap.get(page);
+                                        if (f != null && f < 1) partly++; else memorized++;
+                                      }
+                                      return t('progress.pageGridSummary', {
+                                        from: start, to: end, memorized, partly, notYet: total - memorized - partly,
+                                      });
+                                    })()}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           );
@@ -907,6 +963,7 @@ export default function Progress() {
         )}
         </>)}
 
+      </div>
       </main>
 
       <Footer />

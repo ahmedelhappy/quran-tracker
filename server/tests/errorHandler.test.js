@@ -24,7 +24,7 @@ describe('final JSON error handler', () => {
       .send('{"email":');
     assert.equal(res.status, 400);
     assert.match(res.headers['content-type'], /application\/json/);
-    assert.deepEqual(res.body, { success: false, message: 'Malformed JSON in request body' });
+    assert.deepEqual(res.body, { success: false, code: 'MALFORMED_JSON', message: 'Malformed JSON in request body' });
     assert.ok(!res.text.includes('<pre>') && !res.text.includes('node_modules'), 'no stack or paths');
   });
 
@@ -35,7 +35,7 @@ describe('final JSON error handler', () => {
       .send(JSON.stringify({ email: 'a@example.com', password: 'x'.repeat(200 * 1024) }));
     assert.equal(res.status, 413);
     assert.match(res.headers['content-type'], /application\/json/);
-    assert.deepEqual(res.body, { success: false, message: 'Request body is too large' });
+    assert.deepEqual(res.body, { success: false, code: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large' });
   });
 
   test("another parser client error keeps its status, as JSON", async () => {
@@ -57,12 +57,12 @@ describe('final JSON error handler', () => {
       process.env.NODE_ENV = 'development';
       const dev = jsonErrorHandler(boom, {}, fakeRes(), () => {});
       assert.equal(dev.statusCode, 500);
-      assert.deepEqual(dev.body, { success: false, message: 'Server error', error: 'db exploded' });
+      assert.deepEqual(dev.body, { success: false, code: 'SERVER_ERROR', message: 'Server error', error: 'db exploded' });
 
       process.env.NODE_ENV = 'production';
       const prod = jsonErrorHandler(boom, {}, fakeRes(), () => {});
       assert.equal(prod.statusCode, 500);
-      assert.deepEqual(prod.body, { success: false, message: 'Server error' });
+      assert.deepEqual(prod.body, { success: false, code: 'SERVER_ERROR', message: 'Server error' });
     } finally {
       process.env.NODE_ENV = prev;
       console.error = originalError;

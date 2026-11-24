@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeArabic, arabicTokens, toLatinDigits, parseJumps, matchSurahNames } from './quranSearchQuery';
+import {
+  normalizeArabic, arabicTokens, toLatinDigits, parseJumps, matchSurahNames,
+  looksUthmani, uthmaniWordSpellings, uthmaniQuerySlots,
+} from './quranSearchQuery';
 import { HIZB_RANGES } from '../data/hizbRanges';
 
 describe('normalizeArabic', () => {
@@ -115,5 +118,59 @@ describe('matchSurahNames', () => {
   it('never matches an alias as a prefix ("الله" must not suggest Al-Masad by its alias "اللهب")', () => {
     expect(matchSurahNames('الله').map((s) => s.number)).not.toContain(111);
     expect(matchSurahNames('اللهب').map((s) => s.number)).toContain(111);
+  });
+});
+
+// Real Uthmani strings, as quran.com's text_uthmani and the mushaf print them (L-14).
+describe('Uthmani text pasted in', () => {
+  const spelled = (w) => uthmaniWordSpellings(w).map((tokens) => tokens.join(' '));
+
+  it('tells pasted Uthmani text from a typed query', () => {
+    for (const q of ['يَـٰٓأَيُّهَا', 'ٱلْقُرْءَانُ', 'مَسْـُٔولًا', 'ٱلْكِتَـٰبَ', 'ءَامَنُوا۟', 'أَءِذَا', 'ءَأَنتُمْ', 'وَلَا تَقْرَبُوا۟ مَالَ']) {
+      expect(looksUthmani(q), q).toBe(true);
+    }
+    // Typed text, bare or with full tashkeel, keeps the plain path and its results.
+    for (const q of ['يا أيها', 'القرآن', 'مسؤولا', 'قُلْ هُوَ اللَّهُ أَحَدٌ', 'جزءا', 'قراءة', 'تساءلون', 'شيء', 'الرحمن الرحيم', '2:255']) {
+      expect(looksUthmani(q), q).toBe(false);
+      expect(uthmaniQuerySlots(q), q).toBeNull();
+    }
+  });
+
+  it('offers the plain spelling a dagger alef stands for, or none', () => {
+    expect(spelled('ٱلْكِتَـٰبَ')).toContain('الكتاب');
+    expect(spelled('ٱلرَّحْمَـٰنِ')).toContain('الرحمن');
+    expect(spelled('ذَٰلِكَ')).toContain('ذلك');
+    expect(spelled('ٱلسَّمَـٰوَٰتِ')).toContain('السماوات');
+    expect(spelled('ٱلصَّلَوٰةَ')).toContain(normalizeArabic('الصلاة'));
+    expect(spelled('مَوْلَىٰنَا')).toContain('مولانا');
+  });
+
+  it('splits the vocative into the two words the index has', () => {
+    expect(spelled('يَٰٓأَيُّهَا')).toContain('يا ايها');
+    expect(spelled('يَـٰٓأَيُّهَا')).toContain('يا ايها');
+    expect(spelled('يَـٰقَوْمِ')).toContain('يا قوم');
+    expect(spelled('وَيَـٰقَوْمِ')).toContain('ويا قوم');
+  });
+
+  it('reads the Uthmani hamza spellings', () => {
+    expect(spelled('مَسْـُٔولًا')).toContain(normalizeArabic('مسؤولا'));     // hamza on a tatweel
+    expect(spelled('شَيْـًٔا')).toContain(normalizeArabic('شيئا'));
+    expect(spelled('ٱلْقُرْءَانُ')).toContain(normalizeArabic('القرآن'));     // ءَا is آ
+    expect(spelled('ءَامَنُوا۟')).toContain(normalizeArabic('آمنوا'));
+    expect(spelled('أَءِذَا')).toContain(normalizeArabic('أإذا'));
+  });
+
+  it('reads the small letters and the silent-letter sign', () => {
+    expect(spelled('إِبْرَٰهِـۧمَ')).toContain('ابراهيم');
+    expect(spelled('بِهِۦ')).toContain('به');
+    expect(spelled('يَتْلُوا۟')).toContain('يتلو');
+    expect(spelled('تَجِدُوا۟')).toContain('تجدوا');
+    expect(spelled('ٱلَّيْلِ')).toContain('الليل');
+  });
+
+  it('makes one slot per word and leaves out signs and verse numbers', () => {
+    const slots = uthmaniQuerySlots('ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ ۚ ٱلْحَىُّ ٱلْقَيُّومُ ٢٥٥');
+    expect(slots).toHaveLength(7);
+    expect(slots[0].map((t) => t.join(' '))).toContain('الله');
   });
 });

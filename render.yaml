@@ -33,4 +33,6 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # Optional, with defaults when unset (see server/.env.example): GROQ_MODEL,
-      # TRUST_PROXY, CHAT_MAX_TOKENS, CHAT_TIMEOUT_MS, CHAT_DAILY_LIMIT.
+      # TRUST_PROXY, CHAT_MAX_TOKENS, CHAT_TIMEOUT_MS, CHAT_DAILY_LIMIT, and
+      # PASSWORD_RESET_ENABLED + EMAIL_TRANSPORT (password reset; off when unset,
+      # and off in production until an email provider exists).

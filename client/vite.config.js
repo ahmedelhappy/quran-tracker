@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
+import { siteMeta } from './siteMeta.js'
 
 const CLIENT_DIR = fileURLToPath(new URL('.', import.meta.url))
 
@@ -92,7 +93,7 @@ const preloadActiveLocale = () => {
 export default defineConfig(({ command, mode }) => {
   if (command === 'build') requireApiUrl(mode)
   return {
-    plugins: [react(), preloadActiveLocale()],
+    plugins: [react(), preloadActiveLocale(), siteMeta(CLIENT_DIR)],
     build: {
       // Never inline a font as a data: URL, however small: the self-hosted UI
       // fonts (src/fonts.css) must stay files, so they are cached on their own

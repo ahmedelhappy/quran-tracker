@@ -35,7 +35,7 @@ const About = () => {
         </div>
       </nav>
 
-      <main className="flex-grow max-w-3xl mx-auto w-full px-6 py-16">
+      <main id="main-content" className="flex-grow max-w-3xl mx-auto w-full px-6 py-16">
         {/* Header */}
         <div className="text-center mb-14">
           <div className="flex justify-center mb-6">

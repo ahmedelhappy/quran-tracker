@@ -27,6 +27,8 @@
 //     stay navigation keys (two of them turn the page).
 //
 // USE THIS FOR EVERY LETTER OR DIGIT SHORTCUT. See docs/CODE_GUIDE.md.
+import { storage } from './safeStorage';
+
 const DIGIT_ZEROS = [0x30, 0x660, 0x6f0]; // '0', Arabic-Indic '٠', Eastern Arabic-Indic '۰'
 
 // '0'..'9' for a single digit character in any of those scripts, else null.
@@ -62,3 +64,31 @@ export const shortcutValue = (e, map) => {
   }
   return null;
 };
+
+// ── Turning the single-key shortcuts off (WCAG 2.1.4, M-12) ─────────────────
+// The reader's letter, digit and '/' shortcuts fire on one keypress with no
+// modifier, wherever focus is outside a field — so speech input ("press S…")
+// or a stray key can open search, hide the sidebar or start annotating. A
+// reader can switch them off (Settings → Appearance); arrows, PageUp/PageDown,
+// Escape, F3 and the Ctrl shortcuts (Ctrl+K, Ctrl+Z) keep working either way.
+// A setting of this DEVICE, like the theme: kept on sign-out (safeStorage.js).
+export const SINGLE_KEY_SHORTCUTS_KEY = 'singleKeyShortcuts';
+// What the switch was last set to in this tab. It wins over storage: with
+// storage blocked (or full) the write is lost, the read falls back to "on",
+// and the shortcuts kept firing while the switch said "off".
+let override = null;
+export const singleKeyShortcutsOn = () => override ?? storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
+// true when the choice was stored for this device; false when it holds for
+// this tab only.
+export const setSingleKeyShortcuts = (on) => {
+  override = !!on;
+  if (!on) return storage.set(SINGLE_KEY_SHORTCUTS_KEY, 'off');
+  storage.remove(SINGLE_KEY_SHORTCUTS_KEY);
+  return storage.get(SINGLE_KEY_SHORTCUTS_KEY) !== 'off';
+};
+// A change stored from another tab is the newer choice: this tab's own goes.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === SINGLE_KEY_SHORTCUTS_KEY || e.key === null) override = null;
+  });
+}

@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { FiX, FiVolume2 } from 'react-icons/fi';
+import { useDialog } from '../hooks/useDialog';
 
 /**
  * A clean, readable modal that teaches a recommended 7-step method for
@@ -16,13 +17,12 @@ import { FiX, FiVolume2 } from 'react-icons/fi';
  */
 export default function HowToMemorizeModal({ isOpen, onClose }) {
   const { t } = useTranslation();
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  // Focus in, Tab trapped, Escape, the page behind inert, focus back to the
+  // link that opened it — and keys kept from the Library's page-turn shortcuts,
+  // which used to fire behind it (M-12). The close button takes focus: the
+  // dialog is a scrolling read, and Escape or Enter both get out of it.
+  const closeRef = useRef(null);
+  const { dialogProps, titleId } = useDialog({ open: isOpen, onClose, initialFocusRef: closeRef });
 
   if (!isOpen) return null;
 
@@ -30,19 +30,20 @@ export default function HowToMemorizeModal({ isOpen, onClose }) {
   const stepList = Array.isArray(steps) ? steps : [];
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={t('howTo.title')}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div data-dialog-keep className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div {...dialogProps} className="relative bg-white dark:bg-gray-800 rounded-2xl sacred-shadow border border-[#dce2f3] dark:border-gray-700 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-[#dce2f3] dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h3 className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('howTo.title')}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-[#003527] dark:text-gray-100">{t('howTo.title')}</h3>
           <button
+            ref={closeRef}
             onClick={onClose}
             aria-label={t('common.close')}
             className="text-[#707974] dark:text-gray-400 hover:text-[#003527] dark:hover:text-gray-200 transition-colors"
           >
-            <FiX className="w-5 h-5" />
+            <FiX className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 

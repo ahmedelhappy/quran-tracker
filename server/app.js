@@ -15,6 +15,9 @@ if (trustProxy !== false) {
   app.set('trust proxy', trustProxy);
 }
 
+// Every error response gets a machine `code` the client translates (L-08).
+app.use(require('./middleware/errorCode').ensureErrorCode);
+
 // Request logging (skipped under test to keep test output clean)
 if (process.env.NODE_ENV !== 'test') {
   app.use(require('morgan')('dev'));
@@ -69,7 +72,7 @@ app.use('/api/leaderboard', require('./routes/leaderboardRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 
 // 404 catch-all
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
+app.use((req, res) => res.status(404).json({ success: false, code: 'NOT_FOUND', message: 'Route not found' }));
 
 // Final error handler — must come after every route and middleware. Turns
 // parser and unexpected errors into JSON instead of Express's HTML error page.

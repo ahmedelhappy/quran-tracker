@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { chatAPI } from '../services/api';
 import { useDraggable } from '../hooks/useDraggable';
 import { splitChatLinks, splitBold } from '../utils/chatLinks';
+import { useDialog } from '../hooks/useDialog';
 
 // An assistant reply, with any of the app's own pages it mentions turned into
 // in-app links. Only whitelisted paths ever become links — see utils/chatLinks.
@@ -38,6 +39,20 @@ export default function Chatbot() {
   const bottomRef = useRef(null);
   // Launcher is draggable vertically only; the panel opens in a fixed spot.
   const { ref: launcherRef, style: dragStyle, moved, dragHandlers } = useDraggable('chatbotPosY', { axis: 'y' });
+  // The panel is a dialog beside the page, not over it (M-12): it is named by
+  // its title, the message box takes focus on open, Escape closes it, and focus
+  // goes back to the launcher — which is unmounted while the panel is up, so
+  // it is looked up again once it is back. Nothing is trapped: the page stays
+  // usable with the conversation open.
+  const inputRef = useRef(null);
+  const launcherButtonRef = useRef(null);
+  const { dialogProps, titleId } = useDialog({
+    open,
+    onClose: () => setOpen(false),
+    modal: false,
+    initialFocusRef: inputRef,
+    returnFocus: () => launcherButtonRef.current,
+  });
 
   useEffect(() => {
     if (open) {
@@ -139,12 +154,13 @@ export default function Chatbot() {
           className="fixed bottom-24 end-6 z-50 touch-none cursor-grab active:cursor-grabbing"
         >
           <button
+            ref={launcherButtonRef}
             onClick={() => { if (!moved.current) setOpen(true); }}
             aria-label={t('chatbot.toggleLabel')}
             className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
             style={{ backgroundColor: '#004f35' }}
           >
-            <FiMessageSquare className="w-6 h-6 text-white" />
+            <FiMessageSquare className="w-6 h-6 text-white" aria-hidden="true" />
           </button>
         </div>
       )}
@@ -152,6 +168,7 @@ export default function Chatbot() {
       {/* Chat panel — opens in a fixed spot, independent of the launcher */}
       {open && (
         <div
+          {...dialogProps}
           className="fixed bottom-6 end-6 z-50 w-80 max-h-[480px] flex flex-col rounded-2xl shadow-xl border border-[#dce2f3] dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
         >
           {/* Header */}
@@ -160,20 +177,21 @@ export default function Chatbot() {
             style={{ backgroundColor: '#004f35' }}
           >
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="text-white font-semibold text-sm">{t('chatbot.title')}</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" aria-hidden="true" />
+              <h2 id={titleId} className="text-white font-semibold text-sm">{t('chatbot.title')}</h2>
             </div>
             <button
               onClick={() => setOpen(false)}
               className="text-white/70 hover:text-white text-lg leading-none"
               aria-label={t('common.close')}
             >
-              ×
+              <span aria-hidden="true">×</span>
             </button>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* Messages — a log, so a screen reader reads each reply as it
+              arrives without the reader having to go looking for it (M-12). */}
+          <div role="log" aria-live="polite" aria-labelledby={titleId} className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -209,7 +227,8 @@ export default function Chatbot() {
             {loading && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 dark:bg-gray-700 px-4 py-3 rounded-xl">
-                  <span className="flex gap-1">
+                  <span className="sr-only">{t('chatbot.typing')}</span>
+                  <span className="flex gap-1" aria-hidden="true">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-400 animate-bounce [animation-delay:0ms]" />
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-400 animate-bounce [animation-delay:150ms]" />
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-400 animate-bounce [animation-delay:300ms]" />
@@ -238,13 +257,17 @@ export default function Chatbot() {
 
           {/* Input bar */}
           <div className="p-3 border-t border-[#dce2f3] dark:border-gray-700 flex gap-2">
+            {/* Never disabled while a reply is on its way: disabling the focused
+                box dropped focus to <body> after every message. send() already
+                refuses a second question until the answer is in. */}
             <input
+              ref={inputRef}
               type="text"
+              aria-label={t('chatbot.placeholder')}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKey}
               placeholder={t('chatbot.placeholder')}
-              disabled={loading}
               className="flex-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#004f35]/40 disabled:opacity-60"
             />
             <button
@@ -254,7 +277,7 @@ export default function Chatbot() {
               className="w-9 h-9 rounded-xl flex items-center justify-center text-white transition-opacity disabled:opacity-40 hover:opacity-90"
               style={{ backgroundColor: '#004f35' }}
             >
-              <FiSend className="w-4 h-4" />
+              <FiSend className="w-4 h-4" aria-hidden="true" />
             </button>
           </div>
         </div>

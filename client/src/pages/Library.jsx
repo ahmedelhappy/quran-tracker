@@ -29,19 +29,19 @@ import ReaderTools from '../components/ReaderTools';
 import TimeTool, { TimerSummary, TimerEdgeIndicator } from '../components/TimeTool';
 import TodoList, { TodoSummary } from '../components/TodoList';
 import SearchFindBar from '../components/SearchFindBar';
+import TafsirPanel from '../components/TafsirPanel';
+import { readSavedTafsirWidth } from '../components/tafsirWidth';
 import RecentPagesRow from '../components/RecentPagesRow';
 import { startLibraryTour, startVerseActionsCoachmark } from '../components/libraryTour';
-import { progressAPI, bookmarksAPI, annotationsAPI, getSessionToken } from '../services/api';
+import { progressAPI, annotationsAPI, getSessionToken } from '../services/api';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useTimerEvent } from '../hooks/useTimer';
 import { useRecentPageTracker } from '../hooks/useRecentPageTracker';
+import { useBookmarks } from '../hooks/useBookmarks';
 import { removeRecentPage, clearRecentPages, restoreRecentPages } from '../services/recentPages';
 import { loginPathFor } from '../utils/returnTo';
 import {
-  fetchPageTafsir,
-  fetchEditionAyahTafsir,
-  findTafsirRun,
   getAyahAudioUrl,
   getFallbackAyahAudioUrl,
   ayahWarmMethod,
@@ -61,12 +61,15 @@ import {
   TOTAL_AYAHS, ordOf, ordOfKey, keyOfOrd, verseOfOrd, pageOfOrd, ayahCount,
 } from '../utils/verseIndex';
 import { useDraggable } from '../hooks/useDraggable';
+import { useDialog } from '../hooks/useDialog';
 import { useMushafZoom } from '../hooks/useMushafZoom';
-import { isShortcutKey } from '../utils/shortcutKeys';
+import { isShortcutKey, singleKeyShortcutsOn } from '../utils/shortcutKeys';
 import { hideModeStep, isSecondaryPress } from '../utils/selfTestCycle';
 import { storage } from '../utils/safeStorage';
-import { reportLoadFailure } from '../utils/reportError';
+import { reportError, reportLoadFailure } from '../utils/reportError';
 import { isChunkLoadError } from '../utils/staleChunkReload';
+import { clampPage, pageFromInput, adjacentAnnotatedPage } from '../utils/readerNav';
+import { apiErrorMessage } from '../utils/apiError';
 
 // The search box (and the matching it pulls in) loads the first time it is opened;
 // the word index it searches loads after that (services/quranSearch.js).
@@ -78,7 +81,6 @@ const JUZ_START_PAGES = [
   402,422,442,462,482,502,522,542,562,582,
 ];
 
-const clampPage = (n) => Math.max(1, Math.min(604, Number(n) || 1));
 const SIDEBAR_WIDTH = 288;   // lg:w-72 — the offset the sidebar's edge tab rides to
 
 // "Clicking off the verse" has to mean clicking EMPTY SPACE. Reaching for the
@@ -103,6 +105,15 @@ const READER_EDGE_TAB = (edge) =>
     ? 'rounded-e-lg border-s-0'
     : 'rounded-s-lg border-e-0');
 const EMPTY_SET = new Set(); // stable empty set for the hidden-annotations state
+// The list in an API reply, or a throw when the reply holds something else or
+// nothing (an HTML page from a misrouted request has no list either) — which the
+// loader's catch then reports and shows as a failed load, rather than a list the
+// reader would crash drawing or an empty one that reads as "none yet".
+const listFrom = (res, what) => {
+  const list = res.data?.data;
+  if (!Array.isArray(list)) throw new Error(`Unexpected ${what} payload`);
+  return list;
+};
 // The mushaf word under a screen point, looking THROUGH whatever covers it (the
 // ink layer while annotating).
 const wordAtPoint = (x, y) => document.elementsFromPoint(x, y)
@@ -213,11 +224,6 @@ const mergeInk = (base, mine, theirs) => {
   const drawnHere = mine.filter((s) => !baseKeys.has(strokeKey(s)) && !keptKeys.has(strokeKey(s)));
   return [...kept, ...drawnHere];
 };
-
-// The ayah's plain Uthmani text (basmala excluded), used for the legible
-// tafsir-panel preview. Taken verse-level from the API — word-level text is no
-// longer fetched (it corrupts boundary page numbers; see mushafApi fetch note).
-const verseText = (verse) => verse.textUthmani ?? '';
 
 // One repeat count, under its own words. The nested counts are only usable if it
 // is obvious which is which, so each gets a full-width label of its own rather
@@ -486,24 +492,11 @@ export default function Library() {
   const [markRangeStart, setMarkRangeStart] = useState(null);
   const [markingVerses, setMarkingVerses] = useState(false);
 
-  // ── Bookmarks (account-saved, multiple per user) ────────
-  const [bookmarks, setBookmarks] = useState([]);
-  // The last read of the bookmarks / hard list / annotation summary failed. Each
-  // used to swallow the failure and show "none yet", which reads as "you have
-  // none" (M-14); now its panel says so, with Retry.
-  const [bookmarksFailed, setBookmarksFailed] = useState(false);
-  const [bookmarksReload, setBookmarksReload] = useState(0);
+  // The last read of the hard list / annotation summary failed. Each used to
+  // swallow the failure and show "none yet", which reads as "you have none"
+  // (M-14); now its panel says so, with Retry. (Bookmarks: hooks/useBookmarks.)
   const [hardFailed, setHardFailed] = useState(false);
   const [summaryFailed, setSummaryFailed] = useState(false);
-  const [bookmarkLabel, setBookmarkLabel] = useState('');
-  const [savingBookmark, setSavingBookmark] = useState(false);
-  // Per-row actions: which row is being renamed inline (and its draft), and the
-  // pending replace/remove confirm.
-  const [renamingBookmarkId, setRenamingBookmarkId] = useState(null);
-  const [renameDraft, setRenameDraft] = useState('');
-  const [bookmarkConfirm, setBookmarkConfirm] = useState(null); // { kind: 'replace' | 'remove', bookmark, conflict?, page? }
-  const renameSettledRef = useRef(false);  // Enter/Escape and the blur that follows must settle a rename once
-  const bookmarkRowRefs = useRef(new Map()); // bookmark id → its <li>, to put focus back on one of its buttons
 
   // ── Annotations (highlights / notes / hard flags, verse-anchored) ──
   // annotationsByPage: pageNumber -> Annotation[] for the visible page(s),
@@ -516,6 +509,10 @@ export default function Library() {
   const [notePanel, setNotePanel] = useState(null); // { pageNumber, verseKey, id? } | null
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  // Set when an Escape was refused because the sheet holds unsaved typing: the
+  // sheet then says why, instead of the key just doing nothing (M-12).
+  const [noteHint, setNoteHint] = useState(false);
+  const noteTextareaRef = useRef(null);
   // A free-form text note opened for READING (its icon was tapped outside draw
   // mode). Read-only sheet; editing happens in draw mode. { text, color } | null
   const [readTextNote, setReadTextNote] = useState(null);
@@ -759,23 +756,10 @@ export default function Library() {
     const saved = storage.get('tafsirEdition');
     return TAFSIR_EDITIONS.some(e => e.id === saved) ? saved : TAFSIR_EDITIONS[0].id;
   });
-  // How wide the docked tafsir panel is, in px, remembered across visits. Only
-  // meaningful from lg up, where the panel is a column of the layout; below that
-  // it is a full-width sheet / fixed overlay and this is ignored.
-  const TAFSIR_MIN_W = 300;
-  const TAFSIR_MAX_W = 720;
-  const [tafsirWidth, setTafsirWidth] = useState(() => {
-    const saved = Number(storage.get('tafsirPanelWidth'));
-    return saved >= TAFSIR_MIN_W && saved <= TAFSIR_MAX_W ? saved : 400;
-  });
-  const [tafsirResizing, setTafsirResizing] = useState(false);
-  const [tafsirText, setTafsirText] = useState('');
-  // { from, to } when the edition returned one block for a run of verses rather
-  // than for this verse alone — see findTafsirRun. null when it is per-ayah.
-  const [tafsirRun, setTafsirRun] = useState(null);
-  const [tafsirLoading, setTafsirLoading] = useState(false);
-  const [tafsirError, setTafsirError] = useState(false);
-  const [tafsirReloadKey, setTafsirReloadKey] = useState(0);
+  // How wide the docked tafsir panel is, in px, remembered across visits (see
+  // components/tafsirWidth.js). The panel itself owns a resize in progress.
+  const [tafsirWidth, setTafsirWidth] = useState(readSavedTafsirWidth);
+  const tafsirTabRef = useRef(null);   // the edge tab that rides the panel's edge
 
   // Verse action popover — placed near the selection each time, then draggable via
   // the grip (current instance only, so no persisted position).
@@ -904,6 +888,47 @@ export default function Library() {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  // Below md the tafsir and note sheets come up over the page with a backdrop,
+  // so there they are modal dialogs; from md they sit beside it (M-12).
+  const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = (e) => setIsPhone(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // The three sheets are dialogs to the keyboard and screen readers (M-12):
+  // named by their heading, focus in on open, Escape closes, focus back to
+  // what opened them — or, when that was a popover button that has folded
+  // away since, to the verse itself on the page.
+  const verseAnchorFor = (verseKey) => (verseKey
+    ? document.querySelector(`.mushaf-word[role="button"][data-verse-key="${verseKey}"]`)
+    : null);
+  const tafsirDialog = useDialog({
+    open: tafsirOpen,
+    onClose: () => setTafsirOpen(false),
+    modal: isPhone,
+    fallbackFocus: () => verseAnchorFor(selectedVerseKey),
+  });
+  // Escape with typing that exists nowhere else would throw it away — from
+  // inside the sheet or, beside the page on a wide screen, from the page. It is
+  // refused either way: focus goes back to the note and the sheet says what to
+  // do (Save, or Close, which keeps the draft one Undo away).
+  const holdNote = useCallback(() => {
+    setNoteHint(true);
+    noteTextareaRef.current?.focus({ preventScroll: true });
+  }, []);
+  const noteDialog = useDialog({
+    open: notePanel != null,
+    onClose: () => setNotePanel(null),
+    modal: isPhone,
+    fallbackFocus: () => verseAnchorFor(notePanel?.verseKey),
+    onKeyDown: (e) => { if (e.key === 'Escape' && noteDirtyRef.current) { e.preventDefault(); holdNote(); } },
+  });
+  // Has a backdrop at every width: always modal.
+  const textNoteDialog = useDialog({ open: readTextNote != null, onClose: () => setReadTextNote(null) });
+
   // Mount: memorized pages (for the badge + stat), and — when the URL didn't
   // name a page — resolve the default landing page.
   //
@@ -981,17 +1006,6 @@ export default function Library() {
   useEffect(() => {
     if (pageResolved) storage.set('lastMushafPage', String(currentPage));
   }, [currentPage, pageResolved]);
-
-  // The reader's saved bookmarks — an account feature, so nothing is asked for
-  // while signed out.
-  useEffect(() => {
-    if (!signedIn) { setBookmarks([]); setBookmarksFailed(false); return; }
-    let cancelled = false;
-    bookmarksAPI.list()
-      .then(res => { if (!cancelled) { setBookmarks(res.data?.data ?? []); setBookmarksFailed(false); } })
-      .catch((err) => { reportLoadFailure(err, 'bookmarks'); if (!cancelled) setBookmarksFailed(true); });
-    return () => { cancelled = true; };
-  }, [signedIn, bookmarksReload]);
 
   // While the popover grip is held, suppress its "drag to move" tooltip.
   useEffect(() => {
@@ -1374,6 +1388,15 @@ export default function Library() {
     turnByAudioRef,
   });
 
+  // ── Bookmarks (account-saved, several per user) ─────────
+  const {
+    bookmarks, bookmarksFailed, reloadBookmarks, bookmarkedPages,
+    bookmarkLabel, setBookmarkLabel, savingBookmark, addBookmark,
+    renamingBookmarkId, renameDraft, setRenameDraft, startRenameBookmark, finishRenameBookmark,
+    requestMoveBookmark, requestRemoveBookmark, bookmarkRowRefs,
+    confirmProps: bookmarkConfirmProps,
+  } = useBookmarks({ signedIn, targetPage: bookmarkTargetPage, noteRead, showToast, t, fmtNum });
+
   // Keep the selection on the verse being recited. While the two are in step,
   // every new verse carries the selection along — so the popover, the mushaf
   // highlight and the tafsir panel all follow the recitation without the reader
@@ -1429,7 +1452,12 @@ export default function Library() {
       // The tour walks the sidebar, so make sure it is actually on screen.
       setSidebarByUser(true);
       if (forceTour) {
-        const next = new URLSearchParams(searchParams);
+        // From the URL as it is NOW, not as it was at mount: by this time the
+        // reader has added ?page= (the last page opened), and rebuilding from
+        // the mount-time params dropped it — the reader fell back to page 1 and
+        // saved that as the last page read (L-17). (Router's functional form
+        // would not help: this mount-time setter hands it the mount-time params.)
+        const next = new URLSearchParams(window.location.search);
         next.delete('tour');
         setSearchParams(next, { replace: true });
       }
@@ -1548,13 +1576,21 @@ export default function Library() {
   }, [playbackRate]);
 
   // Reset both counters whenever what they are counting against changes — the
-  // mode, either end of the range, either repeat count, or the reciter (a new
-  // recording restarts the verse, so a half-finished tally would be a lie).
+  // mode, either repeat count, or the reciter (a new recording restarts the
+  // verse, so a half-finished tally would be a lie).
   useEffect(() => {
     setRepeatsDone(0);
     setRangePasses(0);
-  }, [repeatMode, rangeStartOrd, rangeEndOrd, rangeRepeat, rangeVerseRepeat, verseRepeat,
-      reciter, setRepeatsDone, setRangePasses]);
+  }, [repeatMode, rangeRepeat, rangeVerseRepeat, verseRepeat, reciter, setRepeatsDone, setRangePasses]);
+  // ...and either end of the range, but only while range repeat is on. Off, the
+  // range pickers just follow the page and the selection (below), so a page turn
+  // or a tap on another verse moved them and reset a verse repeat mid-way: "2 of
+  // 3" went back to 0 and the verse played four or five times (L-17).
+  useEffect(() => {
+    if (repeatMode !== 'range') return;
+    setRepeatsDone(0);
+    setRangePasses(0);
+  }, [repeatMode, rangeStartOrd, rangeEndOrd, setRepeatsDone, setRangePasses]);
 
   // Until the reader actually turns range repeat on, keep the range pickers
   // defaulted to what's in front of them: start at the selected verse if there is
@@ -1594,6 +1630,14 @@ export default function Library() {
     readerLedRef.current = false;   // an aimed play takes the view with it again
     setPlayingOrd(ord);
     setIsPlaying(true);
+  };
+
+  // Load a verse into the player without starting it: paused stays paused.
+  const cueOrd = (ord) => {
+    if (!(ord >= 1 && ord <= TOTAL_AYAHS) || ord === playingOrd) return;
+    setAudioError(false);
+    setRepeatsDone(0);
+    setPlayingOrd(ord);
   };
 
   // Replay the current verse from its start without reloading (verse-repeat).
@@ -2220,6 +2264,30 @@ export default function Library() {
   useEffect(() => {
     const onKey = (e) => {
       if (tourActiveRef.current) return;
+      // A modal dialog owns the keyboard. Keys pressed inside one never get here
+      // (useDialog stops them); this catches the rest — focus lost to <body>
+      // while it is up — so no page turns or tool picks behind it (M-12).
+      if (document.querySelector('[aria-modal="true"]')) return;
+      // Scrolls a zoomed page sideways by part of its window; false when the
+      // page isn't zoomed or is already against that edge.
+      const panZoomed = (dir) => {
+        const s = scrollerRef.current;
+        if (!s || s.scrollWidth <= s.clientWidth + 1) return false;
+        const before = s.scrollLeft;
+        s.scrollBy({ left: dir * s.clientWidth * 0.4, behavior: 'instant' });
+        return Math.abs(s.scrollLeft - before) > 1;
+      };
+      // Folding the verse actions while focus is in them would drop it to
+      // <body>: it goes back to the verse they belong to (M-12).
+      const foldVerseActions = () => {
+        const refocus = popoverRef.current?.contains(document.activeElement);
+        setPopoverHidden(true);
+        if (refocus) {
+          requestAnimationFrame(() => document
+            .querySelector(`.mushaf-word[role="button"][data-verse-key="${selectedVerseKey}"]`)
+            ?.focus({ preventScroll: true }));
+        }
+      };
       const el = e.target;
       const tag = el?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || el?.isContentEditable) return;
@@ -2236,7 +2304,11 @@ export default function Library() {
       // Search, in and out of annotate mode: "/" or Ctrl+K opens the box (never
       // while typing — that returned above), and F3 / Shift+F3 step through the
       // hits while the occurrence bar is up (the browser's own find is kept off them).
-      if ((!mod && !e.altKey && isShortcutKey(e, '/')) || (mod && !e.altKey && !e.shiftKey && isShortcutKey(e, 'k'))) {
+      // The letter, digit and '/' shortcuts below are the ones a reader can turn
+      // off (WCAG 2.1.4, utils/shortcutKeys.js); read on every press, so the
+      // Settings switch applies at once, in this tab and the next.
+      const singleKeys = !mod && !e.altKey && singleKeyShortcutsOn();
+      if ((singleKeys && isShortcutKey(e, '/')) || (mod && !e.altKey && !e.shiftKey && isShortcutKey(e, 'k'))) {
         e.preventDefault();
         openSearch();
         return;
@@ -2264,7 +2336,7 @@ export default function Library() {
           if (drawMenuOpen) setDrawMenuOpen(false);
           // Actions opened by a right-click while annotating fold away before the
           // mode itself is left — the same top-layer-first peel-back.
-          else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
+          else if (selectedVerseKey != null && !popoverHidden) foldVerseActions();
           else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
           else exitDrawRef.current?.();
           return;
@@ -2273,7 +2345,7 @@ export default function Library() {
         // once away stops annotating — the same ladder as its button. Never with
         // Ctrl / Alt / Meta held (Ctrl+1..4 switches browser tabs), and a held
         // key's auto-repeat is swallowed so holding it can't run the ladder.
-        if (!mod && !e.altKey) {
+        if (singleKeys) {
           const tool = toolForKey(e);
           if (tool) { e.preventDefault(); if (!e.repeat) selectToolRef.current?.(tool); }
         }
@@ -2281,7 +2353,7 @@ export default function Library() {
       }
       // Annotate mode is OFF: a tool's key turns it on AND picks that tool, so
       // reaching for the pen is one keystroke rather than two.
-      if (drawPage == null && !mod && !e.altKey) {
+      if (drawPage == null && singleKeys) {
         const tool = toolForKey(e);
         if (tool) { e.preventDefault(); if (!e.repeat) startDrawRef.current?.(tool); return; }
         // 'S' shows/hides the sidebar. 'F' does the same — it used to toggle focus
@@ -2291,10 +2363,17 @@ export default function Library() {
         }
       }
       switch (e.key) {
+        // On a zoomed page the arrows pan along the line first and turn only
+        // once the page is against that edge — what a swipe does (M-12: a line
+        // at 2-3x is wider than the window, and the keyboard had no way to
+        // reach its far end). Still forward = leftward: ArrowLeft pans left,
+        // then turns to the next page. Unzoomed, nothing changes.
         case 'ArrowLeft':
+          e.preventDefault(); if (!panZoomed(-1)) goNext(); break;
+        case 'ArrowRight':
+          e.preventDefault(); if (!panZoomed(1)) goPrev(); break;
         case 'PageDown':
           e.preventDefault(); goNext(); break;
-        case 'ArrowRight':
         case 'PageUp':
           e.preventDefault(); goPrev(); break;
         case 'Escape':
@@ -2302,8 +2381,8 @@ export default function Library() {
           if (find) endFind();
           else if (tafsirOpen) setTafsirOpen(false);
           else if (readTextNote) setReadTextNote(null);
-          else if (notePanel) setNotePanel(null);
-          else if (selectedVerseKey != null && !popoverHidden) setPopoverHidden(true);
+          else if (notePanel) { if (noteDirtyRef.current) holdNote(); else setNotePanel(null); }
+          else if (selectedVerseKey != null && !popoverHidden) foldVerseActions();
           else if (selectedVerseKey != null) setSelectedVerseKey(null);
           // A span's actions fold first and the span stays, like a verse's.
           else if (rangeSelection?.actions) setRangeSelection(({ startOrd, endOrd }) => ({ startOrd, endOrd }));
@@ -2314,7 +2393,7 @@ export default function Library() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goNext, goPrev, tafsirOpen, notePanel, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind]);
+  }, [goNext, goPrev, tafsirOpen, notePanel, holdNote, readTextNote, selectedVerseKey, rangeSelection, popoverHidden, drawPage, drawMenuOpen, find, openSearch, stepFind, endFind, popoverRef]);
 
   // ── Touch swipe to turn the page (physical RTL book) ─────
   // Swipe right → next, swipe left → prev, but only when the horizontal move
@@ -2554,14 +2633,20 @@ export default function Library() {
 
   useEffect(() => {
     const paint = (d) => {
+      // Most moves stay on the verse already under the pointer: the band has
+      // not changed since this function last drew it, so nothing is set and the
+      // reader does not re-render (M-10). The touch hold and a page turn under
+      // the drag set the band without it, so the next move here still clears
+      // the single-verse selection exactly as before.
+      const startOrd = Math.min(d.startOrd, d.lastOrd);
+      const endOrd = Math.max(d.startOrd, d.lastOrd);
+      if (d.painted?.startOrd === startOrd && d.painted?.endOrd === endOrd) return;
+      d.painted = { startOrd, endOrd };
       // Dragging out a span replaces whatever single verse was picked — there is
       // one selection, and this drag is now it. (The reverse is handled where a
       // word is clicked; between them, exactly one of the two is ever set.)
       setSelectedVerseKey(null);
-      setDragRange({
-        startOrd: Math.min(d.startOrd, d.lastOrd),
-        endOrd: Math.max(d.startOrd, d.lastOrd),
-      });
+      setDragRange(d.painted);
     };
 
     // The range's moving end follows whatever word is under (x, y).
@@ -2654,7 +2739,9 @@ export default function Library() {
       setRange(startOrd, endOrd);
       setRepeatMode('range');
       setRepeatOpen(true);
-      showToast(t('library.audio.rangeDragHint', { verses: fmtNum(endOrd - startOrd + 1) }), 'info');
+      showToast(t('library.audio.rangeDragHint', {
+        verses: t('library.span.verses', { count: endOrd - startOrd + 1, n: fmtNum(endOrd - startOrd + 1) }),
+      }), 'info');
     };
 
     const onCancel = () => { endRangeDrag(); };
@@ -2746,7 +2833,7 @@ export default function Library() {
       showToast(t('library.markVerses.added'), 'success');
       refreshMemorizedPages();
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
     } finally {
       setMarkingVerses(false);
       setMarkRangeStart(null);
@@ -2812,6 +2899,19 @@ export default function Library() {
     setSelectedVerseKey(verseKey);
   }, [markVersesMode, noteRead]);
   useEffect(() => { showVerseActionsRef.current = showVerseActions; }, [showVerseActions]);
+
+  // The keyboard's secondary gesture (M-12): Enter on the selected verse. The
+  // actions are placed beside the verse, as a right-click places them beside
+  // the pointer, and focus moves into them, so the next Tab reaches Play,
+  // Tafsir, Highlight, Note. Escape folds them and puts focus back on the verse
+  // (see the key handler). The Menu key / Shift+F10 still go the right-click way.
+  const focusActionsRef = useRef(false);
+  const showVerseActionsFromKey = useCallback((verseKey, el) => {
+    const r = el.getBoundingClientRect();
+    lastPointerRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    focusActionsRef.current = true;
+    showVerseActions(verseKey);
+  }, [showVerseActions]);
 
   // ── Right-click while annotating ──
   // In annotate mode the ink layer covers the words, so a plain click draws and
@@ -2910,7 +3010,7 @@ export default function Library() {
   const loadHardList = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.listByKind('hard')
-      .then((r) => { setHardList(r.data?.data ?? []); setHardFailed(false); })
+      .then((r) => { setHardList(listFrom(r, 'hard list')); setHardFailed(false); })
       .catch((err) => { reportLoadFailure(err, 'the hard list'); setHardFailed(true); });
   }, []);
 
@@ -2919,7 +3019,20 @@ export default function Library() {
   const loadSummary = useCallback(() => {
     if (!signedInRef.current) return;
     annotationsAPI.getSummary()
-      .then((r) => { setAnnoSummary(r.data?.data ?? []); setSummaryFailed(false); })
+      .then((r) => {
+        // annotatedPages (prev/next annotated page) is worked out from this in
+        // the reader's own render, above any error boundary: an entry without a
+        // real page would take the whole reader down, so it is left out here.
+        const list = listFrom(r, 'annotation summary');
+        const usable = list.filter((e) => e != null && Number.isInteger(e.pageNumber) && e.pageNumber >= 1 && e.pageNumber <= 604);
+        if (usable.length !== list.length) {
+          reportError(new Error('Annotation summary entries without a page were left out'), {
+            source: 'load', what: 'the annotation summary', dropped: list.length - usable.length,
+          });
+        }
+        setAnnoSummary(usable);
+        setSummaryFailed(false);
+      })
       .catch((err) => { reportLoadFailure(err, 'the annotation summary'); setSummaryFailed(true); });
   }, []);
 
@@ -2933,10 +3046,9 @@ export default function Library() {
   // looks while they first load — and read afresh. (A visitor has none of them;
   // each loader does nothing while signed out.)
   const reloadSidebar = () => {
-    setBookmarks([]);
+    reloadBookmarks({ clear: true });
     setHardList([]);
     setAnnoSummary([]);
-    setBookmarksReload((k) => k + 1);
     loadHardList();
     loadSummary();
     refreshMemorizedPages();
@@ -3054,7 +3166,7 @@ export default function Library() {
       showToast(message, 'success', step ? { action: historyToastAction(step, 'undo'), duration: UNDO_TOAST_MS } : undefined);
       return true;
     } catch (e) {
-      showToast(e.response?.data?.message || t('common.error'), 'error');
+      showToast(apiErrorMessage(e, t), 'error');
       return false;
     } finally {
       annoBusyRef.current = false;
@@ -3088,17 +3200,52 @@ export default function Library() {
       t(existing ? 'library.annotations.hardRemoved' : 'library.annotations.hardAdded'));
   }, [findAnn, applyVerseAction, t, refuseUnknownPage]);
 
+  // Close the note sheet. Over typing that exists nowhere else — the close
+  // button, a backdrop tap on a phone, the tafsir or another verse's note
+  // opened in its place — the draft is kept one Undo away instead of being
+  // lost without a word (M-12). Escape never gets here with a draft: it is
+  // refused (holdNote). Leaving the Library still drops it.
+  const closeNoteRef = useRef(null);
+  const closeNote = useCallback(() => {
+    if (notePanel && noteDirtyRef.current) {
+      const panel = notePanel;
+      const draft = noteDraft;
+      showToast(t('library.annotations.draftDiscarded'), 'info', {
+        action: {
+          label: t('library.annotations.draftRestore'),
+          onClick: () => {
+            // Whatever is open by then gets the same treatment.
+            closeNoteRef.current?.();
+            setTafsirOpen(false);
+            setNotePanel(panel);
+            setNoteDraft(draft);
+            setNoteHint(false);
+          },
+        },
+      });
+    }
+    setNotePanel(null);
+  }, [notePanel, noteDraft, showToast, t]);
+  closeNoteRef.current = closeNote;
+
   // Open the note editor for a verse (prefilled if a note already exists). Closes
   // the tafsir sheet so the two side panels never stack.
   const openNote = useCallback((page, verseKey) => {
     if (refuseUnknownPage(page)) return;
+    // Already open on this verse: keep what is typed there.
+    if (notePanel?.pageNumber === page && notePanel.verseKey === verseKey) {
+      noteTextareaRef.current?.focus({ preventScroll: true });
+      return;
+    }
     const existing = findAnn(page, (a) => a.kind === 'note' && a.verseKey === verseKey);
+    closeNote();
     setTafsirOpen(false);
     // `saved`: the text as stored, so a page turn can tell an untouched sheet
     // (safe to close) from one holding typing that exists nowhere else.
     setNotePanel({ pageNumber: page, verseKey, id: existing?._id ?? null, saved: existing?.text ?? '' });
     setNoteDraft(existing?.text ?? '');
-  }, [findAnn, refuseUnknownPage]);
+    setNoteHint(false);
+  }, [findAnn, refuseUnknownPage, notePanel, closeNote]);
 
   // Saving and removing a note are undoable like the rest: the reply carries the
   // note's previous text, so an undo can put exactly that text back.
@@ -3230,7 +3377,8 @@ export default function Library() {
   // is anchored to its verse, not to the view, so saving it still lands on the
   // right verse after the turn.
   const noteDirtyRef = useRef(false);
-  noteDirtyRef.current = notePanel != null && noteDraft.trim() !== (notePanel.saved ?? '').trim();
+  const noteDirty = notePanel != null && noteDraft.trim() !== (notePanel.saved ?? '').trim();
+  noteDirtyRef.current = noteDirty;
   useEffect(() => { if (!noteDirtyRef.current) setNotePanel(null); }, [currentPage]);
 
   // ── Drawing (annotate mode) ────────────────────────────────────────
@@ -3341,7 +3489,7 @@ export default function Library() {
       // Once per run of failures, not on every retry.
       drawFailingRef.current = true;
       const e = failed[0].error;
-      showToast(e.response?.data?.message || t('library.draw.saveFailed'), 'error');
+      showToast(apiErrorMessage(e, t, 'library.draw.saveFailed'), 'error');
     }
     // A 4xx (the drawing too large, say) fails the same way until the reader
     // changes it, and their next stroke saves again; anything else is retried.
@@ -3547,10 +3695,14 @@ export default function Library() {
     if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - gap - mh); // flip above
     let left = r.left + r.width / 2 - mw / 2;                                   // centre under the button
     left = Math.min(Math.max(left, 8), window.innerWidth - mw - 8);            // shift into view
-    setDrawMenuPos({ top, left });
+    // Unchanged is the common case (a scroll that does not move the button):
+    // keep the same object, so React skips the render (M-10).
+    setDrawMenuPos((prev) => (prev.top === top && prev.left === left ? prev : { top, left }));
   }, []);
+  // Only while the dropdown is up: it is the one thing this places. Listening for
+  // the whole of annotate mode re-rendered the reader on every scroll event (M-10).
   useLayoutEffect(() => {
-    if (drawPage == null) return;
+    if (drawPage == null || !drawMenuOpen) return;
     positionDrawMenu();
     const reposition = () => positionDrawMenu();
     window.addEventListener('scroll', reposition, true);
@@ -3651,7 +3803,7 @@ export default function Library() {
       await annotationsAPI.create({ pageNumber: page, kind: 'text', x, y, text, color });
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const updateText = useCallback(async (page, id, patch) => {
     noteRead();
@@ -3659,14 +3811,14 @@ export default function Library() {
       await annotationsAPI.update(id, patch);
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t, noteRead]);
   const deleteText = useCallback(async (page, id) => {
     try {
       await annotationsAPI.remove(id);
       loadAnnotationsForPages([page]);
       loadSummary();
-    } catch (e) { showToast(e.response?.data?.message || t('common.error'), 'error'); }
+    } catch (e) { showToast(apiErrorMessage(e, t), 'error'); }
   }, [loadAnnotationsForPages, loadSummary, showToast, t]);
 
   // Flush + exit if the active drawing page scrolls out of view (bookmark / juz
@@ -3755,13 +3907,10 @@ export default function Library() {
     goToPage(page);
   }, [goToPage]);
   const gotoAdjacentAnnotated = useCallback((dir) => {
-    if (!annotatedPages.length) return;
-    const after = annotatedPages.filter((p) => (dir > 0 ? p > currentPage : p < currentPage));
-    const target = dir > 0
-      ? (after[0] ?? annotatedPages[0])                        // next, wrap to first
-      : (after[after.length - 1] ?? annotatedPages[annotatedPages.length - 1]); // prev, wrap to last
-    jumpToAnnotatedPage(target);
-  }, [annotatedPages, currentPage, jumpToAnnotatedPage]);
+    // From the whole spread, not its anchor page: wraps at either end.
+    const target = adjacentAnnotatedPage(annotatedPages, visiblePages, dir);
+    if (target != null) jumpToAnnotatedPage(target);
+  }, [annotatedPages, visiblePages, jumpToAnnotatedPage]);
 
   // Clear the arrival pulse once its animation has run.
   useEffect(() => {
@@ -3786,12 +3935,15 @@ export default function Library() {
     return next;
   });
 
-  const handlePageInputKey = (e) => { if (e.key === 'Enter') goToPage(pageInput); };
-  const handlePageInputBlur = () => {
-    const n = Number(pageInput);
-    if (!n || n < 1 || n > 604) setPageInput(String(currentPage));
+  // Enter and leaving the box read it the same way: a whole page number goes
+  // there; anything else (empty, 0, 605, 12.5) puts the current page back.
+  const commitPageInput = () => {
+    const n = pageFromInput(pageInput);
+    if (n == null) setPageInput(String(currentPage));
     else goToPage(n);
   };
+  const handlePageInputKey = (e) => { if (e.key === 'Enter') commitPageInput(); };
+  const handlePageInputBlur = commitPageInput;
 
   // ── Mark / unmark a single page as memorized ──────────
   // The per-page check button on each page card is the only mark/unmark
@@ -3863,172 +4015,8 @@ export default function Library() {
     }
   };
 
-  // ── Bookmarks ────────────────────────────────────────────
-  // List order, matching the server's: by page, then by name (unnamed first) —
-  // a page can hold several bookmarks with different names.
-  const byBookmarkOrder = (a, c) => a.pageNumber - c.pageNumber || (a.label < c.label ? -1 : a.label > c.label ? 1 : 0);
-  // Wrap a user's label in Unicode isolates (FSI…PDI) before putting it in a
-  // sentence, so an English name inside Arabic text (or the reverse) can't drag
-  // the quotes and brackets around it into the wrong order.
-  const isolate = (s) => `⁨${s}⁩`;
-
-  const addBookmark = async () => {
-    if (savingBookmark) return;
-    noteRead();
-    setSavingBookmark(true);
-    const label = bookmarkLabel.trim();
-    try {
-      const res = await bookmarksAPI.add({ pageNumber: bookmarkTargetPage, ...(label ? { label } : {}) });
-      setBookmarks(prev => [...prev, res.data.data].sort(byBookmarkOrder));
-      setBookmarkLabel('');
-      showToast(t('library.bookmarks.added', { n: fmtNum(bookmarkTargetPage) }), 'success');
-    } catch (e) {
-      // 409: an unnamed bookmark already sits on this page, or the name is taken.
-      const msg = e.response?.status === 409
-        ? (label ? t('library.bookmarks.duplicateName') : t('library.bookmarks.unnamedTaken', { n: fmtNum(bookmarkTargetPage) }))
-        : e.response?.data?.message || t('common.error');
-      showToast(msg, 'error');
-    } finally {
-      setSavingBookmark(false);
-    }
-  };
-
-  // Re-create a removed bookmark (same page and name; it gets a new id). Returns
-  // the new bookmark, or null if it couldn't be restored (e.g. the name has
-  // since been reused).
-  const restoreBookmark = async ({ pageNumber, label }) => {
-    try {
-      const res = await bookmarksAPI.add({ pageNumber, ...(label ? { label } : {}) });
-      setBookmarks(list => [...list, res.data.data].sort(byBookmarkOrder));
-      return res.data.data;
-    } catch {
-      return null;
-    }
-  };
-
-  // Removal (after its confirm) is optimistic; the toast that follows offers
-  // Restore, which re-creates it.
-  const removeBookmark = async (b) => {
-    setBookmarks(list => list.filter(x => x._id !== b._id));
-    try {
-      await bookmarksAPI.remove(b._id);
-      showToast(t('library.bookmarks.removed'), 'success', {
-        action: {
-          label: t('library.bookmarks.restore'),
-          onClick: async () => {
-            const back = await restoreBookmark(b);
-            showToast(t(back ? 'library.bookmarks.restored' : 'library.bookmarks.restoreFailed'), back ? 'success' : 'error');
-          },
-        },
-      });
-    } catch {
-      setBookmarks(list => [...list, b].sort(byBookmarkOrder)); // roll back
-      showToast(t('common.error'), 'error');
-    }
-  };
-
-  // Every removal asks first.
-  const requestRemoveBookmark = (b) => setBookmarkConfirm({ kind: 'remove', bookmark: b });
-
-  // Put focus back on one of a row's action buttons once the list has
-  // re-rendered — after a rename, a move that re-sorted the row, or a confirm.
-  // Falls back to Rename if that button is missing; a no-op once the row is gone.
-  const focusBookmarkAction = (id, action) => requestAnimationFrame(() => {
-    const row = bookmarkRowRefs.current.get(id);
-    (row?.querySelector(`[data-bm-action="${action}"]`) ?? row?.querySelector('[data-bm-action="rename"]'))?.focus();
-  });
-
-  const startRenameBookmark = (b) => {
-    renameSettledRef.current = false;
-    setRenameDraft(b.label);
-    setRenamingBookmarkId(b._id);
-  };
-
-  // Enter and blur save, Escape cancels. Optimistic, rolled back on failure.
-  const finishRenameBookmark = async (b, save, { refocus = false } = {}) => {
-    if (renameSettledRef.current) return;
-    renameSettledRef.current = true;
-    setRenamingBookmarkId(null);
-    if (refocus) focusBookmarkAction(b._id, 'rename');
-    const label = renameDraft.trim();
-    if (!save || label === b.label) return;
-    setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label } : x)));
-    try {
-      const res = await bookmarksAPI.update(b._id, { label });
-      setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)));
-    } catch (e) {
-      setBookmarks(list => list.map(x => (x._id === b._id ? { ...x, label: b.label } : x)));
-      // 409: the name is taken — or, when clearing it, this page already has
-      // an unnamed bookmark (two would both read "Page N").
-      const msg = e.response?.status !== 409 ? t('common.error')
-        : label ? t('library.bookmarks.duplicateName')
-        : t('library.bookmarks.unnamedTaken', { n: fmtNum(b.pageNumber) });
-      showToast(msg, 'error');
-    }
-  };
-
-  // Changing a bookmark to `page` (the active page) always asks first. Pages hold
-  // any number of differently-named bookmarks, so usually that is a plain
-  // "Change … to page N?". The one clash is an UNNAMED bookmark landing where an
-  // unnamed one already is (both would read "Page N"): then the same single
-  // dialog asks to replace it instead, and Replace sends replace:true so the
-  // server swaps them in one request.
-  const requestMoveBookmark = (b, page) => {
-    if (b.pageNumber === page) return;
-    const occupant = b.label ? null : bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id);
-    setBookmarkConfirm(occupant
-      ? { kind: 'replace', bookmark: b, conflict: occupant, page }
-      : { kind: 'move', bookmark: b, page });
-  };
-
-  // Undo a change: move the bookmark back to the page it came from and, if it
-  // had replaced an unnamed bookmark, re-create that one (after the move back,
-  // so the page's one unnamed slot is free again).
-  const undoMoveBookmark = async (b, replaced) => {
-    try {
-      const res = await bookmarksAPI.update(b._id, { pageNumber: b.pageNumber });
-      setBookmarks(list => list.map(x => (x._id === b._id ? res.data.data : x)).sort(byBookmarkOrder));
-      const back = replaced ? await restoreBookmark(replaced) : true;
-      showToast(t(back ? 'library.bookmarks.restored' : 'library.bookmarks.restoreFailed'), back ? 'success' : 'error');
-    } catch {
-      showToast(t('library.bookmarks.restoreFailed'), 'error');
-    }
-  };
-
-  // Runs once the change is confirmed. Optimistic; the toast that follows offers
-  // Restore. A server 409 (another device added an unnamed bookmark there since
-  // the list loaded) rolls back and opens the replace dialog.
-  const moveBookmark = async (b, page, replace = false) => {
-    if (b.pageNumber === page) return;
-    const occupant = replace ? bookmarks.find(x => x.pageNumber === page && !x.label && x._id !== b._id) : null;
-    const before = bookmarks;
-    setBookmarks(before
-      .filter(x => x._id !== occupant?._id)
-      .map(x => (x._id === b._id ? { ...x, pageNumber: page } : x))
-      .sort(byBookmarkOrder));
-    focusBookmarkAction(b._id, 'move');
-    try {
-      const res = await bookmarksAPI.update(b._id, { pageNumber: page, ...(replace ? { replace: true } : {}) });
-      const replacedId = res.data.replaced?._id;
-      setBookmarks(list => list
-        .filter(x => x._id !== replacedId)
-        .map(x => (x._id === b._id ? res.data.data : x))
-        .sort(byBookmarkOrder));
-      showToast(t('library.bookmarks.moved', { n: fmtNum(page) }), 'success', {
-        action: { label: t('library.bookmarks.restore'), onClick: () => undoMoveBookmark(b, res.data.replaced) },
-      });
-    } catch (e) {
-      setBookmarks(before);
-      const conflict = e.response?.status === 409 ? e.response.data?.conflict : null;
-      if (conflict) setBookmarkConfirm({ kind: 'replace', bookmark: b, conflict, page });
-      else showToast(e.response?.status === 409 ? t('library.bookmarks.unnamedTaken', { n: fmtNum(page) }) : t('common.error'), 'error');
-    }
-  };
-
   // The chosen edition — one of them is grammatical analysis (إعراب) rather than
   // commentary, which only changes what the panel calls itself.
-  const tafsirEd = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
-
   const showSidebar = sidebarOpen;
 
   useEffect(() => {
@@ -4157,15 +4145,21 @@ export default function Library() {
     const next = from + dir;
     if (next < 1 || next > TOTAL_AYAHS) return;
     const key = keyOfOrd(next);
-    const following = isPlaying || playingOrd != null;
+    // Audio comes along only if it is PLAYING. Paused on a verse, the loaded
+    // verse moves along but stays paused: counting "paused" as going made the
+    // arrows restart a recitation the reader had stopped (L-17).
+    const following = isPlaying;
+    const cued = !isPlaying && playingOrd != null;
     if (verses.some((v) => v.verseKey === key)) {
       setSelectedVerseKey(key);
       if (following) playOrd(next);
+      else if (cued) cueOrd(next);
       return;
     }
     pendingSelectRef.current = key;
     selectTurnRef.current = true;
     if (following) { followTurnRef.current = true; playOrd(next); }
+    else if (cued) cueOrd(next);
     if (!goToPage(pageOfOrd(next))) {
       // Nothing to turn to — drop the flags so they can't swallow a later turn.
       pendingSelectRef.current = null;
@@ -4196,6 +4190,8 @@ export default function Library() {
   // range drag has turned the page out from under it. A key we have NEVER resolved
   // is a different matter — that one really is loading, and gets the skeleton.
   const lastTafsirVerseRef = useRef(null);
+  // Re-renders the panel when a span's first verse text arrives into the ref.
+  const [, bumpSpanVerse] = useReducer((n) => n + 1, 0);
   const onPageTafsirVerse = panelVerseKey != null
     ? verses.find((v) => v.verseKey === panelVerseKey) ?? null
     : null;
@@ -4203,108 +4199,31 @@ export default function Library() {
     ?? (lastTafsirVerseRef.current?.verseKey === panelVerseKey ? lastTafsirVerseRef.current : null);
   useEffect(() => { if (onPageTafsirVerse) lastTafsirVerseRef.current = onPageTafsirVerse; }, [onPageTafsirVerse]);
 
-  useEffect(() => {
-    if (!tafsirOpen || !tafsirVerse) return;
-    let cancelled = false;
-    const ed = TAFSIR_EDITIONS.find(e => e.id === tafsirEdition) ?? TAFSIR_EDITIONS[0];
-    setTafsirLoading(true);
-    setTafsirError(false);
-    setTafsirText('');
-    setTafsirRun(null);
-    const load = ed.source === 'page'
-      ? fetchPageTafsir(tafsirVerse.page, ed.edition).then(list =>
-          list.find(a => a.number === tafsirVerse.id)?.text ?? '')
-      : fetchEditionAyahTafsir(ed, tafsirVerse.surahNumber, tafsirVerse.ayahNumber);
-    load
-      .then(text => {
-        if (cancelled) return;
-        setTafsirText(text);
-        // Only the spa5k editions still hand back one block for a whole passage —
-        // the hefz ones are per-ayah, and the page ones always were. Work out how
-        // far a block reaches only AFTER the text is on screen, so the banner
-        // never costs the reader any waiting.
-        if (ed.source !== 'ayah') return;
-        findTafsirRun(ed.slug, tafsirVerse.surahNumber, tafsirVerse.ayahNumber, ayahCount(tafsirVerse.surahNumber), text)
-          .then(run => { if (!cancelled && run.to > run.from) setTafsirRun(run); })
-          .catch(() => { /* the label is a nicety — never fail the read over it */ });
-      })
-      .catch((err) => { reportLoadFailure(err, `tafsir for ${tafsirVerse.verseKey}`); if (!cancelled) setTafsirError(true); })
-      .finally(() => { if (!cancelled) setTafsirLoading(false); });
-    return () => { cancelled = true; };
-  }, [tafsirOpen, tafsirVerse, tafsirEdition, tafsirReloadKey]);
-
-  // Retry after the tafsir panel crashed (M-14): the commentary is read again,
-  // and what crashed is cleared now so the panel redraws as loading, not as it was.
-  const reloadTafsir = () => {
-    setTafsirText('');
-    setTafsirRun(null);
-    setTafsirLoading(true);
-    setTafsirReloadKey((k) => k + 1);
-  };
-
-  // Drag the panel's inner edge to resize it. The handle always sits on the
-  // panel's INLINE-START edge — the side facing the mushaf in both writing
-  // directions — so dragging toward the mushaf widens the panel in LTR and
-  // dragging away from it does in RTL; `dir` decides which way that is. Capped so
-  // the reader can never squeeze the mushaf out or lose the panel.
-  const clampTafsirWidth = useCallback(
-    (w) => Math.round(Math.min(Math.max(w, TAFSIR_MIN_W), Math.min(TAFSIR_MAX_W, window.innerWidth * 0.55))),
-    []
-  );
+  // The docked panel's width: a resize is the panel's own business while it
+  // runs (it re-renders only the panel), and lands here once, on release. The
+  // edge tab beside it follows the drag directly, without a render.
+  // Where the tab sits is React's to say (its style prop); these only write it
+  // while the panel is docked beside it, and always to what React renders next,
+  // so the two never disagree once the drag is over.
+  const tabDockedRef = useRef(false);
+  useEffect(() => { tabDockedRef.current = tafsirOpen && isWide; }, [tafsirOpen, isWide]);
+  const placeTafsirTab = useCallback((w) => {
+    const tab = tafsirTabRef.current;
+    if (tab) tab.style.insetInlineEnd = `${tabDockedRef.current ? w : 0}px`;
+  }, []);
   const commitTafsirWidth = useCallback((w) => {
-    const next = clampTafsirWidth(w);
-    setTafsirWidth(next);
-    storage.set('tafsirPanelWidth', String(next));
-  }, [clampTafsirWidth]);
-
-  const startTafsirResize = useCallback((e) => {
-    if (e.button != null && e.button !== 0) return;
-    e.preventDefault();          // never start a text selection or a page-turn swipe
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = tafsirWidth;
-    const rtl = document.documentElement.getAttribute('dir') === 'rtl';
-    setTafsirResizing(true);
-    const onMove = (ev) => {
-      // Inline-start edge: in LTR the panel grows as the pointer moves LEFT.
-      const delta = rtl ? ev.clientX - startX : startX - ev.clientX;
-      setTafsirWidth(clampTafsirWidth(startW + delta));
-    };
-    const onUp = (ev) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      setTafsirResizing(false);
-      const delta = rtl ? ev.clientX - startX : startX - ev.clientX;
-      commitTafsirWidth(startW + delta);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  }, [tafsirWidth, clampTafsirWidth, commitTafsirWidth]);
-
-  // Same job from the keyboard, for anyone not using a pointer.
-  const onTafsirResizeKey = useCallback((e) => {
-    const step = e.shiftKey ? 64 : 16;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); commitTafsirWidth(tafsirWidth + step); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); commitTafsirWidth(tafsirWidth - step); }
-    else if (e.key === 'Home') { e.preventDefault(); commitTafsirWidth(TAFSIR_MIN_W); }
-    else if (e.key === 'End') { e.preventDefault(); commitTafsirWidth(TAFSIR_MAX_W); }
-  }, [tafsirWidth, commitTafsirWidth]);
-
-  // The commentary as real paragraphs. Every line break in the source starts a new
-  // one — for a book like Aysar those are its labelled definitions, one per line —
-  // and the styles give them modest spacing instead of the full blank line a
-  // pre-wrapped block used to produce.
-  const tafsirParagraphs = useMemo(
-    () => tafsirText.split(/\n+/).map((para) => para.trim()).filter(Boolean),
-    [tafsirText]
-  );
+    setTafsirWidth(w);
+    storage.set('tafsirPanelWidth', String(w));
+    // Set here too: a release at the width the drag started from changes no
+    // prop, so React would not write over the last previewed one.
+    placeTafsirTab(w);
+  }, [placeTafsirTab]);
+  const previewTafsirWidth = placeTafsirTab;   // a drag in progress
 
   // The popover's tafsir icon — unchanged in effect: read THIS verse. Selecting
   // it is what points the panel at it.
   const openTafsir = (verseKey) => {
-    setNotePanel(null); // don't stack the two side panels
+    closeNote(); // don't stack the two side panels
     if (verseKey) setSelectedVerseKey(verseKey);
     setTafsirOpen(true);
   };
@@ -4332,9 +4251,27 @@ export default function Library() {
     const verseKey = keyOfOrd(ord);
     const v = verseOfOrd(ord);
     if (!verses.some((x) => x.verseKey === verseKey) && v) {
-      lastTafsirVerseRef.current = { verseKey, id: ord, surahNumber: v.surahNumber, ayahNumber: v.ayahNumber, page: pageOfOrd(ord) };
+      // Its Quran text comes from that page's data: the global address alone has
+      // only numbers, and the panel showed an empty verse box (L-17). The page
+      // was on screen moments ago, so it is normally cached; if not, it is
+      // fetched and the box fills in when it arrives.
+      const page = pageOfOrd(ord);
+      const fromPage = (pd) => pd?.verses?.find((x) => x.verseKey === verseKey);
+      const known = fromPage(peekMushafPage(page));
+      lastTafsirVerseRef.current = known
+        ? { ...known, page }
+        : { verseKey, id: ord, surahNumber: v.surahNumber, ayahNumber: v.ayahNumber, page };
+      if (!known) {
+        fetchMushafPage(page).then((pd) => {
+          const found = fromPage(pd);
+          if (found && lastTafsirVerseRef.current?.verseKey === verseKey) {
+            lastTafsirVerseRef.current = { ...found, page };
+            bumpSpanVerse();
+          }
+        }).catch((err) => reportLoadFailure(err, 'the span verse text'));
+      }
     }
-    setNotePanel(null);
+    closeNote();
     setTafsirVerseKey(verseKey);
     setTafsirOpen(true);
   };
@@ -4374,9 +4311,16 @@ export default function Library() {
       if (first) { setPopoverHidden(true); setSelectedVerseKey(first.verseKey); }
       setRangeSelection(null);
     }
-    setNotePanel(null);
+    closeNote();
     setTafsirOpen(true);
   };
+
+  // Actions opened from the keyboard take focus once they are on screen.
+  useEffect(() => {
+    if (!focusActionsRef.current || !(selectedVerse || spanPopoverShown) || !popoverRef.current) return;
+    focusActionsRef.current = false;
+    popoverRef.current.querySelector('button:not([disabled])')?.focus({ preventScroll: true });
+  }, [selectedVerse, spanPopoverShown, popoverHidden, popoverPlaceTick, popoverRef]);
 
   // Place the popover near the clicked word: below the pointer when it's in the
   // top half of the viewport, above it in the bottom half; centred on x; clamped
@@ -4487,41 +4431,6 @@ export default function Library() {
     }
     return `${pageLbl} · ${surahsForPage(h.pageNumber) || t('library.annotations.wholePage')}`;
   };
-  const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.pageNumber)), [bookmarks]);
-  // What the bookmark confirm dialog says, by kind: change the page, replace
-  // an unnamed bookmark (an unnamed one landing on another), or remove.
-  const bookmarkDialog = (() => {
-    const c = bookmarkConfirm;
-    if (!c) return {};
-    const b = c.bookmark;
-    const from = fmtNum(b.pageNumber);
-    if (c.kind === 'move') return {
-      icon: FiMapPin,
-      title: t('library.bookmarks.changeTitle'),
-      message: b.label
-        ? t('library.bookmarks.changeMessage', { label: isolate(b.label), from, to: fmtNum(c.page) })
-        : t('library.bookmarks.changeMessageUnnamed', { from, to: fmtNum(c.page) }),
-      confirmText: t('library.bookmarks.change'),
-      isDanger: false,
-    };
-    if (c.kind === 'replace') return {
-      icon: FiBookmark,
-      title: t('library.bookmarks.replaceTitle'),
-      message: t('library.bookmarks.replaceMessageUnnamed', { n: fmtNum(c.page) }),
-      confirmText: t('library.bookmarks.replace'),
-      isDanger: true,
-    };
-    return {
-      icon: FiTrash2,
-      title: t('library.bookmarks.removeTitle'),
-      message: b.label
-        ? t('library.bookmarks.removeMessage', { n: from, label: isolate(b.label) })
-        : t('library.bookmarks.removeMessageUnnamed', { n: from }),
-      confirmText: t('library.bookmarks.remove'),
-      isDanger: true,
-    };
-  })();
-
   // Reuse the shared 7-step method strings (also powering HowToMemorizeModal).
   const methodSteps = t('howTo.steps', { returnObjects: true });
   const stepList = Array.isArray(methodSteps) ? methodSteps : [];
@@ -4531,16 +4440,6 @@ export default function Library() {
 
   const selectCls =
     'w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500';
-
-  // Shown while the tafsir text loads, and while the panel waits on the page a
-  // cross-page step has just turned to.
-  const tafsirSkeleton = (
-    <div className="flex flex-col gap-2.5 animate-pulse pt-1" dir="rtl">
-      {Array(6).fill(0).map((_, i) => (
-        <div key={i} className="h-4 rounded bg-gray-100 dark:bg-gray-700" style={{ width: `${95 - (i % 3) * 8}%` }} />
-      ))}
-    </div>
-  );
 
   // One bordered mushaf page card (used for both single and the spread halves).
   // The top running head (surah · juz) and the centred page number at the foot
@@ -4734,6 +4633,8 @@ export default function Library() {
                     inRange={inRange}
                     verseLabel={verseAriaLabel}
                     onVerseContextMenu={markVersesMode ? null : showVerseActions}
+                    onVerseActionsKey={markVersesMode ? null : showVerseActionsFromKey}
+                    verseActionsHint={t('library.verseActionsKeyHint')}
                     searchHitFor={searchHitFor}
                   />
                 </Flip>
@@ -4903,7 +4804,10 @@ export default function Library() {
       {/* Full-bleed: the panels dock against the WINDOW edges, the way an editor
           docks its side bars, so neither is floating in a gutter. Only the reading
           column between them gets padding and a measure. */}
-      <main className="grow w-full pt-20 pb-6">
+      <main id="main-content" className="grow w-full pt-20 pb-6">
+        {/* No visible title (see above), but the page still needs one for a
+            screen reader's heading list and the skip link to land on. */}
+        <h1 className="sr-only">{t('nav.library')}</h1>
         {/* The two panel handles: small chevron tabs flush to the viewport edges,
             the way an IDE hangs a panel handle. The sidebar's sits on the START
             edge it lives on, the tafsir's on the END edge its panel opens from, so
@@ -4964,6 +4868,7 @@ export default function Library() {
             with no verse picked the panel is short, and a chevron floating beside
             empty space read as unattached to anything. */}
         <div
+          ref={tafsirTabRef}
           className="reader-edge-tab fixed top-24 z-40"
           style={{ insetInlineEnd: tafsirOpen && isWide ? tafsirWidth : 0 }}
         >
@@ -5058,6 +4963,7 @@ export default function Library() {
                 onKeyDown={handlePageInputKey}
                 onBlur={handlePageInputBlur}
                 className="w-full rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
+                aria-label={t('library.gotoPagePlaceholder')}
                 placeholder={t('library.gotoPagePlaceholder')}
               />
 
@@ -5069,19 +4975,21 @@ export default function Library() {
               <div className="hidden lg:flex items-center gap-1 rounded-lg border border-[#dce2f3] dark:border-gray-600 p-1">
                 <button
                   onClick={() => setViewMode('single')}
+                  aria-pressed={view === 'single'}
                   className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
                     view === 'single' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                   }`}
                 >
-                  <FiFile className="w-3.5 h-3.5" /> {t('library.view.single')}
+                  <FiFile className="w-3.5 h-3.5" aria-hidden="true" /> {t('library.view.single')}
                 </button>
                 <button
                   onClick={() => setViewMode('double')}
+                  aria-pressed={view === 'double'}
                   className={`flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md px-2 py-1.5 transition-colors ${
                     view === 'double' ? 'bg-[#004f35] text-white' : 'text-[#404944] dark:text-gray-300 hover:bg-[#f0f4ff] dark:hover:bg-gray-700'
                   }`}
                 >
-                  <FiColumns className="w-3.5 h-3.5" /> {t('library.view.double')}
+                  <FiColumns className="w-3.5 h-3.5" aria-hidden="true" /> {t('library.view.double')}
                 </button>
               </div>
             </div>
@@ -5161,6 +5069,7 @@ export default function Library() {
                   onChange={e => setBookmarkLabel(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') addBookmark(); }}
                   maxLength={50}
+                  aria-label={t('library.bookmarks.labelPlaceholder')}
                   placeholder={t('library.bookmarks.labelPlaceholder')}
                   className="flex-1 min-w-0 rounded-lg border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500"
                 />
@@ -5176,7 +5085,7 @@ export default function Library() {
                 </Tooltip>
               </div>
               {bookmarksFailed && (
-                <ErrorNotice variant="inline" message={t('library.bookmarks.loadError')} onRetry={() => setBookmarksReload((k) => k + 1)} />
+                <ErrorNotice variant="inline" message={t('library.bookmarks.loadError')} onRetry={() => reloadBookmarks()} />
               )}
               {bookmarks.length === 0 ? (
                 !bookmarksFailed && <p className="text-xs text-[#9aa3a0] dark:text-gray-600">{t('library.bookmarks.empty')}</p>
@@ -5309,10 +5218,11 @@ export default function Library() {
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => setMethodOpen(o => !o)}
+                aria-expanded={methodOpen}
                 className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500 hover:text-[#404944] dark:hover:text-gray-300 transition-colors"
               >
                 {t('library.method.title')}
-                <FiChevronDown className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
+                <FiChevronDown aria-hidden="true" className={`w-3.5 h-3.5 transition-transform ${methodOpen ? 'rotate-180' : ''}`} />
               </button>
               {methodOpen && (
                 <>
@@ -5598,7 +5508,7 @@ export default function Library() {
             ) : (
               <div className="text-sm text-[#707974] dark:text-gray-500">
                 {progressLoad === 'ready'
-                  ? t('library.pagesMemorizedStat', { count: memorizedCount })
+                  ? t('library.pagesMemorizedStat', { n: fmtNum(memorizedCount), total: fmtNum(604) })
                   : t('library.memorizedLoading')}
               </div>
             )}
@@ -5744,6 +5654,8 @@ export default function Library() {
             {((selectedVerse && !popoverHidden) || spanPopoverShown) && (
               <div
                 ref={popoverRef}
+                role="group"
+                aria-labelledby="verse-actions-ref"
                 style={popoverDragStyle}
                 className="fixed left-0 top-0 z-40 bg-white dark:bg-gray-800 rounded-3xl border border-[#dce2f3] dark:border-gray-600 shadow-lg ps-1.5 pe-4 py-2 flex flex-wrap items-center justify-center gap-2 select-none max-w-[calc(100vw-1.5rem)]"
               >
@@ -5752,6 +5664,9 @@ export default function Library() {
                     {...popoverDragHandlers}
                     onPointerDown={(e) => { setHandleDragging(true); popoverDragHandlers.onPointerDown(e); }}
                     aria-label={t('tooltips.dragHandle')}
+                    // A pointer-only nicety (the actions already place
+                    // themselves); not a control a screen reader can use.
+                    aria-hidden="true"
                     className="flex items-center justify-center w-6 h-8 rounded-full text-[#b0b6bd] dark:text-gray-500 hover:text-[#707974] dark:hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none"
                   >
                     <FiMove className="w-3.5 h-3.5" />
@@ -5759,7 +5674,7 @@ export default function Library() {
                 </Tooltip>
                 {/* What the actions act on: one verse, or the whole span — named
                     and counted, so a span can't be mistaken for its first verse. */}
-                <span data-testid="popover-verse-ref" className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
+                <span id="verse-actions-ref" data-testid="popover-verse-ref" className="text-xs font-semibold text-[#003527] dark:text-gray-200 whitespace-nowrap">
                   {selectedVerse
                     ? verseRef(selectedVerse)
                     : t('library.span.label', { range: spanRangeLabel, verses: spanVersesLabel(rangeSelection.endOrd - rangeSelection.startOrd + 1) })}
@@ -6120,13 +6035,28 @@ export default function Library() {
               </Tooltip>
 
               {/* Repeat for memorization (verse ×N / range loop) */}
-              <div className="relative" ref={repeatMenuRef}>
+              {/* Escape folds the panel from anywhere inside it and puts focus
+                  back on its button, without running the reader's own Escape
+                  ladder too (M-12). */}
+              <div
+                className="relative"
+                ref={repeatMenuRef}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape' || !repeatOpen) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setRepeatOpen(false);
+                  repeatMenuRef.current?.querySelector('button')?.focus();
+                }}
+              >
                 <Tooltip label={t('library.audio.repeat')}>
                   <button
                     type="button"
                     onClick={() => setRepeatOpen(o => !o)}
                     aria-label={t('library.audio.repeat')}
                     aria-pressed={repeatMode !== 'off'}
+                    aria-expanded={repeatOpen}
+                    aria-controls={repeatOpen ? 'repeat-panel' : undefined}
                     className={`relative w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${
                       repeatMode !== 'off'
                         ? 'bg-[#004f35] text-white border-[#004f35]'
@@ -6137,7 +6067,7 @@ export default function Library() {
                   </button>
                 </Tooltip>
                 {repeatOpen && (
-                  <div className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
+                  <div id="repeat-panel" className={`absolute bottom-full mb-2 end-0 z-40 ${repeatMode === 'range' ? 'w-80' : 'w-64'} bg-white dark:bg-gray-800 rounded-xl border border-[#dce2f3] dark:border-gray-600 shadow-xl p-3 flex flex-col gap-3`} dir={isArabic ? 'rtl' : 'ltr'}>
                     <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#f0f4ff] dark:bg-gray-700/50 p-0.5">
                       {[['off', t('library.audio.repeatOff')], ['verse', t('library.audio.repeatVerse')], ['range', t('library.audio.repeatRange')]].map(([m, label]) => (
                         <button
@@ -6149,6 +6079,7 @@ export default function Library() {
                             // Range is on; leaving Range drops it.
                             setRangeSelection(m === 'range' ? { startOrd: rangeStartOrd, endOrd: rangeEndOrd } : null);
                           }}
+                          aria-pressed={repeatMode === m}
                           className={`text-xs font-semibold rounded-md px-1.5 py-1.5 transition-colors ${
                             repeatMode === m ? 'bg-white dark:bg-gray-800 text-[#003527] dark:text-emerald-400 shadow-sm' : 'text-[#707974] dark:text-gray-400'
                           }`}
@@ -6201,7 +6132,10 @@ export default function Library() {
                               ? 'library.audio.rangeSpanOnePage'
                               : 'library.audio.rangeSpan',
                             {
-                              verses: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                              verses: t('library.span.verses', {
+                                count: rangeEndOrd - rangeStartOrd + 1,
+                                n: fmtNum(rangeEndOrd - rangeStartOrd + 1),
+                              }),
                               from: fmtNum(pageOfOrd(rangeStartOrd)),
                               to: fmtNum(pageOfOrd(rangeEndOrd)),
                             }
@@ -6276,198 +6210,32 @@ export default function Library() {
               576×852 frame — simply renders smaller rather than being covered.
               The sidebar hides itself to pay for that room (see showSidebar). */}
           {tafsirOpen && (
-            <ErrorBoundary name="tafsir panel" onReset={reloadTafsir} fallback={({ reset }) => (
+            <ErrorBoundary name="tafsir panel" fallback={({ reset }) => (
               <div className="fixed bottom-24 inset-x-4 z-50 md:inset-x-auto md:end-6 md:w-96">
                 <RegionFallback className="shadow-lg" onRetry={reset} onDismiss={() => setTafsirOpen(false)} />
               </div>
             )}>
-            {() => (<>
-              <div
-                className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-                onClick={() => setTafsirOpen(false)}
+              <TafsirPanel
+                verse={tafsirVerse}
+                panelVerseKey={panelVerseKey}
+                edition={tafsirEdition}
+                onEditionChange={setTafsirEdition}
+                dialog={tafsirDialog}
+                onClose={() => setTafsirOpen(false)}
+                isWide={isWide}
+                width={tafsirWidth}
+                onWidthCommit={commitTafsirWidth}
+                onWidthPreview={previewTafsirWidth}
+                stepOrd={panelStepOrd}
+                onStep={stepSelection}
+                playingOrd={playingOrd}
+                isPlaying={isPlaying}
+                onToggleVerseAudio={toggleVerseAudio}
+                verseRef={verseRef}
+                fmtNum={fmtNum}
+                isArabic={isArabic}
+                selectClassName={selectCls}
               />
-              <div
-                data-testid="tafsir-panel"
-                data-keeps-selection
-                className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
-                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
-                           md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0
-                           lg:sticky lg:top-20 lg:self-start lg:inset-auto lg:z-auto lg:h-auto lg:max-h-[calc(100vh-6rem)]
-                           lg:shrink-0 lg:rounded-2xl lg:rounded-e-none lg:border lg:border-e-0 lg:shadow-xl
-                           reader-panel reader-panel--end"
-                style={isWide ? { width: tafsirWidth } : undefined}
-              >
-                {/* Resize handle on the panel's inner edge — only where the panel is
-                    part of the layout. Absolutely positioned and 1px wide in flow
-                    terms, so it changes nothing about the panel's own box. */}
-                {isWide && (
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label={t('library.tafsirResize')}
-                    aria-valuenow={tafsirWidth}
-                    aria-valuemin={TAFSIR_MIN_W}
-                    aria-valuemax={TAFSIR_MAX_W}
-                    tabIndex={0}
-                    data-testid="tafsir-resize"
-                    onPointerDown={startTafsirResize}
-                    onKeyDown={onTafsirResizeKey}
-                    onDoubleClick={() => commitTafsirWidth(400)}
-                    className={`absolute inset-y-0 start-0 w-2 -ms-1 cursor-col-resize z-10 group
-                                flex items-center justify-center touch-none
-                                focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004f35] dark:focus-visible:ring-emerald-400 ${
-                      tafsirResizing ? 'bg-[#004f35]/20 dark:bg-emerald-400/20' : ''
-                    }`}
-                  >
-                    <span className="w-0.5 h-10 rounded-full bg-[#dce2f3] dark:bg-gray-600 group-hover:bg-[#004f35] dark:group-hover:bg-emerald-400 transition-colors" />
-                  </div>
-                )}
-                {/* Header */}
-                <div className="px-5 lg:pe-[25px] py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <FiBookOpen className="w-4 h-4 text-[#004f35] dark:text-emerald-400 shrink-0" />
-                    <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
-                      {t(tafsirEd.kind === 'irab' ? 'library.irabTitle' : 'library.tafsirTitle')}
-                    </h3>
-                    <InfoHint text={t('hints.tafsir')} label={t('library.tafsir')} />
-                  </div>
-                  {/* Prev/next move the SELECTION, so the mushaf's highlight travels
-                      with the panel — crossing to the next page when it runs off
-                      the end of the visible one. */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Tooltip label={t('tooltips.prevVerse')}>
-                      <button
-                        onClick={() => stepSelection(-1)}
-                        disabled={panelStepOrd == null || panelStepOrd === 1}
-                        aria-label={t('tooltips.prevVerse')}
-                        className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                      >
-                        <FiChevronLeft className="w-4 h-4 rtl:rotate-180" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label={t('tooltips.nextVerse')}>
-                      <button
-                        onClick={() => stepSelection(1)}
-                        disabled={panelStepOrd == null || panelStepOrd === TOTAL_AYAHS}
-                        aria-label={t('tooltips.nextVerse')}
-                        className="w-8 h-8 rounded-lg border border-[#dce2f3] dark:border-gray-600 text-[#404944] dark:text-gray-300 flex items-center justify-center hover:bg-[#f0f4ff] dark:hover:bg-gray-700 disabled:opacity-30 transition-colors"
-                      >
-                        <FiChevronRight className="w-4 h-4 rtl:rotate-180" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip label={t('tooltips.close')}>
-                      <button
-                        onClick={() => setTafsirOpen(false)}
-                        aria-label={t('tooltips.close')}
-                        className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <FiX className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-
-                {/* Body */}
-                {/* pe-[25px]: the panel is flush against the window edge now, so the
-                    text needs a little room on that side to breathe. */}
-                <div className="flex-1 overflow-y-auto p-5 lg:pe-[25px] flex flex-col gap-4">
-                  {/* Nothing selected at all: say so. An empty panel reads like a
-                      load that never finished. (A selected verse whose page is
-                      still arriving — a cross-page step — keeps the skeleton,
-                      because that one really IS loading.) */}
-                  {!tafsirVerse && !panelVerseKey ? (
-                    <div data-testid="tafsir-empty" className="flex flex-col items-center gap-3 py-10 text-center">
-                      <FiBookOpen className="w-8 h-8 text-[#b0b6bd] dark:text-gray-600" />
-                      <p className="text-sm text-[#707974] dark:text-gray-400 max-w-[24ch]">{t('library.tafsirPickVerse')}</p>
-                    </div>
-                  ) : !tafsirVerse ? tafsirSkeleton : (
-                    <>
-                      {/* The verse, mushaf-styled */}
-                      <div dir="rtl" className="rounded-xl bg-[#fdf8ec] dark:bg-[#1f1b14] border border-amber-200/70 dark:border-amber-900/40 px-4 py-3">
-                        <p className="mushaf-text !text-xl text-[#1f1505] dark:text-[#f3e9d2]">
-                          {verseText(tafsirVerse)}
-                          <span className="text-emerald-700 dark:text-emerald-400 select-none mx-1 text-[0.85em]">
-                            ﴿{toArabicDigits(tafsirVerse.ayahNumber)}﴾
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Surah / verse + play (toggles: pauses if this verse is playing) */}
-                      <div className="flex items-center justify-between gap-3">
-                        <p data-testid="tafsir-verse-ref" className="text-xs font-semibold text-[#404944] dark:text-gray-300">{verseRef(tafsirVerse)}</p>
-                        {(() => {
-                          const tafsirOrd = ordOfKey(tafsirVerse.verseKey);
-                          const tafsirPlaying = tafsirOrd != null && tafsirOrd === playingOrd && isPlaying;
-                          return (
-                            <button
-                              onClick={() => toggleVerseAudio(tafsirOrd)}
-                              title={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
-                              aria-label={tafsirPlaying ? t('library.pause') : t('library.playThisVerse')}
-                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#004f35] dark:text-emerald-400 border border-[#004f35]/30 dark:border-emerald-500/30 px-3 py-1.5 rounded-full hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
-                            >
-                              {tafsirPlaying
-                                ? <><FiPause className="w-3 h-3" /> {t('library.pause')}</>
-                                : <><FiPlay className="w-3 h-3 rtl:rotate-180" /> {t('library.playThisVerse')}</>}
-                            </button>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Edition select */}
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-[#707974] dark:text-gray-500">
-                          {t('library.tafsirEdition')}
-                        </label>
-                        <Tooltip label={t('tooltips.tafsirEdition')} className="w-full">
-                          <select
-                            value={tafsirEdition}
-                            aria-label={t('library.tafsirEdition')}
-                            onChange={e => setTafsirEdition(e.target.value)}
-                            className={selectCls}
-                          >
-                            {TAFSIR_EDITIONS.map(ed => (
-                              <option key={ed.id} value={ed.id}>{isArabic ? ed.nameAr : ed.nameEn}</option>
-                            ))}
-                          </select>
-                        </Tooltip>
-                      </div>
-
-                      {/* Tafsir text */}
-                      {tafsirLoading ? tafsirSkeleton : tafsirError ? (
-                        <div className="flex flex-col items-center gap-3 py-6 text-center">
-                          <FiAlertCircle className="w-8 h-8 text-[#707974] dark:text-gray-500" />
-                          <p className="text-sm text-[#404944] dark:text-gray-400">{t('library.tafsirError')}</p>
-                          <button
-                            onClick={() => setTafsirReloadKey(k => k + 1)}
-                            className="text-sm font-semibold text-white bg-[#004f35] hover:bg-[#003527] px-4 py-2 rounded-lg transition-colors"
-                          >
-                            {t('common.retry')}
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          {/* This book comments on a whole passage at once and returns
-                              the same text for every verse in it. Say so, rather than
-                              let it look as though the wrong verse loaded. */}
-                          {tafsirRun && (
-                            <p
-                              data-testid="tafsir-run"
-                              dir={isArabic ? 'rtl' : 'ltr'}
-                              className="rounded-xl border border-amber-300/70 dark:border-amber-800/50 bg-amber-50/80 dark:bg-amber-900/20 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-200"
-                            >
-                              {t('library.tafsirCovers', { from: fmtNum(tafsirRun.from), to: fmtNum(tafsirRun.to) })}
-                            </p>
-                          )}
-                          <div data-testid="tafsir-text" dir="rtl" className="tafsir-prose text-[#1A1A1A] dark:text-gray-200">
-                            {tafsirParagraphs.map((para, i) => <p key={i}>{para}</p>)}
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </>)}
             </ErrorBoundary>
           )}
 
@@ -6478,22 +6246,23 @@ export default function Library() {
       {notePanel && (
         <>
           <div
+            data-dialog-keep
             className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-            onClick={() => setNotePanel(null)}
+            onClick={closeNote}
           />
-          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+          <div {...noteDialog.dialogProps} className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
                           md:bottom-0 md:top-0 md:inset-x-auto md:end-0 md:h-full md:max-h-full md:w-[420px] md:rounded-none md:border-s md:border-t-0">
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
-                <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <FiMessageSquare className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" aria-hidden="true" />
+                <h2 id={noteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {notePanel.id ? t('library.annotations.editNote') : t('library.annotations.addNote')}
-                </h3>
+                </h2>
               </div>
               <Tooltip label={t('tooltips.close')}>
                 <button
-                  onClick={() => setNotePanel(null)}
+                  onClick={closeNote}
                   aria-label={t('tooltips.close')}
                   className="w-8 h-8 rounded-lg text-[#707974] dark:text-gray-400 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
@@ -6511,15 +6280,24 @@ export default function Library() {
                   </p>
                 );
               })()}
-              <textarea
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                maxLength={2000}
-                rows={8}
-                dir="auto"
-                placeholder={t('library.annotations.notePlaceholder')}
-                className="w-full rounded-xl border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 resize-none"
-              />
+              <div className="flex flex-col gap-1.5">
+                <textarea
+                  ref={noteTextareaRef}
+                  data-autofocus
+                  aria-label={t('library.annotations.noteLabel')}
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  maxLength={2000}
+                  rows={8}
+                  dir="auto"
+                  placeholder={t('library.annotations.notePlaceholder')}
+                  className="w-full rounded-xl border border-[#dce2f3] dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2.5 text-sm text-[#1A1A1A] dark:text-gray-100 focus:outline-none focus:border-[#004f35] dark:focus:border-emerald-500 resize-none"
+                />
+                {/* Always in the DOM, so the hint is announced when it appears. */}
+                <p role="status" className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  {noteHint && noteDirty ? t('library.annotations.unsavedHint') : ''}
+                </p>
+              </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] text-[#9aa3a0] dark:text-gray-600">{fmtNum(noteDraft.length)} / {fmtNum(2000)}</span>
                 <div className="flex items-center gap-2">
@@ -6551,18 +6329,19 @@ export default function Library() {
       {readTextNote && (
         <>
           <div
+            data-dialog-keep
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
             onClick={() => setReadTextNote(null)}
           />
-          <div className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
+          <div {...textNoteDialog.dialogProps} className="fixed z-50 bg-white dark:bg-gray-800 shadow-2xl border-[#dce2f3] dark:border-gray-700 flex flex-col
                           bottom-0 inset-x-0 max-h-[78vh] rounded-t-3xl border-t
                           md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:inset-x-auto md:start-1/2 md:-translate-x-1/2 md:w-[420px] md:max-h-[70vh] md:rounded-2xl md:border">
             <div className="px-5 py-4 border-b border-[#dce2f3] dark:border-gray-700 flex items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
-                <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} />
-                <h3 className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
+                <FiMessageSquare className={`w-4 h-4 shrink-0 mushaf-text-note--${readTextNote.color}`} aria-hidden="true" />
+                <h2 id={textNoteDialog.titleId} className="text-sm font-bold text-[#003527] dark:text-gray-100 truncate">
                   {t('library.draw.noteTitle')}
-                </h3>
+                </h2>
               </div>
               <Tooltip label={t('tooltips.close')}>
                 <button
@@ -6695,22 +6474,7 @@ export default function Library() {
 
       {/* Confirm changing a bookmark's page (a replace when an unnamed one would
           land on another unnamed one), or removing a bookmark */}
-      <ConfirmModal
-        isOpen={!!bookmarkConfirm}
-        onClose={() => {
-          // Back to the button that asked (Remove, or Move) — its row may have
-          // re-sorted or re-rendered meanwhile, so find it afresh.
-          if (bookmarkConfirm) focusBookmarkAction(bookmarkConfirm.bookmark._id, bookmarkConfirm.kind === 'remove' ? 'remove' : 'move');
-          setBookmarkConfirm(null);
-        }}
-        onConfirm={() => {
-          const c = bookmarkConfirm;
-          if (c.kind === 'move') moveBookmark(c.bookmark, c.page);
-          else if (c.kind === 'replace') moveBookmark(c.bookmark, c.page, true);
-          else removeBookmark(c.bookmark);
-        }}
-        {...bookmarkDialog}
-      />
+      <ConfirmModal {...bookmarkConfirmProps} />
 
       {/* Confirm before wiping a page's ink */}
       <ConfirmModal
